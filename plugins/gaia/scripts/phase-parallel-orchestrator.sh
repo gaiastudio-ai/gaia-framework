@@ -1980,6 +1980,8 @@ ppo_run_sprint() {
 
   local slot_seq=0
   _ppo_engine_put ceiling-refusals 0
+  local _ppo_ledger_refusals=0
+  local _ppo_ledger_backoff="${GAIA_LEDGER_BACKOFF_BASE:-2}"
   while :; do
     # A ceiling that never frees would re-queue forever (see the hook's
     # exit-8 handling below) -- give up once refusals have piled up with no
@@ -1998,8 +2000,8 @@ ppo_run_sprint() {
     fi
 
     # Ledger claim: one dev slot per ppo_next call, outside the engine lock.
-    # A refused claim (exit 1 = budget exhausted) blocks admission.
-    # Error exits (6 = corrupt ledger, 7 = lock unavailable) surface and stop.
+    # A refused claim (exit 1 = budget exhausted) blocks admission with
+    # bounded backoff. Error exits (6/7) surface and stop.
     local _ppo_ledger_sprint="${GAIA_LEDGER_SPRINT:-}"
     local _ppo_ledger_pid="${GAIA_LEDGER_PID:-}"
     local _ppo_ledger_granted=0
@@ -2007,9 +2009,16 @@ ppo_run_sprint() {
       local _ppo_claim_rc=0
       _ppo_ledger_claim "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || _ppo_claim_rc=$?
       case "$_ppo_claim_rc" in
-        0) _ppo_ledger_granted=1 ;;
-        1) # Budget exhausted -- emit barrier and loop back for retry.
-          _ppo_emit "barrier phase=ledger-budget waiting=1"
+        0) _ppo_ledger_granted=1; _ppo_ledger_refusals=0; _ppo_ledger_backoff="${GAIA_LEDGER_BACKOFF_BASE:-2}" ;;
+        1) # Budget exhausted -- bounded backoff, then retry.
+          _ppo_ledger_refusals=$((_ppo_ledger_refusals + 1))
+          if [ "$_ppo_ledger_refusals" -ge "$_PPO_CEILING_GIVEUP" ]; then
+            _ppo_emit "barrier phase=ledger-budget waiting=giveup"
+            return 0
+          fi
+          _ppo_emit "barrier phase=ledger-budget waiting=$_ppo_ledger_refusals"
+          sleep "$_ppo_ledger_backoff" 2>/dev/null || sleep 1
+          _ppo_ledger_backoff=$((_ppo_ledger_backoff * 2))
           continue ;;
         6|7) # Corrupt ledger or lock unavailable -- surface and stop.
           _ppo_log "ledger_error: exit $_ppo_claim_rc — stopping"

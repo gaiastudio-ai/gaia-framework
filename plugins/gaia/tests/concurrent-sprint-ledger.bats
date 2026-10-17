@@ -909,7 +909,7 @@ YAML
 # CLI next path: unused grant release
 # ============================================================
 
-@test "cli next: claims before and releases unused grant after barrier" {
+@test "ledger claim-release cycle: claim then release simulates the grant lifecycle" {
   # Prepare a ledger with session A holding 3 of 4 slots.
   export CLAUDE_CODE_SESSION_ID="cli-pre-session"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 3 --teammates 0
@@ -935,7 +935,7 @@ YAML
 # Budget enforcement blocks admission
 # ============================================================
 
-@test "budget exhausted: refused claim exits 1 and blocks admission" {
+@test "ledger claim refused: budget-exhausted claim exits 1 with no entry created" {
   # Fill the budget completely.
   export CLAUDE_CODE_SESSION_ID="full-budget-A"
   bash "$LEDGER_SH" claim --sprint sprint-99 --pid $$ --dev 4 --teammates 0
@@ -1025,6 +1025,264 @@ WRAP
   run bash "$wrapper" claim --sprint sprint-99 --pid $$ --dev 1 --teammates 0
   [ "$status" -eq 7 ]
   [[ "$output" == *"ledger lock unavailable"* ]]
+}
+
+# ============================================================
+# Orchestrator CLI integration: ledger claim/release through plan/next
+# ============================================================
+
+# Helpers for orchestrator integration tests.
+
+_orch_mk_repo() {
+  local dir="$1"
+  mkdir -p "$dir"
+  git -C "$dir" init -q -b staging .
+  git -C "$dir" config user.email "test@example.invalid"
+  git -C "$dir" config user.name "Test User"
+  printf '.gaia/\ncoverage/\n' > "$dir/.gitignore"
+  printf 'seed\n' > "$dir/seed.txt"
+  git -C "$dir" add .gitignore seed.txt
+  git -C "$dir" commit -qm "initial commit"
+  git init -q --bare "${dir}-remote.git"
+  git -C "$dir" remote add origin "${dir}-remote.git"
+  git -C "$dir" push -q -u origin HEAD
+  ( cd "$dir" && pwd )
+}
+
+_orch_mk_yaml() {
+  local out="$1"; shift
+  mkdir -p "$(dirname "$out")"
+  {
+    printf 'sprint_id: test-sprint\n'
+    printf 'status: active\n'
+    printf 'total_points: 0\n'
+    printf 'goals: []\n'
+    printf 'items:\n'
+    local spec key phase
+    for spec in "$@"; do
+      key="${spec%%:*}"
+      printf '  - key: %s\n' "$key"
+      printf '    title: story %s\n' "$key"
+      printf '    status: ready-for-dev\n'
+      printf '    points: 1\n'
+      printf '    risk_level: low\n'
+      case "$spec" in
+        *:*) phase="${spec#*:}"; printf '    phase: %s\n' "$phase" ;;
+      esac
+    done
+  } > "$out"
+  printf '%s' "$out"
+}
+
+_orch_ensure_flock() {
+  if command -v flock >/dev/null 2>&1; then
+    printf '%s' "$(dirname "$(command -v flock)")"
+    return 0
+  fi
+  command -v python3 >/dev/null 2>&1 || return 1
+  local dir="$TEST_DIR/flock-bin"
+  mkdir -p "$dir"
+  cat > "$dir/flock" <<'FLOCKSHIM'
+#!/usr/bin/env python3
+"""Minimal flock(1) shim."""
+import sys, fcntl, time
+args = sys.argv[1:]
+unlock = False; wait = None; fd = None; i = 0
+while i < len(args):
+    a = args[i]
+    if a == "-u": unlock = True
+    elif a == "-x": pass
+    elif a == "-w": i += 1; wait = float(args[i])
+    else: fd = int(a)
+    i += 1
+if fd is None: sys.exit(1)
+if unlock: fcntl.flock(fd, fcntl.LOCK_UN); sys.exit(0)
+deadline = time.monotonic() + (wait if wait else 0)
+while True:
+    try: fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); sys.exit(0)
+    except BlockingIOError: pass
+    if time.monotonic() >= deadline: sys.exit(1)
+    time.sleep(0.05)
+FLOCKSHIM
+  chmod +x "$dir/flock"
+  printf '%s' "$dir"
+}
+
+@test "orchestrator CLI next: admits story and ledger shows claimed slot" {
+  local ORCH="${BATS_TEST_DIRNAME}/../scripts/phase-parallel-orchestrator.sh"
+  local fl; fl="$(_orch_ensure_flock)" || skip "no flock and no python3 to provide one"
+
+  local repo; repo="$(_orch_mk_repo "$TEST_DIR/repo")"
+  local yaml; yaml="$(_orch_mk_yaml "$TEST_DIR/sprint.yaml" K1:1 K2:2)"
+
+  # Create per-sprint file so single-sprint guard doesn't skip ledger.
+  touch "${GAIA_STATE_DIR}/sprint-status-test-sprint.yaml"
+
+  export PATH="$fl:$PATH"
+  export GAIA_PARALLEL_EXECUTION=1
+  export GAIA_WORKTREE_MODE=1
+  export GAIA_SESSION_DIR="$TEST_DIR/session"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export GAIA_LEDGER_SPRINT="test-sprint"
+  export GAIA_LEDGER_PID="$$"
+
+  # Plan.
+  run bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == mode=parallel* ]]
+
+  # Next — should admit K1 (phase 1) and claim one ledger slot.
+  run bash "$ORCH" next
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dispatch story=K1"* ]]
+
+  # Verify the ledger shows 1 dev slot for our session.
+  local dev_claimed
+  dev_claimed="$(_ledger_field ".sessions[\"$CLAUDE_CODE_SESSION_ID\"].dev_slots_claimed")"
+  [ "$dev_claimed" = "1" ]
+}
+
+@test "orchestrator CLI next: barrier releases unused grant (no stories admitted)" {
+  local ORCH="${BATS_TEST_DIRNAME}/../scripts/phase-parallel-orchestrator.sh"
+  local fl; fl="$(_orch_ensure_flock)" || skip "no flock and no python3 to provide one"
+
+  local repo; repo="$(_orch_mk_repo "$TEST_DIR/repo2")"
+  local yaml; yaml="$(_orch_mk_yaml "$TEST_DIR/sprint2.yaml" K1:1)"
+  touch "${GAIA_STATE_DIR}/sprint-status-test-sprint.yaml"
+
+  export PATH="$fl:$PATH"
+  export GAIA_PARALLEL_EXECUTION=1
+  export GAIA_WORKTREE_MODE=1
+  export GAIA_SESSION_DIR="$TEST_DIR/session2"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export GAIA_LEDGER_SPRINT="test-sprint"
+  export GAIA_LEDGER_PID="$$"
+
+  # Plan and admit the only story.
+  bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+  bash "$ORCH" next >/dev/null
+
+  # Now next again — K1 is running, no more phase-1 stories, so barrier.
+  run bash "$ORCH" next
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"barrier"* ]]
+
+  # The ledger should show dev_slots_claimed back to 1 (the first claim),
+  # NOT 2 (the barrier call's grant was released).
+  local dev_claimed
+  dev_claimed="$(_ledger_field ".sessions[\"$CLAUDE_CODE_SESSION_ID\"].dev_slots_claimed")"
+  [ "$dev_claimed" = "1" ]
+}
+
+@test "orchestrator CLI next: sprint_complete releases unused grant" {
+  local ORCH="${BATS_TEST_DIRNAME}/../scripts/phase-parallel-orchestrator.sh"
+  local fl; fl="$(_orch_ensure_flock)" || skip "no flock and no python3 to provide one"
+
+  local repo; repo="$(_orch_mk_repo "$TEST_DIR/repo3")"
+  local yaml; yaml="$(_orch_mk_yaml "$TEST_DIR/sprint3.yaml" K1:1)"
+  touch "${GAIA_STATE_DIR}/sprint-status-test-sprint.yaml"
+
+  export PATH="$fl:$PATH"
+  export GAIA_PARALLEL_EXECUTION=1
+  export GAIA_WORKTREE_MODE=1
+  export GAIA_SESSION_DIR="$TEST_DIR/session3"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export GAIA_LEDGER_SPRINT="test-sprint"
+  export GAIA_LEDGER_PID="$$"
+
+  # Plan, admit, record done.
+  bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+  bash "$ORCH" next >/dev/null
+  bash "$ORCH" record K1 done >/dev/null
+
+  # Next — sprint_complete; grant should be released.
+  run bash "$ORCH" next
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint_complete"* ]]
+
+  # Ledger dev_slots_claimed should be 0 (record released 1, sprint_complete released the grant).
+  local dev_claimed
+  dev_claimed="$(_ledger_field ".sessions[\"$CLAUDE_CODE_SESSION_ID\"].dev_slots_claimed")"
+  [ "$dev_claimed" = "0" ]
+}
+
+@test "orchestrator CLI next: refused claim emits barrier, admits nothing" {
+  local ORCH="${BATS_TEST_DIRNAME}/../scripts/phase-parallel-orchestrator.sh"
+  local fl; fl="$(_orch_ensure_flock)" || skip "no flock and no python3 to provide one"
+
+  local repo; repo="$(_orch_mk_repo "$TEST_DIR/repo4")"
+  local yaml; yaml="$(_orch_mk_yaml "$TEST_DIR/sprint4.yaml" K1:1 K2:1)"
+  touch "${GAIA_STATE_DIR}/sprint-status-test-sprint.yaml"
+
+  export PATH="$fl:$PATH"
+  export GAIA_PARALLEL_EXECUTION=1
+  export GAIA_WORKTREE_MODE=1
+  export GAIA_SESSION_DIR="$TEST_DIR/session4"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export GAIA_LEDGER_SPRINT="test-sprint"
+  export GAIA_LEDGER_PID="$$"
+
+  # Fill the budget entirely from outside via direct ledger call.
+  export CLAUDE_CODE_SESSION_ID="pre-fill-session"
+  bash "$LEDGER_SH" claim --sprint test-sprint --pid $$ --dev 4 --teammates 0
+
+  # Restore session ID for the orchestrator.
+  export CLAUDE_CODE_SESSION_ID="test-session-$$-${RANDOM}"
+
+  # Plan.
+  bash "$ORCH" plan --repo "$repo" --yaml "$yaml" --slots 2 >/dev/null
+
+  # Next — budget is full, claim refused, barrier emitted, nothing admitted.
+  run bash "$ORCH" next
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"barrier"*"ledger-budget"* ]]
+  # No dispatch line should appear.
+  [[ "$output" != *"dispatch story="* ]]
+}
+
+@test "ppo_run_sprint: budget-exhausted backoff does not spin (gives up after N attempts)" {
+  local ORCH="${BATS_TEST_DIRNAME}/../scripts/phase-parallel-orchestrator.sh"
+  local fl; fl="$(_orch_ensure_flock)" || skip "no flock and no python3 to provide one"
+
+  local repo; repo="$(_orch_mk_repo "$TEST_DIR/repo5")"
+  local yaml; yaml="$(_orch_mk_yaml "$TEST_DIR/sprint5.yaml" K1:1)"
+  touch "${GAIA_STATE_DIR}/sprint-status-test-sprint.yaml"
+
+  export PATH="$fl:$PATH"
+  export GAIA_PARALLEL_EXECUTION=1
+  export GAIA_WORKTREE_MODE=1
+  export GAIA_SESSION_DIR="$TEST_DIR/session5"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export GAIA_MODE_B_SUBSTRATE=available
+  export GAIA_LEDGER_SPRINT="test-sprint"
+  export GAIA_LEDGER_PID="$$"
+  # Minimize backoff for test speed.
+  export GAIA_LEDGER_BACKOFF_BASE=0
+
+  # Fill the budget.
+  export CLAUDE_CODE_SESSION_ID="hog-session"
+  bash "$LEDGER_SH" claim --sprint test-sprint --pid $$ --dev 4 --teammates 0
+
+  export CLAUDE_CODE_SESSION_ID="backoff-session"
+
+  # Install the test-only dispatch hook so ppo_run_sprint enters the loop.
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export GAIA_PPO_ALLOW_DISPATCH_CMD=1
+
+  # Run the compat loop — it should give up after _PPO_CEILING_GIVEUP attempts
+  # (default 3), not spin forever.
+  run timeout 15 bash "$ORCH" --repo "$repo" --yaml "$yaml" --slots 2
+  [ "$status" -eq 0 ]
+
+  # Count barrier lines — should be exactly _PPO_CEILING_GIVEUP (3).
+  local barrier_count
+  barrier_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'barrier phase=ledger-budget' || true)"
+  [ "$barrier_count" -ge 1 ]
+  [ "$barrier_count" -le 3 ]
 }
 
 # ============================================================
