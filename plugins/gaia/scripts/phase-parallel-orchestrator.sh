@@ -49,7 +49,7 @@
 #                                                `barrier phase=P waiting=N` when
 #                                                the phase cannot admit more;
 #                                                `sprint_complete` when done
-#   ppo_record_outcome <key> <done|failed|timeout|merged>
+#   ppo_record_outcome <key> <done|failed|timeout|merged|deferred>
 #                                                the skill reports what it
 #                                                observed from a real driven
 #                                                turn; on `merged` this engine
@@ -1463,7 +1463,7 @@ _ppo_record_outcome_locked_internal_mnd() {
 
 _ppo_record_outcome_locked() {
   local key="${1:-}" outcome="${2:-}"
-  [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged>"; return 1; }
+  [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged|deferred>"; return 1; }
 
   _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=record reason=invalid-key story=${key}"; return 1; }
 
@@ -1516,13 +1516,22 @@ _ppo_record_outcome_locked() {
         _ppo_apply_mnd_clean "$key" "$p" "$wt" "$repo" "$handle" "$running_file"
       fi
       ;;
+    deferred)
+      # merge.sh exit 3 — merge deferred due to promotion-lock contention.
+      # Release the dev slot, keep the worktree and branch, keep the story
+      # in review; the next cycle's resume re-enters at the merge step.
+      rm -f "$running_file" 2>/dev/null || true
+      _ppo_emit "event=story_merge_deferred story=${key} phase=${p} outcome=deferred"
+      _ppo_record "$key" "deferred" "$p"
+      ;;
     *)
       # `merged-not-done` is deliberately refused here, same as any other
       # unrecognised literal: it is not part of this entry point's
-      # CLI-reachable vocabulary (done|failed|timeout|merged) precisely
-      # because it would let a caller skip _ppo_is_merged_not_done's audit
-      # and assert the resume/give-up transition on its own say-so. The
-      # legacy in-process test hook that used to pass this literal now calls
+      # CLI-reachable vocabulary (done|failed|timeout|merged|deferred)
+      # precisely because it would let a caller skip
+      # _ppo_is_merged_not_done's audit and assert the resume/give-up
+      # transition on its own say-so. The legacy in-process test hook that
+      # used to pass this literal now calls
       # _ppo_record_outcome_internal_mnd directly instead (see `run`'s
       # exit-11 branch) -- a function with no outcome-string parameter at
       # all, so no CLI argument can reach it.
