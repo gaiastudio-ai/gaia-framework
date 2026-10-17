@@ -1,18 +1,72 @@
-# CI Notes — bats Wall-Clock Budget
+# CI Notes — bats Sharding and Wall-Clock Budget
 
-> **Why this file exists.** The `bats-tests` job in `plugin-ci.yml` is the
-> framework's primary integration gate. Wall-clock has crept from ~150 s
-> (sprint-23, ~1300 tests) to ~270 s (sprint-28, 2085 tests) — see
-> the bats-scaling memo under `.gaia/artifacts/planning-artifacts/` for the full
-> trajectory. This runbook tells contributors how to add new tests
-> without pushing the suite into another timeout escalation.
+> **Why this file exists.** The `bats-tests` gate in `plugin-ci.yml` is the
+> framework's primary integration gate. The full suite (~13000 tests across
+> ~791 top-level .bats files) is split into 4 parallel shards to keep
+> CI wall-clock under 10 minutes. This runbook tells contributors how
+> the sharding works, how to add new tests, and when to rebalance.
 
 ## TL;DR
 
-- **Soft budget:** 240 s (4 min) of bats wall-clock, watched by
-  `plugins/gaia/scripts/bats-budget-watch.sh`.
-- **Hard budget:** 300 s (5 min) `timeout-minutes` on the `bats-tests` job.
+- **Architecture:** 4 parallel shard jobs (`bats-shard-1` through
+  `bats-shard-4`) feed into a `bats-tests` gate job that runs the
+  static public-function coverage check and plugin validation.
+- **Per-shard timeout:** 12 min (~50% headroom over the expected ~5 min).
+- **Fast feedback:** `bats-fast-feedback` runs diff-selected tests and
+  reports within minutes, independently of the full regression suite.
+- **Superseded runs:** cancelled automatically via workflow `concurrency`.
+- **Required check:** `bats-tests` (the gate job) is the branch-protection
+  required status check.  It passes only when all 4 shards pass.
 - **Escalation triggers:** see the bats-scaling ADR Appendix B.
+
+## Shard architecture
+
+The monolithic `bats-tests` job was replaced by a 4-shard matrix.  Each
+shard runs on its own runner, so temp directories, fixtures, and state
+files are inherently isolated (no shared `/tmp/gaia-*` paths).
+
+### CI job names
+
+| Job | Purpose | Timeout |
+|-----|---------|---------|
+| `bats-fast-feedback` | Diff-selected tests for early signal | 5 min |
+| `bats-shard-1` .. `bats-shard-4` | Parallel regression shards | 12 min each |
+| `bats-tests` | Gate: coverage check + plugin validate (needs all shards) | 10 min |
+
+### Shard assignment file
+
+`.github/bats-shard-assignments.tsv` maps every top-level `.bats` file
+to exactly one shard.  The CI `validate-shard-assignments` step fails
+if any `.bats` file is not in the assignment.
+
+### Adding a new .bats file
+
+1. Create the file under `plugins/gaia/tests/`.
+2. Add it to `.github/bats-shard-assignments.tsv` (pick the lightest
+   shard, or run `.github/scripts/rebalance-shards.sh --dry-run`).
+3. Register it in `plugins/gaia/tests/component-manifest.tsv` as usual.
+4. Push.  The `validate-shard-assignments` step fails if you forget
+   step 2; the component-manifest drift guard fails if you forget step 3.
+
+### Rebalancing shards
+
+When the balance drifts (one shard consistently slower than others),
+regenerate assignments:
+
+```bash
+# From profiling data (after a CI run):
+.github/scripts/rebalance-shards.sh --timing profiling/bats-timing.tsv
+
+# From test counts (no profiling data needed):
+.github/scripts/rebalance-shards.sh
+```
+
+### macOS bash 3.2 coverage
+
+The macOS bash 3.2 job is a separate dimension, not
+a shard of the Linux suite.  It runs a curated subset of
+bash-3.2-sensitive tests on a macOS runner with the system `/bin/bash`
+3.2 and BSD tools.  It is orthogonal to the 4 Linux shards.
 
 ## How to add new bats fixtures
 
@@ -36,57 +90,37 @@
    pick those up directly and run them in their own 5-minute budget,
    keeping the main `bats-tests` job lean.
 
-## How to interpret the budget warning
-
-When the bats-tests step runs longer than 240 s, the GitHub Actions step
-summary will include a yellow warning block:
-
-```
-> [!WARNING]
-> bats budget exceeded — bats-tests
->
-> - threshold: 240s
-> - elapsed: 248s
-> - over by: 8s
->
-> The bats CI step is approaching its wall-clock budget. ...
-```
-
-This is **advisory only** — the build still passes. It means:
-
-- If your PR added new tests: consider whether the additions truly
-  belong in the foundation suite or whether they should live under a
-  cluster-specific path with its own job.
-- If your PR didn't add tests: the warning is a leading indicator that
-  the suite is drifting toward the hard wall. Flag in the PR
-  description so the next planner sees it.
-
 ## When to escalate
 
-Open a sprint-29-or-later story (or extend the bats-scaling ADR) when **any** of
-these fire:
+Open a follow-on story when **any** of these fire:
 
-- The warning posts on >25 % of staging-bound PRs in a sprint.
-- A single PR's bats wall-clock exceeds 270 s (90 % of the hard wall).
-- A second `timeout-minutes` escalation is proposed in any PR review.
-
-The likely next step is parallelisation via `bats --jobs N` — see
-the bats-scaling ADR Option A. Don't bump `timeout-minutes` past 5 minutes
-without first running the parallelisation prototype.
+- Any shard consistently exceeds 8 minutes (66% of the 12-minute
+  timeout). Rebalance first; escalate if rebalancing does not help.
+- The `bats-tests` critical path exceeds 10 minutes.
+- A new shard (5th) is proposed. Consider whether the test count
+  justifies the additional runner cost and queue-slot contention.
 
 ## Local repro
 
 ```bash
-# Run the budget-watched bats suite locally — same wrapper as CI.
-bash plugins/gaia/scripts/bats-budget-watch.sh \
-  --threshold-seconds 240 \
-  --label bats-tests \
-  -- bash plugins/gaia/tests/run-with-coverage.sh
-```
+# Run a single shard locally:
+SHARD=1
+FILES=$(grep -v '^#' .github/bats-shard-assignments.tsv \
+  | awk -F'\t' -v s="$SHARD" '$1==s {print "plugins/gaia/tests/" $2}')
+bats --jobs 2 --no-parallelize-within-files $FILES
 
-If your local box is slow, drop `--threshold-seconds` to a value that
-matches your hardware so you see the warning during development rather
-than on the PR.
+# Run the full suite with the coverage wrapper (same as pre-sharding):
+bash plugins/gaia/tests/run-with-coverage.sh
+
+# Run the public-function coverage check alone (static, no bats):
+.github/scripts/check-public-function-coverage.sh .
+
+# Validate shard assignments:
+.github/scripts/validate-shard-assignments.sh .
+
+# Rebalance shards from profiling data:
+.github/scripts/rebalance-shards.sh --timing profiling/bats-timing.tsv
+```
 
 ## Related artifacts
 
@@ -102,11 +136,12 @@ than on the PR.
 
 The plugin ships **two** bats trees, both exercised by CI:
 
-- `tests/` (legacy, 104 .bats files) — cluster-4-e2e, cluster-5-parity,
+- `tests/` (legacy) — cluster-4-e2e, cluster-5-parity,
   cluster-6-e2e, cluster-7-chain, cluster-8-sprint-cycle, and
   skills-bats-tests jobs.
-- `plugins/gaia/tests/` (canonical, 194 .bats files) — `bats-tests`
-  (full suite via `run-with-coverage.sh`) and cluster-9-run-all-reviews.
+- `plugins/gaia/tests/` (canonical, ~791 top-level .bats files) —
+  `bats-shard-{1..4}` (sharded regression suite) and
+  cluster-9-run-all-reviews.
 
 The two trees are **disjoint** (zero filename or relative-path overlap),
 hosting architecturally distinct surfaces (cluster parity / e2e vs
