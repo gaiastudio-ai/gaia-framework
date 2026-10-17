@@ -191,6 +191,11 @@ jobs:
           # 2 concurrent files halves wall-clock without oversubscribing the
           # shared 4-core runner.
           BATS_JOBS: '2'
+          # Match the locale the old monolithic run-with-coverage.sh set.
+          # Several awk scripts use sprintf("%c",...) to build raw UTF-8
+          # byte sequences; gawk under a UTF-8 locale interprets the values
+          # as codepoints instead of bytes, breaking multi-byte matching.
+          LC_ALL: C
         run: |
           set -euo pipefail
           SHARD=${{ matrix.shard }}
