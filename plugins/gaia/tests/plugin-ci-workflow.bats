@@ -36,45 +36,48 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: bats-tests apt install line does NOT install kcov" {
-  # Extract the apt-get install line(s) inside the bats-tests job. The bug
-  # was: `sudo apt-get install -y jq kcov`. After the fix, kcov must not
-  # appear as an apt package token.
+@test "plugin-ci.yml: shard apt install lines do NOT install kcov" {
+  # The bats-shard jobs run apt-get install for their dependencies.  kcov
+  # must not appear as a package token (it is unavailable on Ubuntu 24.04
+  # noble and would break the install step).
   #
-  # We scope to the bats-tests job by reading from `  bats-tests:` up to the
+  # Scope to the bats-shard job (the sharded runner that replaced the old
+  # monolithic bats-tests job) by reading from `  bats-shard:` up to the
   # next top-level job (`^  [a-z]` two-space indent).
-  bats_job="$(awk '
-    /^  bats-tests:/ { in_job=1; print; next }
+  shard_job="$(awk '
+    /^  bats-shard:/ { in_job=1; print; next }
     in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
     in_job { print }
   ' "$WORKFLOW")"
 
-  # The bats-tests job block must exist.
-  [ -n "$bats_job" ]
+  # The bats-shard job block must exist.
+  [ -n "$shard_job" ]
 
-  # Find any apt-get install line in the bats-tests job and assert it does
+  # Find any apt-get install line in the shard job and assert it does
   # not include the kcov package token.
-  apt_lines="$(printf '%s\n' "$bats_job" | grep -E 'apt-get +install' || true)"
+  apt_lines="$(printf '%s\n' "$shard_job" | grep -E 'apt-get +install' || true)"
   [ -n "$apt_lines" ]
 
-  # `kcov` must not appear as a whitespace-delimited token in any apt-get
-  # install line. A comment mentioning kcov elsewhere is fine — this check
-  # targets the install command only.
   if grep -Eq '(^|[[:space:]])kcov([[:space:]]|$)' <<<"$apt_lines"; then
     echo "apt install line still references kcov: $apt_lines" >&2
     return 1
   fi
 }
 
-@test "plugin-ci.yml: bats-tests still invokes run-with-coverage.sh" {
-  run grep -F 'plugins/gaia/tests/run-with-coverage.sh' "$WORKFLOW"
+@test "plugin-ci.yml: bats-tests gate runs public-function coverage check" {
+  run grep -F 'check-public-function-coverage.sh' "$WORKFLOW"
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: carries an comment explaining the kcov decision" {
-  # If kcov is dropped from apt install, the workflow yaml must carry a
-  # comment referencing E28-S175 (or kcov) so the decision is discoverable
-  # from the file itself.
-  run grep -E '#.*(E28-S175|kcov)' "$WORKFLOW"
-  [ "$status" -eq 0 ]
+@test "plugin-ci.yml: shard jobs use parallel for concurrent file execution" {
+  # Each shard runs bats --jobs N with GNU parallel for concurrent file
+  # execution (same approach as the old monolithic job).  Verify the
+  # parallel package is installed and BATS_JOBS is configured.
+  shard_job="$(awk '
+    /^  bats-shard:/ { in_job=1; print; next }
+    in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
+    in_job { print }
+  ' "$WORKFLOW")"
+  echo "$shard_job" | grep -qF 'parallel'
+  echo "$shard_job" | grep -qF 'BATS_JOBS'
 }

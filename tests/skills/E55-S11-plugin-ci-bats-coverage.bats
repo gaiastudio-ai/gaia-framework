@@ -332,13 +332,14 @@ _classify_tree() {
   done
 }
 
-@test "AC3: existing bats-tests job (run-with-coverage) is unchanged by this story" {
-  # The existing `bats-tests` job invokes plugins/gaia/scripts/bats-budget-watch.sh
-  # wrapping plugins/gaia/tests/run-with-coverage.sh. Both invocations must
-  # remain present so the pre-existing coverage signal is not regressed.
-  run grep -F 'plugins/gaia/scripts/bats-budget-watch.sh' "$WORKFLOW"
+@test "AC3: bats-tests gate job runs the public-function coverage check" {
+  # The sharded architecture replaced the monolithic run-with-coverage.sh
+  # invocation with per-shard bats runs and a gate job that runs the
+  # extracted static public-function coverage check.  The gate job must
+  # invoke the coverage check script and plugin validation.
+  run grep -F 'check-public-function-coverage.sh' "$WORKFLOW"
   [ "$status" -eq 0 ]
-  run grep -F 'plugins/gaia/tests/run-with-coverage.sh' "$WORKFLOW"
+  run grep -F 'claude plugin validate --strict' "$WORKFLOW"
   [ "$status" -eq 0 ]
 }
 

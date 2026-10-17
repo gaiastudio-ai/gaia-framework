@@ -223,9 +223,10 @@ _run_save() {
 }
 
 @test "plugin-ci.yml runs the bats suite (regression test gets executed)" {
-    # The bats job invokes run-with-coverage.sh which discovers every .bats
-    # file under plugins/gaia/tests/ — including this one.
-    grep -qE 'run-with-coverage\.sh' "$PLUGIN_CI"
+    # The sharded bats jobs read from bats-shard-assignments.tsv which maps
+    # every top-level .bats file under plugins/gaia/tests/ to a shard —
+    # including this one.
+    grep -qE 'bats-shard-assignments\.tsv' "$PLUGIN_CI"
 }
 
 @test "this regression file lives where run-with-coverage.sh discovers it" {
