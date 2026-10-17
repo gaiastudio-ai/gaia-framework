@@ -185,8 +185,13 @@ EOF
 @test "SKILL.md Step 8: accepted offer places marker under heading" {
   local skill_file="${PLUGIN_ROOT}/skills/gaia-create-epics/SKILL.md"
   [ -f "$skill_file" ]
-  # The output contract must describe placing the marker below the heading.
-  grep -q 'first.*non-blank.*line.*under.*heading\|below.*heading' "$skill_file"
+  # Extract the Step 8 block (from "### Step 8" to the next "### Step" or EOF).
+  local step8_block
+  step8_block="$(sed -n '/^### Step 8/,/^### Step [0-9]/p' "$skill_file")"
+  [ -n "$step8_block" ]
+  # The Step 8 output contract must describe placing the marker below the heading.
+  grep -q 'catch_all.*marker\|Catch-all marker output' <<<"$step8_block"
+  grep -q 'below.*heading\|under.*heading' <<<"$step8_block"
 }
 
 # ===========================================================================
@@ -579,4 +584,57 @@ EOF
     is_catch_all E900 '$EPICS_FILE' '$SHARDS_DIR'
   "
   [ "$status" -ne 0 ]
+}
+
+# ===========================================================================
+# Performance: large-file regression guard
+# ===========================================================================
+
+@test "parser completes within 5 s on a 20k-line generated epics file" {
+  # Generate a 20k-line epics file with ~100 epics.
+  local large_file="${TEST_DIR}/large-epics.md"
+  {
+    local n=1
+    while [ "$n" -le 100 ]; do
+      printf '## E%d — Epic Number %d\n' "$n" "$n"
+      # Only flag a few as catch-all.
+      if [ "$((n % 25))" -eq 0 ]; then
+        printf '<!-- catch_all: true -->\n'
+      fi
+      printf '\n'
+      # Add ~200 lines of story content per epic.
+      local s=1
+      while [ "$s" -le 20 ]; do
+        printf '%s\n' "### Story E${n}-S${s}: Story ${s} of epic ${n}"
+        printf '%s\n' "- Epic: E${n}" "- Priority: P1" "- Size: M" "- Risk: low"
+        printf '%s\n' "- Depends on: []" "- Blocks: []" "- Acceptance Criteria:"
+        printf '%s\n\n' "  - AC1: Given input, when processed, then output is correct."
+        s=$((s + 1))
+      done
+      n=$((n + 1))
+    done
+  } > "$large_file"
+
+  local line_count
+  line_count="$(wc -l < "$large_file")"
+  [ "$line_count" -ge 20000 ]
+
+  # Time the run with a 5-second timeout.
+  run timeout 5 bash "$SCRIPT" --epics-file "$large_file" --shards-dir "$SHARDS_DIR"
+  [ "$status" -eq 0 ]
+  # Should find the 4 flagged epics (25, 50, 75, 100).
+  [ "$(wc -l <<<"$output")" -eq 4 ]
+}
+
+# ===========================================================================
+# AC6: infer-parent-epic.sh (not present in this plugin version)
+# ===========================================================================
+
+@test "infer-parent-epic.sh is absent (AC6 coverage deferred)" {
+  # The story AC6 references infer-parent-epic.sh but no such script exists
+  # in the current plugin tree. This test documents the absence and ensures
+  # the task checkbox stays unticked until the script materializes.
+  local script="${PLUGIN_ROOT}/scripts/infer-parent-epic.sh"
+  local lib_script="${PLUGIN_ROOT}/scripts/lib/infer-parent-epic.sh"
+  [ ! -f "$script" ] && [ ! -f "$lib_script" ]
 }

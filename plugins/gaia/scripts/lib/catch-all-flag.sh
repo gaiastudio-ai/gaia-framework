@@ -14,7 +14,7 @@
 #   2. Shard frontmatter at .../epics/*-e{n}-*.md:
 #      A `catch_all: true` YAML frontmatter field.
 #
-# Precedence (per D-S6-1):
+# Precedence:
 #   When both sources contain an explicit `catch_all:` field and disagree,
 #   the shard value overrides and a warning is emitted. When the shard
 #   field is absent (or the shard file is missing), the inline marker
@@ -28,6 +28,12 @@
 #             Flags: --epics-file <path>, --shards-dir <path>, --audit, -h|--help.
 #             Exit codes: 0 success, 1 missing/unreadable epics file, 2 usage error.
 #
+# Performance:
+#   A single awk pass extracts heading+marker pairs from the epics file.
+#   A single awk pass reads all shard frontmatter catch_all values.
+#   Shell processing touches only extracted pairs (typically < 200 lines
+#   from a 39k-line file). Target: < 2 s on the real project file.
+#
 # POSIX discipline: bash 3.2 compatible (macOS default). set -euo pipefail.
 # BRE patterns use [0-9][0-9]* (not \+) for BSD sed compatibility.
 
@@ -36,184 +42,199 @@ LC_ALL=C
 export LC_ALL
 
 # Em-dash constant (U+2014, three UTF-8 bytes: 0xe2 0x80 0x94).
-# Stored in a variable to avoid $'...' inside grep/sed pattern strings,
-# which interact poorly with bash 3.2 + BSD sed.
 _CATCH_ALL_EMDASH=$'\xe2\x80\x94'
+# Field separator and empty-field placeholder for the heading-pairs format.
+# Tab-delimited with "_NONE_" for empty marker fields (avoids consecutive
+# tab collapsing in bash read which drops empty fields).
+_CATCH_ALL_EMPTY_MARKER="_NONE_"
 
 # ---------------------------------------------------------------------------
-# Recognized heading patterns (same four forms as resolve-epic-slug.sh):
-#   (a) ## E{N} — Title            (em-dash U+2014)
-#   (b) ## Epic {N}: Title         (natural-language)
-#   (c) ## Epic E{N} -- Title      (ASCII double-hyphen with Epic prefix)
-#   (d) ## Epic E{N} — Title       (em-dash with Epic prefix)
+# _extract_heading_pairs <epics_file>
 #
-# _parse_heading_epic_key <line>
-#   If the line is a recognized epic heading, prints the epic key (e.g. E28)
-#   to stdout and returns 0. Otherwise returns 1.
-_parse_heading_epic_key() {
-  local line="$1"
-  local key=""
+# Single-pass awk that emits one record per epic heading found, in the form:
+#   KEY<TAB>TITLE<TAB>MARKER<TAB>RECOGNIZED
+# where MARKER is the first non-blank line after the heading (or empty),
+# and RECOGNIZED is "1" for a known heading form, "0" for an unrecognized
+# H2 that looks epic-like. This avoids per-line forks.
+_extract_heading_pairs() {
+  local epics_file="$1"
+  local emdash_sep=" ${_CATCH_ALL_EMDASH} "
+  local empty_marker="$_CATCH_ALL_EMPTY_MARKER"
+  LC_ALL=C awk -v sep="$emdash_sep" -v none="$empty_marker" '
+    BEGIN { key=""; title=""; recognized=0; looking=0; seplen=length(sep) }
 
-  # Form (a): ## E{N} — Title
-  if printf '%s' "$line" | LC_ALL=C grep -q "^## E[0-9][0-9]* ${_CATCH_ALL_EMDASH} "; then
-    key="$(printf '%s' "$line" | LC_ALL=C sed "s/^## \(E[0-9][0-9]*\) ${_CATCH_ALL_EMDASH} .*/\1/")"
-    printf '%s\n' "$key"
-    return 0
-  fi
+    function flush() {
+      if (looking && key != "") {
+        t = (title == "") ? none : title
+        printf "%s\t%s\t%s\t%s\n", key, t, none, recognized
+      }
+    }
 
-  # Form (b): ## Epic {N}: Title
-  if printf '%s' "$line" | LC_ALL=C grep -q '^## Epic [0-9][0-9]*: '; then
-    local num
-    num="$(printf '%s' "$line" | LC_ALL=C sed 's/^## Epic \([0-9][0-9]*\): .*/\1/')"
-    printf 'E%s\n' "$num"
-    return 0
-  fi
+    # Form (a): ## E{N} — Title
+    /^## E[0-9]/ && index($0, sep) > 0 && substr($0, 1, 9) != "## Epic " {
+      s = substr($0, 4)
+      idx = index(s, sep)
+      if (idx > 0) {
+        cand = substr(s, 1, idx - 1)
+        if (cand ~ /^E[0-9]+$/) {
+          flush()
+          key = cand; title = substr(s, idx + seplen)
+          recognized = 1; looking = 1; next
+        }
+      }
+    }
 
-  # Form (c): ## Epic E{N} -- Title
-  if printf '%s' "$line" | LC_ALL=C grep -q '^## Epic E[0-9][0-9]* -- '; then
-    key="$(printf '%s' "$line" | LC_ALL=C sed 's/^## Epic \(E[0-9][0-9]*\) -- .*/\1/')"
-    printf '%s\n' "$key"
-    return 0
-  fi
+    # Form (b): ## Epic {N}: Title  ("## Epic " = 8 chars, number at pos 9)
+    /^## Epic [0-9]/ && index($0, ": ") > 0 {
+      s = substr($0, 9)
+      idx = index(s, ": ")
+      if (idx > 0) {
+        num = substr(s, 1, idx - 1)
+        if (num ~ /^[0-9]+$/) {
+          flush()
+          key = "E" num; title = substr(s, idx + 2)
+          recognized = 1; looking = 1; next
+        }
+      }
+    }
 
-  # Form (d): ## Epic E{N} — Title
-  if printf '%s' "$line" | LC_ALL=C grep -q "^## Epic E[0-9][0-9]* ${_CATCH_ALL_EMDASH} "; then
-    key="$(printf '%s' "$line" | LC_ALL=C sed "s/^## Epic \(E[0-9][0-9]*\) ${_CATCH_ALL_EMDASH} .*/\1/")"
-    printf '%s\n' "$key"
-    return 0
-  fi
+    # Form (c): ## Epic E{N} -- Title  ("## Epic " = 8 chars, key at pos 9)
+    /^## Epic E[0-9]/ && index($0, " -- ") > 0 {
+      s = substr($0, 9)
+      idx = index(s, " -- ")
+      if (idx > 0) {
+        cand = substr(s, 1, idx - 1)
+        if (cand ~ /^E[0-9]+$/) {
+          flush()
+          key = cand; title = substr(s, idx + 4)
+          recognized = 1; looking = 1; next
+        }
+      }
+    }
 
-  return 1
+    # Form (d): ## Epic E{N} — Title  ("## Epic " = 8 chars, key at pos 9)
+    /^## Epic E[0-9]/ && index($0, sep) > 0 {
+      s = substr($0, 9)
+      idx = index(s, sep)
+      if (idx > 0) {
+        cand = substr(s, 1, idx - 1)
+        if (cand ~ /^E[0-9]+$/) {
+          flush()
+          key = cand; title = substr(s, idx + seplen)
+          recognized = 1; looking = 1; next
+        }
+      }
+    }
+
+    # Unrecognized H2 that looks epic-like (has E followed by digits)
+    /^## E[0-9]/ {
+      flush()
+      key = "?"; title = ""; recognized = 0; looking = 1; next
+    }
+
+    # Any other H2 resets state
+    /^## / {
+      flush()
+      key = ""; title = ""; looking = 0; next
+    }
+
+    # When looking for the marker: skip blank lines, capture first non-blank
+    looking == 1 && /^[[:space:]]*$/ { next }
+    looking == 1 {
+      t = (title == "") ? none : title
+      printf "%s\t%s\t%s\t%s\n", key, t, $0, recognized
+      looking = 0; next
+    }
+
+    END { flush() }
+  ' "$epics_file"
 }
 
-# _extract_heading_title <line>
-#   Extracts the title portion from a recognized heading.
-_extract_heading_title() {
-  local line="$1"
-
-  # Form (a)
-  if printf '%s' "$line" | LC_ALL=C grep -q "^## E[0-9][0-9]* ${_CATCH_ALL_EMDASH} "; then
-    printf '%s' "$line" | LC_ALL=C sed "s/^## E[0-9][0-9]* ${_CATCH_ALL_EMDASH} //"
-    return 0
-  fi
-  # Form (b)
-  if printf '%s' "$line" | LC_ALL=C grep -q '^## Epic [0-9][0-9]*: '; then
-    printf '%s' "$line" | LC_ALL=C sed 's/^## Epic [0-9][0-9]*: //'
-    return 0
-  fi
-  # Form (c)
-  if printf '%s' "$line" | LC_ALL=C grep -q '^## Epic E[0-9][0-9]* -- '; then
-    printf '%s' "$line" | LC_ALL=C sed 's/^## Epic E[0-9][0-9]* -- //'
-    return 0
-  fi
-  # Form (d)
-  if printf '%s' "$line" | LC_ALL=C grep -q "^## Epic E[0-9][0-9]* ${_CATCH_ALL_EMDASH} "; then
-    printf '%s' "$line" | LC_ALL=C sed "s/^## Epic E[0-9][0-9]* ${_CATCH_ALL_EMDASH} //"
-    return 0
-  fi
-  return 1
-}
-
-# _is_catch_all_marker <line>
-#   Returns 0 if the line is a standalone catch_all marker (true or false).
-#   Prints "true" or "false" to stdout when matched.
-_is_catch_all_marker() {
-  local line="$1"
-  # Match <!-- catch_all: true --> or <!-- catch_all: false -->
-  # Case-sensitive on the HTML comment body as specified.
-  if printf '%s' "$line" | LC_ALL=C grep -q '^<!-- catch_all: true -->$'; then
-    printf 'true\n'
-    return 0
-  fi
-  if printf '%s' "$line" | LC_ALL=C grep -q '^<!-- catch_all: false -->$'; then
-    printf 'false\n'
-    return 0
-  fi
-  return 1
-}
-
-# _read_shard_catch_all <shards_dir> <epic_key>
-#   Reads the catch_all field from shard frontmatter.
-#   Prints "true", "false", or "" (absent) to stdout.
-#   Returns 0 on success, 1 on multiple shard matches (error on stderr).
-_read_shard_catch_all() {
+# ---------------------------------------------------------------------------
+# _batch_read_shard_flags <shards_dir>
+#
+# Batch-reads catch_all values from ALL shard frontmatter files in one pass.
+# Outputs: EPIC_NUM<TAB>VALUE lines (value is "true" or "false").
+# Also outputs EPIC_NUM<TAB>MULTI for duplicate shard matches (stderr gets paths).
+_batch_read_shard_flags() {
   local shards_dir="$1"
-  local epic_key="$2"
-  local epic_num="${epic_key#E}"
+  [ -n "$shards_dir" ] && [ -d "$shards_dir" ] || return 0
 
-  if [ -z "$shards_dir" ] || [ ! -d "$shards_dir" ]; then
-    # No shards directory — silent, inline marker applies.
-    printf '\n'
-    return 0
-  fi
+  # Build a list of shard files with their epic numbers.
+  # Use a single awk invocation across all files: awk processes FILENAME
+  # to extract the epic number and reads frontmatter for catch_all.
+  # shellcheck disable=SC2086
+  set -- "$shards_dir"/*
+  # If glob matched nothing, $1 is the literal pattern.
+  [ -f "$1" ] || return 0
 
-  # Match pattern: anchored ^[0-9]+-e{n}- (case-insensitive on epic number)
-  local matches=""
-  local match_count=0
-  local f
-  for f in "$shards_dir"/*; do
+  # Single pass: map shard files to epic numbers, read frontmatter, detect dupes.
+  # Collect results; emit only after duplicate detection.
+  local seen_nums=""  # " num " entries for seen-check
+  local dup_nums=""   # " num " entries for duplicates
+  local results=""    # accumulated "num\tval\n" lines
+  local f base base_lower shard_num
+  for f in "$@"; do
     [ -f "$f" ] || continue
-    local base
-    base="$(basename "$f")"
-    # Anchored pattern: starts with digits, then -e{N}- (case-insensitive)
-    if printf '%s' "$base" | LC_ALL=C grep -qi "^[0-9][0-9]*-e${epic_num}-"; then
-      matches="${matches:+${matches}
-}${f}"
-      match_count=$((match_count + 1))
+    base="${f##*/}"
+    base_lower="$(printf '%s' "$base" | LC_ALL=C tr 'A-Z' 'a-z')"
+    shard_num=""
+    case "$base_lower" in
+      [0-9]*-e[0-9]*-*)
+        shard_num="${base_lower#*-e}"
+        shard_num="${shard_num%%-*}"
+        ;;
+    esac
+    [ -n "$shard_num" ] || continue
+
+    # Duplicate check.
+    case "$seen_nums" in
+      *" ${shard_num} "*)
+        case "$dup_nums" in
+          *" ${shard_num} "*) ;;
+          *) dup_nums="${dup_nums} ${shard_num} "
+             printf 'catch-all-flag.sh: multiple shard files match epic E%s (fail closed)\n' "$shard_num" >&2 ;;
+        esac
+        continue ;;
+    esac
+    seen_nums="${seen_nums} ${shard_num} "
+
+    # Read frontmatter catch_all (shard files are small, ~50 lines each).
+    local val
+    val="$(LC_ALL=C awk '
+      NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+      fm && /^---[[:space:]]*$/ { exit }
+      fm { line = tolower($0)
+        if (line ~ /^catch_all:/) {
+          sub(/^[^:]*:[[:space:]]*/, "", line)
+          if (line == "true") { print "true"; exit }
+          if (line == "false") { print "false"; exit }
+        }
+        next
+      }
+      !fm { exit }
+    ' "$f")"
+
+    if [ -n "$val" ]; then
+      results="${results}${shard_num}	${val}
+"
     fi
   done
 
-  if [ "$match_count" -eq 0 ]; then
-    printf '\n'
-    return 0
+  # Emit results, excluding duplicates.
+  if [ -n "$results" ]; then
+    while IFS=$'\t' read -r num val; do
+      [ -n "$num" ] || continue
+      case "$dup_nums" in
+        *" ${num} "*)
+          printf '%s\tMULTI\n' "$num"
+          ;;
+        *)
+          printf '%s\t%s\n' "$num" "$val"
+          ;;
+      esac
+    done <<< "$results"
   fi
-
-  if [ "$match_count" -gt 1 ]; then
-    printf 'catch-all-flag.sh: multiple shard files match epic %s (fail closed):\n' "$epic_key" >&2
-    printf '%s\n' "$matches" >&2
-    printf '\n'
-    return 1
-  fi
-
-  local shard_file
-  shard_file="$(printf '%s' "$matches" | head -1)"
-
-  # Read frontmatter — look for catch_all field in YAML between --- markers.
-  local in_frontmatter=0
-  local found_opening=0
-  local value=""
-  while IFS= read -r line || [ -n "$line" ]; do
-    if [ "$found_opening" -eq 0 ]; then
-      if printf '%s' "$line" | LC_ALL=C grep -q '^---[[:space:]]*$'; then
-        found_opening=1
-        in_frontmatter=1
-        continue
-      else
-        # No frontmatter block — silent.
-        break
-      fi
-    fi
-    if [ "$in_frontmatter" -eq 1 ]; then
-      if printf '%s' "$line" | LC_ALL=C grep -q '^---[[:space:]]*$'; then
-        # End of frontmatter.
-        break
-      fi
-      # Look for catch_all: field (YAML booleans are case-insensitive)
-      if printf '%s' "$line" | LC_ALL=C grep -qi '^catch_all:[[:space:]]'; then
-        local raw_val
-        raw_val="$(printf '%s' "$line" | LC_ALL=C sed 's/^catch_all:[[:space:]]*//' | LC_ALL=C tr 'A-Z' 'a-z')"
-        if [ "$raw_val" = "true" ]; then
-          value="true"
-        elif [ "$raw_val" = "false" ]; then
-          value="false"
-        fi
-        # Other values are treated as absent.
-      fi
-    fi
-  done < "$shard_file"
-
-  printf '%s\n' "$value"
-  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -227,11 +248,13 @@ _catch_all_audit_advisory() {
   local epic_key="$1"
   local epic_title="$2"
 
-  # Case-insensitive match against known catch-all-appropriate patterns
-  if printf '%s' "$epic_title" | LC_ALL=C grep -qi 'bug\|enhancement\|fix\|maintenance\|catch-all\|backlog\|misc'; then
-    # Title matches pattern — no advisory needed.
-    return 0
-  fi
+  # Case-insensitive match using case-folded case statement (no forks).
+  local lower_title
+  lower_title="$(printf '%s' "$epic_title" | LC_ALL=C tr 'A-Z' 'a-z')"
+  case "$lower_title" in
+    *bug*|*enhancement*|*fix*|*maintenance*|*catch-all*|*backlog*|*misc*)
+      return 0 ;;
+  esac
 
   printf 'catch-all-flag.sh: advisory: epic %s ("%s") is flagged catch-all but its title does not match a typical catch-all pattern (bug|enhancement|fix|maintenance|catch-all|backlog|misc)\n' \
     "$epic_key" "$epic_title" >&2
@@ -271,126 +294,86 @@ catch_all_epics() {
     fi
   fi
 
-  # Track emitted keys to avoid duplicates in the shard-only pass.
+  # Phase 1: single-pass awk extracts heading+marker pairs from epics file.
+  local pairs
+  pairs="$(_extract_heading_pairs "$epics_file")"
+
+  # Phase 2: batch-read all shard catch_all values.
+  local shard_flags=""
+  if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
+    shard_flags="$(_batch_read_shard_flags "$shards_dir" 2>&1)"
+  fi
+
+  # Phase 3: process extracted pairs with shard overrides.
   local emitted_keys=""
+  local empty_marker="$_CATCH_ALL_EMPTY_MARKER"
+  while IFS=$'\t' read -r key title marker recognized; do
+    [ -n "$key" ] || continue
+    # Replace the empty-field placeholders with actual empty strings.
+    [ "$title" = "$empty_marker" ] && title=""
+    [ "$marker" = "$empty_marker" ] && marker=""
 
-  # Parse epics-and-stories.md for epic headings and their catch_all markers.
-  local current_epic_key=""
-  local current_epic_title=""
-  local looking_for_marker=0
-
-  while IFS= read -r line || [ -n "$line" ]; do
-    # Check if this is a recognized epic heading.
-    local parsed_key=""
-    parsed_key="$(_parse_heading_epic_key "$line" 2>/dev/null)" || true
-
-    if [ -n "$parsed_key" ]; then
-      # We found a new epic heading.
-      current_epic_key="$parsed_key"
-      current_epic_title="$(_extract_heading_title "$line" 2>/dev/null)" || true
-      looking_for_marker=1
+    # Unrecognized heading form with a marker below it.
+    if [ "$recognized" = "0" ] && [ -n "$marker" ]; then
+      case "$marker" in
+        '<!-- catch_all: true -->'|'<!-- catch_all: false -->')
+          printf 'catch-all-flag.sh: catch_all marker found under unrecognized heading form (marker not applied): %s\n' \
+            "$marker" >&2
+          ;;
+      esac
       continue
     fi
 
-    # Check for unrecognized H2 that looks like an epic heading.
-    if [ "$looking_for_marker" -eq 0 ]; then
-      if printf '%s' "$line" | LC_ALL=C grep -q '^## '; then
-        if printf '%s' "$line" | LC_ALL=C grep -q '^## E[0-9]'; then
-          # Looks like an unrecognized epic heading form.
-          current_epic_key=""
-          current_epic_title=""
-          looking_for_marker=2  # special: looking but unrecognized
-          continue
-        fi
-        current_epic_key=""
-        current_epic_title=""
-        looking_for_marker=0
+    # Skip unrecognized headings without markers.
+    [ "$recognized" = "1" ] || continue
+
+    # Determine inline marker value.
+    local inline_val=""
+    case "$marker" in
+      '<!-- catch_all: true -->') inline_val="true" ;;
+      '<!-- catch_all: false -->') inline_val="false" ;;
+    esac
+
+    # No inline marker — skip (may be picked up by shard-only pass below).
+    [ -n "$inline_val" ] || continue
+
+    # Look up shard value from the batch results.
+    local epic_num="${key#E}"
+    local shard_val=""
+    if [ -n "$shard_flags" ]; then
+      local shard_line
+      shard_line="$(printf '%s\n' "$shard_flags" | LC_ALL=C awk -F'\t' -v n="$epic_num" '$1 == n { print $2; exit }')"
+      if [ "$shard_line" = "MULTI" ]; then
+        printf 'catch-all-flag.sh: multiple shard files match epic %s (fail closed)\n' "$key" >&2
         continue
       fi
+      shard_val="$shard_line"
     fi
 
-    if [ "$looking_for_marker" -ge 1 ]; then
-      # Skip blank/whitespace-only lines — the marker is the first NON-blank
-      # line after the heading. Use case to avoid a fork for empty lines.
-      case "$line" in
-        "") continue ;;
-      esac
-      if printf '%s\n' "$line" | LC_ALL=C grep -q '^[[:space:]]*$'; then
-        continue
+    if [ -n "$shard_val" ]; then
+      if [ "$shard_val" != "$inline_val" ]; then
+        printf 'catch-all-flag.sh: warning: epic %s has conflicting catch_all values (inline=%s, shard=%s); shard overrides\n' \
+          "$key" "$inline_val" "$shard_val" >&2
       fi
-
-      # Check if this non-blank line is a catch_all marker.
-      local marker_val=""
-      marker_val="$(_is_catch_all_marker "$line")" || true
-
-      if [ -n "$marker_val" ] && [ "$looking_for_marker" -eq 2 ]; then
-        # Marker under an unrecognized heading — emit diagnostic, do not flag.
-        printf 'catch-all-flag.sh: catch_all marker found under unrecognized heading form (marker not applied): %s\n' \
-          "$line" >&2
-        looking_for_marker=0
-        current_epic_key=""
-        current_epic_title=""
-        continue
+      if [ "$shard_val" = "true" ]; then
+        [ "$audit_mode" = "1" ] && _catch_all_audit_advisory "$key" "$title"
+        printf '%s\n' "$key"
+        emitted_keys="${emitted_keys} ${key} "
       fi
-
-      if [ -n "$marker_val" ] && [ "$looking_for_marker" -eq 1 ] && [ -n "$current_epic_key" ]; then
-        # We have an inline marker for a recognized heading.
-        local inline_val="$marker_val"
-
-        # Check shard frontmatter for override.
-        local shard_val=""
-        shard_val="$(_read_shard_catch_all "$shards_dir" "$current_epic_key")" || {
-          # Multiple shard matches — fail closed: epic not flagged.
-          looking_for_marker=0
-          current_epic_key=""
-          current_epic_title=""
-          continue
-        }
-
-        if [ -n "$shard_val" ]; then
-          # Both sources have an explicit value.
-          if [ "$shard_val" != "$inline_val" ]; then
-            printf 'catch-all-flag.sh: warning: epic %s has conflicting catch_all values (inline=%s, shard=%s); shard overrides\n' \
-              "$current_epic_key" "$inline_val" "$shard_val" >&2
-          fi
-          # Shard overrides inline.
-          if [ "$shard_val" = "true" ]; then
-            if [ "$audit_mode" = "1" ]; then
-              _catch_all_audit_advisory "$current_epic_key" "$current_epic_title"
-            fi
-            printf '%s\n' "$current_epic_key"
-            emitted_keys="${emitted_keys} ${current_epic_key} "
-          fi
-        else
-          # Shard is silent — inline applies.
-          if [ "$inline_val" = "true" ]; then
-            if [ "$audit_mode" = "1" ]; then
-              _catch_all_audit_advisory "$current_epic_key" "$current_epic_title"
-            fi
-            printf '%s\n' "$current_epic_key"
-            emitted_keys="${emitted_keys} ${current_epic_key} "
-          fi
-        fi
+    else
+      if [ "$inline_val" = "true" ]; then
+        [ "$audit_mode" = "1" ] && _catch_all_audit_advisory "$key" "$title"
+        printf '%s\n' "$key"
+        emitted_keys="${emitted_keys} ${key} "
       fi
-
-      # After the first non-blank line (whether marker or not), stop looking.
-      looking_for_marker=0
     fi
+  done <<< "$pairs"
 
-  done < "$epics_file"
-
-  # Also check for epics flagged only via shard frontmatter (no inline marker).
-  if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
-    local f
-    for f in "$shards_dir"/*; do
-      [ -f "$f" ] || continue
-      local base
-      base="$(basename "$f")"
-      # Extract epic number from shard filename.
-      local shard_num=""
-      shard_num="$(printf '%s' "$base" | LC_ALL=C sed -n 's/^[0-9][0-9]*-[eE]\([0-9][0-9]*\)-.*/\1/p')"
+  # Phase 4: check for epics flagged only via shard frontmatter (no inline marker).
+  if [ -n "$shard_flags" ]; then
+    while IFS=$'\t' read -r shard_num shard_val; do
       [ -n "$shard_num" ] || continue
-
+      [ "$shard_val" = "true" ] || continue
       local shard_key="E${shard_num}"
 
       # Skip if already emitted from inline parsing.
@@ -398,28 +381,14 @@ catch_all_epics() {
         *" ${shard_key} "*) continue ;;
       esac
 
-      # Check if this shard has catch_all: true in frontmatter.
-      local shard_val=""
-      shard_val="$(_read_shard_catch_all "$shards_dir" "$shard_key" 2>/dev/null)" || continue
-      [ "$shard_val" = "true" ] || continue
-
-      # Shard-only flag. Get the title for audit advisory.
+      # Shard-only flag. Get the title for audit advisory from the pairs.
       if [ "$audit_mode" = "1" ]; then
-        local title=""
-        while IFS= read -r line || [ -n "$line" ]; do
-          local pk=""
-          pk="$(_parse_heading_epic_key "$line" 2>/dev/null)" || true
-          if [ "$pk" = "$shard_key" ]; then
-            title="$(_extract_heading_title "$line" 2>/dev/null)" || true
-            break
-          fi
-        done < "$epics_file"
-        if [ -n "$title" ]; then
-          _catch_all_audit_advisory "$shard_key" "$title"
-        fi
+        local stitle=""
+        stitle="$(printf '%s\n' "$pairs" | LC_ALL=C awk -F'\t' -v k="$shard_key" '$1 == k { print $2; exit }')"
+        [ -n "$stitle" ] && _catch_all_audit_advisory "$shard_key" "$stitle"
       fi
       printf '%s\n' "$shard_key"
-    done
+    done <<< "$shard_flags"
   fi
 
   return 0
@@ -431,6 +400,11 @@ catch_all_epics() {
 # Convenience reader for a single epic. Returns 0 (true) if the epic is
 # in the catch-all set, 1 (false) otherwise. Suitable for `if is_catch_all ...`.
 # This is the stable reader interface for consumers like the independence check.
+#
+# Performance: when called repeatedly for different keys on the same file,
+# pass a precomputed set via _CATCH_ALL_SET to avoid re-parsing. The
+# independence check should compute the set once with catch_all_epics and
+# test membership with a simple grep -Fqx on the result.
 is_catch_all() {
   local epic_key="${1:-}"
   local epics_file="${2:-}"
@@ -440,10 +414,13 @@ is_catch_all() {
     return 1
   fi
 
-  local result
-  result="$(catch_all_epics "$epics_file" "$shards_dir" 2>/dev/null)" || return 1
+  # Use precomputed set if available (one set per file, caller's responsibility).
+  local result="${_CATCH_ALL_SET:-}"
+  if [ -z "$result" ]; then
+    result="$(catch_all_epics "$epics_file" "$shards_dir" 2>/dev/null)" || return 1
+  fi
 
-  printf '%s\n' "$result" | LC_ALL=C grep -qx "$epic_key"
+  printf '%s\n' "$result" | LC_ALL=C grep -Fqx "$epic_key"
 }
 
 # ---------------------------------------------------------------------------
