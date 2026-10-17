@@ -104,6 +104,7 @@ core	component-manifest-drift-guard.bats
 core	component-manifest-subdirectory-reach.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	concurrent-sprint-lock.bats
 core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
