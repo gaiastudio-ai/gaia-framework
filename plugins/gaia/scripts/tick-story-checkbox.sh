@@ -6,6 +6,22 @@
 #   tick-story-checkbox.sh --file <story.md> --task <N> [--subtask <M>]
 #   tick-story-checkbox.sh --file <story.md> --ac <N>
 #
+# Supported task formats (all matched case-insensitively for the label word):
+#   - [ ] Task N -- ...         (plain)
+#   - [ ] Task N: ...           (plain with colon)
+#   - [ ] **Task N:** ...       (bold)
+#   - [ ] **Task N: ...**       (bold wrapping)
+#   - [ ] **TN** -- ...         (shorthand bold)
+#   - [ ] **TN:** ...           (shorthand bold with colon)
+#   - [ ] T1 -- ...             (shorthand plain)
+#   - [ ] T1 (AC: 1, 2)        (shorthand with parens)
+#
+# Supported subtask formats:
+#   - [ ] Subtask N.M: ...      (explicit "Subtask" label)
+#   - [ ] N.M: ...              (bare number)
+#   - [ ] N.M ...               (bare number, no colon)
+#   - [ ] **N.M:** ...          (bold bare number)
+#
 # Guarantees:
 #   - Only the targeted checkbox line is modified ([ ] -> [x]).
 #   - Lines outside the targeted section are never touched.
@@ -13,6 +29,7 @@
 #   - Empty section (no checkboxes at all) is a no-op (exit 0).
 #   - Atomic write via temp file + mv (no partial writes).
 #   - Concurrent-safe via flock / ln(2) fallback locking.
+#   - Symlinked paths are resolved before writing.
 #   - Bash 3.2 compatible (no associative arrays, no mapfile).
 #
 # Exit codes:
@@ -66,6 +83,17 @@ fi
 if [ ! -f "$STORY_FILE" ]; then
   printf 'tick-story-checkbox: file not found: %s\n' "$STORY_FILE" >&2
   exit 1
+fi
+
+# Resolve symlinks so mv writes through to the real file.
+if [ -L "$STORY_FILE" ]; then
+  _resolved="$(perl -MCwd -e 'print Cwd::realpath($ARGV[0])' "$STORY_FILE" 2>/dev/null)" || \
+  _resolved="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$STORY_FILE" 2>/dev/null)" || \
+  _resolved="$(readlink -f "$STORY_FILE" 2>/dev/null)" || \
+  _resolved=""
+  if [ -n "$_resolved" ] && [ -f "$_resolved" ]; then
+    STORY_FILE="$_resolved"
+  fi
 fi
 
 # Exactly one of (--task [--subtask]) or (--ac) must be given.
@@ -136,6 +164,14 @@ trap '_release' EXIT
 # detecting ## headings (case-insensitive), skips fenced code blocks, and
 # changes the first matching `- [ ]` to `- [x]`. The result is written to
 # a status file: MATCHED | ALREADY_TICKED | NO_MATCH | EMPTY_SECTION.
+#
+# Task matching handles these formats (N = task_num):
+#   "Task N"   — plain or bold, followed by non-digit
+#   "TN"       — shorthand, followed by non-digit (bold or plain)
+# Subtask matching handles (N.M = task_num.subtask_num):
+#   "Subtask N.M" — explicit label, followed by non-digit
+#   "N.M"         — bare number, followed by non-digit
+# Bold markers (**) and leading whitespace on subtask lines are tolerated.
 
 _tick() {
   local section_header=""
@@ -194,13 +230,48 @@ _tick() {
     has_checkboxes = 1
   }
 
+  # --- Helper: test whether a task line matches task_num ---
+  # Extracts the content after "- [.] " and checks for:
+  #   (optional **) Task N (non-digit or end)
+  #   (optional **) TN (non-digit or end)
+  # Returns 1 in _task_hit if matched.
+  function is_task_match(line,    content, pat_task, pat_t) {
+    # Strip leading "- [.] " and optional bold marker.
+    content = line
+    sub(/^- \[.\] /, "", content)
+    sub(/^\*\*/, "", content)
+    # "Task N" followed by non-digit or end.
+    pat_task = "^[Tt]ask[[:space:]]+" task_num "([^0-9]|$)"
+    if (match(content, pat_task)) return 1
+    # "TN" followed by non-digit or end (T is uppercase always in shorthand).
+    pat_t = "^T" task_num "([^0-9]|$)"
+    if (match(content, pat_t)) return 1
+    return 0
+  }
+
+  # --- Helper: test whether a subtask line matches task_num.subtask_num ---
+  # Extracts the content after "  - [.] " and checks for:
+  #   (optional **) (optional "Subtask ") N.M (non-digit or end)
+  function is_subtask_match(line,    content, pat_sub, pat_bare) {
+    # Strip leading whitespace + "- [.] " and optional bold marker.
+    content = line
+    sub(/^[[:space:]]*- \[.\] /, "", content)
+    sub(/^\*\*/, "", content)
+    # "Subtask N.M" followed by non-digit or end.
+    pat_sub = "^[Ss]ubtask[[:space:]]+" task_num "\\." subtask_num "([^0-9]|$)"
+    if (match(content, pat_sub)) return 1
+    # Bare "N.M" followed by non-digit or end.
+    pat_bare = "^" task_num "\\." subtask_num "([^0-9]|$)"
+    if (match(content, pat_bare)) return 1
+    return 0
+  }
+
   # Attempt to match and tick the target line (first match only).
   in_section && !in_fenced && !matched {
     if (mode == "task") {
       if (subtask_num == "") {
-        # Task line: "- [.] Task N" followed by a non-digit or end-of-field.
-        pat = "^- \\[.\\] Task " task_num "([^0-9]|$)"
-        if (match($0, pat)) {
+        # Top-level task line (not indented).
+        if (/^- \[.\] / && is_task_match($0)) {
           if ($0 ~ /^- \[x\] / || $0 ~ /^- \[X\] /) {
             matched = 1
             printf "ALREADY_TICKED" > status_file
@@ -214,16 +285,16 @@ _tick() {
           }
         }
       } else {
-        # Subtask line: "  - [.] Subtask N.M" followed by non-digit or end.
-        pat = "^  - \\[.\\] Subtask " task_num "\\." subtask_num "([^0-9]|$)"
-        if (match($0, pat)) {
-          if ($0 ~ /^  - \[x\] / || $0 ~ /^  - \[X\] /) {
+        # Subtask line (indented).
+        if (/^[[:space:]]+- \[.\] / && is_subtask_match($0)) {
+          if ($0 ~ /^[[:space:]]+- \[x\] / || $0 ~ /^[[:space:]]+- \[X\] /) {
             matched = 1
             printf "ALREADY_TICKED" > status_file
             print; next
           }
-          if ($0 ~ /^  - \[ \] /) {
-            sub(/^  - \[ \] /, "  - [x] ")
+          if ($0 ~ /^[[:space:]]+- \[ \] /) {
+            # Replace only the checkbox, preserving all leading whitespace.
+            sub(/- \[ \] /, "- [x] ")
             matched = 1
             printf "MATCHED" > status_file
             print; next
@@ -287,10 +358,10 @@ _tick() {
         printf 'tick-story-checkbox: no matching AC %s found in %s\n' \
           "$AC_NUM" "$STORY_FILE" >&2
       elif [ -n "$SUBTASK_NUM" ]; then
-        printf 'tick-story-checkbox: no matching Subtask %s.%s found in %s\n' \
+        printf 'tick-story-checkbox: no matching subtask %s.%s found in %s\n' \
           "$TASK_NUM" "$SUBTASK_NUM" "$STORY_FILE" >&2
       else
-        printf 'tick-story-checkbox: no matching Task %s found in %s\n' \
+        printf 'tick-story-checkbox: no matching task %s found in %s\n' \
           "$TASK_NUM" "$STORY_FILE" >&2
       fi
       return 1
