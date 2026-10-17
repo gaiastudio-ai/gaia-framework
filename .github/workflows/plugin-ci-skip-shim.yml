@@ -41,6 +41,7 @@ on:
       - '.github/workflows/plugin-ci.yml'
       - '.github/bats-shard-assignments.tsv'
       - '.github/scripts/**'
+      - 'profiling/**'
       - 'scripts/audit-v2-migration.sh'
       - 'tests/**'
 
