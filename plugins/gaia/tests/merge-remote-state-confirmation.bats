@@ -54,9 +54,18 @@ fixture_git() {
 make_fixture_repo() {
   REPO="$TEST_TMP/repo"
   mkdir -p "$REPO"
-  fixture_git -C "$REPO" init -q
+  fixture_git -C "$REPO" init -q -b staging
+  fixture_git -C "$REPO" commit --allow-empty -q -m "base commit"
   fixture_git -C "$REPO" checkout -q -b feat/story-branch
   fixture_git -C "$REPO" commit --allow-empty -q -m init
+
+  # Set up a local bare remote so origin/staging resolves.
+  ORIGIN="$TEST_TMP/origin"
+  fixture_git clone --bare -q "$REPO" "$ORIGIN"
+  fixture_git -C "$REPO" remote remove origin 2>/dev/null || true
+  fixture_git -C "$REPO" remote add origin "$ORIGIN"
+  fixture_git -C "$REPO" fetch -q origin
+
   export PROJECT_PATH="$REPO"
 }
 
@@ -101,6 +110,12 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
           printf 'OPEN\n'; exit 0 ;;
       esac ;;
   esac
+  exit 0
+fi
+
+# `gh pr checks` — return all-pass so the pre-merge guard passes.
+if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
+  printf '[{"bucket":"pass","name":"ci"}]\n'
   exit 0
 fi
 

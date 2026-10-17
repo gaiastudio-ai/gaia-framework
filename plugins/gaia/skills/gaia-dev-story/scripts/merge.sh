@@ -125,6 +125,127 @@ if [ -z "$PR_TARGET" ]; then
 fi
 assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant failed"
 
+# ---------------------------------------------------------------------------
+# Pre-merge guards (run AFTER security invariants, BEFORE gh pr merge).
+# Guard order: (1) check state, (2) stale base, (3) attribution trailers.
+# Each guard exits on the first failure it finds.
+# ---------------------------------------------------------------------------
+
+# Guard 1: every PR check must be pass or skipping.
+# gh pr checks returns a JSON array of {bucket,name} objects. The accepted
+# bucket values are "pass" and "skipping"; anything else (fail, pending, …)
+# blocks the merge. Fails closed: query errors, jq absence, and empty check
+# lists all exit non-zero with an actionable message.
+_gh_checks_err="$(mktemp "${TMPDIR:-/tmp}/merge-gh-checks.XXXXXX")"
+checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>"$_gh_checks_err")" || {
+  log "aborting: could not query PR checks (gh pr checks failed)."
+  log "  $(cat "$_gh_checks_err" 2>/dev/null)"
+  log "Check network connectivity, authentication, and rate limits, then retry."
+  rm -f "$_gh_checks_err"
+  exit 1
+}
+rm -f "$_gh_checks_err"
+# Parse checks: try jq first, fall back to grep-based parsing if jq is
+# absent or fails.
+check_count=""
+bad_checks=""
+if command -v jq >/dev/null 2>&1; then
+  check_count="$(printf '%s' "$checks_json" | jq 'length' 2>/dev/null || true)"
+  if [ -n "$check_count" ]; then
+    bad_checks="$(printf '%s' "$checks_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | .name' 2>/dev/null || true)"
+  fi
+fi
+# Fallback: grep-based parsing when jq is absent or returned nothing.
+if [ -z "$check_count" ]; then
+  check_count="$(printf '%s' "$checks_json" | grep -c '"bucket"' 2>/dev/null)" || check_count="0"
+  bad_checks="$(printf '%s' "$checks_json" \
+    | grep -o '"bucket":"[^"]*","name":"[^"]*"' 2>/dev/null \
+    | grep -v '"bucket":"pass"' \
+    | grep -v '"bucket":"skipping"' \
+    | sed 's/.*"name":"\([^"]*\)".*/\1/' 2>/dev/null || true)"
+fi
+# Validate check_count is a non-negative integer; fail closed otherwise.
+case "$check_count" in
+  ''|*[!0-9]*) check_count=0 ;;
+esac
+if [ "$check_count" -eq 0 ]; then
+  log "aborting: no checks reported yet for PR #${PR_NUMBER}."
+  log "Wait for CI to register checks and retry."
+  exit 1
+fi
+if [ -n "$bad_checks" ]; then
+  log "aborting: one or more PR checks have not passed:"
+  printf '%s\n' "$bad_checks" | while IFS= read -r chk; do
+    log "  - $chk"
+  done
+  log "Wait for pending checks to finish or fix failing ones, then retry."
+  exit 1
+fi
+
+# Shared prerequisite for guards 2 and 3: fetch and resolve origin/<base>.
+# A merge gate must fail closed — both a failed fetch and an unresolvable
+# ref exit non-zero with an actionable message.
+if ! git fetch origin "$PR_TARGET" --quiet 2>/dev/null; then
+  log "aborting: 'git fetch origin ${PR_TARGET}' failed."
+  log "Check network connectivity and that the remote branch exists, then retry."
+  exit 1
+fi
+if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
+  log "aborting: cannot resolve origin/${PR_TARGET}."
+  log "Run 'git fetch origin ${PR_TARGET}' and retry."
+  exit 1
+fi
+
+# Guard 2: the branch must be based on the current base tip.
+# A stale base means the PR was opened against an older revision and needs a
+# rebase before it can land cleanly.
+if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
+  head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
+  log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+  log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
+  exit 1
+fi
+
+# Guard 3: no commit in the PR range may carry an assistant attribution trailer.
+# Maintainable pattern list — extend by adding entries below.
+ASSISTANT_TRAILER_PATTERNS=(
+  "noreply@anthropic.com"
+  "Claude"
+  "GitHub Copilot"
+  "copilot@github.com"
+  "Anthropic"
+)
+
+_build_trailer_regex() {
+  local pat result=""
+  for pat in "${ASSISTANT_TRAILER_PATTERNS[@]}"; do
+    if [ -n "$result" ]; then
+      result="${result}|${pat}"
+    else
+      result="$pat"
+    fi
+  done
+  printf '%s' "$result"
+}
+
+trailer_regex="$(_build_trailer_regex)"
+# Scan every line of every commit body in the PR range for Co-Authored-By
+# trailers that match the assistant pattern list. Uses NUL as the record
+# separator to handle multi-line bodies (including trailers after description
+# paragraphs).
+while IFS= read -r commit_hash; do
+  [ -z "$commit_hash" ] && continue
+  body="$(git log -1 --format='%B' "$commit_hash" 2>/dev/null || true)"
+  matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" 2>/dev/null | head -1 || true)"
+  if [ -n "$matched" ]; then
+    short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
+    log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
+    log "  ${matched}"
+    log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
+    exit 1
+  fi
+done < <(git log --format='%H' "origin/${PR_TARGET}..HEAD" 2>/dev/null)
+
 # Build merge command
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
 if [ "$DELETE_BRANCH" = true ]; then
