@@ -1609,7 +1609,9 @@ EOF
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   # shellcheck disable=SC1090
   . "$WT_LIB"
-  local wt; wt="$(worktree_create "$repo" "K1" "slug")"
+  # The orchestrator derives the slug from the yaml title. _mk_yaml writes
+  # "title: story K1" which slugifies to "story-k1".
+  local wt; wt="$(worktree_create "$repo" "K1" "story-k1")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
   local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
   PATH="$fl:$PATH"
@@ -1649,7 +1651,9 @@ EOF
   local repo; repo="$(_mk_repo "$TEST_TMP/repo")"
   # shellcheck disable=SC1090
   . "$WT_LIB"
-  local wt; wt="$(worktree_create "$repo" "K1" "slug")"
+  # The orchestrator derives the slug from the yaml title. _mk_yaml writes
+  # "title: story K1" which slugifies to "story-k1".
+  local wt; wt="$(worktree_create "$repo" "K1" "story-k1")"
   local yaml; yaml="$(_mk_yaml "$TEST_TMP/sprint.yaml" K1:1)"
   local fl; fl="$(_ensure_flock)" || skip "no flock and no python3 to provide one"
   PATH="$fl:$PATH"

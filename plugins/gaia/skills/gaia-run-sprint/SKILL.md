@@ -86,6 +86,20 @@ its own). So this skill loops, one real turn at a time:
 The story workflow itself is unchanged: this skill schedules `/gaia-dev-story`
 runs, it does not reimplement them.
 
+## Prerequisites
+
+Parallel execution requires the `flock` command-line utility for kernel-level
+file locking. On Linux it is installed by default (part of `util-linux`). On
+stock macOS it is absent — install it with:
+
+```
+brew install flock
+```
+
+Without `flock`, the skill reports `reason=flock-unavailable` and proceeds
+sequentially. No sprint is ever refused; concurrency is simply unavailable
+until the locking primitive is present.
+
 ## Turning concurrency on
 
 Concurrency is opt-in on three independent switches, and **all three** must be
