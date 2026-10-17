@@ -1666,6 +1666,85 @@ if [ "$RECONCILE_ONLY" != "1" ] \
   fi
 fi
 
+# Untriaged-findings gate on the review -> done path.
+# Refuses the transition when the story's Findings table has any row without
+# a [TRIAGED -> ...] or [DISMISSED] marker. The gate must fire BEFORE the
+# snapshot/commit phase so that no writer touches disk on a refused transition.
+# Override: GAIA_ALLOW_UNTRIAGED_DONE=1 downgrades the refusal to a WARNING.
+_check_untriaged_findings() {
+  local story_file="$1" story_key="$2"
+
+  # Extract the ## Findings section (stop at next ## heading or EOF).
+  local findings_section
+  findings_section="$(awk '
+    /^## Findings[[:space:]]*$/ { in_section = 1; next }
+    in_section && /^## / { exit }
+    in_section { print }
+  ' "$story_file")"
+
+  # No Findings section at all -> no-op (AC3).
+  [ -n "$findings_section" ] || return 0
+
+  # Walk each pipe-delimited row, skipping header/separator/placeholder rows.
+  local untriaged_rows="" untriaged_count=0
+  local line col1 col4 col5 trimmed _blank _rest
+  while IFS= read -r line; do
+    # Only pipe-delimited rows.
+    case "$line" in *\|*) ;; *) continue ;; esac
+    # Skip separator rows (contain ---).
+    case "$line" in *---*) continue ;; esac
+
+    trimmed="${line## }"; trimmed="${trimmed%% }"
+    IFS='|' read -r _blank col1 _col2 _col3 col4 col5 _rest <<EOF
+$trimmed
+EOF
+    col1="${col1## }"; col1="${col1%% }"
+    col4="${col4## }"; col4="${col4%% }"
+    col5="${col5## }"; col5="${col5%% }"
+
+    # Skip header rows.
+    case "$col1" in '#'|'ID'|'—'|'') continue ;; esac
+
+    # Check whether the Finding or Suggested Action column carries a triage
+    # marker. Both [TRIAGED -> ...] and [DISMISSED] count as triaged.
+    local combined="$col4 $col5"
+    case "$combined" in
+      *'[TRIAGED'*) continue ;;
+      *'[DISMISSED'*) continue ;;
+    esac
+
+    # This row is untriaged.
+    untriaged_count=$((untriaged_count + 1))
+    # Collect the row number and finding text for the error message.
+    local finding_text="$col4"
+    [ -n "$finding_text" ] || finding_text="(empty)"
+    untriaged_rows="${untriaged_rows}  row ${col1}: ${finding_text}
+"
+  done <<< "$findings_section"
+
+  [ "$untriaged_count" -gt 0 ] || return 0
+
+  # There are untriaged rows. Check the override.
+  if [ "${GAIA_ALLOW_UNTRIAGED_DONE:-0}" = "1" ]; then
+    log "WARNING: ${untriaged_count} untriaged finding(s) in ${story_key} — proceeding (GAIA_ALLOW_UNTRIAGED_DONE=1):"
+    printf '%s' "$untriaged_rows" >&2
+    return 0
+  fi
+
+  log "ERROR: review -> done refused — ${untriaged_count} untriaged finding(s) in ${story_key}."
+  log "       Untriaged rows:"
+  printf '%s' "$untriaged_rows" >&2
+  log "       Run /gaia-triage-findings ${story_key} to triage, or set"
+  log "       GAIA_ALLOW_UNTRIAGED_DONE=1 to override."
+  exit 8
+}
+
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ]; then
+  _check_untriaged_findings "$STORY_FILE" "$STORY_KEY"
+fi
+
 # Snapshot every file we may touch so we can roll back on partial failure.
 SNAP_STORY="$(snapshot_for_rollback "$STORY_FILE")"
 SNAP_YAML=""
