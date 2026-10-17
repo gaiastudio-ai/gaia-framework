@@ -39,6 +39,7 @@ on:
     paths-ignore:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
+      - '.github/bats-shard-assignments.tsv'
       - '.github/scripts/**'
       - 'scripts/audit-v2-migration.sh'
       - 'tests/**'
