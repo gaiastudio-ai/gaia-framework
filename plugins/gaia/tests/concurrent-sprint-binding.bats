@@ -316,15 +316,27 @@ setup_binding() {
 @test "AC5: init refused when bound sprint is closed" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
+  # Seed target sprint as closed so init would normally re-seed over it.
+  # This isolates the closed-guard: without it, init would succeed (re-seed
+  # a closed sprint). With it, the guard fires before init runs.
+  seed_per_sprint_file "sprint-901" "closed"
   export CLAUDE_CODE_SESSION_ID="sess-ac5-init"
   source "$SESSION_BINDING"
   provision_binding_dir
   # Manually write binding to closed sprint (simulating it was closed after binding).
   printf 'sprint-900' > "$GAIA_BINDING_DIR/bound_sprint_id"
 
-  run bash "$SPRINT_STATE" init --sprint-id sprint-new
+  # Capture stderr separately to assert the specific guard message.
+  local stderr_file="$TEST_DIR/ac5-init-stderr.txt"
+  run bash -c "bash '$SPRINT_STATE' init --sprint-id sprint-901 2>'$stderr_file'"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"your bound sprint is closed"* ]]
+  local captured_stderr
+  captured_stderr="$(cat "$stderr_file" 2>/dev/null)" || captured_stderr=""
+  [[ "$captured_stderr" == *"your bound sprint is closed"* ]]
+  # The guard must prevent init from re-seeding: sprint-901 status stays closed.
+  local after_status
+  after_status="$(yq '.status' "$STATE_DIR/sprint-status-sprint-901.yaml" 2>/dev/null)" || after_status=""
+  [ "$after_status" = "closed" ]
 }
 
 @test "AC5: non-planning mutating subcommand NOT refused by closed guard" {
@@ -497,10 +509,12 @@ YAML
   export GAIA_BOUND_SPRINT_ID="sprint-900"
 
   # Transition with --sprint sprint-901 (override).
-  run bash "$SPRINT_STATE" transition --story E900-S1 --to review --sprint sprint-901
-  # Should emit override log on stderr.
-  [[ "$output" == *"sprint override: bound=sprint-900 target=sprint-901 command=transition"* ]] || \
-    [[ "$stderr" == *"sprint override:"* ]] || true
+  # Capture stderr to a file so we can assert the override log line.
+  local stderr_file="$TEST_DIR/override-stderr.txt"
+  run bash -c "bash '$SPRINT_STATE' transition --story E900-S1 --to review --sprint sprint-901 2>'$stderr_file'"
+  local captured_stderr
+  captured_stderr="$(cat "$stderr_file" 2>/dev/null)" || captured_stderr=""
+  [[ "$captured_stderr" == *"sprint override: bound=sprint-900 target=sprint-901 command=transition"* ]]
 }
 
 @test "AC11: set-story-sprint --sprint is destination, not override" {
@@ -743,15 +757,21 @@ YAML
 
 @test "AC-EC8: symlink pointing outside binding dir is refused" {
   set_max_concurrent 3
+  seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ec8-symlink"
   source "$SESSION_BINDING"
   provision_binding_dir
 
-  # Create a symlink at the binding file pointing outside.
-  ln -sf /etc/passwd "$GAIA_BINDING_DIR/bound_sprint_id"
+  # Create a file OUTSIDE the binding dir with a valid sprint ID.
+  local outside_file="$TEST_DIR/outside-binding.txt"
+  printf 'sprint-900' > "$outside_file"
+
+  # Symlink the binding file to the outside file.
+  ln -sf "$outside_file" "$GAIA_BINDING_DIR/bound_sprint_id"
 
   run read_binding
   [ "$status" -ne 0 ]
+  [[ "$output" == *"containment"* ]]
 }
 
 # =========================================================================
@@ -776,8 +796,9 @@ YAML
 
   # get (read-only) should work.
   run bash "$SPRINT_STATE" get --story E900-S1
-  # Should not error with binding-related messages.
-  [[ "$output" != *"binding"* ]] || [[ "$output" != *"binding_mismatch"* ]]
+  # Should not error with binding-related messages (both must hold).
+  [[ "$output" != *"binding_mismatch"* ]]
+  [[ "$output" != *"spoofing"* ]]
 }
 
 @test "story-local: BINDABLE-STATES — review and correction remain valid binding" {
