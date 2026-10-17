@@ -148,21 +148,27 @@ _setup_clears_root_vars() {
 
 # ---------- self-tests: synthetic fixtures in tmpdir ----------
 
-# _make_fixture DIR NAME BODY — write a synthetic .bats in a temp dir.
+# _make_fixture DIR NAME SETUP_BODY TEST_BODY
+#   Writes a synthetic .bats file. The @test line is assembled from parts
+#   so that no literal '@test' appears at column 0 in THIS source file —
+#   bats' preprocessor counts every column-0 '@test' toward the TAP plan,
+#   which inflates the expected count and causes a plan-mismatch failure.
 _make_fixture() {
-  local dir="$1" name="$2" body="$3"
-  printf '%s\n' "$body" > "$dir/$name"
+  local dir="$1" name="$2" setup_body="$3" test_body="$4"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'setup() {\n%s\n}\n' "$setup_body"
+    # shellcheck disable=SC2016
+    printf '%s "%s" { %s; }\n' '@test' 'x' "$test_body"
+  } > "$dir/$name"
 }
 
 @test "lint detects Form 1 (variable assignment) without root clearing" {
   local d="$BATS_TEST_TMPDIR/form1-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
-setup() {
-  SS="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"
-}
-@test "x" { true; }'
+  _make_fixture "$d" "violator.bats" \
+    '  SS="$REPO_ROOT/plugins/gaia/scripts/sprint-state.sh"' 'true'
   _executes_sprint_state "$d/violator.bats"
   run _setup_clears_root_vars "$d/violator.bats"
   [ "$status" -ne 0 ]
@@ -172,11 +178,8 @@ setup() {
   local d="$BATS_TEST_TMPDIR/form2-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
-setup() {
-  REPO_ROOT="$(pwd)"
-}
-@test "x" { run bash "$REPO_ROOT/scripts/sprint-state.sh" init; }'
+  _make_fixture "$d" "violator.bats" \
+    '  REPO_ROOT="$(pwd)"' 'run bash "$REPO_ROOT/scripts/sprint-state.sh" init'
   _executes_sprint_state "$d/violator.bats"
   run _setup_clears_root_vars "$d/violator.bats"
   [ "$status" -ne 0 ]
@@ -186,11 +189,8 @@ setup() {
   local d="$BATS_TEST_TMPDIR/form3-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
-setup() {
-  SCRIPTS_DIR="$(pwd)/scripts"
-}
-@test "x" { run "$SCRIPTS_DIR/sprint-state.sh" get --story S1; }'
+  _make_fixture "$d" "violator.bats" \
+    '  SCRIPTS_DIR="$(pwd)/scripts"' 'run "$SCRIPTS_DIR/sprint-state.sh" get --story S1'
   _executes_sprint_state "$d/violator.bats"
   run _setup_clears_root_vars "$d/violator.bats"
   [ "$status" -ne 0 ]
@@ -200,11 +200,8 @@ setup() {
   local d="$BATS_TEST_TMPDIR/form4-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "violator.bats" '#!/usr/bin/env bats
-setup() {
-  true
-}
-@test "x" { source "$DIR/sprint-state.sh"; }'
+  _make_fixture "$d" "violator.bats" \
+    '  true' 'source "$DIR/sprint-state.sh"'
   _executes_sprint_state "$d/violator.bats"
   run _setup_clears_root_vars "$d/violator.bats"
   [ "$status" -ne 0 ]
@@ -214,12 +211,9 @@ setup() {
   local d="$BATS_TEST_TMPDIR/common-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "compliant.bats" '#!/usr/bin/env bats
-setup() {
-  common_setup
-  SS="$REPO_ROOT/scripts/sprint-state.sh"
-}
-@test "x" { true; }'
+  _make_fixture "$d" "compliant.bats" \
+    '  common_setup
+  SS="$REPO_ROOT/scripts/sprint-state.sh"' 'true'
   _executes_sprint_state "$d/compliant.bats"
   _setup_clears_root_vars "$d/compliant.bats"
 }
@@ -228,12 +222,9 @@ setup() {
   local d="$BATS_TEST_TMPDIR/explicit-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "compliant.bats" '#!/usr/bin/env bats
-setup() {
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
-  SS="$REPO_ROOT/scripts/sprint-state.sh"
-}
-@test "x" { true; }'
+  _make_fixture "$d" "compliant.bats" \
+    '  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
+  SS="$REPO_ROOT/scripts/sprint-state.sh"' 'true'
   _executes_sprint_state "$d/compliant.bats"
   _setup_clears_root_vars "$d/compliant.bats"
 }
@@ -242,12 +233,9 @@ setup() {
   local d="$BATS_TEST_TMPDIR/partial-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "partial.bats" '#!/usr/bin/env bats
-setup() {
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT
-  SS="$REPO_ROOT/scripts/sprint-state.sh"
-}
-@test "x" { true; }'
+  _make_fixture "$d" "partial.bats" \
+    '  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT
+  SS="$REPO_ROOT/scripts/sprint-state.sh"' 'true'
   _executes_sprint_state "$d/partial.bats"
   run _setup_clears_root_vars "$d/partial.bats"
   [ "$status" -ne 0 ]
@@ -257,12 +245,9 @@ setup() {
   local d="$BATS_TEST_TMPDIR/partial2-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "partial.bats" '#!/usr/bin/env bats
-setup() {
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH
-  SS="$REPO_ROOT/scripts/sprint-state.sh"
-}
-@test "x" { true; }'
+  _make_fixture "$d" "partial.bats" \
+    '  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH
+  SS="$REPO_ROOT/scripts/sprint-state.sh"' 'true'
   _executes_sprint_state "$d/partial.bats"
   run _setup_clears_root_vars "$d/partial.bats"
   [ "$status" -ne 0 ]
@@ -271,10 +256,11 @@ setup() {
 @test "lint ignores sprint-state.sh in comments" {
   local d="$BATS_TEST_TMPDIR/comment-$$"
   mkdir -p "$d"
-  _make_fixture "$d" "commented.bats" '#!/usr/bin/env bats
-# This file mentions sprint-state.sh only in comments
-setup() { true; }
-@test "x" { true; }'
+  _make_fixture "$d" "commented.bats" \
+    '  true' 'true'
+  # Inject a comment referencing sprint-state.sh (not via _make_fixture)
+  sed -i '' '1a\
+# This file mentions sprint-state.sh only in comments' "$d/commented.bats"
   run _executes_sprint_state "$d/commented.bats"
   [ "$status" -ne 0 ]
 }
@@ -283,9 +269,8 @@ setup() { true; }
   local d="$BATS_TEST_TMPDIR/argonly-$$"
   mkdir -p "$d"
   # shellcheck disable=SC2016
-  _make_fixture "$d" "argonly.bats" '#!/usr/bin/env bats
-setup() { true; }
-@test "x" { run "$DETECT" --files plugins/gaia/scripts/sprint-state.sh; }'
+  _make_fixture "$d" "argonly.bats" \
+    '  true' 'run "$DETECT" --files plugins/gaia/scripts/sprint-state.sh'
   run _executes_sprint_state "$d/argonly.bats"
   [ "$status" -ne 0 ]
 }
