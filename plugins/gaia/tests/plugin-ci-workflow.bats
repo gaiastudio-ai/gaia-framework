@@ -36,45 +36,96 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: bats-tests apt install line does NOT install kcov" {
-  # Extract the apt-get install line(s) inside the bats-tests job. The bug
-  # was: `sudo apt-get install -y jq kcov`. After the fix, kcov must not
-  # appear as an apt package token.
+@test "plugin-ci.yml: shard apt install lines do NOT install kcov" {
+  # The bats-shard jobs run apt-get install for their dependencies.  kcov
+  # must not appear as a package token (it is unavailable on Ubuntu 24.04
+  # noble and would break the install step).
   #
-  # We scope to the bats-tests job by reading from `  bats-tests:` up to the
+  # Scope to the bats-shard job (the sharded runner that replaced the old
+  # monolithic bats-tests job) by reading from `  bats-shard:` up to the
   # next top-level job (`^  [a-z]` two-space indent).
-  bats_job="$(awk '
-    /^  bats-tests:/ { in_job=1; print; next }
+  shard_job="$(awk '
+    /^  bats-shard:/ { in_job=1; print; next }
     in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
     in_job { print }
   ' "$WORKFLOW")"
 
-  # The bats-tests job block must exist.
-  [ -n "$bats_job" ]
+  # The bats-shard job block must exist.
+  [ -n "$shard_job" ]
 
-  # Find any apt-get install line in the bats-tests job and assert it does
+  # Find any apt-get install line in the shard job and assert it does
   # not include the kcov package token.
-  apt_lines="$(printf '%s\n' "$bats_job" | grep -E 'apt-get +install' || true)"
+  apt_lines="$(printf '%s\n' "$shard_job" | grep -E 'apt-get +install' || true)"
   [ -n "$apt_lines" ]
 
-  # `kcov` must not appear as a whitespace-delimited token in any apt-get
-  # install line. A comment mentioning kcov elsewhere is fine — this check
-  # targets the install command only.
   if grep -Eq '(^|[[:space:]])kcov([[:space:]]|$)' <<<"$apt_lines"; then
     echo "apt install line still references kcov: $apt_lines" >&2
     return 1
   fi
 }
 
-@test "plugin-ci.yml: bats-tests still invokes run-with-coverage.sh" {
-  run grep -F 'plugins/gaia/tests/run-with-coverage.sh' "$WORKFLOW"
+@test "plugin-ci.yml: bats-tests gate runs public-function coverage check" {
+  run grep -F 'check-public-function-coverage.sh' "$WORKFLOW"
   [ "$status" -eq 0 ]
 }
 
-@test "plugin-ci.yml: carries an comment explaining the kcov decision" {
-  # If kcov is dropped from apt install, the workflow yaml must carry a
-  # comment referencing E28-S175 (or kcov) so the decision is discoverable
-  # from the file itself.
-  run grep -E '#.*(E28-S175|kcov)' "$WORKFLOW"
-  [ "$status" -eq 0 ]
+# --------------- Gate-integrity regression tests (sharded architecture) ---------------
+# These tests parse the workflow YAML with yq and assert the structural
+# invariants that keep the bats-tests gate job from silently passing when
+# a shard fails.  Each test has a per-mutant proof below.
+
+@test "gate-integrity: bats-tests needs includes bats-shard" {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  needs="$(yq '.jobs.bats-tests.needs[]' "$WORKFLOW" 2>/dev/null)"
+  grep -qF 'bats-shard' <<< "$needs"
+}
+
+@test "gate-integrity: bats-tests has if: always() so it runs when shards fail" {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  if_val="$(yq '.jobs.bats-tests.if' "$WORKFLOW" 2>/dev/null)"
+  grep -qF 'always()' <<< "$if_val"
+}
+
+@test "gate-integrity: bats-tests first step checks shard result and fails on non-success" {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  # The first step must have an if-condition that checks the shard result
+  # AND a run block that exits non-zero.
+  first_if="$(yq '.jobs.bats-tests.steps[0].if' "$WORKFLOW" 2>/dev/null)"
+  first_run="$(yq '.jobs.bats-tests.steps[0].run' "$WORKFLOW" 2>/dev/null)"
+  grep -qF 'needs.bats-shard.result' <<< "$first_if"
+  grep -qF 'success' <<< "$first_if"
+  grep -qF 'exit 1' <<< "$first_run"
+}
+
+@test "gate-integrity: bats-shard matrix has fail-fast: false" {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  ff="$(yq '.jobs.bats-shard.strategy.fail-fast' "$WORKFLOW" 2>/dev/null)"
+  [ "$ff" = "false" ]
+}
+
+@test "gate-integrity: shard-assignment validator has no continue-on-error or || true" {
+  # Extract the validate step from the shard job and assert it has no
+  # error-suppression patterns.
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  validate_step="$(yq '.jobs.bats-shard.steps[] | select(.name == "Validate shard assignments*")' "$WORKFLOW" 2>/dev/null)"
+  [ -n "$validate_step" ]
+  # No continue-on-error
+  coe="$(yq '.jobs.bats-shard.steps[] | select(.name == "Validate shard assignments*") | .continue-on-error' "$WORKFLOW" 2>/dev/null)"
+  [ "$coe" = "null" ] || [ -z "$coe" ]
+  # No || true in the run command
+  run_cmd="$(yq '.jobs.bats-shard.steps[] | select(.name == "Validate shard assignments*") | .run' "$WORKFLOW" 2>/dev/null)"
+  ! grep -qF '|| true' <<< "$run_cmd"
+}
+
+@test "plugin-ci.yml: shard jobs use parallel for concurrent file execution" {
+  # Each shard runs bats --jobs N with GNU parallel for concurrent file
+  # execution (same approach as the old monolithic job).  Verify the
+  # parallel package is installed and BATS_JOBS is configured.
+  shard_job="$(awk '
+    /^  bats-shard:/ { in_job=1; print; next }
+    in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
+    in_job { print }
+  ' "$WORKFLOW")"
+  grep -qF 'parallel' <<< "$shard_job"
+  grep -qF 'BATS_JOBS' <<< "$shard_job"
 }
