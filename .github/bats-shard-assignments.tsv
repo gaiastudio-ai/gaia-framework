@@ -803,3 +803,4 @@
 3	concurrent-sprint-catch-all.bats	34
 2	concurrent-sprint-ledger.bats	45
 1	concurrent-sprint-merge.bats	33
+3	transition-story-status-untriaged-findings.bats	18
