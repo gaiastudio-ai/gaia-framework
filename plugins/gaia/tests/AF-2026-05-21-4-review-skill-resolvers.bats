@@ -95,7 +95,3 @@ EOF
   PROJECT_PATH="$proj" run bash "$SKILLS_DIR/gaia-dev-story/scripts/atdd-gate.sh" E99-S2
   [ "$status" -ne 0 ]
 }
-
-@test "THROWAWAY: intentional failure to prove gate integrity" {
-  false
-}
