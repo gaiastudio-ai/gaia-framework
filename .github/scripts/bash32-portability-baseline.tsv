@@ -1,0 +1,14 @@
+# bash32-portability-baseline.tsv — ceiling counts for known bash 4+ violations.
+#
+# Each non-comment line is: <relative-path>\t<max-violations>
+# The lint enforces this as a ceiling: a file whose violation count exceeds
+# its baseline fails the lint. A file not listed here must have zero violations.
+# To reduce a baseline, fix the construct and lower the count. The count may
+# never increase — adding a new violation to a baselined file fails CI.
+#
+# Reviewed: 2026-10-17
+plugins/gaia/scripts/apply-test-policy.sh	1
+plugins/gaia/scripts/retirement-sweep.sh	2
+plugins/gaia/scripts/lib/lifecycle-overrides.sh	2
+plugins/gaia/scripts/lib/acquire-lock.sh	1
+plugins/gaia/skills/gaia-dev-story/scripts/lib/acquire-lock.sh	1

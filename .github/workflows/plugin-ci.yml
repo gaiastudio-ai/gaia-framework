@@ -17,9 +17,64 @@ on:
     paths:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
+      - '.github/scripts/**'
       - 'scripts/audit-v2-migration.sh'
+      - 'tests/**'
 
 jobs:
+  # ---------- diff-based check selection (determines which jobs to run) ----------
+  diff-classify:
+    name: diff-classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      # 'code' when the diff touches .sh, .bats, .yml, .yaml, or workflow files;
+      # 'docs-only' when the diff touches exclusively markdown under docs/ or
+      # documentation/. Jobs that are expensive (macOS runner) gate on this.
+      change_type: ${{ steps.classify.outputs.change_type }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Classify changed files
+        id: classify
+        run: |
+          set -euo pipefail
+          # Compute the diff against the PR base. GITHUB_BASE_REF is set for
+          # pull_request events; fall back to origin/staging for manual runs.
+          base_ref="${GITHUB_BASE_REF:-staging}"
+          changed="$(git diff --name-only "origin/${base_ref}...HEAD" 2>/dev/null || true)"
+          if [ -z "$changed" ]; then
+            echo "change_type=code" >> "$GITHUB_OUTPUT"
+            echo "::notice::No diff found or merge-base unavailable; defaulting to full check set"
+            exit 0
+          fi
+
+          echo "::group::Changed files"
+          echo "$changed"
+          echo "::endgroup::"
+
+          # Check whether any changed file is NOT a pure doc file.
+          # Docs-only = all changed files match docs/**/*.md or documentation/**/*.md
+          has_code="false"
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              docs/*.md|documentation/*.md) ;;  # docs — skip
+              *.sh|*.bats|*.yml|*.yaml)         has_code="true"; break ;;
+              .github/*|plugins/gaia/*|tests/*|scripts/*) has_code="true"; break ;;
+              *)                                has_code="true"; break ;;
+            esac
+          done <<< "$changed"
+
+          if [ "$has_code" = "true" ]; then
+            echo "change_type=code" >> "$GITHUB_OUTPUT"
+            echo "::notice::Diff contains code/test/config files; full check set selected"
+          else
+            echo "change_type=docs-only" >> "$GITHUB_OUTPUT"
+            echo "::notice::Diff is docs-only; macOS and heavy jobs will be skipped"
+          fi
+
   frontmatter-lint:
     name: frontmatter-lint
     runs-on: ubuntu-latest
@@ -763,3 +818,149 @@ jobs:
           # macOS this runs it with the stock /bin/bash (3.2); elsewhere only
           # the static bash-4-construct check runs and the rest skip.
           bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats
+
+  # ---------- Static portability lint ----------
+  bash32-portability-lint:
+    name: bash32-portability-lint
+    needs: [diff-classify]
+    # Gate on diff-classify: skip for docs-only changes with recorded reason.
+    if: needs.diff-classify.outputs.change_type != 'docs-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2  # lint completes in under 2 seconds
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Run bash 3.2 portability lint on scripts and skill scripts
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/lint-bash32-portability.sh
+
+          # Collect skill script directories that exist.
+          skill_dirs=()
+          for d in plugins/gaia/skills/*/scripts; do
+            [ -d "$d" ] && skill_dirs+=("$d")
+          done
+
+          echo "::group::Scanning plugins/gaia/scripts/"
+          .github/scripts/lint-bash32-portability.sh \
+            --baseline .github/scripts/bash32-portability-baseline.tsv \
+            plugins/gaia/scripts/
+          echo "::endgroup::"
+
+          if [ "${#skill_dirs[@]}" -gt 0 ]; then
+            echo "::group::Scanning skill scripts directories (${#skill_dirs[@]} dirs)"
+            .github/scripts/lint-bash32-portability.sh \
+              --baseline .github/scripts/bash32-portability-baseline.tsv \
+              "${skill_dirs[@]}"
+            echo "::endgroup::"
+          fi
+
+          echo "Portability lint passed: all violations within baseline ceilings."
+
+  # ---------- macOS bash 3.2 with real BSD tools ----------
+  macos-bash32:
+    name: macos-bash32
+    needs: [diff-classify]
+    # Gate on diff-classify: skip for docs-only changes.
+    if: needs.diff-classify.outputs.change_type != 'docs-only'
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+
+      - name: Report platform and bash version
+        run: |
+          echo "bash --version:"
+          /bin/bash --version | head -3
+          echo ""
+          echo "BASH_VERSION=$BASH_VERSION"
+          echo "uname -a: $(uname -a)"
+          echo ""
+          echo "Tool versions (BSD):"
+          echo "  awk: $(/usr/bin/awk --version 2>&1 | head -1 || echo 'BSD awk (no --version)')"
+          echo "  sed: $(/usr/bin/sed --version 2>&1 | head -1 || echo 'BSD sed (no --version)')"
+          echo "  stat: /usr/bin/stat"
+          echo "  date: /bin/date"
+          echo "  find: /usr/bin/find"
+
+      - name: Verify BSD tools are in use (not GNU overrides)
+        run: |
+          set -euo pipefail
+
+          # awk: BSD awk (One True Awk) prints "awk version YYYYMMDD";
+          # GNU gawk prints "GNU Awk x.y.z". Check the output for "GNU".
+          awk_ver="$(/usr/bin/awk --version 2>&1 | head -1 || true)"
+          if echo "$awk_ver" | grep -qi 'GNU'; then
+            echo "::error::awk at /usr/bin/awk is GNU awk ($awk_ver); expected BSD awk"
+            exit 1
+          fi
+          echo "OK: /usr/bin/awk is BSD awk ($awk_ver)"
+
+          # sed: BSD sed does not support --version; GNU sed does.
+          if /usr/bin/sed --version >/dev/null 2>&1; then
+            echo "::error::sed at /usr/bin/sed appears to be GNU sed; expected BSD sed"
+            exit 1
+          fi
+          echo "OK: /usr/bin/sed is BSD sed"
+
+          # Verify bash is 3.x (not Homebrew bash 5).
+          bash_major="$(/bin/bash -c 'echo "${BASH_VERSINFO[0]}"')"
+          if [ "$bash_major" != "3" ]; then
+            echo "::error::/bin/bash is version $bash_major, expected 3 (macOS system bash)"
+            exit 1
+          fi
+          echo "OK: /bin/bash is version 3.x"
+
+      - name: Install bats via Homebrew
+        run: |
+          brew install bats-core jq
+
+      - name: Ensure BSD tools are ahead of Homebrew GNU tools in PATH
+        run: |
+          # Remove Homebrew GNU coreutils from PATH if present, and ensure
+          # /usr/bin and /bin are searched first. This prevents Homebrew from
+          # shadowing BSD awk/sed/stat/date/find.
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(echo "$PATH" | tr ':' '\n' | grep -v '/usr/local/opt/coreutils' | grep -v 'gnubin' | tr '\n' ':')"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
+          echo "Adjusted PATH (BSD tools first): $PATH"
+
+      - name: Install Python for YAML/JSON-schema backends
+        run: |
+          # Some bats tests degrade to skip when PyYAML/jsonschema are absent,
+          # reporting green on guards that never executed. Install to match
+          # the Linux CI environment.
+          python3 -m pip install --break-system-packages PyYAML jsonschema 2>/dev/null || true
+
+      - name: Run shell bats suites under macOS bash 3.2
+        env:
+          BATS_FILTER_TAGS: '!hardware-dependent'
+        run: |
+          set -euo pipefail
+
+          # Run the shell-script component test partitions on macOS with the
+          # system bash 3.2 and BSD tools. These are the same partitions the
+          # selective-tests workflow runs on Linux (scripts-lib, scripts-sprint),
+          # plus the portability-specific suites and the lint test suite.
+          # The full suite (7600+ tests) would be too expensive on macOS; the
+          # component partitions cover the script-testing surface (~100 tests).
+
+          echo "::group::scripts-lib component tests"
+          bash plugins/gaia/scripts/run-component-tests.sh scripts-lib
+          echo "::endgroup::"
+
+          echo "::group::scripts-sprint component tests"
+          bash plugins/gaia/scripts/run-component-tests.sh scripts-sprint
+          echo "::endgroup::"
+
+          echo "::group::sprint-progress-snapshot-bash32.bats"
+          bats plugins/gaia/tests/sprint-progress-snapshot-bash32.bats
+          echo "::endgroup::"
+
+          echo "::group::issue-1129-1304-portability-version.bats"
+          bats plugins/gaia/tests/issue-1129-1304-portability-version.bats
+          echo "::endgroup::"
+
+          echo "::group::bash32-portability-lint.bats"
+          bats tests/skills/bash32-portability-lint.bats
+          echo "::endgroup::"
+
+          echo "Disposition: all selected macOS bash 3.2 checks completed successfully."

@@ -96,7 +96,11 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 # story-index.yaml. Sibling of the same helper in sprint-state.sh.
 yaml_single_quote() {
   local s="$1"
-  s="${s//\'/\'\'}"
+  # Double inner single-quotes per the YAML single-quote escape rule.
+  # Uses sed instead of ${s//\'/\'\'} because bash 3.2 interprets the
+  # backslash-escape in // substitution differently (treats \' as a
+  # literal two-char sequence rather than an escaped quote).
+  s="$(printf '%s' "$s" | sed "s/'/''/g")"
   printf "'%s'" "$s"
 }
 
