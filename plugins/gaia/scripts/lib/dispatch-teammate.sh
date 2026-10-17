@@ -1058,6 +1058,9 @@ spawn_teammate() {
     _dt_try=$(( _dt_try + 1 ))
   done
 
+  # Claim one teammate slot from the cross-session resource ledger.
+  _dt_ledger_claim_teammate || true
+
   if [ "$story_keyed" -eq 1 ]; then
     _dt_spawn_story_keyed "$persona" "$context" "$story_key"
     return $?
@@ -1339,6 +1342,9 @@ shutdown_teammate() {
   # Fail-safe: check for unrelayed turn before shutdown.
   _dt_check_unrelayed_turn "$handle"
 
+  # Release one teammate slot from the cross-session resource ledger.
+  _dt_ledger_release_teammate
+
   # Remove from registry and clean up turn counter.
   rm -f "$_DT_REGISTRY_DIR/$handle"
   local count_file
@@ -1378,6 +1384,40 @@ shutdown_all() {
     return 1
   fi
   return 0
+}
+
+# ---------- Cross-session ledger: teammate slot claim/release ----------
+#
+# When GAIA_LEDGER_PID and GAIA_LEDGER_SPRINT are set by the caller (the
+# run-sprint skill exports them), claim/release one teammate slot from the
+# cross-session resource ledger. The ledger script is a sibling of this
+# library's parent directory.
+
+_dt_ledger_sh() {
+  local lib_dir
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local candidate="${lib_dir}/../concurrent-resource-ledger.sh"
+  if [ -x "$candidate" ]; then
+    printf '%s' "$candidate"
+  fi
+}
+
+_dt_ledger_claim_teammate() {
+  local sh
+  sh="$(_dt_ledger_sh)"
+  [ -n "$sh" ] || return 0
+  [ -n "${GAIA_LEDGER_PID:-}" ] && [ -n "${GAIA_LEDGER_SPRINT:-}" ] || return 0
+  bash "$sh" claim \
+    --sprint "$GAIA_LEDGER_SPRINT" --pid "$GAIA_LEDGER_PID" --dev 0 --teammates 1 || return $?
+}
+
+_dt_ledger_release_teammate() {
+  local sh
+  sh="$(_dt_ledger_sh)"
+  [ -n "$sh" ] || return 0
+  [ -n "${GAIA_LEDGER_PID:-}" ] && [ -n "${GAIA_LEDGER_SPRINT:-}" ] || return 0
+  bash "$sh" release \
+    --sprint "$GAIA_LEDGER_SPRINT" --pid "$GAIA_LEDGER_PID" --dev 0 --teammates 1 || true
 }
 
 # ---------- Source guard — mark loaded ----------
