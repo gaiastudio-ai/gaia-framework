@@ -495,6 +495,7 @@ scripts-core	cluster-9/review-nudge.bats
 scripts-core	cluster-9/review-skip-check.bats
 scripts-core	cluster-9/review-summary-gen.bats
 scripts-core	cluster-9/run-all-reviews.bats
+scripts-core	concurrent-sprint-independence-ab.bats
 scripts-core	config-phase-gate.bats
 scripts-core	coppa-regime.bats
 scripts-core	create-ux-claude-design.bats
