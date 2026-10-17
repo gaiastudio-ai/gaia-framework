@@ -4336,6 +4336,108 @@ main() {
     fi
   fi
 
+  # ---------- Session binding cross-validation ----------
+  #
+  # On state-mutating subcommands in concurrent mode, cross-validate the
+  # GAIA_BOUND_SPRINT_ID env var against the binding file. The env var is
+  # a performance cache; the binding file is the sole authority.
+  # Read-only subcommands (get, validate, get-goals, lint-dependencies,
+  # detect-auto-close, resolve-file) skip this check intentionally.
+  if _is_concurrent_mode; then
+    case "$subcmd" in
+      transition|inject|set-goals|update-goals|set-shape|set-phase|\
+      set-review-justification|set-story-sprint|reconcile|\
+      record-escalation-override|init|advance|rollover)
+
+        # Source the binding library for validate_binding / read_binding.
+        local _sb_lib="${SPRINT_STATE_SCRIPT_DIR}/lib/session-binding.sh"
+        if [ -f "$_sb_lib" ]; then
+          # shellcheck source=lib/session-binding.sh
+          source "$_sb_lib"
+
+          # Provision binding dir (derives from session ID, validates
+          # inherited GAIA_BINDING_DIR). If no session ID is available,
+          # skip binding validation (non-interactive context like CI).
+          if provision_binding_dir 2>/dev/null; then
+
+            # Cross-validate env var vs binding file.
+            if ! validate_binding; then
+              exit 1
+            fi
+
+            # Read binding state once for the guards below.
+            local _bound_id="" _rb_exit=0
+            _bound_id="$(read_binding 2>/dev/null)" || _rb_exit=$?
+
+            # Closed-sprint guard for planning subcommands. Runs BEFORE the
+            # override check because closed-bound refusal takes precedence
+            # over any explicit --sprint override on these subcommands.
+            # Only init/advance/rollover/set-story-sprint are refused;
+            # other mutating subcommands proceed normally.
+            case "$subcmd" in
+              init|advance|rollover|set-story-sprint)
+                if [ "$_rb_exit" -eq 2 ]; then
+                  printf '%s: error: your bound sprint is closed -- start a new session to plan or run the next sprint\n' \
+                    "$SCRIPT_NAME" >&2
+                  exit 1
+                fi
+                ;;
+            esac
+
+            # Per-subcommand --sprint override semantics.
+            if [ -n "$_bound_id" ] && [ -n "${reconcile_sprint_id:-}" ]; then
+              # Check for explicit --sprint override vs binding.
+              if [ "${reconcile_sprint_id}" != "$_bound_id" ]; then
+                case "$subcmd" in
+                  init|advance)
+                    # In a bound session, init/advance with --sprint-id naming no
+                    # existing sprint are refused.
+                    local _override_file=""
+                    _override_file="$(dirname "$SPRINT_STATUS_YAML")/sprint-status-${reconcile_sprint_id}.yaml"
+                    if [ ! -f "$_override_file" ]; then
+                      printf '%s: error: start a new session to plan the next sprint\n' "$SCRIPT_NAME" >&2
+                      exit 1
+                    fi
+                    ;;
+                  set-story-sprint)
+                    # --sprint names the destination sprint, not an override.
+                    # No override log emitted.
+                    ;;
+                  *)
+                    # Verify the target sprint exists and is not closed.
+                    local _override_file=""
+                    _override_file="$(dirname "$SPRINT_STATUS_YAML")/sprint-status-${reconcile_sprint_id}.yaml"
+                    if [ -f "$_override_file" ]; then
+                      local _override_status=""
+                      _override_status="$(yq '.status' "$_override_file" 2>/dev/null)" || _override_status=""
+                      case "$_override_status" in
+                        active|review|correction)
+                          printf 'sprint override: bound=%s target=%s command=%s\n' \
+                            "$_bound_id" "$reconcile_sprint_id" "$subcmd" >&2
+                          ;;
+                        closed)
+                          printf '%s: error: target sprint %s is closed\n' "$SCRIPT_NAME" "$reconcile_sprint_id" >&2
+                          exit 1 ;;
+                        *)
+                          printf '%s: error: target sprint %s has invalid status: %s\n' \
+                            "$SCRIPT_NAME" "$reconcile_sprint_id" "$_override_status" >&2
+                          exit 1 ;;
+                      esac
+                    else
+                      printf '%s: error: target sprint %s does not exist\n' \
+                        "$SCRIPT_NAME" "$reconcile_sprint_id" >&2
+                      exit 1
+                    fi
+                    ;;
+                esac
+              fi
+            fi
+          fi
+        fi
+        ;;
+    esac
+  fi
+
   # Check for reverse migration on mutating subcommands in concurrent mode.
   # Only runs when concurrent mode is active (per-sprint files exist or limit > 1).
   if _is_concurrent_mode; then
