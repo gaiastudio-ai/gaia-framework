@@ -337,7 +337,18 @@
     },
     "testing":                  { "type": "object" },
     "test_execution_bridge":    { "type": "object" },
-    "sprint":                   { "type": "object" },
+    "sprint": {
+      "type": "object",
+      "properties": {
+        "max_concurrent_active": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Maximum number of sprints that may be active at the same time. When set to 1 (the default), only a single sprint can be active and no concurrent-sprint machinery is engaged."
+        }
+      },
+      "additionalProperties": true
+    },
     "review_gate":              { "type": "object" },
     "team_conventions":         { "type": "object" },
     "agent_customizations":     { "type": "object" },
