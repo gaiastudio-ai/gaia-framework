@@ -78,6 +78,6 @@ teardown() { common_teardown; }
     in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
     in_job { print }
   ' "$WORKFLOW")"
-  echo "$shard_job" | grep -qF 'parallel'
-  echo "$shard_job" | grep -qF 'BATS_JOBS'
+  grep -qF 'parallel' <<< "$shard_job"
+  grep -qF 'BATS_JOBS' <<< "$shard_job"
 }

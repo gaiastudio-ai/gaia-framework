@@ -166,6 +166,18 @@ jobs:
       - uses: mig4/setup-bats@af9a00deb21b5d795cabfeaa8d9060410377686d  # v1.2.0
         with:
           bats-version: 1.10.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: '22.12'
+      - name: Install Claude Code CLI (pinned version and lockfile integrity)
+        env:
+          CLAUDE_CODE_DISABLE_TELEMETRY: '1'
+          NO_COLOR: '1'
+        run: |
+          mkdir -p "$RUNNER_TEMP/claude-cli"
+          cp .github/ci-tools/claude-cli/package.json .github/ci-tools/claude-cli/package-lock.json "$RUNNER_TEMP/claude-cli/"
+          npm ci --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund
+          echo "$RUNNER_TEMP/claude-cli/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Install jq, GNU parallel, and the YAML/JSON-schema backends
         run: |
           sudo apt-get update && sudo apt-get install -y jq parallel python3 python3-pip
