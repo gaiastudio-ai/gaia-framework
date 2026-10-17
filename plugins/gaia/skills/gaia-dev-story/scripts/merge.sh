@@ -136,11 +136,15 @@ assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant f
 # bucket values are "pass" and "skipping"; anything else (fail, pending, …)
 # blocks the merge. Fails closed: query errors, jq absence, and empty check
 # lists all exit non-zero with an actionable message.
-checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>&1)" || {
+_gh_checks_err="$(mktemp "${TMPDIR:-/tmp}/merge-gh-checks.XXXXXX")"
+checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>"$_gh_checks_err")" || {
   log "aborting: could not query PR checks (gh pr checks failed)."
+  log "  $(cat "$_gh_checks_err" 2>/dev/null)"
   log "Check network connectivity, authentication, and rate limits, then retry."
+  rm -f "$_gh_checks_err"
   exit 1
 }
+rm -f "$_gh_checks_err"
 # Parse checks: try jq first, fall back to grep-based parsing if jq is
 # absent or fails.
 check_count=""
@@ -153,14 +157,18 @@ if command -v jq >/dev/null 2>&1; then
 fi
 # Fallback: grep-based parsing when jq is absent or returned nothing.
 if [ -z "$check_count" ]; then
-  check_count="$(printf '%s' "$checks_json" | grep -c '"bucket"' 2>/dev/null || echo "0")"
+  check_count="$(printf '%s' "$checks_json" | grep -c '"bucket"' 2>/dev/null)" || check_count="0"
   bad_checks="$(printf '%s' "$checks_json" \
     | grep -o '"bucket":"[^"]*","name":"[^"]*"' 2>/dev/null \
     | grep -v '"bucket":"pass"' \
     | grep -v '"bucket":"skipping"' \
     | sed 's/.*"name":"\([^"]*\)".*/\1/' 2>/dev/null || true)"
 fi
-if [ "$check_count" -eq 0 ] 2>/dev/null || [ -z "$check_count" ]; then
+# Validate check_count is a non-negative integer; fail closed otherwise.
+case "$check_count" in
+  ''|*[!0-9]*) check_count=0 ;;
+esac
+if [ "$check_count" -eq 0 ]; then
   log "aborting: no checks reported yet for PR #${PR_NUMBER}."
   log "Wait for CI to register checks and retry."
   exit 1
@@ -174,10 +182,14 @@ if [ -n "$bad_checks" ]; then
   exit 1
 fi
 
-# Shared prerequisite for guards 2 and 3: resolve origin/<base>.
-# A merge gate must fail closed — if the base ref cannot be resolved after a
-# fetch, exit non-zero rather than silently skipping the guard.
-git fetch origin "$PR_TARGET" --quiet 2>/dev/null || true
+# Shared prerequisite for guards 2 and 3: fetch and resolve origin/<base>.
+# A merge gate must fail closed — both a failed fetch and an unresolvable
+# ref exit non-zero with an actionable message.
+if ! git fetch origin "$PR_TARGET" --quiet 2>/dev/null; then
+  log "aborting: 'git fetch origin ${PR_TARGET}' failed."
+  log "Check network connectivity and that the remote branch exists, then retry."
+  exit 1
+fi
 if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
   log "aborting: cannot resolve origin/${PR_TARGET}."
   log "Run 'git fetch origin ${PR_TARGET}' and retry."

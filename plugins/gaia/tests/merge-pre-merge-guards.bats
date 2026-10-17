@@ -304,7 +304,8 @@ STUB
 # -----------------------------------------------------------------------
 
 @test "an unresolvable base ref blocks the merge and names the base" {
-  # Create a repo without any origin remote — origin/staging won't exist.
+  # Create a repo without any origin remote — fetch will fail, which is
+  # the fail-closed path for the base-ref prerequisite.
   REPO="$TEST_TMP/repo-no-origin"
   mkdir -p "$REPO"
   fixture_git -C "$REPO" init -q -b main
@@ -316,10 +317,8 @@ STUB
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
-  [[ "$output" == *"cannot resolve origin/staging"* ]]
-  [[ "$output" == *"git fetch"* ]]
+  [[ "$output" == *"fetch"* ]]
   # The fail-closed gate must exit BEFORE the stale-base guard fires.
-  # If the gate is disabled, guard 2 would print "is not based on".
   [[ "$output" != *"is not based on"* ]]
   # The merge command must not have been called
   run grep -F 'pr merge' "$GH_ARGS"
@@ -413,6 +412,44 @@ S
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
   [[ "$output" == *"no checks reported"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
+# Blocker P2-1: empty check list with jq broken must still fail closed
+# -----------------------------------------------------------------------
+
+@test "empty check list with broken jq fails closed" {
+  make_fixture_repo
+  make_stub_gh
+  export GH_CHECKS_JSON='[]'
+  # Shadow jq with a stub that always fails
+  cat > "$TEST_TMP/bin/jq" <<'S'
+#!/usr/bin/env bash
+exit 1
+S
+  chmod +x "$TEST_TMP/bin/jq"
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no checks reported"* ]]
+  run grep -F 'pr merge' "$GH_ARGS"
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------
+# Blocker P2-2: stale-base guard when fetch fails
+# -----------------------------------------------------------------------
+
+@test "stale-base guard fails closed when git fetch fails" {
+  make_fixture_repo
+  # Point origin at a non-existent path so fetch fails, but origin/staging
+  # still exists as a stale local ref from the initial setup.
+  fixture_git -C "$REPO" remote set-url origin /nonexistent/repo.git
+  make_stub_gh
+  run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"fetch"* ]]
   run grep -F 'pr merge' "$GH_ARGS"
   [ "$status" -ne 0 ]
 }

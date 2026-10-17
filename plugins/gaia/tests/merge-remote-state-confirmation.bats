@@ -113,6 +113,12 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   exit 0
 fi
 
+# `gh pr checks` — return all-pass so the pre-merge guard passes.
+if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
+  printf '[{"bucket":"pass","name":"ci"}]\n'
+  exit 0
+fi
+
 if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
   printf 'example-org/example-repo\n'
   exit 0
