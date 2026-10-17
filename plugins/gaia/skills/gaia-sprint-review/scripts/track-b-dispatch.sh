@@ -217,7 +217,7 @@ fi
 
 # ---------- .gitignore pre-flight ----------
 
-assert_gitignored "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints/sprint-review-" || exit 1
+assert_gitignored ".gaia/memory/checkpoints/sprint-review-" || exit 1
 
 # ---------- Per-stack execution loop ----------
 

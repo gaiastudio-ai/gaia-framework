@@ -67,6 +67,7 @@ core	af-2026-06-02-6-test17-sweep.bats
 core	af-2026-06-03-2-tc-osv-trace.bats
 core	af-2026-06-03-3-adversarial-schema.bats
 core	analysis-results-schema.bats
+core	assert-gitignored-git-check-ignore.bats
 core	audit-v2-migration.bats
 core	backup-integrity.bats
 core	bash-dev-wiring.bats
