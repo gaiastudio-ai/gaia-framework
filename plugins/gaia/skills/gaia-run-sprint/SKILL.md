@@ -170,6 +170,31 @@ intentional — please do not "fix" one to match the other.
   merge and never touches memory or checkpoint state. A worktree holding
   uncommitted work is always kept and reported with a recovery command.
 
+## Cross-session resource ledger lifecycle
+
+When running in concurrent-sprint mode (`sprint.max_concurrent_active` > 1 and
+per-sprint state files exist), the run-sprint skill integrates with the
+cross-session resource ledger to share dev-slot and teammate budgets across
+sessions:
+
+1. **On start:** resolve the session PID (the parent of the skill's shell) and
+   export `GAIA_LEDGER_PID` and `GAIA_LEDGER_SPRINT` for all child scripts.
+   Install an exit-cleanup hook that calls `concurrent-resource-ledger.sh
+   cleanup` on normal or abnormal exit. Start the background heartbeat writer
+   at `GAIA_LEDGER_HEARTBEAT_INTERVAL` (default 60s) via
+   `concurrent-resource-ledger.sh start-heartbeat-loop`.
+2. **Per story:** the orchestrator claims one dev slot before `ppo_next` and
+   releases the unused portion immediately after `ppo_next` returns (the full
+   grant on `barrier`, `sprint_complete`, or zero admits). After
+   `ppo_record_outcome`, one dev slot is released. Teammate slots are claimed
+   and released by `dispatch-teammate.sh` on spawn and shutdown.
+3. **On completion:** the cleanup hook removes the session's ledger entry, stops
+   the background heartbeat loop, and removes the heartbeat PID file
+   (`.gaia/state/.ledger-heartbeat-{session_id}.pid`).
+
+In single-sprint mode (the default), all ledger operations are no-ops: no ledger
+file is created, no lock is acquired, and no heartbeat process is started.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-run-sprint/scripts/finalize.sh

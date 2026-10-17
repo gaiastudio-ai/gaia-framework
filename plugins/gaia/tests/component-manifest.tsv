@@ -107,6 +107,7 @@ core	component-test-partition.bats
 core	concurrent-sprint-catch-all.bats
 core	concurrent-sprint-config.bats
 core	concurrent-sprint-glossary.bats
+core	concurrent-sprint-ledger.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
