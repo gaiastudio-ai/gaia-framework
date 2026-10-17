@@ -4488,3 +4488,104 @@ SHIM
   unique_seqs="$(yq '[.gate_runs[].seq] | unique | length' "$reg")"
   [ "$unique_seqs" -eq 4 ]
 }
+
+# ===================================================================
+# assert-round-complete names gates with errored or missing runs
+# ===================================================================
+
+@test "assert-round-complete names gate with recorded report but errored run" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Record the run as errored (not completed).
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome errored
+  [ "$status" -eq 0 ]
+
+  # Record a report so the report-path check passes.
+  local rpt="$TEST_TMP/cr-errored.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+
+  # assert-round-complete must fail AND name the gate.
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 1 ]
+  grep -q "code-review" <<<"$output"
+  grep -qi "not completed\|errored" <<<"$output"
+}
+
+@test "assert-round-complete names gate with report but no run at all" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+
+  # Record a report but do NOT record a run.
+  local rpt="$TEST_TMP/cr-no-run.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 1 ]
+  grep -q "code-review" <<<"$output"
+  grep -qi "not completed\|outcome.*none" <<<"$output"
+}
+
+@test "assert-round-complete names carried gate whose earlier run is missing" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1: select qa-tests only (no code-review).
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "qa-tests=test"
+  [ "$status" -eq 0 ]
+
+  # Round 2: select security-review and carry code-review from round 1.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "security-review=test"
+  [ "$status" -eq 0 ]
+
+  # Manually inject a carried gate that points to a non-existent round.
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  yq -i '(.rounds[] | select(.run_id == "round-20261016T130000Z-67890")).carried_gates = [{"gate": "code-review", "from_run": "round-20261016T999999Z-00000", "applicability_rationale": "from nonexistent"}]' "$reg"
+
+  # Complete the selected gate for round 2 so the only failure is the carried gate.
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate security-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/sec.md"
+  printf 'report\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate security-review --report "$rpt"
+  [ "$status" -eq 0 ]
+
+  # assert-round-complete must name the carried gate.
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 1 ]
+  grep -q "code-review" <<<"$output"
+  grep -qi "not found in rounds\|from_run" <<<"$output"
+}
