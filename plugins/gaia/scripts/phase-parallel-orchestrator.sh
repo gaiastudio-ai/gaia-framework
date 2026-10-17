@@ -107,6 +107,26 @@ _PPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _ppo_log() { printf '%s: %s\n' "$_PPO_NAME" "$*" >&2; }
 
+# --- Cross-session resource ledger integration ---
+# Ledger claim/release runs OUTSIDE the engine lock (_ppo_engine_lock_run).
+# The ledger script lives as a sibling in the same scripts/ directory.
+
+_PPO_LEDGER_SH="${_PPO_DIR}/concurrent-resource-ledger.sh"
+
+_ppo_ledger_claim() {
+  [ -x "$_PPO_LEDGER_SH" ] || return 0
+  local sprint_id="${1:-}" pid="${2:-}" dev="${3:-0}" tm="${4:-0}"
+  bash "$_PPO_LEDGER_SH" claim \
+    --sprint "$sprint_id" --pid "$pid" --dev "$dev" --teammates "$tm" || return $?
+}
+
+_ppo_ledger_release() {
+  [ -x "$_PPO_LEDGER_SH" ] || return 0
+  local sprint_id="${1:-}" pid="${2:-}" dev="${3:-0}" tm="${4:-0}"
+  bash "$_PPO_LEDGER_SH" release \
+    --sprint "$sprint_id" --pid "$pid" --dev "$dev" --teammates "$tm" || return $?
+}
+
 # Telemetry: one structured line per event. Machine-readable k=v tokens, and
 # the mode is emitted even on the happy path so "why did this run the way it
 # did" never requires guessing.
@@ -1977,17 +1997,55 @@ ppo_run_sprint() {
       return 0
     fi
 
+    # Ledger claim: one dev slot per ppo_next call, outside the engine lock.
+    local _ppo_ledger_sprint="${GAIA_LEDGER_SPRINT:-}"
+    local _ppo_ledger_pid="${GAIA_LEDGER_PID:-}"
+    local _ppo_ledger_granted=0
+    if [ -n "$_ppo_ledger_sprint" ] && [ -n "$_ppo_ledger_pid" ]; then
+      if _ppo_ledger_claim "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0; then
+        _ppo_ledger_granted=1
+      fi
+    fi
+
     local out rc=0
     out="$(ppo_next)"; rc=$?
     printf '%s\n' "$out"
 
+    # Release unused grant: on barrier, sprint_complete, or zero admits,
+    # release the full grant immediately (outside the engine lock).
+    local _ppo_admitted=0
     case "$out" in
-      *sprint_complete*) return 0 ;;
+      *dispatch\ story=*) _ppo_admitted=1 ;;
+    esac
+
+    case "$out" in
+      *sprint_complete*)
+        if [ "$_ppo_ledger_granted" -eq 1 ]; then
+          _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+        fi
+        return 0
+        ;;
     esac
     case "$out" in
-      mode=sequential*) return 0 ;;
+      mode=sequential*)
+        if [ "$_ppo_ledger_granted" -eq 1 ]; then
+          _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+        fi
+        return 0
+        ;;
     esac
-    [ "$rc" -eq 0 ] || return 0
+    if [ "$rc" -ne 0 ]; then
+      if [ "$_ppo_ledger_granted" -eq 1 ]; then
+        _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+      fi
+      return 0
+    fi
+
+    # Release the unused portion: if nothing was admitted but we got a barrier,
+    # release the full grant.
+    if [ "$_ppo_admitted" -eq 0 ] && [ "$_ppo_ledger_granted" -eq 1 ]; then
+      _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+    fi
 
     # Re-emit each `dispatch` line in the legacy shape and drive it to
     # completion via the hook, all backgrounded so multiple admissions from
@@ -2044,8 +2102,17 @@ ppo_run_sprint() {
             wait "$tpid" || hrc=$?
             [ "$hrc" -eq 124 ] && hrc=9
             case "$hrc" in
-              0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0 ;;
-              9) ppo_record_outcome "$key" "timeout"; _ppo_engine_put ceiling-refusals 0 ;;
+              0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0
+                # Release completed-story dev slot (outside engine lock).
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
+              9) ppo_record_outcome "$key" "timeout"; _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
               11)
                 # The legacy hook's own exit-11 IS the merged-not-done
                 # signal within this gated test-only context -- there is no
@@ -2062,6 +2129,9 @@ ppo_run_sprint() {
                 # instead, and the audit decides.
                 _ppo_record_outcome_internal_mnd "$key"
                 _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
                 ;;
               8)
                 # Capacity, never a story outcome -- see the legacy hook
@@ -2085,7 +2155,11 @@ ppo_run_sprint() {
                 _ppo_requeue "$key"
                 _ppo_engine_lock_run _ppo_engine_put mode "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
                 ;;
-              *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0 ;;
+              *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
             esac
           ) &
           echo "$!" >> "$(_ppo_engine_dir)/run-pids"
@@ -2307,11 +2381,19 @@ _ppo_cli() {
       ;;
     next)
       shift
+      # Ledger claim before admission (outside engine lock).
+      if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        _ppo_ledger_claim "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+      fi
       ppo_next "$@"
       ;;
     record)
       shift
       ppo_record_outcome "$@"
+      # Release completed-story dev slot after recording outcome (outside engine lock).
+      if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+      fi
       ;;
     status)
       shift
