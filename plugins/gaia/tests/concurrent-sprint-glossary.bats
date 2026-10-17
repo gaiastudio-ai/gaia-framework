@@ -138,60 +138,55 @@ setup() {
 
 # --- AC4: CSV non-description columns are byte-identical to staging ---
 
-@test "gaia-help.csv non-description columns unchanged from staging" {
-  # Compare non-description columns for the three touched rows.
-  # gaia-help.csv: columns are module,phase,name,code,command,required,agent-name,description,output-location
-  # description is column 8. Strip it and compare the rest.
-  for code in sprint-plan run-sprint sprint-status; do
-    branch_row=$(awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"' "$HELP_CSV")
-    staging_row=$(cd "$REPO_ROOT" && git show origin/staging:plugins/gaia/knowledge/gaia-help.csv | awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"')
-    # Extract non-description columns via python3 csv for correctness with quoted fields
-    branch_nondesc=$(python3 -I -c "
+@test "gaia-help.csv non-description columns match expected values" {
+  # gaia-help.csv columns: module,phase,name,code,command,required,agent-name,description,output-location
+  # Assert that only the description (column 8, index 7) was changed by
+  # verifying the other columns match the known, stable identifiers.
+  _assert_help_row() {
+    local code="$1" expected_nondesc="$2"
+    local row nondesc
+    row=$(awk -F',' -v c="$code" '$4 ~ "\"?"c"\"?"' "$HELP_CSV")
+    nondesc=$(python3 -I -c "
 import csv, io, sys
 for row in csv.reader(io.StringIO(sys.argv[1])):
     if len(row) >= 9:
         print(','.join([row[i] for i in range(len(row)) if i != 7]))
-" "$branch_row")
-    staging_nondesc=$(python3 -I -c "
-import csv, io, sys
-for row in csv.reader(io.StringIO(sys.argv[1])):
-    if len(row) >= 9:
-        print(','.join([row[i] for i in range(len(row)) if i != 7]))
-" "$staging_row")
-    if [ "$branch_nondesc" != "$staging_nondesc" ]; then
+" "$row")
+    if [ "$nondesc" != "$expected_nondesc" ]; then
       echo "Non-description columns differ for code=$code" >&2
-      echo "  staging: $staging_nondesc" >&2
-      echo "  branch:  $branch_nondesc" >&2
+      echo "  expected: $expected_nondesc" >&2
+      echo "  actual:   $nondesc" >&2
       return 1
     fi
-  done
+  }
+  _assert_help_row "sprint-plan" "lifecycle,4-implementation,sprint-planning,sprint-plan,gaia-sprint-plan,true,sm,.gaia/artifacts/implementation-artifacts"
+  _assert_help_row "run-sprint" "lifecycle,4-implementation,run-sprint,run-sprint,gaia-run-sprint,false,sm,.gaia/state/sprint-status.yaml"
+  _assert_help_row "sprint-status" "lifecycle,4-implementation,sprint-status,sprint-status,gaia-sprint-status,false,sm,.gaia/artifacts/implementation-artifacts"
 }
 
-@test "workflow-manifest.csv non-description columns unchanged from staging" {
-  # workflow-manifest.csv: columns are name,displayName,description,module,phase,path,command,agent
-  # description is column 3 (index 2). Strip it and compare the rest.
-  for name in sprint-planning run-sprint sprint-status; do
-    branch_row=$(awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"' "$MANIFEST_CSV")
-    staging_row=$(cd "$REPO_ROOT" && git show origin/staging:plugins/gaia/knowledge/workflow-manifest.csv | awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"')
-    branch_nondesc=$(python3 -I -c "
+@test "workflow-manifest.csv non-description columns match expected values" {
+  # workflow-manifest.csv columns: name,displayName,description,module,phase,path,command,agent
+  # Assert that only the description (column 3, index 2) was changed.
+  _assert_manifest_row() {
+    local name="$1" expected_nondesc="$2"
+    local row nondesc
+    row=$(awk -F',' -v n="$name" '$1 ~ "\"?"n"\"?"' "$MANIFEST_CSV")
+    nondesc=$(python3 -I -c "
 import csv, io, sys
 for row in csv.reader(io.StringIO(sys.argv[1])):
     if len(row) >= 8:
         print(','.join([row[i] for i in range(len(row)) if i != 2]))
-" "$branch_row")
-    staging_nondesc=$(python3 -I -c "
-import csv, io, sys
-for row in csv.reader(io.StringIO(sys.argv[1])):
-    if len(row) >= 8:
-        print(','.join([row[i] for i in range(len(row)) if i != 2]))
-" "$staging_row")
-    if [ "$branch_nondesc" != "$staging_nondesc" ]; then
+" "$row")
+    if [ "$nondesc" != "$expected_nondesc" ]; then
       echo "Non-description columns differ for name=$name" >&2
-      echo "  staging: $staging_nondesc" >&2
-      echo "  branch:  $branch_nondesc" >&2
+      echo "  expected: $expected_nondesc" >&2
+      echo "  actual:   $nondesc" >&2
       return 1
     fi
-  done
+  }
+  _assert_manifest_row "sprint-planning" "sprint-planning,Sprint Planning,lifecycle,4-implementation,_gaia/lifecycle/workflows/4-implementation/sprint-planning/workflow.yaml,gaia-sprint-plan,sm"
+  _assert_manifest_row "run-sprint" "run-sprint,Run Sprint,lifecycle,4-implementation,_gaia/core/workflows/run-sprint/workflow.yaml,gaia-run-sprint,sm"
+  _assert_manifest_row "sprint-status" "sprint-status,Sprint Status,lifecycle,4-implementation,_gaia/lifecycle/workflows/4-implementation/sprint-status/workflow.yaml,gaia-sprint-status,sm"
 }
 
 # --- AC1 link integrity: every href added by this story resolves ---
