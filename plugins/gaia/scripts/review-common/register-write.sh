@@ -49,6 +49,15 @@ _rw_require_tool() {
   command -v "$1" >/dev/null 2>&1 || _rw_die 1 "$1 is required but not on PATH"
 }
 
+# Guard: require value to be a non-negative integer (digits only).
+# Usage: _rw_require_integer <value> <context>
+# Dies with exit code 2 when the value is empty or contains non-digit chars.
+_rw_require_integer() {
+  case "$1" in
+    ''|*[!0-9]*) _rw_die 2 "expected integer but got '$1' ($2)" ;;
+  esac
+}
+
 # Find entry index by field value in a register file.
 # Usage: _rw_find_entry_idx <file> <field> <value>
 # Prints the 0-based index or -1 if not found.
@@ -218,6 +227,16 @@ _rw_validate_structure() {
       exit 2 ;;
   esac
 
+  # Validate that every gate_runs[].seq is an integer when present.
+  local bad_seq
+  bad_seq="$(yq '[.gate_runs[] | select(.seq != null) | .seq | type] | map(select(. != "!!int")) | length' "$path" 2>/dev/null)" || bad_seq="__err"
+  case "$bad_seq" in
+    0) ;; # all integers or no seq fields
+    *)
+      _rw_err "structural validation failed (non-integer seq in gate_runs): $path"
+      exit 2 ;;
+  esac
+
   # Validate rounds[] when present.
   local rounds_type
   rounds_type="$(yq '.rounds | type' "$path" 2>/dev/null)" || _rw_die 2 "structural validation: failed to read rounds type"
@@ -268,6 +287,7 @@ _rw_next_id() {
   case "$max_n" in
     null|"") max_n=0 ;;
   esac
+  _rw_require_integer "$max_n" "max entry id"
   local next=$(( max_n + 1 ))
   printf 'RF-%d' "$next"
 }
@@ -734,6 +754,7 @@ _rw_dedup_merge() {
   # Force boolean types on new gate_rating.
   local gr_len
   gr_len="$(yq ".entries[$idx].gate_ratings | length" "$tmp")"
+  _rw_require_integer "$gr_len" "gate_ratings length"
   local gr_last=$(( gr_len - 1 ))
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[$gr_last].material" "$material_bool"
@@ -901,6 +922,7 @@ _rw_cmd_merge() {
   # Union gate_ratings from source into target.
   local src_gr_len
   src_gr_len="$(yq ".entries[$src_idx].gate_ratings | length" "$tmp" 2>/dev/null)" || src_gr_len="0"
+  _rw_require_integer "$src_gr_len" "source gate_ratings length"
   local i=0
   while [ "$i" -lt "$src_gr_len" ]; do
     local gr_yaml
@@ -1275,6 +1297,7 @@ _rw_cmd_record_run() {
   # Compute monotonically increasing seq.
   local max_seq
   max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || _rw_die 1 "record-run: failed to compute max seq"
+  _rw_require_integer "$max_seq" "gate_runs max seq"
   local next_seq=$(( max_seq + 1 ))
 
   export _RW_RUN_ID="$run_id"
@@ -1711,6 +1734,12 @@ _rw_cmd_record_round_report() {
   _rw_validate_gate "$gate"
   [ -f "$report" ] || _rw_die 1 "record-round-report: report file not found: $report"
 
+  # Store an absolute path so integrity checks work from any CWD.
+  case "$report" in
+    /*) ;; # already absolute
+    *) report="$(CDPATH='' cd -- "$(dirname -- "$report")" >/dev/null && pwd)/$(basename -- "$report")" ;;
+  esac
+
   local report_hash
   report_hash="$(_rw_file_sha256 "$report")" || _rw_die 1 "record-round-report: sha256 failed"
 
@@ -1727,8 +1756,19 @@ _rw_cmd_record_round_report() {
   tmp="$(_rw_atomic_start "$reg_path")"
   _RW_CLEANUP_TMP="$tmp"
 
-  # Find the round and gate.
+  # Find the round and check its status.
   export _RW_RUN_ID="$run_id" _RW_GATE="$gate" _RW_RPATH="$report" _RW_RHASH="$report_hash"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-round-report: round not found for run-id: $run_id"
+  case "$round_status" in
+    open) ;; # allowed
+    complete) _rw_abort_and_die 1 "record-round-report: cannot record evidence on a complete round" ;;
+    superseded) _rw_abort_and_die 1 "record-round-report: cannot record evidence on a superseded round" ;;
+    *) _rw_abort_and_die 1 "record-round-report: unexpected round status: $round_status" ;;
+  esac
+
   local found
   found="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))] | length' "$tmp" 2>/dev/null)" || found="0"
   [ "$found" != "0" ] && [ "$found" != "null" ] || \
@@ -1956,6 +1996,7 @@ _rw_cmd_complete_round() {
   # Check predecessor and six-gate requirement.
   local round_idx
   round_idx="$(yq '[.rounds[].run_id] | to_entries | map(select(.value == strenv(_RW_RUN_ID))) | .[0].key' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to compute round index"
+  _rw_require_integer "$round_idx" "round index"
   if [ "$round_idx" != "0" ] && [ "$round_idx" != "null" ]; then
     local pred_idx=$(( round_idx - 1 ))
     local pred_sha
@@ -1991,6 +2032,7 @@ _rw_cmd_complete_round() {
   # Check each selected gate.
   local sel_count
   sel_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read selected_gates count"
+  _rw_require_integer "$sel_count" "selected_gates count"
   local si=0
   while [ "$si" -lt "$sel_count" ]; do
     local sg
@@ -2005,6 +2047,17 @@ _rw_cmd_complete_round() {
     fi
     [ -f "$sg_report" ] || { errors="${errors}gate $sg: report file missing: $sg_report; "; si=$((si + 1)); continue; }
 
+    # Re-hash the report and compare with the recorded SHA.
+    local sg_recorded_sha
+    sg_recorded_sha="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$si].report_sha256" "$tmp" 2>/dev/null)" || sg_recorded_sha=""
+    if [ -n "$sg_recorded_sha" ] && [ "$sg_recorded_sha" != "null" ] && [ "$sg_recorded_sha" != '""' ]; then
+      local sg_current_sha
+      sg_current_sha="$(_rw_file_sha256 "$sg_report")" || sg_current_sha=""
+      if [ "$sg_current_sha" != "$sg_recorded_sha" ]; then
+        errors="${errors}gate $sg: report edited after recording (SHA mismatch); "
+      fi
+    fi
+
     local latest_outcome
     latest_outcome="$(_rw_gate_latest_outcome "$tmp" "$run_id" "$sg")"
 
@@ -2017,6 +2070,7 @@ _rw_cmd_complete_round() {
   # Check each carried gate.
   local car_count
   car_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[]] | length' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "complete-round: failed to read carried_gates count"
+  _rw_require_integer "$car_count" "carried_gates count"
   local ci=0
   while [ "$ci" -lt "$car_count" ]; do
     local cg cg_from cg_rat
@@ -2164,7 +2218,34 @@ _rw_cmd_assert_round_complete() {
 
   case "$latest_status" in
     complete) exit 0 ;;
-    open) _rw_die 1 "latest round is not complete" ;;
+    open)
+      # Collect the names of unfinished gates so the caller knows what is missing.
+      local unfinished=""
+      local latest_run_id
+      latest_run_id="$(yq '.rounds[-1].run_id' "$reg_path" 2>/dev/null)" || latest_run_id=""
+      if [ -n "$latest_run_id" ] && [ "$latest_run_id" != "null" ]; then
+        export _RW_RUN_ID="$latest_run_id"
+        local _sg_count _sg_i=0
+        _sg_count="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[]] | length' "$reg_path" 2>/dev/null)" || _sg_count="0"
+        while [ "$_sg_i" -lt "$_sg_count" ] 2>/dev/null; do
+          local _sg_name _sg_rpt
+          _sg_name="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_sg_i].gate" "$reg_path" 2>/dev/null)" || _sg_name=""
+          _sg_rpt="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_sg_i].report_path" "$reg_path" 2>/dev/null)" || _sg_rpt=""
+          if [ -z "$_sg_rpt" ] || [ "$_sg_rpt" = "null" ] || [ "$_sg_rpt" = '""' ] || [ "$_sg_rpt" = "" ]; then
+            unfinished="${unfinished:+$unfinished, }$_sg_name (no report)"
+          elif [ ! -f "$_sg_rpt" ]; then
+            unfinished="${unfinished:+$unfinished, }$_sg_name (report missing)"
+          fi
+          _sg_i=$(( _sg_i + 1 ))
+        done
+        unset _RW_RUN_ID
+      fi
+      if [ -n "$unfinished" ]; then
+        _rw_die 1 "latest round is not complete; unfinished gates: $unfinished"
+      else
+        _rw_die 1 "latest round is not complete"
+      fi
+      ;;
     superseded) _rw_die 1 "latest round is superseded" ;;
     *) _rw_die 1 "unexpected round status: $latest_status" ;;
   esac
@@ -2336,6 +2417,7 @@ _rw_cmd_record_scope_revision() {
   # Compute current max seq.
   local max_seq
   max_seq="$(yq '[.gate_runs[].seq // 0] | max // 0' "$tmp" 2>/dev/null)" || _rw_abort_and_die 2 "record-scope-revision: failed to compute max seq"
+  _rw_require_integer "$max_seq" "gate_runs max seq"
 
   # Derive disposition.
   local disposition="" new_version=""
