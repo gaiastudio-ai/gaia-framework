@@ -264,6 +264,9 @@
 
         <h3>Slow prompt rendering</h3>
         <p>The statusline's hot path reads only local files and should complete in under 100 ms. If you observe delays, check disk I/O. The statusline performs zero network calls on the hot path.</p>
+
+        <h3>Stray <code>.gaia/memory/</code> directories in subdirectories</h3>
+        <p>Older versions of the statusline wrote the context-window snapshot under whichever directory the session's working directory happened to be, creating stray <code>.gaia/memory/.context-window-snapshot.json</code> files. The fix anchors the snapshot to the session's project root. After upgrading the plugin, run <code>/gaia-statusline-refresh</code> so the installed runtime picks up the fix. To detect existing stray files, run <code>/gaia-doctor</code> &mdash; it reports each stray path with a removal command but never deletes anything itself.</p>
       </section>
 
       <footer class="page-footer">

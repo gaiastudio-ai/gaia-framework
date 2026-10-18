@@ -35,6 +35,15 @@
 #   - $PROJECT_ROOT/.gaia/state/sprint-status.yaml                         (rich theme, yaml fallback only)
 #     Falls back to $PROJECT_PATH/docs/implementation-artifacts/sprint-status.yaml  (legacy read-compat)
 #
+# Snapshot root resolution (context-window snapshot):
+#   The snapshot is written to <snapshot_root>/.gaia/memory/, where
+#   snapshot_root is resolved independently of PROJECT_ROOT/PROJECT_PATH:
+#     1. Explicit PROJECT_ROOT env
+#     2. Explicit CLAUDE_PROJECT_ROOT env
+#     3. workspace.project_dir from stdin JSON (the session's launch dir)
+#     4. Computed PROJECT_ROOT (the current-dir / fallback chain)
+#   This prevents stray .gaia/memory/ trees when the session's CWD moves.
+#
 # POSIX discipline: bash 3.2 compatible (macOS default).
 
 set -uo pipefail
@@ -52,9 +61,22 @@ if [ -z "$PROJECT_PATH" ]; then
   PROJECT_PATH="$PWD"
 fi
 
+# Capture whether PROJECT_ROOT / CLAUDE_PROJECT_ROOT were explicitly set
+# BEFORE the fallback chain below overwrites them. Used by snapshot-root
+# resolution to distinguish "explicitly set" from "fell through to
+# PROJECT_PATH".
+_SL_EXPLICIT_ROOT="${PROJECT_ROOT:-}"
+_SL_EXPLICIT_CLAUDE_ROOT="${CLAUDE_PROJECT_ROOT:-}"
+
 # Canonical state-tree root for .gaia/ access.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
 
+# Snapshot root: where the context-window snapshot is written. Resolved
+# separately from PROJECT_ROOT so that a session whose CWD moves into a
+# subdirectory does not create stray .gaia/memory/ trees there.
+# Precedence: explicit PROJECT_ROOT env > CLAUDE_PROJECT_ROOT env >
+# workspace.project_dir (the session's launch directory) > computed
+# PROJECT_ROOT (which may track current_dir).
 # ---- Persist the context-window snapshot for dev-step token telemetry -------
 # statusline.sh is the ONLY component the Claude Code substrate hands the
 # `.context_window.current_usage` object to (via hook stdin). The dev-step
@@ -70,16 +92,45 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
 # arbitrary value text nor key-name text can ever reach the persisted file.
 # Best-effort: a null/absent current_usage or any jq failure leaves the prior
 # file untouched and never disrupts the statusline render.
+#
+# The same jq call that projects the snapshot also reads workspace.project_dir
+# (output on the second line), so no extra subprocess is needed for the
+# snapshot-root resolution.
 if command -v jq >/dev/null 2>&1; then
-  _CW_SNAPSHOT="$(printf '%s' "$INPUT" | jq -c '
-    .context_window.current_usage
-    | if type == "object" then
-        with_entries(select(.key as $k | ["input_tokens","output_tokens","cache_creation_input_tokens","cache_read_input_tokens"] | index($k)))
-        | if (length > 0) and ([.[] | type == "number"] | all) then . else empty end
-      else empty end
-  ' 2>/dev/null || printf '')"
-  if [ -n "$_CW_SNAPSHOT" ]; then
-    _CW_DIR="$PROJECT_ROOT/.gaia/memory"
+  # Single jq call: line 1 = snapshot JSON (or empty), line 2 = project_dir.
+  # Append a sentinel 'X' so command substitution does not strip trailing
+  # newlines when project_dir is empty (the second line would be blank).
+  _CW_COMBINED="$(printf '%s' "$INPUT" | jq -r '
+    (.context_window.current_usage
+     | if type == "object" then
+         with_entries(select(.key as $k | ["input_tokens","output_tokens","cache_creation_input_tokens","cache_read_input_tokens"] | index($k)))
+         | if (length > 0) and ([.[] | type == "number"] | all) then tojson else "" end
+       else "" end),
+    (.workspace.project_dir // "")
+  ' 2>/dev/null; printf 'X')"
+  _CW_COMBINED="${_CW_COMBINED%X}"
+  # Split the two-line output using bash builtins only (no head/sed subprocess).
+  _CW_SNAPSHOT="${_CW_COMBINED%%
+*}"
+  _SL_PROJECT_DIR="${_CW_COMBINED#*
+}"
+  # Strip trailing newline from project_dir if present.
+  _SL_PROJECT_DIR="${_SL_PROJECT_DIR%
+}"
+
+  # Resolve the snapshot root now that project_dir is known.
+  if [ -n "$_SL_EXPLICIT_ROOT" ]; then
+    _SNAPSHOT_ROOT="$_SL_EXPLICIT_ROOT"
+  elif [ -n "$_SL_EXPLICIT_CLAUDE_ROOT" ]; then
+    _SNAPSHOT_ROOT="$_SL_EXPLICIT_CLAUDE_ROOT"
+  elif [ -n "$_SL_PROJECT_DIR" ]; then
+    _SNAPSHOT_ROOT="$_SL_PROJECT_DIR"
+  else
+    _SNAPSHOT_ROOT="$PROJECT_ROOT"
+  fi
+
+  if [ -n "$_CW_SNAPSHOT" ] && [ -d "$_SNAPSHOT_ROOT/.gaia" ]; then
+    _CW_DIR="$_SNAPSHOT_ROOT/.gaia/memory"
     if mkdir -p "$_CW_DIR" 2>/dev/null; then
       # Atomic-ish write: tmpfile + mv so a concurrent reader never sees a
       # half-written file.

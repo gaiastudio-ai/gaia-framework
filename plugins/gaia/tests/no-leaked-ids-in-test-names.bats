@@ -79,18 +79,36 @@ _debt_paths=(
   "statusline"
 )
 
-# _is_debt_file PATH — true when PATH sits in a directory carrying tracked
-# naming debt. Paths are relative to the tests directory. Matching is on the
-# directory holding the file, so a new file dropped into a debt directory
-# would inherit the allowance; the file-count assertion below is what stops
-# that from becoming a loophole.
-_is_debt_file() {
+# _is_in_debt_dir PATH — true when PATH sits in a directory carrying tracked
+# naming debt. Used by the test-name gate to exempt debt directories from
+# the clean-name check (their test names are grandfathered).
+_is_in_debt_dir() {
   local rel="${1#"${BATS_TEST_DIRNAME}/"}"
   local d
   for d in "${_debt_paths[@]}"; do
     [[ "$rel" == "$d"/* ]] && return 0
   done
   return 1
+}
+
+# _has_leaked_content PATH — true when the file's @test names contain leaked
+# internal-ID patterns. The same id_shape and tech-token filter used by gate 1.
+# A file with all clean @test names returns false, even in a debt directory.
+_has_leaked_content() {
+  local file="$1"
+  local id_shape='[A-Z]{2,}-[0-9]|"\(?(AC[0-9]+|AC-EC[0-9]+|EC[0-9]+|AC-INT[0-9]+):|"[A-Z]{2,}(-[A-Z0-9]+)+:|[Ee][0-9]+-[Ss][0-9]+|"(adr|nfr|fr|sr)-[0-9]+:'
+  local hits
+  hits="$(grep -hoE '@test "[^"]*"' "$file" 2>/dev/null \
+    | grep -vE "$_tech_token_filter" \
+    | grep -E "$id_shape" || true)"
+  [[ -n "$hits" ]]
+}
+
+# _is_debt_file PATH — true when PATH is in a debt directory AND its @test
+# names carry leaked IDs. A clean-named file with clean @test names in a debt
+# directory is NOT debt and does not inflate the count.
+_is_debt_file() {
+  _is_in_debt_dir "$1" && _has_leaked_content "$1"
 }
 
 # Leaked-ID pattern for comment lines.  Same families as the test-name gate,
@@ -155,12 +173,12 @@ _scan_comments() {
   # A line that matches ONLY via such a token is not a leak.
   local id_shape='[A-Z]{2,}-[0-9]|"\(?(AC[0-9]+|AC-EC[0-9]+|EC[0-9]+|AC-INT[0-9]+):|"[A-Z]{2,}(-[A-Z0-9]+)+:|[Ee][0-9]+-[Ss][0-9]+|"(adr|nfr|fr|sr)-[0-9]+:'
 
-  # Files carrying tracked naming debt are scanned but not gated; every other
+  # Files in debt directories are scanned but not gated; every other
   # file — including any newly added one — is held to the clean standard.
   local -a scanned=()
   local t
   for t in "${targets[@]}"; do
-    _is_debt_file "$t" || scanned+=("$t")
+    _is_in_debt_dir "$t" || scanned+=("$t")
   done
   if [[ ${#scanned[@]} -eq 0 ]]; then
     return 0
@@ -181,11 +199,10 @@ _scan_comments() {
 }
 
 @test "the naming-debt allowance covers a fixed set of files that may only shrink" {
-  # The allowance is granted per directory, so on its own it would let a new
-  # file be dropped into one of those directories and inherit the exemption.
-  # Pinning the count closes that: adding a file to a debt directory fails
-  # here until the count is updated deliberately, and the number may only be
-  # revised downward as files are renamed and directories leave the list.
+  # The counter counts files in debt directories whose @test names actually
+  # contain leaked internal IDs. A new file with clean @test names does not
+  # inflate the count, even in a debt directory. The number may only be
+  # revised downward as files' test names are rewritten in plain language.
   local -a targets
   _build_target_list
 
@@ -194,7 +211,7 @@ _scan_comments() {
     _is_debt_file "$t" && n=$((n + 1))
   done
 
-  local expected=67
+  local expected=52
   if [[ "$n" -ne "$expected" ]]; then
     printf 'naming-debt file count is %s, expected %s.\n' "$n" "$expected" >&2
     printf 'If a file was renamed to plain language, lower the expected count.\n' >&2

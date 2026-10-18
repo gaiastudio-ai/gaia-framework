@@ -31,7 +31,7 @@ The skill is read-only by default. The optional `--install` flag dispatches per-
 - The readiness registry is a bundled data file (`knowledge/tool-readiness.json`) — single source of truth. Do NOT re-implement tool-detection inline in prose.
 - Output format is stable. Two present-states per tool: `✓ present` | `✗ missing`. Two non-tool states: `– not-applicable` (no matching stack) | `⚠ environment warning` (e.g., bash 3.2).
 - Scan-tier verdict computed from registry + present state. Tier 0 is always achievable; Tier 1 requires every tool tagged `tier: 1`; Tier 2 requires every tool tagged `tier: 2`.
-- Never write to project files. Never modify `.gaia/config/project-config.yaml`. The skill probes the host environment, not the project tree.
+- Never write to project files. Never modify `.gaia/config/project-config.yaml`. The skill probes the host environment and the project tree (read-only). Read-only project-tree probes (such as the stray-snapshot scan) may be added without further rule changes; they must never create, modify, or delete project files.
 
 ## Arguments
 
@@ -86,6 +86,10 @@ If `--install` was supplied, for each MISSING applicable tool:
 - On completion, re-run the probe pass to confirm.
 
 If `--install` was NOT supplied: emit the install plan as copy-pasteable shell (one `# tool` comment + the command line per missing tool, grouped by package manager).
+
+### Step 6 — Stray snapshot scan
+
+Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the `--json` flag was passed to the doctor). The script scans the project tree for context-window snapshot files that were created outside the canonical `<root>/.gaia/memory/` location by an older statusline that followed the session's working directory. It reports each stray path with a removal command using the `environment warning` state. It never deletes anything. When `--json` is passed, the output is merged into the document `check-tools.sh` renders as a `stray_snapshots` object carrying a `paths` array of relative paths and a `count`.
 
 ## Finalize
 
