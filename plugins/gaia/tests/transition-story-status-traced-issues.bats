@@ -615,7 +615,11 @@ EOF
   # Create a local branch matching the story-key convention so the
   # branch-based search finds it before falling back to body search.
   # A commit is needed for the ref to be visible via for-each-ref.
-  (cd "$TEST_TMP" && git add -A && git commit -q --allow-empty -m "init" && \
+  # Configure user identity for CI environments where it is unset.
+  (cd "$TEST_TMP" && \
+   git config user.email "test@test" && \
+   git config user.name "test" && \
+   git commit -q --allow-empty -m "init" && \
    git checkout -q -b feat/E900-S1-traced-issue-fixture 2>/dev/null) || true
 
   # gh stub that logs args and returns a PR number only for --head queries
