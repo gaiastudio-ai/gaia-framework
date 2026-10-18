@@ -496,8 +496,10 @@ main() {
   # Output: PASS/FAIL/WARN lines on stdout; STDERR lines prefixed with
   #         "STDERR:" so the shell can route them.
   # -------------------------------------------------------------------
+  # _IC_GRAPH_AWK: test seam — override the awk command for graph analysis.
+  local graph_awk="${_IC_GRAPH_AWK:-awk}"
   local awk_result awk_rc
-  awk_result="$(awk -F'\t' \
+  awk_result="$($graph_awk -F'\t' \
     -v candidate="$_IC_CANDIDATE" \
     -v active_list="$active_csv" \
   '
@@ -731,10 +733,19 @@ main() {
 
       exit exit_code
     }
-  ' "$membership" "$adj_f" "$directed_f" "$epics_f" "$catch_all_f" 2>/dev/null)" || true
-  # Determine exit code from the STDERR: prefix lines that awk emits on failure.
-  awk_rc=0
-  case "$awk_result" in *"STDERR:"*) awk_rc=1 ;; esac
+  ' "$membership" "$adj_f" "$directed_f" "$epics_f" "$catch_all_f" \
+    2>/dev/null)" && awk_rc=0 || awk_rc=$?
+
+  # If awk crashed or exited non-zero without emitting STDERR: markers,
+  # fail closed — never silently pass on an internal error.
+  if [ "$awk_rc" -ne 0 ]; then
+    case "$awk_result" in
+      *"STDERR:"*) ;; # awk signalled a rule failure — handled below
+      *)
+        _ic_die "unable to read dependency structure"
+        ;;
+    esac
+  fi
 
   # Route awk output: lines starting with "STDERR:" go to stderr (without prefix),
   # all other lines go to stdout.

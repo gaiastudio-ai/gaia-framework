@@ -235,8 +235,8 @@ set_catch_all_inline() {
   run bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASS rules (a),(b):"* ]]
-  # No rule (b) diagnostic on stderr.
-  [ -z "${lines[*]##*FAIL rule*}" ] || true
+  # No rule (b) failure in stdout.
+  [[ "$output" != *"FAIL rule (b):"* ]]
 }
 
 # 5.4 sub-case — catch-all epic but depends_on edge triggers rule (a)
@@ -659,4 +659,135 @@ SHARD
   run bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900
   [ "$status" -eq 1 ]
   [[ "$output" == *'FAIL indeterminate: missing epic:'* ]]
+}
+
+# ========================================================================
+# Stderr contract tests (fix pass 1, item 1)
+# ========================================================================
+
+# Stderr: rule (a) failure appears on stderr
+@test "rule (a) failure appears on stderr" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901 "E900-S1"
+  create_story E900-S1 E900
+
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >/dev/null 2>"$stderr_f" || true
+  /usr/bin/grep -q 'FAIL rule (a):' "$stderr_f"
+}
+
+# Stderr: rule (b) failure appears on stderr
+@test "rule (b) failure appears on stderr" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E900
+  create_story E900-S1 E900
+
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >/dev/null 2>"$stderr_f" || true
+  /usr/bin/grep -q 'FAIL rule (b):' "$stderr_f"
+}
+
+# Stderr: fail-closed diagnostic appears on both stdout and stderr
+@test "fail-closed diagnostic appears on stdout and stderr" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E900-S1 E900
+  create_story_no_epic E901-S1
+
+  local stdout_f="$TEST_DIR/stdout.txt"
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >"$stdout_f" 2>"$stderr_f" || true
+  /usr/bin/grep -q 'FAIL indeterminate:' "$stdout_f"
+  /usr/bin/grep -q 'FAIL indeterminate:' "$stderr_f"
+}
+
+# Stderr: pass case produces empty stderr
+@test "pass case produces empty stderr" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901
+  create_story E900-S1 E900
+
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >/dev/null 2>"$stderr_f"
+  [ ! -s "$stderr_f" ]
+}
+
+# Stderr: catch-all exempted pass produces empty stderr
+@test "catch-all exempted pass produces empty stderr" {
+  set_catch_all_inline E928 "Bugs and Enhancements"
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E928
+  create_story E900-S1 E928
+
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >/dev/null 2>"$stderr_f"
+  [ ! -s "$stderr_f" ]
+}
+
+# Stderr: unreachable cycle warning goes to stdout only, stderr empty
+@test "unreachable cycle warning keeps stderr empty" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1 E900-S2
+  create_story E901-S1 E901
+  create_story E900-S1 E900 "E900-S2"
+  create_story E900-S2 E900 "E900-S1"
+
+  local stdout_f="$TEST_DIR/stdout.txt"
+  local stderr_f="$TEST_DIR/stderr.txt"
+  bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900 \
+    >"$stdout_f" 2>"$stderr_f"
+  /usr/bin/grep -q 'WARN cycle (unreachable from candidate):' "$stdout_f"
+  [ ! -s "$stderr_f" ]
+}
+
+# ========================================================================
+# Awk crash fail-closed test (fix pass 1, item 2)
+# ========================================================================
+
+@test "awk crash fails closed instead of passing" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901
+  create_story E900-S1 E900
+
+  # Create a stub that exits non-zero without emitting STDERR: markers.
+  local stub="$TEST_DIR/bad-awk"
+  printf '#!/bin/sh\nexit 2\n' > "$stub"
+  chmod +x "$stub"
+
+  # Use the _IC_GRAPH_AWK test seam to inject the failing command
+  # into the graph-analysis awk call only.
+  run env _IC_GRAPH_AWK="$stub" bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-900
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL indeterminate:"* ]]
+}
+
+# ========================================================================
+# Cycle detection via blocks edge (fix pass 1, item 3)
+# ========================================================================
+
+@test "cycle through blocks edge is detected" {
+  # A depends_on B, A blocks B — the blocks edge normalises to
+  # B depends_on A, creating a cycle on the directed graph.
+  create_sprint sprint-901 active E901-S1 E901-S2
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901 "E901-S2" "E901-S2"
+  create_story E901-S2 E901
+  create_story E900-S1 E900
+
+  run bash "$IC_SCRIPT" --candidate sprint-901 --active sprint-900
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL indeterminate: cycle detected:"* ]]
+  [[ "$output" == *"E901-S1"* ]]
+  [[ "$output" == *"E901-S2"* ]]
 }
