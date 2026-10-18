@@ -49,12 +49,16 @@ _rw_require_tool() {
   command -v "$1" >/dev/null 2>&1 || _rw_die 1 "$1 is required but not on PATH"
 }
 
-# Guard: require value to be a non-negative integer (digits only).
+# Guard: require value to be a non-negative integer (digits only, no leading
+# zeros except bare "0").
 # Usage: _rw_require_integer <value> <context>
-# Dies with exit code 2 when the value is empty or contains non-digit chars.
+# Dies with exit code 2 when the value is empty, contains non-digit chars,
+# or has a leading zero (which bash would interpret as octal).
 _rw_require_integer() {
   case "$1" in
     ''|*[!0-9]*) _rw_die 2 "expected integer but got '$1' ($2)" ;;
+    0) ;; # bare zero is fine
+    0*) _rw_die 2 "expected integer but got '$1' ($2) (leading zero)" ;;
   esac
 }
 
@@ -228,25 +232,18 @@ _rw_validate_structure() {
   esac
 
   # Validate that every gate_runs[].seq is a genuine integer when present.
-  # Check both the YAML tag (must be !!int) AND the string value (digits only),
-  # because an explicit !!int tag on a non-numeric string passes the type check.
+  # Check both the YAML tag (must be !!int) AND the string value (must be a
+  # canonical non-negative integer: bare "0" or a digit sequence with no
+  # leading zero).  An explicit !!int tag on hex, octal, negative,
+  # underscored or arbitrary strings passes a type-only check, and a leading
+  # zero ("009", "010") would be misread as octal by bash.  A single yq
+  # expression catches all of these.
   local bad_seq
-  bad_seq="$(yq '[.gate_runs[] | select(.seq != null) | .seq | type] | map(select(. != "!!int")) | length' "$path" 2>/dev/null)" || bad_seq="__err"
+  bad_seq="$(yq '[.gate_runs[] | select(.seq != null) | select((.seq | type) != "!!int" or ((.seq | tostring | test("^(0|[1-9][0-9]*)$")) | not))] | length' "$path" 2>/dev/null)" || bad_seq="__err"
   case "$bad_seq" in
-    0) ;; # all integers or no seq fields
+    0) ;; # all seq fields are valid integers
     *)
       _rw_err "structural validation failed (non-integer seq in gate_runs): $path"
-      exit 2 ;;
-  esac
-  # Value-level check: the string representation of every seq must be digits
-  # only.  An explicit !!int tag on hex, octal, negative, underscored or
-  # arbitrary strings passes the type check above; this catches them all.
-  local bad_seq_val
-  bad_seq_val="$(yq '[.gate_runs[] | select(.seq != null) | select((.seq | tostring | test("^[0-9]+$")) | not)] | length' "$path" 2>/dev/null)" || bad_seq_val="__err"
-  case "$bad_seq_val" in
-    0) ;; # all values are digit-only integers
-    *)
-      _rw_err "structural validation failed (non-integer seq value in gate_runs): $path"
       exit 2 ;;
   esac
 
@@ -1935,11 +1932,13 @@ _rw_cmd_record_round_report() {
   [ "$found" != "0" ] && [ "$found" != "null" ] || \
     _rw_abort_and_die 1 "record-round-report: gate $gate not found in round $run_id"
 
-  # Cross-round reuse guard: refuse when the report path OR its SHA-256 is
-  # already recorded on a selected gate of ANY other round.  A carry with an
-  # applicability rationale is the sanctioned path for cross-round reuse.
+  # Cross-round reuse guard: refuse when the report SHA-256 matches evidence
+  # already recorded on a selected gate of ANY other round.  Path reuse is
+  # normal (review skills overwrite the same canonical path each round), so
+  # only identical content is blocked.  A carry with an applicability
+  # rationale is the sanctioned path for cross-round reuse.
   local _dup_count
-  _dup_count="$(yq '[.rounds[] | select(.run_id != strenv(_RW_RUN_ID)).selected_gates[] | select((.report_path == strenv(_RW_RPATH) and .report_path != "" and .report_path != null) or (.report_sha256 == strenv(_RW_RHASH) and .report_sha256 != "" and .report_sha256 != null))] | length' "$tmp")" || _rw_abort_and_die 2 "record-round-report: failed to check cross-round reuse"
+  _dup_count="$(yq '[.rounds[] | select(.run_id != strenv(_RW_RUN_ID)).selected_gates[] | select(.report_sha256 == strenv(_RW_RHASH) and .report_sha256 != "" and .report_sha256 != null)] | length' "$tmp")" || _rw_abort_and_die 2 "record-round-report: failed to check cross-round reuse"
   if [ "$_dup_count" != "0" ] && [ "$_dup_count" != "null" ]; then
     _rw_abort_and_die 1 "record-round-report: report already recorded on another round; use a carry with applicability rationale for cross-round reuse"
   fi
