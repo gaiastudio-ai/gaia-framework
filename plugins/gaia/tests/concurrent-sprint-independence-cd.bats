@@ -152,7 +152,7 @@ create_story_no_ts() {
   create_sprint "sprint-900" "active" "E900-S1"
   create_sprint "sprint-903" "planned" "E903-S1"
   create_story_no_ts "E900-S1" "E900"
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/some-file.sh"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/some-file.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ]
@@ -379,7 +379,7 @@ create_story_no_ts() {
   create_sprint "sprint-900" "active" "E900-S1"
   create_sprint "sprint-903" "planned" "E903-S1"
   create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["nonexistent-dir/*.sh", "gaia-public/plugins/gaia/scripts/new-script.sh"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["nonexistent-dir/*.sh", "gaia-public/plugins/gaia/hooks/new-hook.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 0 ]
@@ -436,7 +436,7 @@ SHIM
   create_sprint "sprint-900" "active" "E900-S1"
   create_sprint "sprint-903" "planned" "E903-S1"
   create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/new-script.sh"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/new-hook.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 0 ]
