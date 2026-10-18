@@ -217,6 +217,63 @@ YAML
   assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
 }
 
+@test "git check-ignore uses PROJECT_ROOT repo when CWD is inside a different repo" {
+  # CWD is inside a SECOND git repo whose .gitignore does NOT cover the
+  # pattern. PROJECT_ROOT points at the REAL repo whose .gitignore does.
+  # Without -C on rev-parse, rev-parse succeeds in the wrong repo.
+  # Without -C on check-ignore, check-ignore reads the wrong .gitignore.
+  mkdir -p "$TMPDIR_TEST/real-repo" "$TMPDIR_TEST/other-repo"
+  cd "$TMPDIR_TEST/real-repo"
+  git init -q .
+  printf '.gaia/memory/\n' > .gitignore
+
+  cd "$TMPDIR_TEST/other-repo"
+  git init -q .
+  printf '*.log\n' > .gitignore
+
+  export PROJECT_ROOT="$TMPDIR_TEST/real-repo"
+  source "$HELPER"
+  cd "$TMPDIR_TEST/other-repo"
+  assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
+}
+
+@test "rev-parse anchored to non-git PROJECT_ROOT when CWD is in a git repo" {
+  # PROJECT_ROOT is NOT a git repo (the documented GAIA project layout)
+  # but holds a .gitignore. CWD is inside a separate git repo.
+  # Without -C on rev-parse, rev-parse succeeds (CWD is in a repo),
+  # then check-ignore -C runs against the non-git PROJECT_ROOT and fails
+  # (fatal: not a git repository) causing a false HALT.
+  # With -C on rev-parse, rev-parse sees PROJECT_ROOT is not a repo,
+  # falls to the non-git fallback, and finds the .gitignore there.
+  mkdir -p "$TMPDIR_TEST/non-git-project" "$TMPDIR_TEST/some-repo"
+  printf '.gaia/memory/\n' > "$TMPDIR_TEST/non-git-project/.gitignore"
+
+  cd "$TMPDIR_TEST/some-repo"
+  git init -q .
+  printf '*.log\n' > .gitignore
+
+  export PROJECT_ROOT="$TMPDIR_TEST/non-git-project"
+  source "$HELPER"
+  cd "$TMPDIR_TEST/some-repo"
+  assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
+}
+
+# --- Non-git fallback CWD isolation ---
+
+@test "non-git fallback finds gitignore at PROJECT_ROOT when CWD differs" {
+  # PROJECT_ROOT holds the .gitignore; CWD is a completely different
+  # non-git directory with no .gitignore at all.  Without the
+  # PROJECT_ROOT-anchored search, the function walks up from CWD and
+  # never finds a .gitignore.
+  mkdir -p "$TMPDIR_TEST/project-root" "$TMPDIR_TEST/unrelated-dir"
+  printf '.gaia/memory/\n' > "$TMPDIR_TEST/project-root/.gitignore"
+
+  export PROJECT_ROOT="$TMPDIR_TEST/project-root"
+  source "$HELPER"
+  cd "$TMPDIR_TEST/unrelated-dir"
+  assert_gitignored ".gaia/memory/checkpoints/sprint-review-"
+}
+
 # --- Probe-suffix mutant (AC3) ---
 
 @test "probe-suffix mutant is killed -- removing probe suffix changes git check-ignore result" {
