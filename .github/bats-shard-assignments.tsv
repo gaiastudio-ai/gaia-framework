@@ -805,3 +805,4 @@
 1	concurrent-sprint-merge.bats	33
 3	transition-story-status-untriaged-findings.bats	18
 1	concurrent-sprint-state.bats	52
+4	concurrent-sprint-binding.bats	53
