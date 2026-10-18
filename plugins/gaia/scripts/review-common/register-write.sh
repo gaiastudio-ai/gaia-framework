@@ -227,13 +227,26 @@ _rw_validate_structure() {
       exit 2 ;;
   esac
 
-  # Validate that every gate_runs[].seq is an integer when present.
+  # Validate that every gate_runs[].seq is a genuine integer when present.
+  # Check both the YAML tag (must be !!int) AND the string value (digits only),
+  # because an explicit !!int tag on a non-numeric string passes the type check.
   local bad_seq
   bad_seq="$(yq '[.gate_runs[] | select(.seq != null) | .seq | type] | map(select(. != "!!int")) | length' "$path" 2>/dev/null)" || bad_seq="__err"
   case "$bad_seq" in
     0) ;; # all integers or no seq fields
     *)
       _rw_err "structural validation failed (non-integer seq in gate_runs): $path"
+      exit 2 ;;
+  esac
+  # Value-level check: the string representation of every seq must be digits
+  # only.  An explicit !!int tag on hex, octal, negative, underscored or
+  # arbitrary strings passes the type check above; this catches them all.
+  local bad_seq_val
+  bad_seq_val="$(yq '[.gate_runs[] | select(.seq != null) | select((.seq | tostring | test("^[0-9]+$")) | not)] | length' "$path" 2>/dev/null)" || bad_seq_val="__err"
+  case "$bad_seq_val" in
+    0) ;; # all values are digit-only integers
+    *)
+      _rw_err "structural validation failed (non-integer seq value in gate_runs): $path"
       exit 2 ;;
   esac
 
@@ -411,8 +424,10 @@ _rw_collect_gate_errors() {
 
     # Re-hash the report and compare with the recorded SHA.
     local _cge_sg_rec_sha
-    _cge_sg_rec_sha="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_cge_si].report_sha256" "$_cge_file" 2>/dev/null)" || _cge_sg_rec_sha=""
-    if [ -n "$_cge_sg_rec_sha" ] && [ "$_cge_sg_rec_sha" != "null" ] && [ "$_cge_sg_rec_sha" != '""' ]; then
+    _cge_sg_rec_sha="$(yq "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[$_cge_si].report_sha256" "$_cge_file" 2>/dev/null)" || _rw_die 2 "gate check: failed to read report SHA for gate $_cge_sg"
+    if [ -z "$_cge_sg_rec_sha" ] || [ "$_cge_sg_rec_sha" = "null" ] || [ "$_cge_sg_rec_sha" = '""' ]; then
+      _cge_errors="${_cge_errors}gate $_cge_sg: report recorded without SHA; "
+    else
       local _cge_sg_cur_sha
       _cge_sg_cur_sha="$(_rw_file_sha256 "$_cge_sg_report")" || _cge_sg_cur_sha=""
       if [ "$_cge_sg_cur_sha" != "$_cge_sg_rec_sha" ]; then
@@ -421,7 +436,7 @@ _rw_collect_gate_errors() {
     fi
 
     local _cge_outcome
-    _cge_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_run_id" "$_cge_sg")"
+    _cge_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_run_id" "$_cge_sg")" || _rw_die 2 "gate check: failed to read gate outcome for $_cge_sg"
     if [ "$_cge_outcome" != "completed" ]; then
       _cge_errors="${_cge_errors}gate $_cge_sg: not completed (outcome: ${_cge_outcome:-none}); "
     fi
@@ -468,7 +483,7 @@ _rw_collect_gate_errors() {
       _cge_in_hop_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$_cge_file" 2>/dev/null)" || _cge_in_hop_sel="0"
       if [ "$_cge_in_hop_sel" != "0" ] && [ "$_cge_in_hop_sel" != "null" ]; then
         local _cge_hop_outcome
-        _cge_hop_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_hop_run" "$_cge_hop_gate")"
+        _cge_hop_outcome="$(_rw_gate_latest_outcome "$_cge_file" "$_cge_hop_run" "$_cge_hop_gate")" || _rw_die 2 "gate check: failed to read carried gate outcome for $_cge_hop_gate"
         if [ "$_cge_hop_outcome" != "completed" ]; then
           _cge_errors="${_cge_errors}carried gate $_cge_cg: not completed at terminal run $_cge_hop_run; "
         fi
@@ -1919,6 +1934,15 @@ _rw_cmd_record_round_report() {
   found="$(yq '[.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))] | length' "$tmp" 2>/dev/null)" || found="0"
   [ "$found" != "0" ] && [ "$found" != "null" ] || \
     _rw_abort_and_die 1 "record-round-report: gate $gate not found in round $run_id"
+
+  # Cross-round reuse guard: refuse when the report path OR its SHA-256 is
+  # already recorded on a selected gate of ANY other round.  A carry with an
+  # applicability rationale is the sanctioned path for cross-round reuse.
+  local _dup_count
+  _dup_count="$(yq '[.rounds[] | select(.run_id != strenv(_RW_RUN_ID)).selected_gates[] | select((.report_path == strenv(_RW_RPATH) and .report_path != "" and .report_path != null) or (.report_sha256 == strenv(_RW_RHASH) and .report_sha256 != "" and .report_sha256 != null))] | length' "$tmp")" || _rw_abort_and_die 2 "record-round-report: failed to check cross-round reuse"
+  if [ "$_dup_count" != "0" ] && [ "$_dup_count" != "null" ]; then
+    _rw_abort_and_die 1 "record-round-report: report already recorded on another round; use a carry with applicability rationale for cross-round reuse"
+  fi
 
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH)' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
 
