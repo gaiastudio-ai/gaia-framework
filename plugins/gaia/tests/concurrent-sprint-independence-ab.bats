@@ -791,3 +791,55 @@ SHARD
   [[ "$output" == *"E901-S1"* ]]
   [[ "$output" == *"E901-S2"* ]]
 }
+
+# ========================================================================
+# Zero-exit truncation guard (fix pass 2)
+# ========================================================================
+
+# Graph awk exits 0 with no output — must fail closed
+@test "graph awk returning empty output on zero exit fails closed" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  # Shared non-catch-all epic — would be a rule (b) FAIL under normal awk.
+  create_story E901-S1 E900
+  create_story E900-S1 E900
+
+  local stdout_f="$TEST_DIR/stdout.txt"
+  local stderr_f="$TEST_DIR/stderr.txt"
+  # /usr/bin/true exits 0 with no output.
+  env _IC_GRAPH_AWK=/usr/bin/true bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-900 \
+    >"$stdout_f" 2>"$stderr_f" || true
+
+  /usr/bin/grep -q 'FAIL indeterminate: incomplete independence result' "$stdout_f"
+  /usr/bin/grep -q 'FAIL indeterminate: incomplete independence result' "$stderr_f"
+
+  # Also verify exit code.
+  run env _IC_GRAPH_AWK=/usr/bin/true bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-900
+  [ "$status" -eq 1 ]
+}
+
+# Graph awk emits verdict for one active sprint but not the other — must fail closed
+@test "partial verdict covering only one of two active sprints fails closed" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-900 active E900-S1
+  create_sprint sprint-902 active E902-S1
+  create_story E901-S1 E901
+  create_story E900-S1 E900
+  create_story E902-S1 E902
+
+  # Stub emits a PASS line for sprint-900 only, omits sprint-902.
+  local stub="$TEST_DIR/partial-awk"
+  cat > "$stub" <<'STUB'
+#!/bin/sh
+echo "PASS rules (a),(b): sprint-901 vs sprint-900"
+exit 0
+STUB
+  chmod +x "$stub"
+
+  run env _IC_GRAPH_AWK="$stub" bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-900,sprint-902
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL indeterminate: incomplete independence result"* ]]
+}

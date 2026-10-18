@@ -496,7 +496,7 @@ main() {
   # Output: PASS/FAIL/WARN lines on stdout; STDERR lines prefixed with
   #         "STDERR:" so the shell can route them.
   # -------------------------------------------------------------------
-  # _IC_GRAPH_AWK: test seam — override the awk command for graph analysis.
+  # _IC_GRAPH_AWK: test-only override for the graph-analysis awk command.
   local graph_awk="${_IC_GRAPH_AWK:-awk}"
   local awk_result awk_rc
   awk_result="$($graph_awk -F'\t' \
@@ -745,6 +745,25 @@ main() {
         _ic_die "unable to read dependency structure"
         ;;
     esac
+  fi
+
+  # Validate the zero-exit path: every candidate-vs-active comparison must
+  # have produced at least one verdict line (PASS or FAIL). A truncated or
+  # empty result from the graph analysis silently passes activation without
+  # this guard.
+  if [ "$awk_rc" -eq 0 ]; then
+    local expected_id
+    while IFS= read -r expected_id; do
+      [ -n "$expected_id" ] || continue
+      # Each active sprint must appear in a PASS or FAIL verdict line.
+      case "$awk_result" in
+        *"PASS rules (a),(b): ${_IC_CANDIDATE} vs ${expected_id}"*) ;;
+        *"FAIL rule"*"${_IC_CANDIDATE}"*"${expected_id}"*) ;;
+        *)
+          _ic_die "incomplete independence result"
+          ;;
+      esac
+    done <<< "$active_ids"
   fi
 
   # Route awk output: lines starting with "STDERR:" go to stderr (without prefix),
