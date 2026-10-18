@@ -51,6 +51,10 @@ export LC_ALL
 SCRIPT_NAME="lifecycle-event.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source the shared lock library for concurrency serialization.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/acquire-lock.sh"
+
 # ---------- Helpers ----------
 
 die() {
@@ -272,35 +276,12 @@ line=$(jq -nc \
 # ---------- Atomic append under lock ----------
 
 lockfile="${JSONL}.lock"
-flock_bin=$(command -v flock || true)
 
-append_line() {
-  # Single printf write(2) inside the lock — atomic for lines under PIPE_BUF.
-  printf '%s\n' "$line" >> "$JSONL"
-}
-
-if [ -n "$flock_bin" ]; then
-  (
-    exec 9>"$lockfile"
-    if ! "$flock_bin" -x -w 1 9; then
-      die "flock timeout acquiring $lockfile"
-    fi
-    append_line
-  )
-else
-  # mv-based spin-loop fallback (same pattern as checkpoint.sh).
-  # `set -C` + `: > file` is an atomic exclusive-create on POSIX filesystems.
-  tries=0
-  while ! ( set -C; : > "$lockfile" ) 2>/dev/null; do
-    tries=$((tries + 1))
-    [ "$tries" -ge 50 ] && die "lock timeout acquiring $lockfile"
-    sleep 0.1 2>/dev/null || sleep 1
-  done
-  # shellcheck disable=SC2064
-  trap "rm -f '$lockfile'" EXIT
-  append_line
-  rm -f "$lockfile"
-  trap - EXIT
+if ! acquire_lock "$lockfile" 1 9; then
+  die "lock timeout acquiring $lockfile"
 fi
+# Single printf write(2) inside the lock — atomic for lines under PIPE_BUF.
+printf '%s\n' "$line" >> "$JSONL"
+release_lock 9
 
 exit 0

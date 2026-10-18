@@ -90,8 +90,19 @@
 #     "acquire <path> <epoch>", "release <path> <epoch>" and
 #     "tmp <temp-path> <epoch>" lines, plus raw backoff sleep_ms values
 #     (one bare integer per line) used by the jitter-divergence tests.
+#
+# Test-only function hooks (not env vars, not user-facing):
+#   _al_pre_link_hook <lock_path> — called between the type gate and the
+#     hard-link step in the fallback path. Lets tests swap a directory into
+#     the lock path to prove the post-link publication check catches it.
+#   _al_identity_hook <lock_path> <fd> — called during the strict-mode
+#     post-lock identity re-check. Lets tests inject a deterministic
+#     mismatch.
 
-set -euo pipefail
+# Sourcing contract: this library DOES NOT alter the caller's shell options.
+# Every public function sets its own errexit/pipefail internally via subshell
+# or local save/restore.  LC_ALL=C is exported for deterministic sorting but
+# does not affect option flags.
 LC_ALL=C; export LC_ALL
 
 # --- Source-time probes (environment only, no project paths) ---
@@ -127,6 +138,27 @@ export GAIA_LOCK_L5_TIMEOUT=2
 export ACQUIRE_LOCK_EXIT_TIMEOUT=3
 export ACQUIRE_LOCK_EXIT_SYMLINK=4
 export ACQUIRE_LOCK_EXIT_IDENTITY=5
+
+# --- Internal: shell-option save/restore (Bash 3.2 compatible) ---
+#
+# Each public function calls _al_save_opts on entry and _al_restore_opts on
+# every return path, so the library never leaks errexit or pipefail into the
+# sourcing shell.  The _al_saved_* variables are per-call (single-threaded
+# bash), not per-nesting-level, which is safe because the only public entry
+# points (acquire_lock, release_lock, require_flock_for_parallel, and the
+# two predicates) never call each other.
+
+_al_save_opts() {
+  _al_saved_errexit=0; case "$-" in *e*) _al_saved_errexit=1 ;; esac
+  _al_saved_pipefail=0
+  if set -o | grep -q 'pipefail.*on' 2>/dev/null; then _al_saved_pipefail=1; fi
+  set -euo pipefail
+}
+
+_al_restore_opts() {
+  [ "$_al_saved_errexit" = "1" ]  || set +e
+  [ "$_al_saved_pipefail" = "1" ] || set +o pipefail
+}
 
 # --- Internal: per-fd registry (Bash 3.2 compatible via indirect vars) ---
 # Each fd gets two variables: _AL_PATH_<fd> and _AL_MODE_<fd>.
@@ -457,10 +489,25 @@ _al_try_reap() {
 # --- Public: acquire_lock <lock_file> <timeout_seconds> <fd_number> [--strict] ---
 
 acquire_lock() {
+  _al_save_opts
+  local _al_rc=0
+  _al_acquire_impl "$@" || _al_rc=$?
+  _al_restore_opts
+  return "$_al_rc"
+}
+
+_al_acquire_impl() {
   local lock_file="$1" timeout="$2" fd="$3"
   local _al_strict=0
   if [ "${4:-}" = "--strict" ]; then
     _al_strict=1
+  fi
+
+  # When parallel execution is active, flock is mandatory at every locking
+  # entry point — not only in sprint-state.sh. The gate is inside acquire_lock
+  # itself so no caller can bypass it.
+  if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
+    _al_require_flock_impl || return $?
   fi
 
   # Harden mkdir: emit a diagnostic naming the directory and return
@@ -501,7 +548,9 @@ acquire_lock() {
     if [ "$_al_strict" = "0" ]; then
       _al_enforce_path_type "$lock_file" || return 1
     fi
-    ( set -C; : > "$lock_file" ) 2>/dev/null || true
+    # Create the lock file with restrictive permissions (0600 via umask 077).
+    # The subshell isolates the umask change from the caller.
+    ( umask 077; set -C; : > "$lock_file" ) 2>/dev/null || true
     if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
       printf 'acquire-lock: permission denied opening lock file: %s\n' \
         "$lock_file" >&2
@@ -608,6 +657,13 @@ acquire_lock() {
       fi
     fi
 
+    # Test-only hook: fires between the type gate and the link step so
+    # tests can swap a directory into the lock path and prove the post-link
+    # publication check catches it. Not a user-facing surface.
+    if declare -F _al_pre_link_hook >/dev/null 2>&1; then
+      _al_pre_link_hook "$lock_file"
+    fi
+
     # Atomic create-with-content: write to a temp file, then hard-link.
     # ln fails atomically if the target already exists (EEXIST).
     # The temp name must be unique per ACQUIRER, not per process: bash
@@ -628,12 +684,18 @@ acquire_lock() {
     # itself, not just printf's own stderr: an unwritable lock directory
     # otherwise leaks a raw `line NNN: <temp path>: Permission denied`
     # next to this script's curated diagnostics.
+    # Create the temp file with restrictive permissions (0600 via umask 077).
+    local _al_prev_umask
+    _al_prev_umask="$(umask)"
+    umask 077
     if ! { printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock"; } 2>/dev/null; then
+      umask "$_al_prev_umask"
       rm -f "$tmp_lock" 2>/dev/null || true
       _al_trace "create-failed" "$tmp_lock"
       printf 'acquire-lock: cannot create a lock file under %s\n' "$lock_dir" >&2
       return 1
     fi
+    umask "$_al_prev_umask"
     if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
       # ln succeeding is NOT proof the lock was published at the intended
       # path: if the path is a directory the link landed INSIDE it, and
@@ -709,6 +771,14 @@ acquire_lock() {
 # --- Public: release_lock <fd_number> ---
 
 release_lock() {
+  _al_save_opts
+  local _al_rc=0
+  _al_release_impl "$@" || _al_rc=$?
+  _al_restore_opts
+  return "$_al_rc"
+}
+
+_al_release_impl() {
   local fd="$1"
   local lf
   lf="$(_al_get_path "$fd")"
@@ -745,6 +815,14 @@ release_lock() {
 # --- Public: require_flock_for_parallel ---
 
 require_flock_for_parallel() {
+  _al_save_opts
+  local _al_rc=0
+  _al_require_flock_impl || _al_rc=$?
+  _al_restore_opts
+  return "$_al_rc"
+}
+
+_al_require_flock_impl() {
   # Re-probe at call time (not the source-time cache).
   if ! command -v flock >/dev/null 2>&1; then
     printf 'FATAL: parallel execution requires flock (util-linux). ' >&2

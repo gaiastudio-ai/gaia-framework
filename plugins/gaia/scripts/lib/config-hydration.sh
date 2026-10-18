@@ -49,6 +49,12 @@ if [ -r "${_CH_LIB_DIR}/gaia-paths.sh" ]; then
   . "${_CH_LIB_DIR}/gaia-paths.sh" || true
 fi
 
+# Source the shared lock library for concurrency serialization.
+if [ -r "${_CH_LIB_DIR}/acquire-lock.sh" ]; then
+  # shellcheck source=/dev/null
+  . "${_CH_LIB_DIR}/acquire-lock.sh" || true
+fi
+
 # ---- Constants -------------------------------------------------------------
 
 # Curated section allowlist + managed-elsewhere classification.
@@ -286,58 +292,15 @@ _ch_write_phase() {
 
 # ---- Locking -------------------------------------------------------------
 
-# Acquire an exclusive lock. Two paths: flock when available, mkdir mutex
-# otherwise. Returns 0 on acquire, 1 on timeout. Sets _ch_lock_mode.
+# Acquire an exclusive lock via the shared lock library.
 _ch_acquire_lock() {
   local lock_path="$1" timeout="$2"
-  _ch_lock_mode=""
-
-  if command -v flock >/dev/null 2>&1; then
-    # File-descriptor flock pattern. The lock releases automatically when
-    # fd 9 is closed (handled by _ch_release_lock).
-    exec 9>"$lock_path" 2>/dev/null || return 1
-    if flock -x -w "$timeout" 9 2>/dev/null; then
-      _ch_lock_mode="flock"
-      return 0
-    fi
-    exec 9>&- 2>/dev/null || true
-    return 1
-  fi
-
-  # mkdir-based fallback (atomic on POSIX filesystems).
-  local deadline=$(( $(date +%s) + timeout ))
-  while :; do
-    if mkdir "$lock_path" 2>/dev/null; then
-      printf '%d\n' "$$" > "$lock_path/pid" 2>/dev/null || true
-      _ch_lock_mode="mkdir"
-      return 0
-    fi
-    # Stale-lock recovery — clear if holder PID is gone.
-    if [ -f "$lock_path/pid" ]; then
-      local holder
-      holder="$(cat "$lock_path/pid" 2>/dev/null || echo '')"
-      if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-        rm -rf "$lock_path" 2>/dev/null || true
-        continue
-      fi
-    fi
-    [ "$(date +%s)" -ge "$deadline" ] && return 1
-    sleep 0.2
-  done
+  acquire_lock "$lock_path" "$timeout" 9
 }
 
 _ch_release_lock() {
   local lock_path="$1"
-  case "${_ch_lock_mode:-}" in
-    flock)
-      exec 9>&- 2>/dev/null || true
-      rm -f "$lock_path" 2>/dev/null || true
-      ;;
-    mkdir)
-      rm -rf "$lock_path" 2>/dev/null || true
-      ;;
-  esac
-  _ch_lock_mode=""
+  release_lock 9
 }
 
 # Identify a lock holder PID, best-effort. Returns empty string when unknown.

@@ -29,6 +29,10 @@ setup() {
     echo "FATAL: flock still reachable via scratch bin — test setup broken" >&2
     return 1
   fi
+  # Clear the parallel-execution flag so fallback-path tests are not blocked
+  # by the parallel gate inside acquire_lock. Tests that assert the gate
+  # itself re-export the flag explicitly.
+  unset GAIA_PARALLEL_EXECUTION
   PROJ="$TEST_TMP/project"
   STATE="$PROJ/.gaia/state"
   IMPL="$PROJ/.gaia/artifacts/implementation-artifacts"

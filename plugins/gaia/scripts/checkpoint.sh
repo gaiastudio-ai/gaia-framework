@@ -42,6 +42,10 @@ export LC_ALL
 SCRIPT_NAME="checkpoint.sh"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
+# Source the shared lock library for concurrency serialization.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/acquire-lock.sh"
+
 # ---------- Helpers ----------
 
 die() {
@@ -246,71 +250,45 @@ cmd_write() {
   local lockfile="$CHECKPOINT_PATH/$workflow.yaml.lock"
   local tmpfile="$target.tmp.$$"
 
-  # Acquire flock on the lockfile. Serializes concurrent writers — AC6.
-  # `flock -w 5` waits up to 5 seconds; timeout exits 1 per spec.
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
-  write_body() {
-    local ts; ts=$(iso_utc_now)
-    {
-      printf 'workflow: '; yaml_scalar "$workflow"; printf '\n'
-      printf 'step: %s\n' "$step"
-      printf 'timestamp: %s\n' "$ts"
-      if [ "${#var_keys[@]}" -gt 0 ]; then
-        printf 'variables:\n'
-        local i=0
-        while [ $i -lt "${#var_keys[@]}" ]; do
-          printf '  %s: ' "${var_keys[$i]}"
-          yaml_scalar "${var_vals[$i]}"
-          printf '\n'
-          i=$((i + 1))
-        done
-      else
-        printf 'variables: {}\n'
-      fi
-      if [ "${#file_paths[@]}" -gt 0 ] && [ -n "${file_paths[0]:-}" ]; then
-        printf 'files_touched:\n'
-        local fp hex mt
-        for fp in "${file_paths[@]}"; do
-          [ -n "$fp" ] || continue
-          hex=$(file_sha256 "$fp")
-          mt=$(file_mtime_utc "$fp")
-          printf '  - path: '; yaml_scalar "$fp"; printf '\n'
-          printf '    sha256: "sha256:%s"\n' "$hex"
-          printf '    last_modified: %s\n' "$mt"
-        done
-      else
-        printf 'files_touched: []\n'
-      fi
-    } > "$tmpfile"
-    mv -f "$tmpfile" "$target"
-  }
-
-  if [ -n "$flock_bin" ]; then
-    # Use a subshell with FD 9 bound to the lockfile.
-    (
-      exec 9>"$lockfile"
-      if ! "$flock_bin" -w 5 9; then
-        die 1 "flock timeout acquiring $lockfile"
-      fi
-      write_body
-    )
-  else
-    # Fallback for systems without flock (rare on macOS — ships via util-linux
-    # on Linux; macOS 10.15+ via Homebrew). Best-effort exclusive create lock.
-    local tries=0
-    while ! ( set -C; : > "$lockfile" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      [ $tries -ge 50 ] && die 1 "lock timeout acquiring $lockfile"
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '$lockfile'" EXIT
-    write_body
-    rm -f "$lockfile"
-    trap - EXIT
+  # Serialise concurrent writers via the shared lock library.
+  if ! acquire_lock "$lockfile" 5 9; then
+    die 1 "lock timeout acquiring $lockfile"
   fi
+
+  local ts; ts=$(iso_utc_now)
+  {
+    printf 'workflow: '; yaml_scalar "$workflow"; printf '\n'
+    printf 'step: %s\n' "$step"
+    printf 'timestamp: %s\n' "$ts"
+    if [ "${#var_keys[@]}" -gt 0 ]; then
+      printf 'variables:\n'
+      local i=0
+      while [ $i -lt "${#var_keys[@]}" ]; do
+        printf '  %s: ' "${var_keys[$i]}"
+        yaml_scalar "${var_vals[$i]}"
+        printf '\n'
+        i=$((i + 1))
+      done
+    else
+      printf 'variables: {}\n'
+    fi
+    if [ "${#file_paths[@]}" -gt 0 ] && [ -n "${file_paths[0]:-}" ]; then
+      printf 'files_touched:\n'
+      local fp hex mt
+      for fp in "${file_paths[@]}"; do
+        [ -n "$fp" ] || continue
+        hex=$(file_sha256 "$fp")
+        mt=$(file_mtime_utc "$fp")
+        printf '  - path: '; yaml_scalar "$fp"; printf '\n'
+        printf '    sha256: "sha256:%s"\n' "$hex"
+        printf '    last_modified: %s\n' "$mt"
+      done
+    else
+      printf 'files_touched: []\n'
+    fi
+  } > "$tmpfile"
+  mv -f "$tmpfile" "$target"
+  release_lock 9
 }
 
 # ---------- Subcommand: read ----------

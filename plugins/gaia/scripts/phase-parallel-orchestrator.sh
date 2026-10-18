@@ -349,24 +349,11 @@ _ppo_lib() {
   local name="$1"
   [ -f "$_PPO_DIR/lib/$name" ] || return 1
 
-  # At least one shared library (acquire-lock.sh) sets `set -euo pipefail`
-  # UNCONDITIONALLY at its own source time, with no guard distinguishing "I
-  # am the top-level script" from "I am being sourced into a caller that
-  # owns its own shell options" -- sourcing it here would otherwise flip
-  # errexit ON for the REST OF THIS FILE's calling shell, silently
-  # overriding a sourced caller that deliberately ran `set +e` to branch on
-  # THIS file's own capacity/degradation codes via `|| rc=$?`. This file is
-  # sourceable (its own header says so), so every lib load funnels through
-  # here and restores whatever errexit state the caller actually had,
-  # regardless of what the library being loaded does to it internally.
-  local _ppo_lib_errexit_was_set=0
-  case "$-" in *e*) _ppo_lib_errexit_was_set=1 ;; esac
-
+  # Shared libraries are side-effect-free on sourcing: they no longer set
+  # shell options at source time, so a plain source is safe for any caller.
   local _ppo_lib_rc=0
   # shellcheck disable=SC1090
   . "$_PPO_DIR/lib/$name" || _ppo_lib_rc=$?
-
-  [ "$_ppo_lib_errexit_was_set" -eq 1 ] || set +e
   return "$_ppo_lib_rc"
 }
 

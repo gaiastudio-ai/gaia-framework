@@ -54,6 +54,11 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_NAME="discovery-board.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the shared lock library for concurrency serialization.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/acquire-lock.sh"
 
 # ---------- Script-level tmp cleanup trap ----------
 
@@ -751,33 +756,13 @@ _with_lock() {
   local callback="$1"
   shift
 
-  local flock_bin
-  flock_bin=$(command -v flock || true)
-
-  if [ -n "$flock_bin" ]; then
-    (
-      exec 9>"$BOARD_LOCK"
-      if ! "$flock_bin" -x -w 5 9; then
-        die "flock timeout acquiring $BOARD_LOCK"
-      fi
-      "$callback" "$@"
-    )
-  else
-    # set -C no-clobber spin-loop fallback.
-    local tries=0
-    while ! ( set -C; : > "$BOARD_LOCK" ) 2>/dev/null; do
-      tries=$((tries + 1))
-      if [ "$tries" -ge 50 ]; then
-        die "lock timeout acquiring $BOARD_LOCK"
-      fi
-      sleep 0.1 2>/dev/null || sleep 1
-    done
-    # shellcheck disable=SC2064
-    trap "rm -f '${BOARD_LOCK}'; _cleanup_tmps" EXIT INT TERM
-    "$callback" "$@"
-    rm -f "$BOARD_LOCK"
-    trap '_cleanup_tmps' EXIT INT TERM
+  if ! acquire_lock "$BOARD_LOCK" 5 9; then
+    die "lock timeout acquiring $BOARD_LOCK"
   fi
+  "$callback" "$@"
+  local _wl_rc=$?
+  release_lock 9
+  return "$_wl_rc"
 }
 
 # ---------- Subcommand: capture ----------

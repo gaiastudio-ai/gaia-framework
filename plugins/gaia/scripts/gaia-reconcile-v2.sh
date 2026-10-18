@@ -356,12 +356,12 @@ DRY
   cp "$CONFIG_FILE" "$backup_path"
   _grv2_audit "pre-write backup created at $backup_path"
 
-  _grv2_audit "flock acquired at $(_grv2_iso8601) pid=$$"
+  _grv2_audit "lock acquired at $(_grv2_iso8601) pid=$$"
 
   local helper="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/config-hydration.sh"
   if [ ! -f "$helper" ]; then
     _grv2_err "config-hydration.sh not found at $helper -- cannot reconcile"
-    _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+    _grv2_audit "lock released at $(_grv2_iso8601) pid=$$"
     exit 1
   fi
   # shellcheck disable=SC1090
@@ -386,7 +386,7 @@ DRY
     if _grv2_contains_secret "$frag"; then
       _grv2_err "Potential secret detected in section '$s' -- reconciliation aborted"
       rm -f "$frag"
-      _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+      _grv2_audit "lock released at $(_grv2_iso8601) pid=$$"
       cp "$backup_path" "$CONFIG_FILE"
       exit 2
     fi
@@ -410,7 +410,7 @@ DRY
           fi
           _grv2_err "section '$s' is declared in schema but not in hydration allowlist or managed-elsewhere set -- aborting"
           rm -f "$frag"
-          _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+          _grv2_audit "lock released at $(_grv2_iso8601) pid=$$"
           # Rollback with explicit error check — never silently leave the
           # config in a half-written state.
           if [ ! -f "$backup_path" ]; then
@@ -422,7 +422,7 @@ DRY
           fi
           exit 5
           ;;
-        3) _grv2_err "flock timeout while hydrating '$s'"; rm -f "$frag"; _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"; exit 4 ;;
+        3) _grv2_err "lock timeout while hydrating '$s'"; rm -f "$frag"; _grv2_audit "lock released at $(_grv2_iso8601) pid=$$"; exit 4 ;;
         *) _grv2_warn "config_hydrate_section returned rc=$rc for section '$s' -- continuing per non-blocking policy" ;;
       esac
     fi
@@ -436,7 +436,7 @@ DRY
     _grv2_warn "Phase-downgrade defense: retained section '$s' protects config_phase='$phase_before' from regression"
   done
 
-  _grv2_audit "flock released at $(_grv2_iso8601) pid=$$"
+  _grv2_audit "lock released at $(_grv2_iso8601) pid=$$"
 
   # Post-hydration partial→full dispatch.
   _grv2_dispatch_phase_advance "$CONFIG_FILE" "post-hydration"

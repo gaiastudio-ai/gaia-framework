@@ -32,6 +32,9 @@ setup() {
   fi
   SAFE_PATH="$NOFLOCK_BIN"
   export SAFE_PATH
+  # Clear the parallel-execution flag so fallback-path tests are not blocked
+  # by the parallel gate inside acquire_lock.
+  unset GAIA_PARALLEL_EXECUTION
 }
 
 teardown() {
@@ -78,6 +81,39 @@ _wait_for_file() {
     tries=$((tries + 1))
   done
   [ -f "$path" ]
+}
+
+# ============================================================
+# Side-effect-free sourcing
+# ============================================================
+
+@test "sourcing the lock library does not flip errexit on (AC1-sourcing)" {
+  run bash -c '
+    set +e
+    source "'"$HELPER"'"
+    case "$-" in *e*) echo "errexit leaked"; exit 1 ;; esac
+  '
+  [ "$status" -eq 0 ] || { echo "errexit was flipped on by sourcing: $output" >&2; false; }
+}
+
+@test "sourcing the lock library does not flip pipefail on (AC1-sourcing)" {
+  run bash -c '
+    set +o pipefail
+    source "'"$HELPER"'"
+    if set -o | grep -q "pipefail.*on"; then echo "pipefail leaked"; exit 1; fi
+  '
+  [ "$status" -eq 0 ] || { echo "pipefail was flipped on by sourcing: $output" >&2; false; }
+}
+
+@test "sourcing the lock library preserves errexit when already set (AC1-sourcing)" {
+  run bash -c '
+    set -e
+    source "'"$HELPER"'"
+    case "$-" in *e*) exit 0 ;; esac
+    echo "errexit was cleared"
+    exit 1
+  '
+  [ "$status" -eq 0 ] || { echo "errexit was cleared by sourcing: $output" >&2; false; }
 }
 
 # ============================================================
@@ -1020,8 +1056,15 @@ STORYEOF
   fi
   local final
   final="$(cat "$counter")"
-  # Either every acquirer refused (fail-closed), or the ones that won were
-  # genuinely serialised. What must NEVER happen is winners > increments.
+  # At least one acquirer must have won (proving the helper reclaimed the
+  # directory and proceeded with real locking, not just refused everybody).
+  # Without this, 0 winners / 0 increments passes trivially.
+  [ "$win_count" -gt 0 ] || {
+    echo "no acquirer won — the directory was never reclaimed" >&2
+    false
+  }
+  # Every winner must be serialised: final count equals number of winners.
+  # What must NEVER happen is winners > increments (lost updates).
   [ "$final" -eq "$win_count" ] || {
     echo "lost updates: $win_count acquirers won but the counter reached $final" >&2
     echo "— a directory at the lock path disabled mutual exclusion" >&2
@@ -1065,6 +1108,31 @@ STORYEOF
   }
 }
 
+@test "publication check catches a directory swapped in between type gate and link (AC4)" {
+  # The _al_pre_link_hook lets us inject a directory swap AFTER the type
+  # gate cleared the path but BEFORE the hard link. Without the post-link
+  # publication check, the ln would land INSIDE the directory and the
+  # function would report success — breaking mutual exclusion.
+  local lock_file="$LOCK_DIR/pub-race.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    _al_pre_link_hook() { mkdir -p "$1" 2>/dev/null; }
+    acquire_lock "'"$lock_file"'" 3 9
+  '
+  # The acquire must refuse — a directory was swapped in just before the
+  # link, and the publication check must detect it.
+  [ "$status" -ne 0 ] || {
+    echo "acquire succeeded despite a directory swap — publication check is missing" >&2
+    false
+  }
+  [[ "$output" == *"refusing"*  || "$output" == *"lock timeout"* ]] || {
+    echo "unexpected failure mode: $output" >&2
+    false
+  }
+}
+
 @test "the reaper reclaims a directory holding only helper temp residue (AC-EC2)" {
   # A directory carrying nothing but abandoned .lock-tmp.* files is this
   # helper's own wreckage from the pre-fix behaviour. It must be reclaimed,
@@ -1097,6 +1165,7 @@ STORYEOF
   # A fifo is neither a directory nor a symlink: without a positive
   # "exists but is not a regular file" arm it slips through the same gap
   # the directory did.
+  command -v timeout >/dev/null 2>&1 || skip "timeout utility not available"
   local lock_file="$LOCK_DIR/fifo.lock"
   mkfifo "$lock_file" 2>/dev/null || skip "cannot create a fifo on this host"
   run timeout 20 bash -c '
@@ -1111,9 +1180,9 @@ STORYEOF
   [ ! -p "$lock_file" ] || { echo "lock path is still a fifo after acquire" >&2; false; }
 }
 
-@test "two concurrent real transition runs never both proceed past a poisoned lock (AC1)" {
-  # End-to-end through the REAL transition-story-status.sh: a directory at
-  # its lock path must not let two runs into the critical section at once.
+@test "two concurrent fallback acquirers with a poisoned directory lock never overlap (AC1)" {
+  # A directory at the lock path must not let two runs into the critical
+  # section at once — the library's own acquire/release handles this.
   local tss="$SCRIPTS_DIR/transition-story-status.sh"
   [ -f "$tss" ] || skip "transition-story-status.sh not found"
   local proj="$TEST_TMP/tss-proj"
@@ -1238,14 +1307,19 @@ STORYEOF
 @test "helper documents the test-only debug env overrides (AC1)" {
   # The header's "Test-only env overrides" block is the only place these are
   # described; an undocumented one reads as a user-facing knob.
+  # Each variable must appear as an exact token — a prefix match against a
+  # longer name (e.g. ACQUIRE_LOCK_DEBUG matching ACQUIRE_LOCK_DEBUG_LOG)
+  # is not sufficient.
   local block
   block="$(sed -n '/Test-only env overrides/,/^$/p' "$HELPER")"
-  [[ "$block" == *"ACQUIRE_LOCK_DEBUG"* ]] || {
-    echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block" >&2
+  # Match the exact token boundary: preceded by whitespace/start, followed
+  # by whitespace/punctuation/end. grep -w achieves this portably.
+  echo "$block" | grep -qw "ACQUIRE_LOCK_DEBUG" || {
+    echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block (exact token)" >&2
     false
   }
-  [[ "$block" == *"ACQUIRE_LOCK_DEBUG_LOG"* ]] || {
-    echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block" >&2
+  echo "$block" | grep -qw "ACQUIRE_LOCK_DEBUG_LOG" || {
+    echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block (exact token)" >&2
     false
   }
 }
@@ -1467,6 +1541,79 @@ STORYEOF
   [[ "$output" == *"FD-MATCHES"* || "$output" == *"NO-FD-PATH"* ]] || {
     echo "an open descriptor's path did not resolve to the file it was opened on:" >&2
     echo "$output" >&2
+    false
+  }
+}
+
+# ============================================================
+# AC6: restrictive lock-file permissions
+# ============================================================
+
+@test "fallback lock file has permissions no wider than 0600 (AC6)" {
+  local lock_file="$LOCK_DIR/perms.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    umask 000
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  [ -f "$lock_file" ] || { echo "lock file missing" >&2; false; }
+  local mode
+  if stat -c '%a' "$lock_file" >/dev/null 2>&1; then
+    mode="$(stat -c '%a' "$lock_file")"
+  else
+    mode="$(stat -f '%Lp' "$lock_file")"
+  fi
+  [ "$mode" = "600" ] || {
+    echo "lock file permissions are $mode, expected 600" >&2
+    false
+  }
+}
+
+@test "flock-mode lock file has permissions no wider than 0600 (AC6)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/perms-flock.lock"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    umask 000
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  [ -f "$lock_file" ] || { echo "lock file missing" >&2; false; }
+  local mode
+  if stat -c '%a' "$lock_file" >/dev/null 2>&1; then
+    mode="$(stat -c '%a' "$lock_file")"
+  else
+    mode="$(stat -f '%Lp' "$lock_file")"
+  fi
+  [ "$mode" = "600" ] || {
+    echo "lock file permissions are $mode, expected 600" >&2
+    false
+  }
+}
+
+# ============================================================
+# AC6: parallel-gate coverage at every locking entry point
+# ============================================================
+
+@test "parallel execution gate refuses acquire_lock without flock (AC6)" {
+  local lock_file="$LOCK_DIR/par-gate.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_PARALLEL_EXECUTION=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -ne 0 ] || {
+    echo "acquire succeeded under parallel mode without flock" >&2
+    false
+  }
+  [[ "$output" == *"util-linux"* ]] || {
+    echo "expected util-linux refusal, got: $output" >&2
     false
   }
 }
