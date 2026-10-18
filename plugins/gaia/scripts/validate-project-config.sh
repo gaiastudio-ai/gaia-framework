@@ -545,10 +545,9 @@ fi
 
 # sprint_status_mod — the schema engines check this section in full; this
 # path has no schema engine, so its types and ranges are checked here: the
-# section is an object or null with only the two known keys, user_aliases is
-# a list of non-empty strings, and waiting_agent_threshold_seconds is an
-# integer from 0 to 3600.  One tab-separated "location<TAB>message" line per
-# violation (@tsv escapes any tab or newline inside a key).
+# section is an object or null with user_aliases (a list of non-empty
+# strings) as the only known key.  One tab-separated "location<TAB>message"
+# line per violation (@tsv escapes any tab or newline inside a key).
 # shellcheck disable=SC2016  # jq program text, not shell expansions
 ssm_jq='
   if (has("sprint_status_mod") | not) or .sprint_status_mod == null then empty
@@ -556,8 +555,8 @@ ssm_jq='
   | if ($s | type) != "object" then
       ["$.sprint_status_mod", "must be an object or null; got \($s | type)"] | @tsv
     else
-      ( $s | keys[] | select(. != "user_aliases" and . != "waiting_agent_threshold_seconds")
-        | ["$.sprint_status_mod.\(.)", "property is not allowed (allowed: user_aliases, waiting_agent_threshold_seconds)"] | @tsv ),
+      ( $s | keys[] | select(. != "user_aliases")
+        | ["$.sprint_status_mod.\(.)", "property is not allowed (allowed: user_aliases)"] | @tsv ),
       ( if ($s | has("user_aliases")) then
           $s.user_aliases as $a
           | if ($a | type) != "array" then
@@ -566,14 +565,6 @@ ssm_jq='
               $a | to_entries[] | select((.value | type) != "string" or (.value | length) == 0)
               | ["$.sprint_status_mod.user_aliases[\(.key)]", "must be a non-empty string; got \(.value | tojson)"] | @tsv
             end
-        else empty end ),
-      ( if ($s | has("waiting_agent_threshold_seconds")) then
-          $s.waiting_agent_threshold_seconds as $t
-          | if ($t | type) != "number" or $t != ($t | floor) then
-              ["$.sprint_status_mod.waiting_agent_threshold_seconds", "must be an integer between 0 and 3600; got \($t | tojson)"] | @tsv
-            elif $t < 0 or $t > 3600 then
-              ["$.sprint_status_mod.waiting_agent_threshold_seconds", "must be between 0 and 3600; got \($t | tojson)"] | @tsv
-            else empty end
         else empty end )
     end
   end'

@@ -10,7 +10,6 @@ var NO_SPRINT = 'No active sprint'
 
 // -- module-level state (reset on reload) --
 var caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
-var agentWaitingMap = new Map() // agentId -> firstSeenWaitingAt (epoch ms)
 var cachedData = null
 var cacheState = 'init' // 'init' | 'absent' | 'error' | 'loaded'
 var cacheMtimeMs = 0
@@ -24,8 +23,7 @@ var selectedStoryKey = null
 var envNoColor = false
 var envAscii = false
 
-// -- exports for the agent-activity story to populate --
-export var ruleBItems = []
+// -- exports for the agent-activity module to populate --
 export var activityByStory = new Map()
 export var unlinkedActivity = { items: [], overflow: 0 }
 
@@ -247,7 +245,6 @@ async function refreshAgentActivity($) {
     caps.agent = true
   } catch (_) {
     caps.agent = false
-    ruleBItems = []
     activityByStory = new Map()
     unlinkedActivity = { items: [], overflow: 0 }
     return
@@ -261,22 +258,11 @@ async function refreshAgentActivity($) {
     }
   }
 
-  var threshold = 120
-  if (cachedData && cachedData.waiting_agent_threshold_seconds != null) {
-    threshold = cachedData.waiting_agent_threshold_seconds
-  }
-
-  var now = await nowMs($)
-
   var result = computeAgentActivity({
     agents: agents,
-    nowMs: now,
-    threshold: threshold,
-    storyKeys: storyKeys,
-    waitingMap: agentWaitingMap
+    storyKeys: storyKeys
   })
 
-  ruleBItems = result.ruleBItems
   activityByStory = result.activityByStory
   unlinkedActivity = result.unlinkedActivity
 }
@@ -338,7 +324,7 @@ function sortByPhase(stories) {
 }
 
 function mergedActionList(data) {
-  var actions = (data.action_needed || []).concat(ruleBItems)
+  var actions = (data.action_needed || []).slice()
   actions.sort(function (a, b) { return (a.rule || '').localeCompare(b.rule || '') })
   return actions
 }
@@ -878,8 +864,6 @@ export function register(on) {
     stopTimer(timerHandle)
     timerHandle = null
     caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
-    agentWaitingMap = new Map()
-    ruleBItems = []
     activityByStory = new Map()
     unlinkedActivity = { items: [], overflow: 0 }
     cachedData = null
