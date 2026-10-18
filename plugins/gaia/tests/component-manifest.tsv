@@ -437,6 +437,8 @@ core	vcp-rc-02-06-readiness-conflicts.bats
 core	verdict-resolver-parameterized.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
+plugins/gaia/tests/concurrent-sprint-independence-cd.bats	concurrent-sprint
+plugins/gaia/tests/concurrent-sprint-perf.bats	concurrent-sprint
 scripts-brain	brain-c2-unlinked-predicate.bats
 scripts-brain	brain-feed-smoke.bats
 scripts-brain	brain-harvest-edges.bats

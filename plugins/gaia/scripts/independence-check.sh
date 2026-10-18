@@ -41,6 +41,14 @@ _IC_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=resolve-story-file.sh
 . "${_IC_SCRIPT_DIR}/resolve-story-file.sh"
 
+# Source touch-set sanitizer (denylist, containment, read helpers).
+# shellcheck source=lib/touch-set-sanitizer.sh
+. "${_IC_SCRIPT_DIR}/lib/touch-set-sanitizer.sh"
+
+# Source exec-with-timeout (timeout cascade).
+# shellcheck source=lib/exec-with-timeout.sh
+. "${_IC_SCRIPT_DIR}/lib/exec-with-timeout.sh"
+
 # ---------------------------------------------------------------------------
 # Globals
 # ---------------------------------------------------------------------------
@@ -316,6 +324,1083 @@ _ic_resolve_planning_paths() {
     planning_dir="${_IC_PROJECT_ROOT:+${_IC_PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   fi
   printf '%s\t%s' "${planning_dir}/epics-and-stories.md" "${planning_dir}/epics"
+}
+
+# ---------------------------------------------------------------------------
+# Rules (c)/(d) helpers — touch-set overlap and planning-artifact exclusivity
+# ---------------------------------------------------------------------------
+
+# Default glob expansion timeout (seconds).
+_IC_GLOB_TIMEOUT_DEFAULT=3
+
+# _ic_validate_glob_timeout
+#   Validate GAIA_INDEPENDENCE_GLOB_TIMEOUT. Returns the timeout in seconds.
+_ic_validate_glob_timeout() {
+  local t="${GAIA_INDEPENDENCE_GLOB_TIMEOUT:-$_IC_GLOB_TIMEOUT_DEFAULT}"
+  case "$t" in
+    ''|*[!0-9]*) t="$_IC_GLOB_TIMEOUT_DEFAULT" ;;
+  esac
+  if [ "$t" -le 0 ] 2>/dev/null; then
+    t="$_IC_GLOB_TIMEOUT_DEFAULT"
+  fi
+  printf '%s' "$t"
+}
+
+# _ic_has_field <story_file> <field_name>
+#   Returns 0 if the YAML frontmatter field exists, 1 if absent.
+_ic_has_field() {
+  local story_file="$1" field="$2"
+  awk -v f="$field" '
+    BEGIN { in_fm=0; started=0 }
+    /^---[[:space:]]*$/ {
+      if (!started) { started=1; in_fm=1; next }
+      else { exit }
+    }
+    !in_fm { next }
+    {
+      # Match field name at start of line (not indented, not commented).
+      pat = "^" f ":"
+      if ($0 ~ pat) { found=1; exit }
+    }
+    END { exit (found ? 0 : 1) }
+  ' "$story_file"
+}
+
+# _ic_read_array_values <story_file> <field_name>
+#   Read a YAML array field values, one per line. Handles both flow arrays
+#   ([a, b]) and block arrays (- a\n- b).
+_ic_read_array_values() {
+  local story_file="$1" field="$2"
+  awk -v f="$field" '
+    BEGIN { in_fm=0; started=0; in_field=0 }
+    /^---[[:space:]]*$/ {
+      if (!started) { started=1; in_fm=1; next }
+      else { exit }
+    }
+    !in_fm { next }
+
+    # Match the target field.
+    {
+      pat = "^" f ":[[:space:]]*"
+      if ($0 ~ pat) {
+        line = $0
+        sub(pat, "", line)
+        # Check for inline flow array: [val1, val2]
+        if (match(line, /^\[/)) {
+          sub(/^\[/, "", line)
+          sub(/\][[:space:]]*$/, "", line)
+          n = split(line, items, /[[:space:]]*,[[:space:]]*/)
+          for (i = 1; i <= n; i++) {
+            v = items[i]
+            gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
+            if (v != "") print v
+          }
+        }
+        # Else: could be empty line (block array follows) or bare scalar.
+        in_field = 1
+        next
+      }
+    }
+
+    # Block array items.
+    in_field && /^[[:space:]]*-[[:space:]]/ {
+      v = $0
+      sub(/^[[:space:]]*-[[:space:]]*/, "", v)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
+      if (v != "") print v
+      next
+    }
+    # End of block array.
+    in_field && /^[^[:space:]-]/ { in_field=0 }
+    in_field && /^[[:space:]]/ && !/^[[:space:]]*-/ { in_field=0 }
+  ' "$story_file"
+}
+
+# _ic_is_literal <entry>
+#   Returns 0 if entry has no unescaped glob metacharacters (* ? [).
+#   Backslash-escaped metacharacters do not count.
+_ic_is_literal() {
+  local val="$1"
+  local i=0 ch len
+  len="${#val}"
+  while [ "$i" -lt "$len" ]; do
+    ch="${val:$i:1}"
+    case "$ch" in
+      \\)
+        # Skip the next character (it is escaped).
+        i=$((i + 2))
+        continue
+        ;;
+      '*'|'?'|'[')
+        return 1
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# _ic_unescape <entry>
+#   Remove backslash escapes from \*, \?, \[, \]. Prints result.
+_ic_unescape() {
+  local val="$1"
+  local out="" i=0 ch next_ch len
+  len="${#val}"
+  while [ "$i" -lt "$len" ]; do
+    ch="${val:$i:1}"
+    if [ "$ch" = "\\" ] && [ $((i + 1)) -lt "$len" ]; then
+      next_ch="${val:$((i+1)):1}"
+      case "$next_ch" in
+        '*'|'?'|'['|']')
+          out="${out}${next_ch}"
+          i=$((i + 2))
+          continue
+          ;;
+      esac
+    fi
+    out="${out}${ch}"
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
+# _ic_glob_prefix <entry>
+#   Extract the literal prefix up to the first unescaped metacharacter,
+#   then remove the trailing path segment.
+#   e.g. "gaia-public/plugins/gaia/scripts/*.sh"
+#     → "gaia-public/plugins/gaia/scripts/"
+_ic_glob_prefix() {
+  local val="$1"
+  local prefix="" i=0 ch len
+  len="${#val}"
+  while [ "$i" -lt "$len" ]; do
+    ch="${val:$i:1}"
+    case "$ch" in
+      \\)
+        prefix="${prefix}${ch}${val:$((i+1)):1}"
+        i=$((i + 2))
+        continue
+        ;;
+      '*'|'?'|'[')
+        break
+        ;;
+    esac
+    prefix="${prefix}${ch}"
+    i=$((i + 1))
+  done
+  # Remove trailing path segment (everything after last /).
+  case "$prefix" in
+    */*) prefix="${prefix%/*}/" ;;
+    *)   prefix="" ;;
+  esac
+  printf '%s' "$prefix"
+}
+
+# _ic_path_matches_glob <literal_path> <glob_pattern>
+#   Returns 0 if literal_path matches the glob pattern using find -path
+#   semantics. Uses a case statement for simple patterns.
+_ic_path_matches_glob() {
+  local literal="$1" pattern="$2"
+  # shellcheck disable=SC2254
+  case "$literal" in
+    $pattern) return 0 ;;
+  esac
+  return 1
+}
+
+# _expand_globs <patterns_file> <project_root> <output_file>
+#   Expand all glob patterns via a single find traversal of project_root.
+#   Each line in patterns_file is a PROJECT_ROOT-relative glob.
+#   Writes matched paths (PROJECT_ROOT-relative) to output_file.
+_expand_globs() {
+  local patterns_file="$1" project_root="$2" output_file="$3"
+  local timeout_s
+  timeout_s="$(_ic_validate_glob_timeout)"
+
+  : > "$output_file"
+
+  # Build -path predicates for find.
+  local find_preds="" first=1
+  while IFS= read -r pattern || [ -n "$pattern" ]; do
+    [ -n "$pattern" ] || continue
+    if [ "$first" -eq 1 ]; then
+      find_preds="-path ${project_root%/}/${pattern}"
+      first=0
+    else
+      find_preds="${find_preds} -o -path ${project_root%/}/${pattern}"
+    fi
+  done < "$patterns_file"
+
+  if [ "$first" -eq 1 ]; then
+    # No patterns to expand.
+    return 0
+  fi
+
+  # Write the find command into a temp script to avoid arg-length issues
+  # and to properly handle spaces in PROJECT_ROOT.
+  local find_script="${output_file}.find.sh"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'set -euo pipefail\n'
+    printf 'PR=%s\n' "$(printf '%q' "${project_root%/}")"
+    printf 'find "$PR" '
+    printf '  -name .git -prune -o '
+    printf '  -name node_modules -prune -o '
+    printf '  -path "$PR/.gaia-worktrees" -prune -o '
+    printf '  \\( '
+    first=1
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+      [ -n "$pattern" ] || continue
+      if [ "$first" -eq 1 ]; then
+        printf '    -path %s ' "$(printf '"$PR/%s"' "$pattern")"
+        first=0
+      else
+        printf '    -o -path %s ' "$(printf '"$PR/%s"' "$pattern")"
+      fi
+    done < "$patterns_file"
+    printf '  \\) -print\n'
+  } > "$find_script"
+  chmod +x "$find_script"
+
+  local rc=0
+  exec_with_timeout "$timeout_s" bash "$find_script" > "$output_file" 2>/dev/null || rc=$?
+  rm -f "$find_script"
+
+  # Strip PROJECT_ROOT prefix from each result line.
+  if [ -s "$output_file" ]; then
+    local tmp_strip="${output_file}.strip"
+    local pr_prefix="${project_root%/}/"
+    sed "s|^${pr_prefix}||" "$output_file" > "$tmp_strip"
+    mv -f "$tmp_strip" "$output_file"
+  fi
+
+  return "$rc"
+}
+
+# _ic_resolve_artifact_dirs
+#   Resolve planning_artifacts and test_artifacts via resolve-config.sh.
+#   Prints: planning_dir<TAB>test_dir
+_ic_resolve_artifact_dirs() {
+  local resolve_config="${_IC_SCRIPT_DIR}/resolve-config.sh"
+  local planning_dir="" test_dir=""
+
+  if [ -x "$resolve_config" ]; then
+    planning_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                    CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                    "$resolve_config" planning_artifacts 2>/dev/null)" || planning_dir=""
+    test_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                "$resolve_config" test_artifacts 2>/dev/null)" || test_dir=""
+  fi
+
+  # Make relative to PROJECT_ROOT.
+  planning_dir="${planning_dir#./}"
+  test_dir="${test_dir#./}"
+  [ -n "$planning_dir" ] || planning_dir=".gaia/artifacts/planning-artifacts"
+  [ -n "$test_dir" ] || test_dir=".gaia/artifacts/test-artifacts"
+
+  printf '%s\t%s' "$planning_dir" "$test_dir"
+}
+
+# _ic_classify_family <rel_path> <planning_dir> <test_dir>
+#   Classify a PROJECT_ROOT-relative path into a planning-artifact family.
+#   Prints the family name or empty if unclassified.
+#   A directory literal (trailing /) that is a parent of a family anchor
+#   matches EVERY family beneath it — caller collects all matches.
+_ic_classify_family() {
+  local path="$1" pdir="$2" tdir="$3"
+  local families_found=""
+
+  # Config file family.
+  if [ "$path" = ".gaia/config/project-config.yaml" ]; then
+    printf 'config\n'
+    return 0
+  fi
+
+  # Architecture family: {pdir}/architecture/architecture.md + {pdir}/architecture/*
+  case "$path" in
+    "${pdir}/architecture/"*|"${pdir}/architecture/architecture.md")
+      families_found="${families_found:+${families_found}
+}architecture"
+      ;;
+  esac
+
+  # PRD family: {pdir}/prd/prd.md + {pdir}/prd/*
+  case "$path" in
+    "${pdir}/prd/"*|"${pdir}/prd/prd.md")
+      families_found="${families_found:+${families_found}
+}prd"
+      ;;
+  esac
+
+  # Epics family: {pdir}/epics-and-stories.md + {pdir}/epics/*
+  case "$path" in
+    "${pdir}/epics-and-stories.md"|"${pdir}/epics/"*)
+      families_found="${families_found:+${families_found}
+}epics"
+      ;;
+  esac
+
+  # Test-plan family: {pdir}/test-plan.md, {tdir}/test-plan.md, {tdir}/strategy/test-plan.md
+  case "$path" in
+    "${pdir}/test-plan.md"|"${tdir}/test-plan.md"|"${tdir}/strategy/test-plan.md")
+      families_found="${families_found:+${families_found}
+}test-plan"
+      ;;
+  esac
+
+  # Threat-model family: {pdir}/threat-model.md
+  case "$path" in
+    "${pdir}/threat-model.md")
+      families_found="${families_found:+${families_found}
+}threat-model"
+      ;;
+  esac
+
+  # Traceability family: {pdir}/traceability-matrix.md, {tdir}/traceability-matrix.md,
+  #                       {tdir}/strategy/traceability-matrix.md
+  case "$path" in
+    "${pdir}/traceability-matrix.md"|"${tdir}/traceability-matrix.md"|"${tdir}/strategy/traceability-matrix.md")
+      families_found="${families_found:+${families_found}
+}traceability"
+      ;;
+  esac
+
+  # Directory literal parent classification: if path ends in / and is a prefix
+  # of any family anchor, classify into those families.
+  case "$path" in
+    */)
+      # Check each family anchor against this directory prefix.
+      local anchors="${pdir}/architecture/ ${pdir}/prd/ ${pdir}/epics-and-stories.md ${pdir}/epics/ ${pdir}/test-plan.md ${pdir}/threat-model.md ${pdir}/traceability-matrix.md ${tdir}/test-plan.md ${tdir}/strategy/test-plan.md ${tdir}/traceability-matrix.md ${tdir}/strategy/traceability-matrix.md .gaia/config/project-config.yaml"
+      local anchor family_for_anchor
+      for anchor in $anchors; do
+        case "$anchor" in
+          "${path}"*)
+            # This directory is a parent of the anchor. Determine which family.
+            case "$anchor" in
+              "${pdir}/architecture/"*) family_for_anchor="architecture" ;;
+              "${pdir}/prd/"*) family_for_anchor="prd" ;;
+              "${pdir}/epics-and-stories.md"|"${pdir}/epics/"*) family_for_anchor="epics" ;;
+              "${pdir}/test-plan.md"|"${tdir}/test-plan.md"|"${tdir}/strategy/test-plan.md") family_for_anchor="test-plan" ;;
+              "${pdir}/threat-model.md") family_for_anchor="threat-model" ;;
+              "${pdir}/traceability-matrix.md"|"${tdir}/traceability-matrix.md"|"${tdir}/strategy/traceability-matrix.md") family_for_anchor="traceability" ;;
+              ".gaia/config/project-config.yaml") family_for_anchor="config" ;;
+              *) continue ;;
+            esac
+            # Avoid duplicates.
+            case "$families_found" in
+              *"$family_for_anchor"*) ;;
+              *)
+                families_found="${families_found:+${families_found}
+}${family_for_anchor}"
+                ;;
+            esac
+            ;;
+        esac
+      done
+      ;;
+  esac
+
+  if [ -n "$families_found" ]; then
+    printf '%s\n' "$families_found"
+  fi
+}
+
+# _ic_run_rules_cd <candidate_id> <active_csv> <membership_file> <resolved_file> <tmpdir>
+#   Evaluate rules (c) and (d) for the candidate against all active sprints.
+#   Writes PASS/FAIL lines to stdout. FAIL lines also to stderr.
+#   Returns 0 if all pass, 1 if any fail.
+_ic_run_rules_cd() {
+  local candidate="$1" active_csv="$2" membership_f="$3" resolved_f="$4" tmpdir="$5"
+
+  local ts_dir="$tmpdir/touchsets"
+  local cs_dir="$tmpdir/configsections"
+  mkdir -p "$ts_dir" "$cs_dir"
+
+  # Resolve artifact directories for family classification.
+  local art_dirs pdir tdir
+  art_dirs="$(_ic_resolve_artifact_dirs)"
+  pdir="${art_dirs%%	*}"
+  tdir="${art_dirs#*	}"
+
+  # ---- Phase 1: Collect and validate touch-sets for all stories ----
+  # Batch approach: single awk invocation parses ALL story files at once.
+  # Input: membership file (key<TAB>sprint) and resolved file (key<TAB>path).
+  # Output: consolidated TSV files for downstream phases.
+  local all_globs_file="$tmpdir/all_globs.txt"
+  : > "$all_globs_file"
+  : > "$tmpdir/ts_meta.tsv"
+  : > "$cs_dir/_has_field.txt"
+
+  # Build list of story files to parse (key<TAB>sprint<TAB>file).
+  local parse_input="$tmpdir/parse_input.tsv"
+  awk -F'\t' '
+    NR == FNR { sprint[$1] = $2; next }
+    { if ($1 in sprint) printf "%s\t%s\t%s\n", $1, sprint[$1], $2 }
+  ' "$membership_f" "$resolved_f" > "$parse_input"
+
+  # Check all keys have resolved files.
+  local missing_key
+  missing_key="$(awk -F'\t' '
+    NR == FNR { has[$1] = 1; next }
+    !($1 in has) { print $1; exit }
+  ' "$resolved_f" "$membership_f")"
+  if [ -n "$missing_key" ]; then
+    _ic_die "missing file: $missing_key"
+  fi
+
+  # Batch parse ALL story files in a single shell script invocation.
+  # Avoids per-story awk process spawns. Uses a delimiter-wrapped
+  # concatenation of all story files with key markers.
+  local all_parsed="$tmpdir/all_parsed.tsv"
+  local pr_prefix="${_IC_PROJECT_ROOT%/}/"
+  local concat_input="$tmpdir/concat_stories.txt"
+  : > "$concat_input"
+  while IFS=$'\t' read -r skey sprint_id story_file; do
+    [ -n "$skey" ] || continue
+    [ -f "$story_file" ] || _ic_die "missing file: $skey"
+    printf '###STORY_MARKER###\t%s\n' "$skey"
+    cat "$story_file"
+  done < "$parse_input" > "$concat_input"
+
+  awk -F'\t' '
+    /^###STORY_MARKER###\t/ {
+      # Emit previous story META line if any.
+      if (cur_key != "") printf "%s\tMETA\t%d\t%d\n", cur_key, has_ts, has_cs
+      cur_key = $2; in_fm = 0; started = 0; f = 0; has_ts = 0; has_cs = 0
+      next
+    }
+    /^---[[:space:]]*$/ {
+      if (!started) { started = 1; in_fm = 1; next }
+      else { in_fm = 0; next }
+    }
+    !in_fm { next }
+    /^predicted_touch_set:/ {
+      has_ts = 1; f = 1
+      line = $0; sub(/^predicted_touch_set:[[:space:]]*/, "", line)
+      if (match(line, /^\[/)) {
+        sub(/^\[/, "", line); sub(/\][[:space:]]*$/, "", line)
+        n = split(line, items, /[[:space:]]*,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+          v = items[i]; gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
+          if (v != "") printf "%s\tTS\t%s\n", cur_key, v
+        }
+      }
+      next
+    }
+    /^predicted_config_sections:/ {
+      has_cs = 1; f = 2
+      line = $0; sub(/^predicted_config_sections:[[:space:]]*/, "", line)
+      if (match(line, /^\[/)) {
+        sub(/^\[/, "", line); sub(/\][[:space:]]*$/, "", line)
+        n = split(line, items, /[[:space:]]*,[[:space:]]*/)
+        for (i = 1; i <= n; i++) {
+          v = items[i]; gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
+          if (v != "") printf "%s\tCS\t%s\n", cur_key, v
+        }
+      }
+      next
+    }
+    f > 0 && /^[[:space:]]*-[[:space:]]/ {
+      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v)
+      gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
+      if (v != "") printf "%s\t%s\t%s\n", cur_key, (f == 1 ? "TS" : "CS"), v
+      next
+    }
+    f > 0 && /^[^[:space:]-]/ { f = 0 }
+    END { if (cur_key != "") printf "%s\tMETA\t%d\t%d\n", cur_key, has_ts, has_cs }
+  ' "$concat_input" > "$all_parsed"
+
+  # Process ALL parsed data in a single awk pass: check field presence,
+  # classify entries, write per-story type files, config section files,
+  # and metadata. This replaces the per-story bash loop.
+  local _fail_msg=""
+  _fail_msg="$(awk -F'\t' \
+    -v ts_dir="$ts_dir" \
+    -v cs_dir="$cs_dir" \
+    -v globs_file="$all_globs_file" \
+    -v meta_file="$tmpdir/ts_meta.tsv" \
+    -v pr_prefix="${_IC_PROJECT_ROOT%/}/" \
+  '
+    NR == FNR {
+      # parse_input: key<TAB>sprint<TAB>file
+      sprint[$1] = $2
+      sfile[$1] = $3
+      order[++nkeys] = $1
+      next
+    }
+
+    # all_parsed: key<TAB>type<TAB>value[<TAB>extra]
+    $2 == "META" { meta_ts[$1] = $3; meta_cs[$1] = $4; next }
+    $2 == "TS" { ts[$1] = (ts[$1] == "" ? $3 : ts[$1] "\n" $3); next }
+    $2 == "CS" { cs[$1] = (cs[$1] == "" ? $3 : cs[$1] "\n" $3); next }
+
+    END {
+      for (ki = 1; ki <= nkeys; ki++) {
+        key = order[ki]
+        sid = sprint[key]
+        sf = sfile[key]
+
+        # Check predicted_touch_set presence.
+        if (meta_ts[key] != 1) {
+          printf "FAIL indeterminate: missing predicted_touch_set: %s %s", sid, sf
+          exit 0
+        }
+
+        # Write config sections file.
+        cs_file = cs_dir "/" key ".txt"
+        if (meta_cs[key] == 1 && cs[key] != "") {
+          print cs[key] > cs_file
+          close(cs_file)
+          print key >> (cs_dir "/_has_field.txt")
+        } else {
+          printf "" > cs_file
+          close(cs_file)
+        }
+
+        # Process touch-set entries: classify as literal/glob.
+        type_file = ts_dir "/" key "_type.txt"
+        printf "" > type_file
+        has_literal = 0; has_glob = 0
+        if (ts[key] != "") {
+          n = split(ts[key], entries, "\n")
+          for (ei = 1; ei <= n; ei++) {
+            entry = entries[ei]
+            if (entry == "") continue
+
+            # Denylist check (inline).
+            if (index(entry, "`") > 0 || index(entry, "$") > 0 || \
+                index(entry, "(") > 0 || index(entry, ")") > 0 || \
+                index(entry, ";") > 0 || index(entry, "|") > 0 || \
+                index(entry, "&") > 0 || index(entry, ">") > 0 || \
+                index(entry, "<") > 0) {
+              printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
+              exit 0
+            }
+
+            # Climb-out check.
+            if (index("/" entry "/", "/../") > 0) {
+              printf "FAIL indeterminate: climb-out rejected: %s in %s", entry, sf
+              exit 0
+            }
+
+            # Absolute-to-relative normalization.
+            if (substr(entry, 1, 1) == "/") {
+              plen = length(pr_prefix)
+              if (substr(entry, 1, plen) == pr_prefix) {
+                entry = substr(entry, plen + 1)
+              } else {
+                printf "FAIL indeterminate: path outside project root: %s in %s", entry, sf
+                exit 0
+              }
+            }
+
+            # Classify: check for unescaped glob metacharacters.
+            is_lit = 1
+            elen = length(entry)
+            for (ci = 1; ci <= elen; ci++) {
+              ch = substr(entry, ci, 1)
+              if (ch == "\\") { ci++; continue }
+              if (ch == "*" || ch == "?" || ch == "[") { is_lit = 0; break }
+            }
+
+            if (is_lit) {
+              # Un-escape backslash-escaped metacharacters.
+              unesc = ""
+              for (ci = 1; ci <= elen; ci++) {
+                ch = substr(entry, ci, 1)
+                if (ch == "\\" && ci < elen) {
+                  nch = substr(entry, ci+1, 1)
+                  if (nch == "*" || nch == "?" || nch == "[" || nch == "]") {
+                    unesc = unesc nch
+                    ci++
+                    continue
+                  }
+                }
+                unesc = unesc ch
+              }
+              printf "%s\tL\n", unesc >> type_file
+              has_literal = 1
+            } else {
+              printf "%s\tG\n", entry >> type_file
+              print entry >> globs_file
+              has_glob = 1
+            }
+          }
+        }
+        close(type_file)
+
+        # Metadata.
+        printf "%s\t%s\t%d\t%d\n", key, sid, has_literal, has_glob >> meta_file
+      }
+      close(globs_file)
+      close(meta_file)
+      close(cs_dir "/_has_field.txt")
+    }
+  ' "$parse_input" "$all_parsed" 2>/dev/null)" || true
+
+  if [ -n "$_fail_msg" ]; then
+    printf '%s\n' "$_fail_msg"
+    printf '%s\n' "$_fail_msg" >&2
+    return 1
+  fi
+
+  # ---- Phase 2: Glob expansion (single find traversal with timeout) ----
+  local expanded_file="$tmpdir/expanded_paths.txt"
+  : > "$expanded_file"
+
+  if [ -s "$all_globs_file" ]; then
+    local exp_rc=0
+    _expand_globs "$all_globs_file" "$_IC_PROJECT_ROOT" "$expanded_file" || exp_rc=$?
+    if [ "$exp_rc" -eq 124 ] || [ "$exp_rc" -eq 137 ]; then
+      local diag="FAIL indeterminate: expansion timed out"
+      printf '%s\n' "$diag"
+      printf '%s\n' "$diag" >&2
+      return 1
+    elif [ "$exp_rc" -ne 0 ]; then
+      _ic_die "expansion failed (exit $exp_rc)"
+    fi
+  fi
+
+  # ---- Phase 3: Build per-story resolved path sets ----
+  # For literals: write directly (realpath only for existing files).
+  # For globs: write expanded paths that match the pattern.
+  # Optimized: minimal per-file syscalls.
+  local resolved_dir="$tmpdir/resolved_paths"
+  mkdir -p "$resolved_dir"
+  local realpath_map="$tmpdir/realpath_map.tsv"
+  : > "$realpath_map"
+  : > "$tmpdir/glob_match.tsv"
+  local cd_warnings=""
+
+  # Resolve PROJECT_ROOT realpath once.
+  local _ic_rpr
+  _ic_rpr="$(realpath "${_IC_PROJECT_ROOT}" 2>/dev/null)" || _ic_rpr="${_IC_PROJECT_ROOT}"
+
+  while IFS=$'\t' read -r skey sprint_id has_lit has_glb; do
+    [ -n "$skey" ] || continue
+    local out_f="$resolved_dir/${skey}.txt"
+    local type_f="$ts_dir/${skey}_type.txt"
+    : > "$out_f"
+    local glob_matched_any=0
+
+    while IFS=$'\t' read -r norm etype; do
+      [ -n "$norm" ] || continue
+      if [ "$etype" = "L" ]; then
+        # Literal: check existence and realpath in one shot.
+        local full_path="${_IC_PROJECT_ROOT%/}/${norm}"
+        if [ -e "$full_path" ]; then
+          local rpath
+          rpath="$(realpath "$full_path" 2>/dev/null)" || rpath="$full_path"
+          case "$rpath" in
+            "${_ic_rpr}"/*)
+              local rel_rpath="${rpath#"${_ic_rpr}"/}"
+              printf '%s\n' "$rel_rpath" >> "$out_f"
+              [ "$rel_rpath" != "$norm" ] && \
+                printf '%s\t%s\t%s\n' "$norm" "$rel_rpath" "$skey" >> "$realpath_map"
+              ;;
+            "${_ic_rpr}")
+              printf '%s\n' "." >> "$out_f" ;;
+            *)
+              cd_warnings="${cd_warnings}WARN out-of-root path excluded: ${norm} (${sprint_id})
+" ;;
+          esac
+        else
+          printf '%s\n' "$norm" >> "$out_f"
+        fi
+      else
+        # Glob: for each expanded path, check if it matches this pattern.
+        # Use grep where the glob is a simple suffix pattern.
+        if [ -s "$expanded_file" ]; then
+          local mc=0
+          while IFS= read -r epath; do
+            [ -n "$epath" ] || continue
+            # shellcheck disable=SC2254
+            case "$epath" in $norm) printf '%s\n' "$epath" >> "$out_f"; mc=$((mc+1)) ;; esac
+          done < "$expanded_file"
+          [ "$mc" -gt 0 ] && glob_matched_any=1
+        fi
+      fi
+    done < "$type_f"
+
+    printf '%s\t%d\n' "$skey" "$glob_matched_any" >> "$tmpdir/glob_match.tsv"
+
+    if [ "$has_lit" -eq 0 ] && [ "$has_glb" -ne 0 ] && [ "$glob_matched_any" -eq 0 ]; then
+      local sf
+      sf="$(awk -F'\t' -v k="$skey" '$1 == k { print $2; exit }' "$resolved_f")"
+      local diag="FAIL indeterminate: all entries zero-match globs: ${sprint_id} ${sf}"
+      printf '%s\n' "$diag"
+      printf '%s\n' "$diag" >&2
+      return 1
+    fi
+  done < "$tmpdir/ts_meta.tsv"
+
+  # Emit collected warnings (stdout only).
+  if [ -n "$cd_warnings" ]; then
+    printf '%s' "$cd_warnings"
+  fi
+
+  # ---- Phase 4: Per-active-sprint rules (c)/(d) evaluation ----
+  local cd_overall_rc=0
+  local active_id
+
+  while IFS= read -r active_id; do
+    [ -n "$active_id" ] || continue
+    local rule_c_fail=0 rule_d_fail=0
+    local rule_c_diag="" rule_d_diag=""
+
+    # Collect candidate story keys and active story keys.
+    local cand_keys_f="$tmpdir/cand_keys_${active_id}.txt"
+    local act_keys_f="$tmpdir/act_keys_${active_id}.txt"
+    awk -F'\t' -v s="$candidate" '$2 == s { print $1 }' "$membership_f" > "$cand_keys_f"
+    awk -F'\t' -v s="$active_id" '$2 == s { print $1 }' "$membership_f" > "$act_keys_f"
+
+    # ---- Rule (c): Touch-set overlap (sprint-level optimized) ----
+    # Collect all paths per sprint, then compare at the sprint level
+    # to avoid O(stories^2) per-pair comparisons.
+    local _ic_config_path=".gaia/config/project-config.yaml"
+
+    # Candidate sprint: all resolved paths (excluding config).
+    local cand_all_paths="$tmpdir/cand_paths_${active_id}.txt"
+    local act_all_paths="$tmpdir/act_paths_${active_id}.txt"
+    local cand_all_types="$tmpdir/cand_types_${active_id}.txt"
+    local act_all_types="$tmpdir/act_types_${active_id}.txt"
+    : > "$cand_all_paths"
+    : > "$act_all_paths"
+    : > "$cand_all_types"
+    : > "$act_all_types"
+
+    local ck ak
+    while IFS= read -r ck; do
+      [ -n "$ck" ] || continue
+      [ -f "$resolved_dir/${ck}.txt" ] && \
+        /usr/bin/grep -Fxv "$_ic_config_path" "$resolved_dir/${ck}.txt" >> "$cand_all_paths" 2>/dev/null || true
+      [ -f "$ts_dir/${ck}_type.txt" ] && \
+        /usr/bin/grep -Fv "$_ic_config_path" "$ts_dir/${ck}_type.txt" >> "$cand_all_types" 2>/dev/null || true
+    done < "$cand_keys_f"
+
+    while IFS= read -r ak; do
+      [ -n "$ak" ] || continue
+      [ -f "$resolved_dir/${ak}.txt" ] && \
+        /usr/bin/grep -Fxv "$_ic_config_path" "$resolved_dir/${ak}.txt" >> "$act_all_paths" 2>/dev/null || true
+      [ -f "$ts_dir/${ak}_type.txt" ] && \
+        /usr/bin/grep -Fv "$_ic_config_path" "$ts_dir/${ak}_type.txt" >> "$act_all_types" 2>/dev/null || true
+    done < "$act_keys_f"
+
+    # 1. Direct path overlap (resolved paths).
+    local overlap_path=""
+    overlap_path="$(sort "$cand_all_paths" "$act_all_paths" 2>/dev/null | uniq -d | head -1)" || true
+    if [ -n "$overlap_path" ]; then
+      # Find which stories own this path.
+      local ck_owner ak_owner
+      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      rule_c_fail=1
+      rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${overlap_path} (${candidate} -> ${active_id})"
+    fi
+
+    # 2. Realpath-based overlap (symlinks resolving to same path).
+    if [ "$rule_c_fail" -eq 0 ] && [ -s "$realpath_map" ]; then
+      local cand_reals="$tmpdir/cand_reals_${active_id}.txt"
+      local act_reals="$tmpdir/act_reals_${active_id}.txt"
+      awk -F'\t' -v cfg="$_ic_config_path" '
+        NR == FNR { want[$1] = 1; next }
+        ($3 in want) && $2 != cfg { print $2 }
+      ' "$cand_keys_f" "$realpath_map" | sort -u > "$cand_reals"
+      awk -F'\t' -v cfg="$_ic_config_path" '
+        NR == FNR { want[$1] = 1; next }
+        ($3 in want) && $2 != cfg { print $2 }
+      ' "$act_keys_f" "$realpath_map" | sort -u > "$act_reals"
+      local real_overlap
+      real_overlap="$(sort "$cand_reals" "$act_reals" 2>/dev/null | uniq -d | head -1)" || true
+      if [ -n "$real_overlap" ]; then
+        local ck_owner ak_owner
+        ck_owner="$(awk -F'\t' -v p="$real_overlap" '$2 == p { print $3; exit }' "$realpath_map")"
+        ak_owner="$(awk -F'\t' -v p="$real_overlap" '$2 == p && NR > 1 { print $3; exit }' "$realpath_map")"
+        rule_c_fail=1
+        rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${real_overlap} (${candidate} -> ${active_id})"
+      fi
+    fi
+
+    # 3. Directory-literal prefix containment and literal-vs-glob overlap.
+    if [ "$rule_c_fail" -eq 0 ]; then
+      # Collect all directory literals and all entries per sprint.
+      local cdir_lits act_lits
+      cdir_lits="$(awk -F'\t' '$2=="L" && $1 ~ /\/$/ { print $1 }' "$cand_all_types" 2>/dev/null)"
+      act_lits="$(awk -F'\t' '$2=="L" && $1 ~ /\/$/ { print $1 }' "$act_all_types" 2>/dev/null)"
+
+      # Dir literal from candidate contains active entry?
+      if [ -n "$cdir_lits" ]; then
+        while IFS= read -r dlit; do
+          [ -n "$dlit" ] || continue
+          local contained
+          contained="$(awk -F'\t' -v p="$dlit" 'index($1, p) == 1 { print $1; exit }' "$act_all_types" 2>/dev/null)"
+          if [ -n "$contained" ]; then
+            rule_c_fail=1
+            rule_c_diag="FAIL rule (c): paths overlap ? and ?: ${dlit} contains ${contained} (${candidate} -> ${active_id})"
+            break
+          fi
+        done <<< "$cdir_lits"
+      fi
+      # Dir literal from active contains candidate entry?
+      if [ "$rule_c_fail" -eq 0 ] && [ -n "$act_lits" ]; then
+        while IFS= read -r dlit; do
+          [ -n "$dlit" ] || continue
+          local contained
+          contained="$(awk -F'\t' -v p="$dlit" 'index($1, p) == 1 { print $1; exit }' "$cand_all_types" 2>/dev/null)"
+          if [ -n "$contained" ]; then
+            rule_c_fail=1
+            rule_c_diag="FAIL rule (c): paths overlap ? and ?: ${dlit} contains ${contained} (${candidate} -> ${active_id})"
+            break
+          fi
+        done <<< "$act_lits"
+      fi
+    fi
+
+    # 4. Literal vs glob pattern match.
+    if [ "$rule_c_fail" -eq 0 ]; then
+      local cand_lits_f="$tmpdir/cand_lits_${active_id}.txt"
+      local act_globs_f="$tmpdir/act_globs_${active_id}.txt"
+      local act_lits_f="$tmpdir/act_lits2_${active_id}.txt"
+      local cand_globs_f="$tmpdir/cand_globs_${active_id}.txt"
+      awk -F'\t' '$2=="L" { print $1 }' "$cand_all_types" > "$cand_lits_f" 2>/dev/null || true
+      awk -F'\t' '$2=="G" { print $1 }' "$act_all_types" > "$act_globs_f" 2>/dev/null || true
+      awk -F'\t' '$2=="L" { print $1 }' "$act_all_types" > "$act_lits_f" 2>/dev/null || true
+      awk -F'\t' '$2=="G" { print $1 }' "$cand_all_types" > "$cand_globs_f" 2>/dev/null || true
+
+      # Check candidate literals against active globs.
+      if [ -s "$cand_lits_f" ] && [ -s "$act_globs_f" ]; then
+        while IFS= read -r clit; do
+          [ -n "$clit" ] || continue
+          while IFS= read -r aglob; do
+            [ -n "$aglob" ] || continue
+            # shellcheck disable=SC2254
+            case "$clit" in $aglob)
+              rule_c_fail=1
+              rule_c_diag="FAIL rule (c): paths overlap ? and ?: ${clit} matches ${aglob} (${candidate} -> ${active_id})"
+              break 2 ;; esac
+          done < "$act_globs_f"
+        done < "$cand_lits_f"
+      fi
+      # Check active literals against candidate globs.
+      if [ "$rule_c_fail" -eq 0 ] && [ -s "$act_lits_f" ] && [ -s "$cand_globs_f" ]; then
+        while IFS= read -r alit; do
+          [ -n "$alit" ] || continue
+          while IFS= read -r cglob; do
+            [ -n "$cglob" ] || continue
+            # shellcheck disable=SC2254
+            case "$alit" in $cglob)
+              rule_c_fail=1
+              rule_c_diag="FAIL rule (c): paths overlap ? and ?: ${alit} matches ${cglob} (${candidate} -> ${active_id})"
+              break 2 ;; esac
+          done < "$cand_globs_f"
+        done < "$act_lits_f"
+      fi
+    fi
+
+    # 5. Shared-prefix glob overlap (only between matched globs).
+    if [ "$rule_c_fail" -eq 0 ]; then
+      local cand_matched_globs="$tmpdir/cand_mglobs_${active_id}.txt"
+      local act_matched_globs="$tmpdir/act_mglobs_${active_id}.txt"
+      : > "$cand_matched_globs"
+      : > "$act_matched_globs"
+      if [ -s "$expanded_file" ]; then
+        while IFS=$'\t' read -r gentry getype; do
+          [ "$getype" = "G" ] || continue
+          [ -n "$gentry" ] || continue
+          local gmatch=0
+          while IFS= read -r epath; do
+            # shellcheck disable=SC2254
+            case "$epath" in $gentry) gmatch=1; break ;; esac
+          done < "$expanded_file"
+          if [ "$gmatch" -eq 1 ]; then
+            printf '%s\n' "$gentry" >> "$cand_matched_globs"
+          fi
+        done < <(cat "$cand_all_types" 2>/dev/null)
+        while IFS=$'\t' read -r gentry getype; do
+          [ "$getype" = "G" ] || continue
+          [ -n "$gentry" ] || continue
+          local gmatch=0
+          while IFS= read -r epath; do
+            # shellcheck disable=SC2254
+            case "$epath" in $gentry) gmatch=1; break ;; esac
+          done < "$expanded_file"
+          if [ "$gmatch" -eq 1 ]; then
+            printf '%s\n' "$gentry" >> "$act_matched_globs"
+          fi
+        done < <(cat "$act_all_types" 2>/dev/null)
+      fi
+
+      if [ -s "$cand_matched_globs" ] && [ -s "$act_matched_globs" ]; then
+        while IFS= read -r cg; do
+          [ -n "$cg" ] || continue
+          local cp
+          cp="$(_ic_glob_prefix "$cg")"
+          [ -n "$cp" ] || continue
+          while IFS= read -r ag; do
+            [ -n "$ag" ] || continue
+            local ap
+            ap="$(_ic_glob_prefix "$ag")"
+            [ -n "$ap" ] || continue
+            case "$cp" in "${ap}"*) rule_c_fail=1; rule_c_diag="FAIL rule (c): shared prefix overlap ? and ?: ${cp} vs ${ap} (${candidate} -> ${active_id})"; break 2 ;; esac
+            case "$ap" in "${cp}"*) rule_c_fail=1; rule_c_diag="FAIL rule (c): shared prefix overlap ? and ?: ${cp} vs ${ap} (${candidate} -> ${active_id})"; break 2 ;; esac
+          done < "$act_matched_globs"
+        done < "$cand_matched_globs"
+      fi
+    fi
+
+    # ---- Rule (d): Planning-artifact family exclusivity ----
+    # Collect families touched by candidate and active stories.
+    local cand_families_f="$tmpdir/cand_fam_${active_id}.txt"
+    local act_families_f="$tmpdir/act_fam_${active_id}.txt"
+    : > "$cand_families_f"
+    : > "$act_families_f"
+
+    # Candidate families.
+    while IFS= read -r ck; do
+      [ -n "$ck" ] || continue
+      local type_f="$ts_dir/${ck}_type.txt"
+      [ -f "$type_f" ] || continue
+      while IFS=$'\t' read -r entry etype; do
+        [ -n "$entry" ] || continue
+        local fams
+        fams="$(_ic_classify_family "$entry" "$pdir" "$tdir")"
+        if [ -n "$fams" ]; then
+          while IFS= read -r fam; do
+            [ -n "$fam" ] || continue
+            printf '%s\t%s\t%s\n' "$fam" "$ck" "$entry" >> "$cand_families_f"
+          done <<< "$fams"
+        fi
+      done < "$type_f"
+      # Also classify resolved/expanded paths for globs.
+      local rpf="$resolved_dir/${ck}.txt"
+      if [ -f "$rpf" ]; then
+        while IFS= read -r rpath; do
+          [ -n "$rpath" ] || continue
+          local rfams
+          rfams="$(_ic_classify_family "$rpath" "$pdir" "$tdir")"
+          if [ -n "$rfams" ]; then
+            while IFS= read -r rfam; do
+              [ -n "$rfam" ] || continue
+              printf '%s\t%s\t%s\n' "$rfam" "$ck" "$rpath" >> "$cand_families_f"
+            done <<< "$rfams"
+          fi
+        done < "$rpf"
+      fi
+    done < "$cand_keys_f"
+
+    # Active families.
+    while IFS= read -r ak; do
+      [ -n "$ak" ] || continue
+      local type_f="$ts_dir/${ak}_type.txt"
+      [ -f "$type_f" ] || continue
+      while IFS=$'\t' read -r entry etype; do
+        [ -n "$entry" ] || continue
+        local fams
+        fams="$(_ic_classify_family "$entry" "$pdir" "$tdir")"
+        if [ -n "$fams" ]; then
+          while IFS= read -r fam; do
+            [ -n "$fam" ] || continue
+            printf '%s\t%s\t%s\n' "$fam" "$ak" "$entry" >> "$act_families_f"
+          done <<< "$fams"
+        fi
+      done < "$type_f"
+      local rpf="$resolved_dir/${ak}.txt"
+      if [ -f "$rpf" ]; then
+        while IFS= read -r rpath; do
+          [ -n "$rpath" ] || continue
+          local rfams
+          rfams="$(_ic_classify_family "$rpath" "$pdir" "$tdir")"
+          if [ -n "$rfams" ]; then
+            while IFS= read -r rfam; do
+              [ -n "$rfam" ] || continue
+              printf '%s\t%s\t%s\n' "$rfam" "$ak" "$rpath" >> "$act_families_f"
+            done <<< "$rfams"
+          fi
+        done < "$rpf"
+      fi
+    done < "$act_keys_f"
+
+    # Check for family intersection (excluding config with section granularity).
+    if [ -s "$cand_families_f" ] && [ -s "$act_families_f" ]; then
+      local cand_fam_names act_fam_names
+      cand_fam_names="$(awk -F'\t' '{ print $1 }' "$cand_families_f" | sort -u)"
+      act_fam_names="$(awk -F'\t' '{ print $1 }' "$act_families_f" | sort -u)"
+
+      local cfam
+      while IFS= read -r cfam; do
+        [ -n "$cfam" ] || continue
+        [ "$rule_d_fail" -eq 0 ] || break
+        # Check if this family appears in both.
+        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qx "$cfam" 2>/dev/null; then
+          # Config family: check section granularity.
+          if [ "$cfam" = "config" ]; then
+            # Get candidate and active story keys that touch config.
+            local cand_cfg_keys act_cfg_keys
+            cand_cfg_keys="$(awk -F'\t' '$1 == "config" { print $2 }' "$cand_families_f" | sort -u)"
+            act_cfg_keys="$(awk -F'\t' '$1 == "config" { print $2 }' "$act_families_f" | sort -u)"
+
+            # Check section granularity for each pair.
+            local cck ack
+            local config_overlap=0
+            while IFS= read -r cck; do
+              [ -n "$cck" ] || continue
+              while IFS= read -r ack; do
+                [ -n "$ack" ] || continue
+                # Do both stories have predicted_config_sections?
+                local cck_has_cs=0 ack_has_cs=0
+                if [ -f "$cs_dir/_has_field.txt" ]; then
+                  /usr/bin/grep -qx "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
+                  /usr/bin/grep -qx "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
+                fi
+
+                if [ "$cck_has_cs" -eq 1 ] && [ "$ack_has_cs" -eq 1 ]; then
+                  # Per-key comparison.
+                  local section_overlap
+                  section_overlap="$(sort "$cs_dir/${cck}.txt" "$cs_dir/${ack}.txt" 2>/dev/null | uniq -d | head -1)"
+                  if [ -n "$section_overlap" ]; then
+                    config_overlap=1
+                    rule_d_fail=1
+                    rule_d_diag="FAIL rule (d): config section \"${section_overlap}\" (${candidate} -> ${active_id})"
+                    break
+                  fi
+                else
+                  # Conservative: either lacks the field.
+                  config_overlap=1
+                  rule_d_fail=1
+                  rule_d_diag="FAIL rule (d): config file \".gaia/config/project-config.yaml\" (${candidate} -> ${active_id})"
+                  break
+                fi
+              done <<< "$act_cfg_keys"
+              [ "$rule_d_fail" -eq 0 ] || break
+            done <<< "$cand_cfg_keys"
+          else
+            # Non-config family overlap.
+            rule_d_fail=1
+            rule_d_diag="FAIL rule (d): planning-artifact conflict on ${cfam} (${candidate} -> ${active_id})"
+          fi
+        fi
+      done <<< "$cand_fam_names"
+    fi
+
+    # ---- Emit results ----
+    if [ "$rule_c_fail" -ne 0 ]; then
+      printf '%s\n' "$rule_c_diag"
+      printf '%s\n' "$rule_c_diag" >&2
+      cd_overall_rc=1
+    fi
+    if [ "$rule_d_fail" -ne 0 ]; then
+      printf '%s\n' "$rule_d_diag"
+      printf '%s\n' "$rule_d_diag" >&2
+      cd_overall_rc=1
+    fi
+    if [ "$rule_c_fail" -eq 0 ] && [ "$rule_d_fail" -eq 0 ]; then
+      printf 'PASS rules (c),(d): %s vs %s\n' "$candidate" "$active_id"
+    fi
+
+  done <<< "$(printf '%s' "$active_csv" | tr ',' '\n')"
+
+  return "$cd_overall_rc"
 }
 
 # ---------------------------------------------------------------------------
@@ -798,7 +1883,18 @@ main() {
     esac
   done <<< "$awk_result"
 
-  exit "$awk_rc"
+  # -------------------------------------------------------------------
+  # Rules (c)/(d): Touch-set overlap + planning-artifact exclusivity
+  # -------------------------------------------------------------------
+  local cd_rc=0
+  _ic_run_rules_cd "$_IC_CANDIDATE" "$active_csv" "$membership" "$resolved_f" "$tmpdir" || cd_rc=$?
+
+  # Final exit code: non-zero if ANY rule set failed.
+  local final_rc=0
+  if [ "$awk_rc" -ne 0 ] || [ "$cd_rc" -ne 0 ]; then
+    final_rc=1
+  fi
+  exit "$final_rc"
 }
 
 # Run main only when executed as a script (not sourced).
