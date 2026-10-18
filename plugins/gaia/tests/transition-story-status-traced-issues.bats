@@ -175,8 +175,14 @@ teardown() {
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  # Verify --repo targeting and -- separator in the close call
-  grep -qF -- '--repo testowner/testrepo' "$GH_CALL_LOG"
+  # Every issue close line carries --repo (not just present somewhere in the log)
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo testowner/testrepo'* ]]
+  done < <(grep 'issue close' "$GH_CALL_LOG")
+  # Every pr list line carries --repo
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo testowner/testrepo'* ]]
+  done < <(grep 'pr list' "$GH_CALL_LOG")
   grep -qF -- '-- 100' "$GH_CALL_LOG"
   # Exact comment wording per spec: Fixed by PR #M (story <key>)
   grep -qF 'Fixed by PR #123 (story E900-S1)' "$GH_CALL_LOG"
@@ -194,8 +200,14 @@ teardown() {
   [ "$status" -eq 0 ]
   local saved_output="$output"
 
-  # Partial comment: remaining keys wrapped in backtick code spans
-  grep -qF -- '--repo testowner/testrepo' "$GH_CALL_LOG"
+  # Every issue comment line carries --repo (per-line, not whole-log)
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo testowner/testrepo'* ]]
+  done < <(grep 'issue comment' "$GH_CALL_LOG")
+  # Every pr list line carries --repo
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo testowner/testrepo'* ]]
+  done < <(grep 'pr list' "$GH_CALL_LOG")
   grep -qF -- '-- 200' "$GH_CALL_LOG"
   grep -qF 'Partially addressed by PR #456 (story E900-S1)' "$GH_CALL_LOG"
   # Remaining key is backtick-wrapped for Markdown rendering
@@ -649,4 +661,82 @@ STUB
   # And the story key does NOT appear as a bare --search argument
   run grep -qE -- '--search E900-S1[^"]' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
+}
+
+# ── upstream takes precedence over origin ─────────────────────────────────
+
+@test "upstream remote takes precedence over origin for --repo" {
+  # Reconfigure the fixture repo with both upstream (the real project) and
+  # origin (a fork). The resolver must prefer upstream.
+  (cd "$TEST_TMP" && \
+   git remote remove origin 2>/dev/null; \
+   git remote add upstream https://github.com/real-org/real-repo.git && \
+   git remote add origin https://github.com/fork-user/forked-repo.git) 2>/dev/null
+
+  _write_pr_stub 101
+
+  PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # Every gh call must target the upstream repo, not the fork
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo real-org/real-repo'* ]]
+  done < <(grep -E 'issue (close|comment)|pr list' "$GH_CALL_LOG")
+  # Fork must NOT appear
+  run grep -qF 'fork-user/forked-repo' "$GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+}
+
+@test "SSH remote URL parsed correctly for --repo" {
+  # Reconfigure with an SSH-style remote URL.
+  # Remove any pre-existing remotes (prior tests may have reconfigured them),
+  # then add origin with an SSH URL.
+  (cd "$TEST_TMP" && \
+   git remote remove origin 2>/dev/null || true; \
+   git remote remove upstream 2>/dev/null || true; \
+   git remote add origin git@github.com:ssh-org/ssh-repo.git)
+
+  # Reset the story file back to review (prior test transitioned it to done)
+  _write_story_file "$STORY_KEY" review '["GitHub #100"]'
+  cat > "$SPRINT_YAML" <<EOF
+sprint_id: "fixture-sprint"
+stories:
+  - key: $STORY_KEY
+    status: "review"
+EOF
+  cat > "$EPICS_MD" <<EOF
+# Epics and Stories
+
+## Epic E900 — Traced-issue test epic
+
+### Story ${STORY_KEY}: Traced-issue fixture
+
+- **Epic:** E900
+- **Priority:** P1
+- **Status:** review
+EOF
+  cat > "$INDEX_YAML" <<EOF
+# Auto-maintained
+last_updated: "2026-10-16T00:00:00Z"
+stories:
+  ${STORY_KEY}:
+    story_key: "${STORY_KEY}"
+    title: "Traced-issue fixture"
+    epic: "E900"
+    priority: "P1"
+    risk: "low"
+    author: "Test"
+    file: "${STORY_KEY}-traced-issue-fixture/story.md"
+    status: "review"
+EOF
+  : > "$GH_CALL_LOG"
+  _write_pr_stub 202
+
+  PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # Every gh call must carry --repo parsed from the SSH URL
+  while IFS= read -r line; do
+    [[ "$line" == *'--repo ssh-org/ssh-repo'* ]]
+  done < <(grep -E 'issue (close|comment)|pr list' "$GH_CALL_LOG")
 }
