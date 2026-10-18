@@ -157,6 +157,15 @@ _get_hydration_array() {
   unknown_key: true')" "sprint_status_mod"
 }
 
+@test "deprecated waiting_agent_threshold_seconds is tolerated by schema" {
+  local cfg
+  cfg="$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+  waiting_agent_threshold_seconds: 300')"
+  _assert_validator_passes "$cfg"
+}
+
 # ---------------------------------------------------------------------------
 # Scenario 3a: bare key (YAML null) accepted
 # ---------------------------------------------------------------------------
@@ -404,6 +413,13 @@ _degraded_rejects() {
   _degraded_passes "$(_write_config 'sprint_status_mod: {}')"
   _degraded_passes "$(_write_config 'sprint_status_mod:
   user_aliases: []')"
+}
+
+@test "degraded path tolerates deprecated waiting_agent_threshold_seconds" {
+  _degraded_passes "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+  waiting_agent_threshold_seconds: 300')"
 }
 
 @test "degraded path rejects bad user_aliases values" {

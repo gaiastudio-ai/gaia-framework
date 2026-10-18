@@ -546,8 +546,10 @@ fi
 # sprint_status_mod — the schema engines check this section in full; this
 # path has no schema engine, so its types and ranges are checked here: the
 # section is an object or null with user_aliases (a list of non-empty
-# strings) as the only known key.  One tab-separated "location<TAB>message"
-# line per violation (@tsv escapes any tab or newline inside a key).
+# strings) as the only active key.  waiting_agent_threshold_seconds is
+# tolerated for back-compatibility but ignored.  One tab-separated
+# "location<TAB>message" line per violation (@tsv escapes any tab or
+# newline inside a key).
 # shellcheck disable=SC2016  # jq program text, not shell expansions
 ssm_jq='
   if (has("sprint_status_mod") | not) or .sprint_status_mod == null then empty
@@ -555,7 +557,7 @@ ssm_jq='
   | if ($s | type) != "object" then
       ["$.sprint_status_mod", "must be an object or null; got \($s | type)"] | @tsv
     else
-      ( $s | keys[] | select(. != "user_aliases")
+      ( $s | keys[] | select(. != "user_aliases" and . != "waiting_agent_threshold_seconds")
         | ["$.sprint_status_mod.\(.)", "property is not allowed (allowed: user_aliases)"] | @tsv ),
       ( if ($s | has("user_aliases")) then
           $s.user_aliases as $a
