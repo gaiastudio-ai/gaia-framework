@@ -132,6 +132,15 @@ _SSM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${_SSM_DIR}/lib/story-state-machine.sh"
 # shellcheck source=lib/acquire-lock.sh
 . "${_SSM_DIR}/lib/acquire-lock.sh"
+# Source the concurrent-sprint guard when available (created by the concurrent
+# sprints feature). Conditional so the script loads cleanly in test harnesses
+# that copy only the essential libs.
+if [ -f "${_SSM_DIR}/lib/concurrent-sprint-guard.sh" ]; then
+  # shellcheck source=lib/concurrent-sprint-guard.sh
+  . "${_SSM_DIR}/lib/concurrent-sprint-guard.sh"
+fi
+# Persist the script directory for runtime sourcing (resolve-config.sh etc.).
+_SPRINT_STATE_SH_DIR="$_SSM_DIR"
 unset _SSM_DIR
 
 # ---------- Helpers ----------
@@ -339,6 +348,515 @@ validate_transition() {
   if ! validate_story_transition "$from" "$to" 2>/dev/null; then
     die "illegal transition: '${from}' -> '${to}' is not in the allowed adjacency list"
   fi
+}
+
+# ---------- Sprint ID validation ----------
+
+# Validate a sprint ID against the safe-character regex. IDs must start with
+# an alphanumeric character and contain only [A-Za-z0-9._-]. Rejects path
+# separators, NUL, whitespace, leading dots, leading dashes and colons.
+_validate_sprint_id() {
+  local id="$1"
+  if [ -z "$id" ]; then
+    printf '%s: error: sprint-id is required\n' "$SCRIPT_NAME" >&2
+    return 1
+  fi
+  # Reject IDs containing characters outside the safe set.
+  # The grep-based check is portable across bash 3.2+ and handles all
+  # filesystem-unsafe characters (/, NUL, whitespace, colon, etc.).
+  if printf '%s' "$id" | /usr/bin/grep -q '[^A-Za-z0-9._-]'; then
+    printf '%s: error: sprint-id contains invalid characters: %s (must match ^[A-Za-z0-9][A-Za-z0-9._-]*$)\n' \
+      "$SCRIPT_NAME" "$id" >&2
+    return 1
+  fi
+  # First character must be alphanumeric (rejects leading dot, leading dash).
+  case "${id:0:1}" in
+    [A-Za-z0-9]) : ;;
+    *)
+      printf '%s: error: sprint-id must start with an alphanumeric character: %s\n' \
+        "$SCRIPT_NAME" "$id" >&2
+      return 1 ;;
+  esac
+  return 0
+}
+
+# ---------- Concurrent-mode helpers ----------
+
+# Read max_concurrent_active from project config. Defaults to 1 when absent.
+# Caches the result in _GAIA_MAX_CONCURRENT for the lifetime of the process.
+# Uses direct yq query (lightweight, no resolve-config.sh dependencies).
+_read_max_concurrent_active() {
+  if [ -n "${_GAIA_MAX_CONCURRENT:-}" ]; then
+    printf '%s' "$_GAIA_MAX_CONCURRENT"
+    return 0
+  fi
+  local val=""
+  # Resolve the config file path. Use the PROJECT_CONFIG env var if set;
+  # otherwise derive from PROJECT_ROOT (which resolve_paths() has already
+  # resolved). An unset PROJECT_ROOT makes the path relative to CWD, which
+  # is correct when CWD is the project root.
+  local cfg="${PROJECT_CONFIG:-}"
+  if [ -z "$cfg" ]; then
+    if [ -n "${PROJECT_ROOT:-}" ]; then
+      cfg="${PROJECT_ROOT%/}/.gaia/config/project-config.yaml"
+    fi
+  fi
+  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+    # Fast path: grep for the key before spawning yq (avoids ~40ms fork).
+    if /usr/bin/grep -q 'max_concurrent_active' "$cfg" 2>/dev/null; then
+      if command -v yq >/dev/null 2>&1; then
+        val="$(yq '.sprint.max_concurrent_active' "$cfg" 2>/dev/null)" || val=""
+      fi
+    fi
+  fi
+  # Fall back to 1 when absent, null, or non-numeric.
+  case "$val" in
+    ''|null|*[!0-9]*) val="1" ;;
+  esac
+  _GAIA_MAX_CONCURRENT="$val"
+  printf '%s' "$val"
+}
+_GAIA_MAX_CONCURRENT=""
+
+# Check whether per-sprint state files exist in the state directory.
+_per_sprint_files_exist() {
+  local state_dir="$1"
+  [ -d "$state_dir" ] || return 1
+  local found=""
+  found="$(find "$state_dir" -maxdepth 1 -name 'sprint-status-*.yaml' ! -name '*.lock' ! -name '*.result' 2>/dev/null | head -1)" || found=""
+  [ -n "$found" ]
+}
+
+# Determine whether the system is in concurrent mode:
+#   max_concurrent_active > 1 OR per-sprint files exist (transitional state).
+# The result is computed once per process and cached in _GAIA_CONCURRENT_MODE.
+# Call _invalidate_concurrent_mode_cache after reverse migration removes
+# per-sprint files to force a re-check.
+_GAIA_CONCURRENT_MODE=""
+
+_is_concurrent_mode() {
+  # Return cached result when available (hot path — no subprocess, no I/O).
+  case "${_GAIA_CONCURRENT_MODE:-}" in
+    1) return 0 ;; 0) return 1 ;;
+  esac
+  # Cold path: compute and cache.
+  local max
+  max="$(_read_max_concurrent_active)"
+  if [ "$max" -gt 1 ] 2>/dev/null; then
+    _GAIA_CONCURRENT_MODE=1
+    return 0
+  fi
+  local state_dir
+  state_dir="$(dirname "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}")"
+  if _per_sprint_files_exist "$state_dir"; then
+    _GAIA_CONCURRENT_MODE=1
+    return 0
+  fi
+  _GAIA_CONCURRENT_MODE=0
+  return 1
+}
+
+_invalidate_concurrent_mode_cache() {
+  _GAIA_CONCURRENT_MODE=""
+  _GAIA_MAX_CONCURRENT=""
+}
+
+# ---------- Per-sprint file resolver ----------
+
+# Build the per-sprint state file path from a sprint ID.
+_sprint_file_path() {
+  local state_dir="$1" sprint_id="$2"
+  printf '%s/sprint-status-%s.yaml' "$state_dir" "$sprint_id"
+}
+
+# Path length check — reject if combined path exceeds OS limits.
+_check_path_length() {
+  local path="$1"
+  local max_path="${GAIA_PATH_MAX:-1024}"
+  if [ "${#path}" -gt "$max_path" ]; then
+    printf '%s: error: per-sprint file path exceeds length limit (%d > %d): %s\n' \
+      "$SCRIPT_NAME" "${#path}" "$max_path" "$path" >&2
+    return 1
+  fi
+  return 0
+}
+
+# _resolve_sprint_file — the central resolver for sprint state files.
+#
+# Resolution order (per R19):
+#   1. --sprint argument (when non-empty)
+#   2. Session binding file at $GAIA_BINDING_DIR/bound_sprint_id
+#   3. Single-file default (sprint-status.yaml as resolve_paths computed it)
+#
+# In single-sprint mode (max_concurrent_active absent or 1 AND no per-sprint
+# files exist), short-circuits to the path resolve_paths() already computed.
+#
+# Globals read: SPRINT_STATUS_YAML, GAIA_BINDING_DIR, GAIA_BOUND_SPRINT_ID
+# Outputs the resolved file path on stdout.
+_resolve_sprint_file() {
+  local sprint_arg="${1:-}"
+  local state_dir
+  state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+
+  # Short-circuit: single-sprint mode — no per-sprint files, limit absent or 1.
+  if ! _is_concurrent_mode; then
+    printf '%s' "$SPRINT_STATUS_YAML"
+    return 0
+  fi
+
+  # Priority 1: explicit --sprint argument.
+  if [ -n "$sprint_arg" ]; then
+    _validate_sprint_id "$sprint_arg" || return 1
+    local p
+    p="$(_sprint_file_path "$state_dir" "$sprint_arg")"
+    _check_path_length "$p" || return 1
+    printf '%s' "$p"
+    return 0
+  fi
+
+  # Priority 2: session binding file.
+  if [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/bound_sprint_id" ]; then
+    local bound_id=""
+    # Read the binding file (re-read every time; env var is only a cache).
+    bound_id="$(cat "${GAIA_BINDING_DIR}/bound_sprint_id" 2>/dev/null | tr -d '\n')" || bound_id=""
+    if [ -n "$bound_id" ]; then
+      _validate_sprint_id "$bound_id" || return 1
+      local bp
+      bp="$(_sprint_file_path "$state_dir" "$bound_id")"
+      _check_path_length "$bp" || return 1
+      printf '%s' "$bp"
+      return 0
+    fi
+  fi
+
+  # Priority 3: single-file default (the proxy or the only file).
+  printf '%s' "$SPRINT_STATUS_YAML"
+  return 0
+}
+
+# ---------- Completed-migration marker ----------
+
+_MIGRATION_MARKER_NAME=".sprint-migration-complete"
+
+_migration_marker_path() {
+  local state_dir="$1"
+  printf '%s/%s' "$state_dir" "$_MIGRATION_MARKER_NAME"
+}
+
+_migration_is_complete() {
+  local state_dir="$1"
+  local p
+  p="$(_migration_marker_path "$state_dir")"
+  [ -f "$p" ] || return 1
+  # Validate marker content: must contain a sprint ID and a timestamp.
+  # A 0-byte or truncated marker is not complete.
+  local content=""
+  content="$(cat "$p" 2>/dev/null)" || return 1
+  [ -n "$content" ] || return 1
+  # First word must be a valid sprint ID.
+  local marker_id=""
+  marker_id="${content%% *}"
+  _validate_sprint_id "$marker_id" 2>/dev/null || return 1
+  return 0
+}
+
+# Write the migration marker atomically (temp + mv).
+_write_migration_marker() {
+  local state_dir="$1" sprint_id="$2"
+  local p
+  p="$(_migration_marker_path "$state_dir")"
+  local tmp
+  tmp="$(mktemp "${p}.XXXXXX")"
+  printf '%s %s\n' "$sprint_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  mv "$tmp" "$p"
+}
+
+# ---------- Last-activated record ----------
+
+_LAST_ACTIVATED_NAME=".last-activated-sprint"
+
+_last_activated_path() {
+  local state_dir="$1"
+  printf '%s/%s' "$state_dir" "$_LAST_ACTIVATED_NAME"
+}
+
+_read_last_activated() {
+  local state_dir="$1"
+  local p
+  p="$(_last_activated_path "$state_dir")"
+  [ -f "$p" ] || return 0
+  local val=""
+  val="$(cat "$p" 2>/dev/null | tr -d '\n')" || return 0
+  # Reject empty or invalid IDs (truncated marker, 0-byte file).
+  if [ -z "$val" ] || ! _validate_sprint_id "$val" 2>/dev/null; then
+    return 0
+  fi
+  printf '%s' "$val"
+}
+
+_write_last_activated() {
+  local state_dir="$1" sprint_id="$2"
+  local p
+  p="$(_last_activated_path "$state_dir")"
+  local tmp
+  tmp="$(mktemp "${p}.XXXXXX")"
+  printf '%s' "$sprint_id" > "$tmp"
+  mv "$tmp" "$p"
+}
+
+# ---------- Forward migration ----------
+
+# Migrate from single-file layout to per-sprint files. Called under L4 (strict).
+# Idempotent: skips when the completed-migration marker is present.
+_forward_migration() {
+  local state_dir="$1" existing_id="$2" new_id="$3"
+
+  # Validate IDs before constructing any paths.
+  _validate_sprint_id "$existing_id" || return 1
+  _validate_sprint_id "$new_id" || return 1
+
+  local marker
+  marker="$(_migration_marker_path "$state_dir")"
+  local original="${state_dir}/sprint-status.yaml"
+
+  # Idempotent: already migrated — but only if the per-sprint file also exists.
+  # A marker without the per-sprint file means the marker was written before
+  # the copy completed (a crash or the "marker before copy" ordering bug).
+  local existing_per_sprint
+  existing_per_sprint="$(_sprint_file_path "$state_dir" "$existing_id")"
+  if _migration_is_complete "$state_dir" && [ -f "$existing_per_sprint" ]; then
+    return 0
+  fi
+
+  # Incomplete migration detection: per-sprint files exist but marker absent
+  # (or marker present but per-sprint file missing). Re-run verification.
+  if [ -f "$existing_per_sprint" ]; then
+    # Verify byte-equality and valid YAML.
+    if ! diff -q "$existing_per_sprint" "$original" >/dev/null 2>&1; then
+      # Not byte-equal — re-copy.
+      cp "$original" "$existing_per_sprint"
+      sync "$existing_per_sprint" 2>/dev/null || true
+    fi
+    # Verify YAML validity.
+    if ! python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$existing_per_sprint" 2>/dev/null; then
+      if ! awk '/^[^#]/' "$existing_per_sprint" | head -1 | grep -q ':' 2>/dev/null; then
+        printf '%s: error: forward migration — per-sprint file is not valid YAML: %s\n' \
+          "$SCRIPT_NAME" "$existing_per_sprint" >&2
+        return 1
+      fi
+    fi
+    # Write the completed-migration marker atomically.
+    _write_migration_marker "$state_dir" "$existing_id"
+    # Seed the last-activated record with the already-active sprint.
+    _write_last_activated "$state_dir" "$existing_id"
+    # Update the proxy to mirror the existing (already-active) sprint.
+    _write_proxy_from_file "$state_dir" "$existing_per_sprint"
+    return 0
+  fi
+
+  # Fresh migration: copy original to per-sprint file for the existing sprint.
+  local created_files=()
+  _migration_cleanup() {
+    local f
+    for f in "${created_files[@]}"; do
+      rm -f "$f" 2>/dev/null || true
+    done
+  }
+
+  cp "$original" "$existing_per_sprint" || { _migration_cleanup; return 1; }
+  sync "$existing_per_sprint" 2>/dev/null || true
+  created_files+=("$existing_per_sprint")
+
+  # Post-migration verification: byte-equality and valid YAML.
+  if ! diff -q "$existing_per_sprint" "$original" >/dev/null 2>&1; then
+    printf '%s: error: forward migration — per-sprint file not byte-equal to original\n' \
+      "$SCRIPT_NAME" >&2
+    _migration_cleanup
+    return 1
+  fi
+
+  # Verify the per-sprint file parses as valid YAML.
+  if ! python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$existing_per_sprint" 2>/dev/null; then
+    # Fallback: check with awk if python3 or PyYAML is unavailable.
+    if ! awk '/^[^#]/' "$existing_per_sprint" | head -1 | grep -q ':' 2>/dev/null; then
+      printf '%s: error: forward migration — per-sprint file is not valid YAML\n' "$SCRIPT_NAME" >&2
+      _migration_cleanup
+      return 1
+    fi
+  fi
+
+  # Seed the last-activated record with the already-active sprint under L4.
+  _write_last_activated "$state_dir" "$existing_id"
+  created_files+=("$(_last_activated_path "$state_dir")")
+
+  # Write the proxy (mirrors the already-active sprint).
+  _write_proxy_from_file "$state_dir" "$existing_per_sprint"
+
+  # Verify the proxy parses as valid YAML.
+  if ! python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "${state_dir}/sprint-status.yaml" 2>/dev/null; then
+    if ! awk '/^[^#]/' "${state_dir}/sprint-status.yaml" | head -1 | grep -q ':' 2>/dev/null; then
+      printf '%s: error: forward migration — proxy is not valid YAML\n' "$SCRIPT_NAME" >&2
+      _migration_cleanup
+      return 1
+    fi
+  fi
+
+  # Write the completed-migration marker ONLY after all verification passes.
+  _write_migration_marker "$state_dir" "$existing_id"
+
+  return 0
+}
+
+# ---------- Reverse migration ----------
+
+# Migrate from per-sprint files back to single-file layout. Called under L4.
+# Precondition: max_concurrent_active = 1, only one sprint remains active.
+_reverse_migration() {
+  local state_dir="$1" active_id="$2"
+
+  # Validate the sprint ID before constructing any paths.
+  _validate_sprint_id "$active_id" || return 1
+
+  local per_sprint
+  per_sprint="$(_sprint_file_path "$state_dir" "$active_id")"
+
+  # Verify the sprint ID from the file — validate before any comparison.
+  local file_sid=""
+  file_sid="$(read_yaml_sprint_id "$per_sprint" 2>/dev/null || true)"
+  if [ -n "$file_sid" ]; then
+    _validate_sprint_id "$file_sid" || return 1
+  fi
+  if [ -n "$file_sid" ] && [ "$file_sid" != "$active_id" ]; then
+    printf '%s: error: reverse migration — sprint ID mismatch: file says %s, expected %s\n' \
+      "$SCRIPT_NAME" "$file_sid" "$active_id" >&2
+    return 1
+  fi
+
+  # Atomically copy the active sprint's per-sprint file back to sprint-status.yaml.
+  local proxy="${state_dir}/sprint-status.yaml"
+  local tmp
+  tmp="$(mktemp "${proxy}.XXXXXX")"
+  cp "$per_sprint" "$tmp" || { rm -f "$tmp"; return 1; }
+  sync "$tmp" 2>/dev/null || true
+  mv "$tmp" "$proxy" || { rm -f "$tmp"; return 1; }
+
+  # Remove the active sprint's per-sprint file.
+  rm -f "$per_sprint" 2>/dev/null || true
+
+  # Remove per-sprint files of closed sprints (already archived).
+  local f
+  for f in "${state_dir}"/sprint-status-*.yaml; do
+    [ -f "$f" ] || continue
+    # Skip lock files and result files.
+    case "$f" in *.lock|*.result) continue ;; esac
+    rm -f "$f" 2>/dev/null || true
+  done
+
+  # Remove the last-activated record.
+  rm -f "$(_last_activated_path "$state_dir")" 2>/dev/null || true
+
+  # Remove the completed-migration marker.
+  rm -f "$(_migration_marker_path "$state_dir")" 2>/dev/null || true
+
+  return 0
+}
+
+# Check if reverse migration should run and execute it under L4.
+# Preconditions: max_concurrent_active = 1, per-sprint files exist,
+# only one active sprint remains.
+_maybe_reverse_migration() {
+  local state_dir="$1"
+  local max
+  max="$(_read_max_concurrent_active)"
+
+  # Only trigger when limit is 1.
+  [ "$max" -le 1 ] 2>/dev/null || return 0
+
+  # Per-sprint files must exist (transitional state).
+  _per_sprint_files_exist "$state_dir" || return 0
+
+  # Count active sprints across per-sprint files.
+  local active_count=0 active_id=""
+  local f
+  for f in "${state_dir}"/sprint-status-*.yaml; do
+    [ -f "$f" ] || continue
+    case "$f" in *.lock|*.result) continue ;; esac
+    local st=""
+    st="$(_yaml_sprint_status "$f" 2>/dev/null || true)"
+    case "$st" in
+      active|planned|review|correction)
+        active_count=$((active_count + 1))
+        active_id="$(read_yaml_sprint_id "$f" 2>/dev/null || true)"
+        ;;
+    esac
+  done
+
+  # Reverse migration only when exactly one non-closed sprint remains.
+  [ "$active_count" -eq 1 ] || return 0
+  [ -n "$active_id" ] || return 0
+  # Validate the ID from the file before building paths.
+  _validate_sprint_id "$active_id" 2>/dev/null || return 0
+
+  # Run under L4 (strict mode).
+  local l4_path="${state_dir}/${GAIA_LOCK_L4_PATH}"
+  (
+    if ! acquire_lock "$l4_path" "$GAIA_LOCK_L4_TIMEOUT" 8 --strict; then
+      printf '%s: error: reverse migration — lifecycle lock timeout\n' "$SCRIPT_NAME" >&2
+      return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+    fi
+    trap 'release_lock 8 2>/dev/null || true' EXIT
+    trap 'release_lock 8 2>/dev/null || true; exit 130' INT
+    trap 'release_lock 8 2>/dev/null || true; exit 143' TERM
+    _reverse_migration "$state_dir" "$active_id"
+  )
+}
+
+# ---------- Compatibility proxy writer ----------
+
+# Write the proxy file atomically from a source per-sprint file.
+_write_proxy_from_file() {
+  local state_dir="$1" source_file="$2"
+  local proxy="${state_dir}/sprint-status.yaml"
+  local tmp
+  tmp="$(mktemp "${proxy}.XXXXXX")" || return 1
+  cp "$source_file" "$tmp" || { rm -f "$tmp"; return 1; }
+  sync "$tmp" 2>/dev/null || true
+  mv "$tmp" "$proxy" || { rm -f "$tmp"; return 1; }
+  return 0
+}
+
+# Post-write hook: update the compatibility proxy when the write targets the
+# last-activated sprint. In concurrent mode only.
+# Args: $1 = state_dir, $2 = sprint_id that was just written, $3 = per-sprint file
+_GAIA_PROXY_HOOK_SUPPRESSED=0
+
+_update_compatibility_proxy() {
+  local state_dir="$1" written_sprint_id="$2" per_sprint_file="$3"
+
+  # Skip in single-sprint mode.
+  _is_concurrent_mode || return 0
+
+  # Skip when suppressed (inside rollover).
+  [ "$_GAIA_PROXY_HOOK_SUPPRESSED" -eq 0 ] || return 0
+
+  # Only update when the write targets the last-activated sprint.
+  local last_activated=""
+  last_activated="$(_read_last_activated "$state_dir")"
+  [ -n "$last_activated" ] || return 0
+  [ "$written_sprint_id" = "$last_activated" ] || return 0
+
+  # Acquire the proxy lock (L5, non-strict, 2s timeout).
+  local l5_path="${state_dir}/${GAIA_LOCK_L5_PATH}"
+  (
+    if ! acquire_lock "$l5_path" "$GAIA_LOCK_L5_TIMEOUT" 7; then
+      printf '%s: warning: proxy lock timeout — proxy may be stale\n' "$SCRIPT_NAME" >&2
+      return 0
+    fi
+    trap 'release_lock 7 2>/dev/null || true' EXIT
+    trap 'release_lock 7 2>/dev/null || true; exit 130' INT
+    trap 'release_lock 7 2>/dev/null || true; exit 143' TERM
+    _write_proxy_from_file "$state_dir" "$per_sprint_file"
+  ) || true  # Proxy failure is non-fatal (per-sprint file is authoritative).
 }
 
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
@@ -2600,6 +3118,11 @@ cmd_rollover() {
   [ -n "$to_sprint" ] || die "rollover requires --to <sprint-id>"
   [ -n "$keys_raw" ] || die "rollover requires --keys <key1,key2,...>"
 
+  # Suppress proxy hooks during rollover — the hook fires once after the
+  # rollover subshell exits (wired in the post-dispatch proxy hook).
+  _GAIA_PROXY_HOOK_SUPPRESSED=1
+  trap '_GAIA_PROXY_HOOK_SUPPRESSED=0' RETURN 2>/dev/null || true
+
   # Split comma-separated keys.
   local OLDIFS="$IFS"
   IFS=','
@@ -2779,9 +3302,14 @@ _rollover_one() {
 # ============================================================
 
 # Resolve the path of the active sprint yaml. Caller has already called
-# resolve_paths(). We honor SPRINT_STATUS_YAML if pre-set; else default to
-# .gaia/state/sprint-status.yaml (the sole canonical home). Read-only.
+# resolve_paths(). Routes through _resolve_sprint_file() in concurrent mode
+# so every subcommand resolves the same way.
 _resolve_active_yaml() {
+  local sprint_arg="${_GAIA_SPRINT_ARG:-}"
+  if _is_concurrent_mode; then
+    _resolve_sprint_file "$sprint_arg"
+    return $?
+  fi
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
     # resolve_paths() is the single source of truth for this value — it applies
     # the canonical-state-tier resolution order (.gaia/state/ first,
@@ -2829,6 +3357,161 @@ cmd_init() {
       *) die "${init_verb}: unknown flag: $1" ;;
     esac
   done
+  # Validate sprint ID before constructing any file paths.
+  _validate_sprint_id "$sprint_id" || exit 1
+
+  local state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
+  local max_conc
+  max_conc="$(_read_max_concurrent_active)"
+
+  # --- Transitional state: limit 1 but per-sprint files still exist ---
+  # New activations are refused until only one sprint remains (reverse migration).
+  if [ "$max_conc" -le 1 ] 2>/dev/null && _per_sprint_files_exist "$state_dir"; then
+    local yaml="${state_dir}/sprint-status.yaml"
+    local existing_status=""
+    if [ -e "$yaml" ]; then
+      existing_status="$(_yaml_sprint_status "$yaml" 2>/dev/null || true)"
+    fi
+    if [ -n "$existing_status" ] && [ "$existing_status" != "closed" ]; then
+      die "${init_verb}: concurrent sprints still active (limit lowered to $max_conc) — new activations refused until only one sprint remains"
+    fi
+  fi
+
+  # --- Concurrent-mode init (max_concurrent_active > 1) ---
+  if [ "$max_conc" -gt 1 ] 2>/dev/null; then
+    local yaml="${state_dir}/sprint-status.yaml"
+    local existing_status=""
+    if [ -e "$yaml" ]; then
+      existing_status="$(_yaml_sprint_status "$yaml" 2>/dev/null || true)"
+    fi
+
+    # If there is a live (non-closed) sprint, enter concurrent path.
+    if [ -n "$existing_status" ] && [ "$existing_status" != "closed" ] && [ "$existing_status" != "" ]; then
+      # Run the activation guard — counts ACTIVE sprints only.
+      local active_ids="" active_count=0
+      if _per_sprint_files_exist "$state_dir"; then
+        # Already in per-sprint layout; count active sprints from per-sprint files.
+        local _f
+        for _f in "${state_dir}"/sprint-status-*.yaml; do
+          [ -f "$_f" ] || continue
+          case "$_f" in *.lock|*.result) continue ;; esac
+          local _st=""
+          _st="$(_yaml_sprint_status "$_f" 2>/dev/null || true)"
+          if [ "$_st" = "active" ]; then
+            local _sid=""
+            _sid="$(read_yaml_sprint_id "$_f" 2>/dev/null || true)"
+            active_ids="${active_ids}${active_ids:+$'\n'}${_sid}"
+            active_count=$((active_count + 1))
+          fi
+        done
+      else
+        # Single-file mode; check existing sprint status.
+        if [ "$existing_status" = "active" ]; then
+          local _sid=""
+          _sid="$(read_yaml_sprint_id "$yaml" 2>/dev/null || true)"
+          active_ids="$_sid"
+          active_count=1
+        fi
+      fi
+
+      # Guard: refuse if limit reached.
+      if ! printf '%s\n' "$active_ids" | concurrent_sprint_guard "$max_conc" 2>&1; then
+        return 1
+      fi
+
+      # Forward migration under L4 if still in single-file mode.
+      local l4_path="${state_dir}/${GAIA_LOCK_L4_PATH}"
+      if ! _per_sprint_files_exist "$state_dir"; then
+        local existing_id
+        existing_id="$(read_yaml_sprint_id "$yaml" 2>/dev/null || true)"
+        [ -n "$existing_id" ] || die "${init_verb}: cannot read sprint_id from existing $yaml"
+        (
+          if ! acquire_lock "$l4_path" "$GAIA_LOCK_L4_TIMEOUT" 8 --strict; then
+            printf '%s: error: lifecycle lock timeout during forward migration\n' "$SCRIPT_NAME" >&2
+            exit "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          fi
+          trap 'release_lock 8 2>/dev/null || true' EXIT
+          trap 'release_lock 8 2>/dev/null || true; exit 130' INT
+          trap 'release_lock 8 2>/dev/null || true; exit 143' TERM
+          _forward_migration "$state_dir" "$existing_id" "$sprint_id"
+        ) || return $?
+      elif ! _migration_is_complete "$state_dir"; then
+        # Per-sprint files exist but marker absent — incomplete migration.
+        local existing_id
+        existing_id="$(read_yaml_sprint_id "$yaml" 2>/dev/null || true)"
+        (
+          if ! acquire_lock "$l4_path" "$GAIA_LOCK_L4_TIMEOUT" 8 --strict; then
+            exit "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          fi
+          trap 'release_lock 8 2>/dev/null || true' EXIT
+          trap 'release_lock 8 2>/dev/null || true; exit 130' INT
+          trap 'release_lock 8 2>/dev/null || true; exit 143' TERM
+          _forward_migration "$state_dir" "$existing_id" "$sprint_id"
+        ) || return $?
+      fi
+
+      # Seed the new per-sprint file as planned.
+      local new_per_sprint
+      new_per_sprint="$(_sprint_file_path "$state_dir" "$sprint_id")"
+      _check_path_length "$new_per_sprint" || exit 1
+      if [ -e "$new_per_sprint" ]; then
+        local new_st=""
+        new_st="$(_yaml_sprint_status "$new_per_sprint" 2>/dev/null || true)"
+        if [ "$new_st" = "closed" ]; then
+          printf '%s: %s: re-seeding over closed predecessor sprint (%s)\n' \
+            "$SCRIPT_NAME" "$init_verb" "$new_per_sprint" >&2
+        else
+          die "${init_verb}: per-sprint file already exists (status=${new_st:-unknown}) for $sprint_id"
+        fi
+      fi
+      mkdir -p "$state_dir"
+      local tmp
+      tmp="$(mktemp "${new_per_sprint}.XXXXXX")"
+      # Derive end_date from start + length.
+      if [ -n "$start_date" ] && [ -z "$end_date" ] && [ -n "$sprint_length" ]; then
+        end_date="$(date -u -d "$start_date + $sprint_length days" +%Y-%m-%d 2>/dev/null || \
+                    date -u -j -f '%Y-%m-%d' -v +"${sprint_length}d" "$start_date" +%Y-%m-%d 2>/dev/null || \
+                    printf '')"
+      fi
+      {
+        printf 'sprint_id: "%s"\n' "$sprint_id"
+        printf 'status: planned\n'
+        [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
+        [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
+        printf 'total_points: 0\n'
+        printf 'goals: []\n'
+        printf 'items: []\n'
+      } > "$tmp"
+      mv "$tmp" "$new_per_sprint"
+      printf '%s: seeded %s for sprint %s (concurrent mode)\n' "$init_verb" "$new_per_sprint" "$sprint_id"
+
+      # Emit sprint-plan stub (same as single-sprint path).
+      _plan_dir="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}/sprint-plan"
+      _plan_file="${_plan_dir}/${sprint_id}-plan.md"
+      if [ ! -e "$_plan_file" ]; then
+        mkdir -p "$_plan_dir" 2>/dev/null || true
+        {
+          printf -- '---\n'
+          printf 'artifact_type: sprint-plan\n'
+          printf 'sprint_id: "%s"\n' "$sprint_id"
+          printf 'generated_by: sprint-state.sh %s\n' "$init_verb"
+          printf 'generated_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          [ -n "$start_date" ]      && printf 'start_date: "%s"\n' "$start_date"
+          [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
+          printf -- '---\n\n'
+          printf '# Sprint plan: %s\n\n' "$sprint_id"
+          printf 'This stub was emitted by `sprint-state.sh %s`.\n\n' "$init_verb"
+          printf '## Goals\n\n_(populated by /gaia-sprint-plan Step 4)_\n\n'
+          printf '## Selected stories\n\n_(populated by /gaia-sprint-plan Step 5)_\n\n'
+          printf '## Notes\n\n_(populated by /gaia-sprint-plan Step 6)_\n'
+        } > "$_plan_file" 2>/dev/null || true
+      fi
+      return 0
+    fi
+    # Fall through to single-sprint init when existing is closed or absent.
+  fi
+
+  # --- Single-sprint init (legacy path, byte-identical when max_concurrent_active absent or 1) ---
   local yaml
   yaml="$(_resolve_active_yaml)"
   if [ -e "$yaml" ]; then
@@ -3005,8 +3688,13 @@ if not replaced:
     if not inserted:
         new_out.append(new_block)
     out = new_out
-with open(yaml_path, 'w') as f:
+import os, stat, tempfile
+orig_mode = stat.S_IMODE(os.stat(yaml_path).st_mode)
+fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(yaml_path), suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
     f.write(''.join(out))
+os.chmod(tmp_path, orig_mode)
+os.replace(tmp_path, yaml_path)
 PY
 }
 
@@ -3127,6 +3815,34 @@ cmd_transition_sprint() {
     return 1
   fi
 
+  # Activation guard: planned → active (a new activation).
+  # correction → active is NOT a new activation — skip guard and last-activated.
+  if [ "$current" = "planned" ] && [ "$target" = "active" ] && _is_concurrent_mode; then
+    local state_dir
+    state_dir="$(dirname "$yaml")"
+    local max_conc
+    max_conc="$(_read_max_concurrent_active)"
+
+    # Count active sprints from per-sprint files.
+    local _guard_ids=""
+    local _gf
+    for _gf in "${state_dir}"/sprint-status-*.yaml; do
+      [ -f "$_gf" ] || continue
+      case "$_gf" in *.lock|*.result) continue ;; esac
+      local _gst=""
+      _gst="$(_yaml_sprint_status "$_gf" 2>/dev/null || true)"
+      if [ "$_gst" = "active" ]; then
+        local _gsid=""
+        _gsid="$(read_yaml_sprint_id "$_gf" 2>/dev/null || true)"
+        _guard_ids="${_guard_ids}${_guard_ids:+$'\n'}${_gsid}"
+      fi
+    done
+
+    if ! printf '%s\n' "$_guard_ids" | concurrent_sprint_guard "$max_conc" 2>&1; then
+      return 1
+    fi
+  fi
+
   # Gate: review → closed requires a Val sentinel proving /gaia-sprint-review ran.
   # Closing a `review`-status sprint MUST verify the sprint-review Val sentinel
   # (either the dispatch sentinel `sprint-review-{id}-val-dispatched.json` OR
@@ -3217,6 +3933,22 @@ cmd_transition_sprint() {
   mv "$tmp" "$yaml"
   _GAIA_TMP_PATHS[$_tmp_idx]=""
 
+  # Concurrent-mode hooks after a successful write.
+  if _is_concurrent_mode; then
+    local _t_state_dir
+    _t_state_dir="$(dirname "$yaml")"
+
+    # planned → active: update last-activated and rewrite proxy.
+    # correction → active: NOT a new activation — skip both.
+    if [ "$current" = "planned" ] && [ "$target" = "active" ]; then
+      _write_last_activated "$_t_state_dir" "$sprint_id"
+      _update_compatibility_proxy "$_t_state_dir" "$sprint_id" "$yaml"
+    fi
+
+    # Check for reverse migration on any mutating call.
+    _maybe_reverse_migration "$_t_state_dir" || true
+  fi
+
   # Emit a sprint-level lifecycle event directly via lifecycle-event.sh.
   # The emit_lifecycle_event() helper is story-scoped — sprint-level
   # transitions need a different payload shape so we call the helper directly.
@@ -3293,8 +4025,13 @@ if out and not out[-1].endswith('\n'):
 out.append('review_justification:\n')
 for line in payload.splitlines(keepends=True):
     out.append('  ' + line if line.strip() else line)
-with open(yaml_path, 'w') as f:
+import os, stat, tempfile
+orig_mode = stat.S_IMODE(os.stat(yaml_path).st_mode)
+fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(yaml_path), suffix='.tmp')
+with os.fdopen(fd, 'w') as f:
     f.write(''.join(out))
+os.chmod(tmp_path, orig_mode)
+os.replace(tmp_path, yaml_path)
 PY
 }
 
@@ -3434,7 +4171,7 @@ main() {
       usage
       exit 0
       ;;
-    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint|set-phase)
+    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint|set-phase|resolve-file)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -3586,6 +4323,41 @@ main() {
   fi
   resolve_paths
 
+  # Wire the sprint argument for the resolver. In concurrent mode,
+  # override SPRINT_STATUS_YAML to point at the per-sprint file so all
+  # existing writers use it automatically.
+  _GAIA_SPRINT_ARG="${reconcile_sprint_id:-}"
+  if _is_concurrent_mode; then
+    local _resolved_yaml=""
+    _resolved_yaml="$(_resolve_sprint_file "${reconcile_sprint_id:-}" 2>/dev/null)" || true
+    if [ -n "$_resolved_yaml" ] && [ -f "$_resolved_yaml" ]; then
+      SPRINT_STATUS_YAML="$_resolved_yaml"
+      SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
+    fi
+  fi
+
+  # Check for reverse migration on mutating subcommands in concurrent mode.
+  # Only runs when concurrent mode is active (per-sprint files exist or limit > 1).
+  if _is_concurrent_mode; then
+    case "$subcmd" in
+      transition|inject|set-goals|update-goals|set-shape|set-phase|\
+      set-review-justification|reconcile|record-escalation-override|rollover)
+        local _rm_state_dir
+        _rm_state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+        _maybe_reverse_migration "$_rm_state_dir" || true
+        # Re-resolve after reverse migration may have removed per-sprint files.
+        _invalidate_concurrent_mode_cache
+        if ! _is_concurrent_mode; then
+          # Reverse migration completed — fall back to single file.
+          # Clear SPRINT_STATUS_YAML so resolve_paths re-resolves it.
+          unset SPRINT_STATUS_YAML
+          resolve_paths
+          SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
+        fi
+        ;;
+    esac
+  fi
+
   # Fail-closed parallel policy: refuse when flock is unavailable and
   # parallel execution is requested.
   if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
@@ -3719,11 +4491,68 @@ main() {
       cmd_detect_auto_close ;;
     rollover)
       cmd_rollover "$rollover_from" "$to_state" "$rollover_keys" ;;
+    resolve-file)
+      # Read-only subcommand: print the resolved per-sprint state file path.
+      [ -n "$reconcile_sprint_id" ] || die "resolve-file requires --sprint <id>"
+      _validate_sprint_id "$reconcile_sprint_id" || exit 1
+      local _rf_path=""
+      if _is_concurrent_mode; then
+        _rf_path="$(_resolve_sprint_file "$reconcile_sprint_id")" || exit 1
+        # Verify the file exists or is discoverable.
+        if [ ! -f "$_rf_path" ]; then
+          printf '%s: error: resolve-file — no state file for sprint %s at %s\n' \
+            "$SCRIPT_NAME" "$reconcile_sprint_id" "$_rf_path" >&2
+          exit 1
+        fi
+      else
+        _rf_path="$SPRINT_STATUS_YAML"
+      fi
+      printf '%s\n' "$_rf_path"
+      ;;
   esac
   )
   _dispatch_rc=$?
   set -e
   [ "$_dispatch_rc" -eq 0 ] || exit "$_dispatch_rc"
+
+  # --- Post-dispatch compatibility proxy hook ---
+  # In concurrent mode, update the compatibility proxy after any successful
+  # state-file write. The proxy hook runs AFTER the per-sprint lock is released
+  # (the subshell above has exited), so L5 is never held together with L1/L4.
+  # Rollover suppression: proxy hooks are suppressed inside _rollover_one;
+  # the hook fires once after the rollover subshell exits.
+  if _is_concurrent_mode && [ "$_dispatch_rc" -eq 0 ]; then
+    local _proxy_state_dir
+    _proxy_state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+    case "$subcmd" in
+      transition|inject|set-goals|update-goals|set-shape|set-phase|\
+      set-review-justification|reconcile|record-escalation-override)
+        # Determine which sprint was written. In concurrent mode, _resolve_active_yaml
+        # already resolved to the per-sprint file.
+        local _written_yaml=""
+        _written_yaml="$(_resolve_active_yaml 2>/dev/null)" || true
+        if [ -n "$_written_yaml" ] && [ -f "$_written_yaml" ]; then
+          local _written_sid=""
+          _written_sid="$(read_yaml_sprint_id "$_written_yaml" 2>/dev/null || true)"
+          if [ -n "$_written_sid" ]; then
+            _update_compatibility_proxy "$_proxy_state_dir" "$_written_sid" "$_written_yaml"
+          fi
+        fi
+        ;;
+      rollover)
+        # After rollover completes, fire the proxy hook once.
+        local _last_act=""
+        _last_act="$(_read_last_activated "$_proxy_state_dir")"
+        if [ -n "$_last_act" ]; then
+          local _last_file
+          _last_file="$(_sprint_file_path "$_proxy_state_dir" "$_last_act")"
+          if [ -f "$_last_file" ]; then
+            _update_compatibility_proxy "$_proxy_state_dir" "$_last_act" "$_last_file"
+          fi
+        fi
+        ;;
+    esac
+  fi
 
   # --- Post-mutation snapshot hook ---
   # Best-effort, background, detached. Never fails the parent.
