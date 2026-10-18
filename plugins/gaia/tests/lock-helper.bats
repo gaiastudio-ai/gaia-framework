@@ -1314,11 +1314,12 @@ STORYEOF
   block="$(sed -n '/Test-only env overrides/,/^$/p' "$HELPER")"
   # Match the exact token boundary: preceded by whitespace/start, followed
   # by whitespace/punctuation/end. grep -w achieves this portably.
-  echo "$block" | grep -qw "ACQUIRE_LOCK_DEBUG" || {
+  # Use here-strings to avoid racy echo|grep -q pipes.
+  grep -qw "ACQUIRE_LOCK_DEBUG" <<< "$block" || {
     echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block (exact token)" >&2
     false
   }
-  echo "$block" | grep -qw "ACQUIRE_LOCK_DEBUG_LOG" || {
+  grep -qw "ACQUIRE_LOCK_DEBUG_LOG" <<< "$block" || {
     echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block (exact token)" >&2
     false
   }
