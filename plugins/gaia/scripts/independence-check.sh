@@ -750,19 +750,37 @@ main() {
   # Validate the zero-exit path: every candidate-vs-active comparison must
   # have produced at least one verdict line (PASS or FAIL). A truncated or
   # empty result from the graph analysis silently passes activation without
-  # this guard.
+  # this guard. Line-by-line exact matching prevents prefix-related sprint
+  # ids (sprint-90 vs sprint-900) from satisfying each other.
   if [ "$awk_rc" -eq 0 ]; then
     local expected_id
     while IFS= read -r expected_id; do
       [ -n "$expected_id" ] || continue
-      # Each active sprint must appear in a PASS or FAIL verdict line.
-      case "$awk_result" in
-        *"PASS rules (a),(b): ${_IC_CANDIDATE} vs ${expected_id}"*) ;;
-        *"FAIL rule"*"${_IC_CANDIDATE}"*"${expected_id}"*) ;;
-        *)
-          _ic_die "incomplete independence result"
-          ;;
-      esac
+      local _ic_covered=0
+      local _ic_vline
+      while IFS= read -r _ic_vline; do
+        [ -n "$_ic_vline" ] || continue
+        # PASS line: exact match on the full formatted line.
+        if [ "$_ic_vline" = "PASS rules (a),(b): ${_IC_CANDIDATE} vs ${expected_id}" ]; then
+          _ic_covered=1; break
+        fi
+        # FAIL rule (a): ... (<candidate> -> <active>)
+        # The active id is the last token before the closing paren.
+        case "$_ic_vline" in
+          "FAIL rule (a):"*"(${_IC_CANDIDATE} -> ${expected_id})")
+            _ic_covered=1; break ;;
+        esac
+        # FAIL rule (b): ... between <candidate> and <active>
+        # or: ... between <candidate> and <active>; exempted ...
+        case "$_ic_vline" in
+          "FAIL rule (b):"*"between ${_IC_CANDIDATE} and ${expected_id}"|\
+"FAIL rule (b):"*"between ${_IC_CANDIDATE} and ${expected_id};"*)
+            _ic_covered=1; break ;;
+        esac
+      done <<< "$awk_result"
+      if [ "$_ic_covered" -eq 0 ]; then
+        _ic_die "incomplete independence result"
+      fi
     done <<< "$active_ids"
   fi
 

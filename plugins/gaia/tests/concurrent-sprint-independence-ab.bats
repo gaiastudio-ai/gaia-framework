@@ -843,3 +843,57 @@ STUB
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL indeterminate: incomplete independence result"* ]]
 }
+
+# ========================================================================
+# Prefix-related sprint id guard (fix pass 3)
+# ========================================================================
+
+# A verdict for sprint-900 must not satisfy the check for sprint-90.
+@test "verdict for sprint-900 does not satisfy sprint-90 via prefix match" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-90 active E990-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901
+  create_story E990-S1 E990
+  create_story E900-S1 E900
+
+  # Stub emits a PASS for sprint-900 only — sprint-90 has no verdict.
+  local stub="$TEST_DIR/prefix-awk"
+  cat > "$stub" <<'STUB'
+#!/bin/sh
+echo "PASS rules (a),(b): sprint-901 vs sprint-900"
+exit 0
+STUB
+  chmod +x "$stub"
+
+  run env _IC_GRAPH_AWK="$stub" bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-90,sprint-900
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL indeterminate: incomplete independence result"* ]]
+}
+
+# Same prefix issue on the FAIL-line path: a FAIL naming sprint-900
+# must not cover sprint-90.
+@test "fail verdict for sprint-900 does not satisfy sprint-90 via prefix match" {
+  create_sprint sprint-901 active E901-S1
+  create_sprint sprint-90 active E990-S1
+  create_sprint sprint-900 active E900-S1
+  create_story E901-S1 E901
+  create_story E990-S1 E990
+  create_story E900-S1 E900
+
+  # Stub emits a FAIL for sprint-900 only — sprint-90 still uncovered.
+  local stub="$TEST_DIR/prefix-fail-awk"
+  cat > "$stub" <<'STUB'
+#!/bin/sh
+echo "FAIL rule (a): E901-S1 -> E900-S1 (sprint-901 -> sprint-900)"
+echo "STDERR:FAIL rule (a): E901-S1 -> E900-S1 (sprint-901 -> sprint-900)"
+exit 0
+STUB
+  chmod +x "$stub"
+
+  run env _IC_GRAPH_AWK="$stub" bash "$IC_SCRIPT" \
+    --candidate sprint-901 --active sprint-90,sprint-900
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL indeterminate: incomplete independence result"* ]]
+}
