@@ -93,6 +93,17 @@ hand-driving the deterministic scripts.
 
 ## Steps
 
+### Step 0 — Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>`, resolve it via the shared sprint-argument resolver:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+RESOLVED_SPRINT="$(resolve_sprint_arg --command sprint-close --sprint "<sprint-id>")"
+```
+
+Without `--sprint`, the resolver defaults to the bound sprint or the single active sprint. The `close.sh` wiring (passing the resolved ID through to the close write path) is delivered by the sprint-close lifecycle story -- this skill accepts `--sprint` at the resolver level.
+
 ### Step 1 — Pre-condition: retro exists
 
 - Glob `.gaia/artifacts/implementation-artifacts/retrospective-{sprint_id}-*.md`. If empty, refuse with `error: retro doc not found for {sprint_id}; run /gaia-retro first` and exit non-zero.

@@ -39,6 +39,17 @@ The skill runs four steps in strict order, mirroring the legacy `action-items/in
 3. **Update Tracker** — persist status, resolution, resolved_date, related_stories
 4. **Summary Report** — on-screen summary (no file artifact)
 
+## Step 0 — Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>`, resolve it via the shared sprint-argument resolver:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_FILTER="$(resolve_sprint_arg --command action-items "$@")"
+```
+
+This command is sprint-optional: without `--sprint`, it operates on all items regardless of sprint (the resolver returns empty). With `--sprint`, filter items to those whose origin sprint matches `$SPRINT_FILTER`. The resolver never refuses for no active sprint or a closed sprint.
+
 ## Step 1 — Load and Display
 
 - Resolve the action-items registry path via `resolve-artifact-path.sh action_items` (canonical: `.gaia/state/action-items.yaml`, fallback: `.gaia/artifacts/planning-artifacts/action-items.yaml`). Read the resolved file. If no file exists at either location, display `No action items tracked yet. Action items are created by /gaia-retro, /gaia-triage-findings, and /gaia-correct-course.` and stop.

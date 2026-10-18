@@ -104,6 +104,7 @@ core	component-manifest-drift-guard.bats
 core	component-manifest-subdirectory-reach.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	concurrent-sprint-arg.bats
 core	concurrent-sprint-binding.bats
 core	concurrent-sprint-catch-all.bats
 core	concurrent-sprint-config.bats

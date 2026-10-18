@@ -519,6 +519,479 @@ _sb_cli() {
   esac
 }
 
+# ---------- Sprint-arg exit codes ----------
+
+SPRINT_NOT_FOUND=10
+SPRINT_REFUSED_CLOSED=11
+SPRINT_AMBIGUOUS=12
+SPRINT_REPEATED_ARG=13
+SPRINT_POSITIONAL_CONFLICT=14
+SPRINT_BOUND_MISMATCH=15
+SPRINT_INVALID_ID=16
+SPRINT_BOUND_CLOSED=17
+
+# ---------- Sprint-arg command class table ----------
+
+# Command classes:
+#   read-only        — accepts any sprint state (including closed/archived)
+#   mutating         — refuses closed sprints (per-command exceptions below)
+#   sprint-optional  — never refuses for ambiguity or closed state
+#   run-sprint       — refuses --sprint that differs from the binding
+#
+# Per-command exceptions:
+#   sprint-close   — closed sprint returns exit 0 (idempotent/resume)
+#   sprint-review  — closed sprint returns exit 0 (historical read-only)
+#   action-items   — sprint-optional, never refuses
+_rsa_command_class() {
+  local cmd="$1"
+  case "$cmd" in
+    sprint-status)    printf 'read-only' ;;
+    sprint-close)     printf 'mutating' ;;
+    sprint-review)    printf 'mutating' ;;
+    retro)            printf 'mutating' ;;
+    correct-course)   printf 'mutating' ;;
+    sprint-plan)      printf 'mutating' ;;
+    run-sprint)       printf 'run-sprint' ;;
+    action-items)     printf 'sprint-optional' ;;
+    *)
+      printf '%s: error: unknown command class for: %s\n' "$_SB_SCRIPT_NAME" "$cmd" >&2
+      return 1 ;;
+  esac
+}
+
+# ---------- Sprint-arg archive lookup ----------
+
+# Check if a sprint exists in the archive directory.
+# Prints the archive file path if found, empty string otherwise.
+_rsa_find_archive() {
+  local sprint_id="$1" state_dir="$2"
+  local archive_dir=""
+  local project_root=""
+  project_root="${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
+  if [ -n "$project_root" ]; then
+    archive_dir="${project_root%/}/.gaia/artifacts/implementation-artifacts/sprint-archive"
+  elif [ -n "$state_dir" ]; then
+    # Derive: .gaia/state -> .gaia/artifacts/implementation-artifacts/sprint-archive
+    local gaia_dir=""
+    gaia_dir="$(dirname "$state_dir")"
+    archive_dir="${gaia_dir}/artifacts/implementation-artifacts/sprint-archive"
+  fi
+  if [ -z "$archive_dir" ] || [ ! -d "$archive_dir" ]; then
+    return 0
+  fi
+  # Archive naming: {sprint_id}-closed-{date}.yaml
+  local found=""
+  found="$(find "$archive_dir" -maxdepth 1 -name "${sprint_id}-closed-*.yaml" 2>/dev/null | head -1)" || found=""
+  if [ -n "$found" ]; then
+    printf '%s' "$found"
+  fi
+}
+
+# ---------- Sprint-arg active sprint enumeration ----------
+
+# List all active sprint IDs (one per line). Scans per-sprint state files.
+# Falls back to the single-file layout when no per-sprint files exist.
+_rsa_list_active_sprints() {
+  local state_dir="$1"
+  [ -d "$state_dir" ] || return 0
+
+  local found_any=false
+  local f sid status
+  for f in "$state_dir"/sprint-status-*.yaml; do
+    [ -f "$f" ] || continue
+    # Skip lock/result files
+    case "$f" in *.lock|*.result) continue ;; esac
+    sid="$(yq '.sprint_id // ""' "$f" 2>/dev/null)" || sid=""
+    [ -z "$sid" ] || [ "$sid" = "null" ] && continue
+    status="$(yq '.status // ""' "$f" 2>/dev/null)" || status=""
+    case "$status" in
+      active|review|correction)
+        printf '%s\n' "$sid"
+        found_any=true ;;
+    esac
+  done
+
+  # Fallback to the single-file layout
+  if [ "$found_any" = false ]; then
+    local single="${state_dir}/sprint-status.yaml"
+    if [ -f "$single" ]; then
+      sid="$(yq '.sprint_id // ""' "$single" 2>/dev/null)" || sid=""
+      status="$(yq '.status // ""' "$single" 2>/dev/null)" || status=""
+      if [ -n "$sid" ] && [ "$sid" != "null" ]; then
+        case "$status" in
+          active|review|correction)
+            printf '%s\n' "$sid" ;;
+        esac
+      fi
+    fi
+  fi
+}
+
+# ---------- resolve_sprint_arg ----------
+
+# Resolve the target sprint ID from --sprint, positional args, session
+# binding, or single-sprint default.
+#
+# Usage:
+#   resolve_sprint_arg --command <name> [--sprint <id>] [--new-sprint <id>] [positional ...]
+#
+# Prints the resolved sprint ID on stdout.
+# Exit codes: see SPRINT_* constants above.
+resolve_sprint_arg() {
+  local command_name=""
+  local sprint_arg=""
+  local sprint_arg_count=0
+  local new_sprint_arg=""
+  local positional=""
+
+  # --- Parse arguments ---
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --command)
+        shift
+        command_name="${1:-}"
+        [ -z "$command_name" ] && {
+          printf '%s: error: --command requires a value\n' "$_SB_SCRIPT_NAME" >&2
+          return 1
+        }
+        shift ;;
+      --sprint)
+        shift
+        local val="${1:-}"
+        # Empty value check
+        if [ -z "$val" ]; then
+          printf '%s: error: --sprint requires a non-empty value\n' "$_SB_SCRIPT_NAME" >&2
+          return "$SPRINT_INVALID_ID"
+        fi
+        sprint_arg_count=$((sprint_arg_count + 1))
+        if [ "$sprint_arg_count" -gt 1 ]; then
+          printf '%s: error: repeated --sprint: "%s" and "%s"\n' \
+            "$_SB_SCRIPT_NAME" "$sprint_arg" "$val" >&2
+          return "$SPRINT_REPEATED_ARG"
+        fi
+        sprint_arg="$val"
+        shift ;;
+      --new-sprint)
+        shift
+        new_sprint_arg="${1:-}"
+        [ -z "$new_sprint_arg" ] && {
+          printf '%s: error: --new-sprint requires a non-empty value\n' "$_SB_SCRIPT_NAME" >&2
+          return "$SPRINT_INVALID_ID"
+        }
+        shift ;;
+      --project-root|--session-id)
+        shift; shift || true ;;  # consumed by other helpers
+      --)
+        shift; break ;;
+      -*)
+        shift ;;  # skip unknown flags
+      *)
+        # Positional argument — only retro and sprint-review forward these
+        if [ -z "$positional" ]; then
+          positional="$1"
+        fi
+        shift ;;
+    esac
+  done
+
+  if [ -z "$command_name" ]; then
+    printf '%s: error: --command is required\n' "$_SB_SCRIPT_NAME" >&2
+    return 1
+  fi
+
+  # --- Validate the command class ---
+  local cmd_class=""
+  cmd_class="$(_rsa_command_class "$command_name")" || return 1
+
+  # --- Resolve the state directory ---
+  local state_dir=""
+  local project_root="${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
+  if [ -n "$project_root" ]; then
+    state_dir="${project_root%/}/.gaia/state"
+  fi
+  if [ -z "$state_dir" ] || [ ! -d "$state_dir" ]; then
+    printf '%s: error: cannot resolve state directory\n' "$_SB_SCRIPT_NAME" >&2
+    return 1
+  fi
+
+  # --- New-sprint class (sprint-plan --new-sprint) ---
+  if [ -n "$new_sprint_arg" ]; then
+    # Validate ID shape
+    if ! printf '%s' "$new_sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+      printf '%s: error: invalid sprint ID shape: %s\n' "$_SB_SCRIPT_NAME" "$new_sprint_arg" >&2
+      return "$SPRINT_INVALID_ID"
+    fi
+    # Check unused: not in any state file or archive
+    local ns_status=""
+    ns_status="$(_sb_sprint_status "$new_sprint_arg" "$state_dir")"
+    if [ "$ns_status" != "missing" ]; then
+      printf '%s: error: sprint ID already exists: %s (status: %s)\n' \
+        "$_SB_SCRIPT_NAME" "$new_sprint_arg" "$ns_status" >&2
+      return "$SPRINT_INVALID_ID"
+    fi
+    local ns_archive=""
+    ns_archive="$(_rsa_find_archive "$new_sprint_arg" "$state_dir")"
+    if [ -n "$ns_archive" ]; then
+      printf '%s: error: sprint ID already exists in archive: %s\n' \
+        "$_SB_SCRIPT_NAME" "$new_sprint_arg" >&2
+      return "$SPRINT_INVALID_ID"
+    fi
+    printf '%s' "$new_sprint_arg"
+    return 0
+  fi
+
+  # --- Validate sprint_arg format (if provided) ---
+  if [ -n "$sprint_arg" ]; then
+    if ! printf '%s' "$sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+      printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$sprint_arg" >&2
+      return "$SPRINT_INVALID_ID"
+    fi
+  fi
+
+  # --- Positional conflict check ---
+  # Only retro and sprint-review forward positional args
+  if [ -n "$positional" ]; then
+    case "$command_name" in
+      retro|sprint-review)
+        if [ -n "$sprint_arg" ] && [ "$positional" != "$sprint_arg" ]; then
+          printf '%s: error: positional sprint ID "%s" conflicts with --sprint "%s"\n' \
+            "$_SB_SCRIPT_NAME" "$positional" "$sprint_arg" >&2
+          return "$SPRINT_POSITIONAL_CONFLICT"
+        fi
+        # If no --sprint but has positional, use it
+        if [ -z "$sprint_arg" ]; then
+          sprint_arg="$positional"
+        fi
+        ;;
+    esac
+  fi
+
+  # --- Read the session binding ---
+  local bound_id=""
+  local binding_closed=false
+  if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
+    bound_id="$GAIA_BOUND_SPRINT_ID"
+    # Check if the bound sprint is closed
+    local bs_status=""
+    bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
+    if [ "$bs_status" = "closed" ]; then
+      binding_closed=true
+    fi
+  elif [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
+    bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || bound_id=""
+    if [ -n "$bound_id" ]; then
+      local bs_status=""
+      bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
+      if [ "$bs_status" = "closed" ]; then
+        binding_closed=true
+      fi
+    fi
+  fi
+
+  # --- Sprint-optional class: early return ---
+  if [ "$cmd_class" = "sprint-optional" ]; then
+    if [ -n "$sprint_arg" ]; then
+      # Validate the sprint exists (state file or archive)
+      local so_status=""
+      so_status="$(_sb_sprint_status "$sprint_arg" "$state_dir")"
+      if [ "$so_status" = "missing" ]; then
+        local so_archive=""
+        so_archive="$(_rsa_find_archive "$sprint_arg" "$state_dir")"
+        if [ -z "$so_archive" ]; then
+          printf '%s: error: sprint not found: %s\n' "$_SB_SCRIPT_NAME" "$sprint_arg" >&2
+          return "$SPRINT_NOT_FOUND"
+        fi
+      fi
+      printf '%s' "$sprint_arg"
+      return 0
+    fi
+    # No --sprint: return empty (operates on all items)
+    return 0
+  fi
+
+  # --- Determine the target sprint ID ---
+  local target_id=""
+  if [ -n "$sprint_arg" ]; then
+    target_id="$sprint_arg"
+  elif [ "$cmd_class" = "read-only" ] && [ "$command_name" = "sprint-status" ]; then
+    # sprint-status without --sprint: no default, no refuse — return empty
+    return 0
+  elif [ -n "$bound_id" ]; then
+    target_id="$bound_id"
+  else
+    # Unbound: try single-sprint default
+    local active_sprints=""
+    active_sprints="$(_rsa_list_active_sprints "$state_dir")"
+    local active_count=0
+    if [ -n "$active_sprints" ]; then
+      active_count="$(printf '%s\n' "$active_sprints" | wc -l | tr -d ' ')"
+    fi
+
+    if [ "$active_count" -eq 1 ]; then
+      target_id="$(printf '%s' "$active_sprints" | head -1)"
+    elif [ "$active_count" -eq 0 ]; then
+      printf '%s: error: no active sprint found\n' "$_SB_SCRIPT_NAME" >&2
+      return "$SPRINT_NOT_FOUND"
+    else
+      # Multiple active sprints, unbound, no --sprint: refuse
+      printf '%s: error: specify --sprint {sprint_id}; active sprints:\n' "$_SB_SCRIPT_NAME" >&2
+      printf '%s\n' "$active_sprints" >&2
+      return "$SPRINT_AMBIGUOUS"
+    fi
+  fi
+
+  # --- Closed-binding guard (exit 17) with exceptions (R43) ---
+  if [ "$binding_closed" = true ]; then
+    # Check per-command exceptions BEFORE the exit-17 refusal
+    local exception_applies=false
+
+    # Exception (a): action-items is sprint-optional (handled above, but
+    # defensive in case this code path is reached via a class reclassification)
+    if [ "$command_name" = "action-items" ]; then
+      exception_applies=true
+    fi
+
+    # Exception (b): sprint-close on the bound closed sprint when archive missing
+    if [ "$command_name" = "sprint-close" ] && [ "$target_id" = "$bound_id" ]; then
+      local bc_archive=""
+      bc_archive="$(_rsa_find_archive "$bound_id" "$state_dir")"
+      if [ -z "$bc_archive" ]; then
+        exception_applies=true  # resume path
+      fi
+    fi
+
+    # Exception (c): sprint-review on the bound closed sprint (historical)
+    if [ "$command_name" = "sprint-review" ] && [ "$target_id" = "$bound_id" ]; then
+      exception_applies=true
+    fi
+
+    # Read-only class is unaffected by closed binding
+    if [ "$cmd_class" = "read-only" ]; then
+      exception_applies=true
+    fi
+
+    # sprint-close idempotent on the bound closed sprint with archive present
+    if [ "$command_name" = "sprint-close" ] && [ "$target_id" = "$bound_id" ]; then
+      local bc2_archive=""
+      bc2_archive="$(_rsa_find_archive "$bound_id" "$state_dir")"
+      if [ -n "$bc2_archive" ]; then
+        exception_applies=true  # idempotent
+      fi
+    fi
+
+    if [ "$exception_applies" = false ]; then
+      printf '%s: error: bound sprint %s is closed; start a new session or close the sprint\n' \
+        "$_SB_SCRIPT_NAME" "$bound_id" >&2
+      return "$SPRINT_BOUND_CLOSED"
+    fi
+  fi
+
+  # --- Run-sprint class: refuse different --sprint ---
+  if [ "$cmd_class" = "run-sprint" ]; then
+    if [ -n "$sprint_arg" ] && [ -n "$bound_id" ] && [ "$sprint_arg" != "$bound_id" ]; then
+      printf '%s: error: already bound to %s\n' "$_SB_SCRIPT_NAME" "$bound_id" >&2
+      return "$SPRINT_BOUND_MISMATCH"
+    fi
+  fi
+
+  # --- Cross-sprint override log ---
+  if [ -n "$sprint_arg" ] && [ -n "$bound_id" ] && [ "$sprint_arg" != "$bound_id" ]; then
+    printf 'sprint override: bound=%s target=%s command=%s\n' \
+      "$bound_id" "$sprint_arg" "$command_name" >&2
+  fi
+
+  # --- Validate the target sprint ID exists ---
+  local target_status=""
+  target_status="$(_sb_sprint_status "$target_id" "$state_dir")"
+
+  if [ "$target_status" = "missing" ]; then
+    # Check archive
+    local t_archive=""
+    t_archive="$(_rsa_find_archive "$target_id" "$state_dir")"
+    if [ -z "$t_archive" ]; then
+      printf '%s: error: sprint not found: %s\n' "$_SB_SCRIPT_NAME" "$target_id" >&2
+      return "$SPRINT_NOT_FOUND"
+    fi
+    target_status="closed"  # archived sprints are treated as closed
+  fi
+
+  # --- Apply command class rules ---
+  case "$cmd_class" in
+    read-only)
+      # Accept any state
+      ;;
+    mutating)
+      if [ "$target_status" = "closed" ]; then
+        # Per-command exceptions for closed sprints
+        case "$command_name" in
+          sprint-close)
+            # Always return exit 0: close.sh handles idempotent/resume
+            ;;
+          sprint-review)
+            # Historical read-only mode on closed sprints
+            ;;
+          *)
+            printf '%s: error: sprint is closed: %s\n' "$_SB_SCRIPT_NAME" "$target_id" >&2
+            return "$SPRINT_REFUSED_CLOSED"
+            ;;
+        esac
+      fi
+      ;;
+    run-sprint)
+      if [ "$target_status" = "closed" ]; then
+        printf '%s: error: sprint is closed: %s\n' "$_SB_SCRIPT_NAME" "$target_id" >&2
+        return "$SPRINT_REFUSED_CLOSED"
+      fi
+      ;;
+  esac
+
+  printf '%s' "$target_id"
+  return 0
+}
+
+# ---------- CLI entry point ----------
+
+# Direct invocation: session-binding.sh <subcmd> [args]
+#   read  — print binding state
+#   resolve — resolve_sprint_arg wrapper
+_sb_cli() {
+  local subcmd="${1:-}"
+  shift || true
+
+  case "$subcmd" in
+    read)
+      # Parse CLI options.
+      local cli_session_id="" cli_project_root=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --session-id) shift; cli_session_id="${1:-}"; shift || true ;;
+          --project-root) shift; cli_project_root="${1:-}"; shift || true ;;
+          *) shift ;;
+        esac
+      done
+
+      # Build provision args.
+      local prov_args=()
+      [ -n "$cli_session_id" ] && prov_args+=(--session-id "$cli_session_id")
+      [ -n "$cli_project_root" ] && prov_args+=(--project-root "$cli_project_root")
+
+      provision_binding_dir "${prov_args[@]+"${prov_args[@]}"}" || return $?
+      read_binding
+      return $?
+      ;;
+    resolve)
+      resolve_sprint_arg "$@"
+      return $?
+      ;;
+    "")
+      printf '%s: error: subcommand required (e.g. "read", "resolve")\n' "$_SB_SCRIPT_NAME" >&2
+      return 1 ;;
+    *)
+      printf '%s: error: unknown subcommand: %s\n' "$_SB_SCRIPT_NAME" "$subcmd" >&2
+      return 1 ;;
+  esac
+}
+
 # Run CLI only when executed directly (not sourced).
 if [ "${BASH_SOURCE[0]}" = "$0" ] 2>/dev/null || [ "${0##*/}" = "session-binding.sh" ]; then
   _sb_cli "$@"

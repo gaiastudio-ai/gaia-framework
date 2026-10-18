@@ -43,11 +43,14 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 1 --- Resolve Sprint ID
 
-If a sprint-id argument was provided, use it directly.
+Resolve the sprint ID via the shared sprint-argument resolver. The resolver accepts `--sprint <sprint-id>` and the existing positional sprint-id argument (e.g., `/gaia-retro sprint-42`). A positional ID and a different `--sprint` value together are refused.
 
-Otherwise, read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml` and extract the current `sprint_id` from the top-level metadata.
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_ID="$(resolve_sprint_arg --command retro "$@")"
+```
 
-If sprint-status.yaml is missing or unreadable, ask the user for the sprint ID.
+Without `--sprint` or a positional argument, the resolver defaults to the bound sprint or the single active sprint. If the resolver fails (no active sprint, ambiguous), surface the error and ask the user for the sprint ID.
 
 ### Step 1b --- Review Report Extraction
 

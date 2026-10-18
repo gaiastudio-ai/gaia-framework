@@ -807,3 +807,4 @@
 1	concurrent-sprint-state.bats	52
 4	concurrent-sprint-binding.bats	53
 3	concurrent-sprint-independence-ab.bats	41
+2	concurrent-sprint-arg.bats	62

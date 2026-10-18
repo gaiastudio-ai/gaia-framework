@@ -21,7 +21,7 @@
 # sprint-progress-snapshot.sh).
 #
 # Invocation:
-#   sprint-status-dashboard.sh [--help]
+#   sprint-status-dashboard.sh [--help] [--sprint <sprint-id>]
 #
 # Environment:
 #   PROJECT_PATH             Root of the project (defaults to ".")
@@ -46,12 +46,32 @@ export LC_ALL
 
 SCRIPT_NAME="sprint-status-dashboard.sh"
 
+# ---------- Argument parsing ----------
+_DASH_SPRINT_ARG=""
+_DASH_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sprint)
+      shift
+      _DASH_SPRINT_ARG="${1:-}"
+      if [[ -z "$_DASH_SPRINT_ARG" ]]; then
+        printf '%s: error: --sprint requires a non-empty value\n' "$SCRIPT_NAME" >&2
+        exit 1
+      fi
+      shift ;;
+    *)
+      _DASH_ARGS+=("$1")
+      shift ;;
+  esac
+done
+set -- "${_DASH_ARGS[@]+"${_DASH_ARGS[@]}"}"
+
 # ---------- Help ----------
 if [[ "${1:-}" == "--help" ]]; then
   cat <<'USAGE'
 sprint-status-dashboard.sh — render sprint status dashboard
 
-Usage: sprint-status-dashboard.sh [--help]
+Usage: sprint-status-dashboard.sh [--help] [--sprint <sprint-id>]
 
 Data source (cache-first):
   Reads .gaia/state/.sprint-progress-cache.json when available. When the
@@ -108,6 +128,40 @@ if [[ -z "$YAML_PATH" ]]; then
       YAML_PATH="$GAIA_STATE_YAML"
     fi
   fi
+fi
+
+# ---------- Per-sprint file override (--sprint) ----------
+if [[ -n "$_DASH_SPRINT_ARG" ]]; then
+  _SPRINT_STATE_DIR="$PROJECT_ROOT/.gaia/state"
+  _PER_SPRINT_FILE="${_SPRINT_STATE_DIR}/sprint-status-${_DASH_SPRINT_ARG}.yaml"
+  _ARCHIVE_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts/sprint-archive"
+  if [[ -f "$_PER_SPRINT_FILE" ]]; then
+    YAML_PATH="$_PER_SPRINT_FILE"
+  elif [[ -d "$_ARCHIVE_DIR" ]]; then
+    # Check archive for closed sprints (historical review)
+    _ARCHIVE_MATCH="$(find "$_ARCHIVE_DIR" -maxdepth 1 -name "${_DASH_SPRINT_ARG}-closed-*.yaml" 2>/dev/null | head -1)" || _ARCHIVE_MATCH=""
+    if [[ -n "$_ARCHIVE_MATCH" ]]; then
+      YAML_PATH="$_ARCHIVE_MATCH"
+    else
+      printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+      exit 1
+    fi
+  else
+    # Check single-file layout
+    if [[ -f "$YAML_PATH" ]]; then
+      _SINGLE_SID="$(yq '.sprint_id // ""' "$YAML_PATH" 2>/dev/null)" || _SINGLE_SID=""
+      if [[ "$_SINGLE_SID" != "$_DASH_SPRINT_ARG" ]]; then
+        printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+        exit 1
+      fi
+    else
+      printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+      exit 1
+    fi
+  fi
+  # Override SPRINT_STATUS_YAML so fallback path also uses the per-sprint file
+  SPRINT_STATUS_YAML="$YAML_PATH"
+  export SPRINT_STATUS_YAML
 fi
 
 # Implementation-artifacts directory — used for story-file lookups.
