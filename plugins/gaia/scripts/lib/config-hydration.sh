@@ -50,9 +50,21 @@ if [ -r "${_CH_LIB_DIR}/gaia-paths.sh" ]; then
 fi
 
 # Source the shared lock library for concurrency serialization.
-if [ -r "${_CH_LIB_DIR}/acquire-lock.sh" ]; then
+# Resolve through symlinks: when config-hydration.sh is symlinked into a
+# synthetic CLAUDE_PLUGIN_ROOT (common in tests), _CH_LIB_DIR points at
+# the symlink's directory which may not contain acquire-lock.sh. Fall back
+# to the real script's directory via readlink.
+_CH_LOCK_LIB="${_CH_LIB_DIR}/acquire-lock.sh"
+if [ ! -r "$_CH_LOCK_LIB" ]; then
+  _ch_real_source="$(readlink "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+  if [ -n "$_ch_real_source" ]; then
+    _CH_LOCK_LIB="$(cd "$(dirname "$_ch_real_source")" 2>/dev/null && pwd)/acquire-lock.sh"
+  fi
+  unset _ch_real_source
+fi
+if [ -r "$_CH_LOCK_LIB" ]; then
   # shellcheck source=/dev/null
-  . "${_CH_LIB_DIR}/acquire-lock.sh" || true
+  . "$_CH_LOCK_LIB" || true
 fi
 
 # ---- Constants -------------------------------------------------------------
