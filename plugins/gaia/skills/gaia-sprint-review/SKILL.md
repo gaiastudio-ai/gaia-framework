@@ -85,6 +85,19 @@ This validates the pre-conditions (all stories done, goals non-empty), transitio
 
 ## Steps
 
+### Step 0 — Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>` or a positional sprint ID, resolve it via the shared sprint-argument resolver:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_ID="$(resolve_sprint_arg --command sprint-review "$@")"
+```
+
+Without `--sprint` or a positional argument, the resolver defaults to the bound sprint or the single active sprint. The resolver accepts a positional sprint ID (e.g., `/gaia-sprint-review sprint-42`) for backward compatibility; a positional ID and a different `--sprint` value together are refused.
+
+On a closed sprint, the resolver returns exit 0 (historical read-only mode). The skill renders a read-only view of the review outcome without triggering transitions.
+
 ### Step 1 — Pre-Condition Gate (active → review)
 
 - Read `sprint-status.yaml` for the provided `$SPRINT_ID`. Scan the `stories[]` array.

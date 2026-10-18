@@ -25,12 +25,19 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Steps
 
+### Step 0 — Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>`, forward it to the dashboard script. Without `--sprint`, call the dashboard's no-argument mode -- do NOT default to the bound sprint and do NOT refuse. Overview rendering and bound-sprint highlighting are handled by the dashboard itself.
+
 ### Step 1 — Run Dashboard Formatter
 
-Run the sprint-status-dashboard.sh formatter script:
+Run the sprint-status-dashboard.sh formatter script. When `--sprint` was provided, pass it through:
 
 ```bash
+# Without --sprint (no-argument mode):
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-status-dashboard.sh"
+# With --sprint <sprint-id>:
+PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-status-dashboard.sh" --sprint "<sprint-id>"
 ```
 
 The formatter uses a cache-first data model: it reads from the sprint-progress cache and renders an enhanced table with Tasks and Gates columns, phase grouping, and a warning header. When the cache is unavailable (jq absent, cache missing, snapshot failure), it falls back to the original four-column table from sprint-status.yaml.

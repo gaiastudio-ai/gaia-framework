@@ -48,7 +48,25 @@ The `priority_flag` field is set only by humans (via frontmatter edit in triage,
 
 ## Steps
 
-### Step 0 -- Prior-close guard
+### Step 0a -- Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>` (adding stories to an existing sprint), resolve it via the shared sprint-argument resolver:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_ID="$(resolve_sprint_arg --command sprint-plan "$@")"
+```
+
+When creating a new sprint, use `--new-sprint <id>`:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_ID="$(resolve_sprint_arg --command sprint-plan --new-sprint "<new-sprint-id>")"
+```
+
+The `--new-sprint` path validates the ID shape (`^[A-Za-z0-9][A-Za-z0-9._-]*$`) and that the ID is unused (not in any state file or archive); it skips the default/refuse rule.
+
+### Step 0b -- Prior-close guard
 
 Before sprint scoping begins, verify the previous sprint has been closed via `/gaia-sprint-close`. This prevents planning a new sprint while the prior sprint's `sprint-status.yaml` still shows `status: active` — which would orphan in-flight work and bypass the close ceremony.
 
