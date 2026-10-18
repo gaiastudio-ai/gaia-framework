@@ -882,4 +882,3 @@ skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
 skills	verdict-provenance-check.bats
 skills	write-val-sentinel-sprint-id-format.bats
-plugins/gaia/tests/concurrent-sprint-arg.bats	concurrent-sprint-arg	scripts/lib/session-binding.sh,scripts/sprint-status-dashboard.sh
