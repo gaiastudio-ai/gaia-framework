@@ -173,12 +173,8 @@ teardown() {
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  # Verify gh issue close called with issue number
-  grep -q 'issue close 100' "$GH_CALL_LOG"
-  # Comment includes the story key
-  grep 'issue close 100' "$GH_CALL_LOG" | grep -q "$STORY_KEY"
-  # Comment includes PR ref
-  grep 'issue close 100' "$GH_CALL_LOG" | grep -q 'PR #123'
+  # Exact comment wording per spec: Fixed by PR #M (story <key>)
+  grep -qF 'issue close 100 --comment Fixed by PR #123 (story E900-S1)' "$GH_CALL_LOG"
 }
 
 # ── AC2: partially-addressed issue names remaining story keys ───────────────
@@ -193,17 +189,11 @@ teardown() {
   [ "$status" -eq 0 ]
   local saved_output="$output"
 
-  # comment (not close) was called
-  grep -q 'issue comment 200' "$GH_CALL_LOG"
-  # close was NOT called
+  # Exact partial-comment wording: Partially addressed by PR #M (story <key>). Remaining: <keys>.
+  grep -qF 'issue comment 200 --body Partially addressed by PR #456 (story E900-S1). Remaining: E900-S2.' "$GH_CALL_LOG"
+  # close was NOT called for this issue
   run grep -q 'issue close 200' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
-  # Comment includes this story key
-  grep 'issue comment 200' "$GH_CALL_LOG" | grep -q "$STORY_KEY"
-  # Comment includes PR ref
-  grep 'issue comment 200' "$GH_CALL_LOG" | grep -q 'PR #456'
-  # Comment names the remaining non-done story key
-  grep 'issue comment 200' "$GH_CALL_LOG" | grep -q "$second_key"
   # WARNING emitted
   [[ "$saved_output" == *"WARNING"* ]]
 }
@@ -221,7 +211,7 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # Issue #20 is fully addressed (the other story traces #200, not #20)
-  grep -q 'issue close 20 ' "$GH_CALL_LOG"
+  grep -qF 'issue close 20 --comment Fixed by PR #111 (story E900-S1)' "$GH_CALL_LOG"
   # Must NOT have issued a comment (which would mean partial)
   run grep -q 'issue comment 20' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
@@ -260,7 +250,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Issue #50 is fully addressed (body-text mention is not a tracer)
-  grep -q 'issue close 50 ' "$GH_CALL_LOG"
+  grep -qF 'issue close 50 --comment Fixed by PR #222 (story E900-S1)' "$GH_CALL_LOG"
   run grep -q 'issue comment 50' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
 }
@@ -278,8 +268,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Issue #300 is partially addressed (E900-S10 is not done)
-  grep -q 'issue comment 300' "$GH_CALL_LOG"
-  grep 'issue comment 300' "$GH_CALL_LOG" | grep -q 'E900-S10'
+  grep -qF 'issue comment 300 --body Partially addressed by PR #333 (story E900-S1). Remaining: E900-S10.' "$GH_CALL_LOG"
   run grep -q 'issue close 300' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
 }
@@ -474,8 +463,8 @@ EOF
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  grep -q 'issue close 100' "$GH_CALL_LOG"
-  grep -q 'issue close 200' "$GH_CALL_LOG"
+  grep -qF 'issue close 100 --comment Fixed by PR #999 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF 'issue close 200 --comment Fixed by PR #999 (story E900-S1)' "$GH_CALL_LOG"
 }
 
 # ── Blocker 5: no PR ref when no merged PR found ───────────────────────────
@@ -497,10 +486,8 @@ STUB
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  # Issue close was attempted
-  grep -q 'issue close 100' "$GH_CALL_LOG"
-  # Story key is in the comment
-  grep 'issue close 100' "$GH_CALL_LOG" | grep -q "$STORY_KEY"
+  # Exact comment wording without PR: Fixed by story <key>
+  grep -qF 'issue close 100 --comment Fixed by story E900-S1' "$GH_CALL_LOG"
   # No "PR #" in the comment (no PR found)
   run bash -c "grep 'issue close 100' '$GH_CALL_LOG' | grep -q 'PR #'"
   [ "$status" -ne 0 ]
