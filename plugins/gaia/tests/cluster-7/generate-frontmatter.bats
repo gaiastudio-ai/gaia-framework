@@ -249,6 +249,51 @@ teardown() { common_teardown; }
 # DoD: no hardcoded sizing constants
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# auto-populate traces_to from GitHub issue origin_ref
+# ---------------------------------------------------------------------------
+
+@test "traces_to auto-populated from GitHub issue origin_ref when empty" {
+  run "$SCRIPT" \
+    --story-key E99-S5 \
+    --epics-file "$FIXTURES/epics-frontmatter-github-issue-origin.md" \
+    --project-config "$FIXTURES/project-config-frontmatter-default.yaml" \
+    --origin "github-issue" \
+    --origin-ref "GitHub #42"
+  [ "$status" -eq 0 ]
+  # traces_to must be auto-populated with the GitHub issue reference
+  [[ "$output" == *'traces_to: ["GitHub #42"]'* ]]
+}
+
+@test "traces_to NOT auto-populated when origin_ref is not a GitHub issue" {
+  run "$SCRIPT" \
+    --story-key E99-S5 \
+    --epics-file "$FIXTURES/epics-frontmatter-github-issue-origin.md" \
+    --project-config "$FIXTURES/project-config-frontmatter-default.yaml" \
+    --origin "triage-findings" \
+    --origin-ref "triage-2026-10-18-001"
+  [ "$status" -eq 0 ]
+  # traces_to must remain empty (no GitHub issue reference in origin_ref)
+  [[ "$output" == *'traces_to: []'* ]]
+}
+
+@test "traces_to NOT overridden when already populated in epics-and-stories" {
+  # The happy-path fixture has non-empty Traces to, so it should not be overridden
+  run "$SCRIPT" \
+    --story-key E99-S1 \
+    --epics-file "$FIXTURES/epics-frontmatter-happy.md" \
+    --project-config "$FIXTURES/project-config-frontmatter-default.yaml" \
+    --origin "github-issue" \
+    --origin-ref "GitHub #99"
+  [ "$status" -eq 0 ]
+  # traces_to must keep the value from epics-and-stories.md, not the issue ref
+  [[ "$output" != *'traces_to: ["GitHub #99"]'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# DoD: no hardcoded sizing constants
+# ---------------------------------------------------------------------------
+
 @test "DoD: no hardcoded S=2 / M=5 / L=8 / XL=13 sizing constants" {
   [ -f "$SCRIPT" ]
   run grep -nE '(^|[^A-Za-z_])(S=2|M=5|L=8|XL=13)([^0-9]|$)' "$SCRIPT"

@@ -22,7 +22,9 @@ setup() {
   mkdir -p "$TEST_TMP/docs/implementation-artifacts"
   mkdir -p "$TEST_TMP/docs/planning-artifacts"
   mkdir -p "$TEST_TMP/_memory"
-  mkdir -p "$TEST_TMP/.git"
+
+  # Initialise a real git repo so _resolve_gh_repo can derive owner/repo.
+  (cd "$TEST_TMP" && git init -q && git remote add origin https://github.com/testowner/testrepo.git) 2>/dev/null
 
   STORY_KEY="E900-S1"
   mkdir -p "$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${STORY_KEY}-traced-issue-fixture"
@@ -173,8 +175,11 @@ teardown() {
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
+  # Verify --repo targeting and -- separator in the close call
+  grep -qF -- '--repo testowner/testrepo' "$GH_CALL_LOG"
+  grep -qF -- '-- 100' "$GH_CALL_LOG"
   # Exact comment wording per spec: Fixed by PR #M (story <key>)
-  grep -qF 'issue close 100 --comment Fixed by PR #123 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF 'Fixed by PR #123 (story E900-S1)' "$GH_CALL_LOG"
 }
 
 # ── AC2: partially-addressed issue names remaining story keys ───────────────
@@ -189,8 +194,12 @@ teardown() {
   [ "$status" -eq 0 ]
   local saved_output="$output"
 
-  # Exact partial-comment wording: Partially addressed by PR #M (story <key>). Remaining: <keys>.
-  grep -qF 'issue comment 200 --body Partially addressed by PR #456 (story E900-S1). Remaining: E900-S2.' "$GH_CALL_LOG"
+  # Partial comment: remaining keys wrapped in backtick code spans
+  grep -qF -- '--repo testowner/testrepo' "$GH_CALL_LOG"
+  grep -qF -- '-- 200' "$GH_CALL_LOG"
+  grep -qF 'Partially addressed by PR #456 (story E900-S1)' "$GH_CALL_LOG"
+  # Remaining key is backtick-wrapped for Markdown rendering
+  grep -qF 'Remaining: `E900-S2`.' "$GH_CALL_LOG"
   # close was NOT called for this issue
   run grep -q 'issue close 200' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
@@ -211,7 +220,8 @@ teardown() {
   [ "$status" -eq 0 ]
 
   # Issue #20 is fully addressed (the other story traces #200, not #20)
-  grep -qF 'issue close 20 --comment Fixed by PR #111 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF 'Fixed by PR #111 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF -- '-- 20' "$GH_CALL_LOG"
   # Must NOT have issued a comment (which would mean partial)
   run grep -q 'issue comment 20' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
@@ -250,7 +260,8 @@ EOF
   [ "$status" -eq 0 ]
 
   # Issue #50 is fully addressed (body-text mention is not a tracer)
-  grep -qF 'issue close 50 --comment Fixed by PR #222 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF 'Fixed by PR #222 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF -- '-- 50' "$GH_CALL_LOG"
   run grep -q 'issue comment 50' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
 }
@@ -268,7 +279,8 @@ EOF
   [ "$status" -eq 0 ]
 
   # Issue #300 is partially addressed (E900-S10 is not done)
-  grep -qF 'issue comment 300 --body Partially addressed by PR #333 (story E900-S1). Remaining: E900-S10.' "$GH_CALL_LOG"
+  grep -qF 'Remaining: `E900-S10`.' "$GH_CALL_LOG"
+  grep -qF -- '-- 300' "$GH_CALL_LOG"
   run grep -q 'issue close 300' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
 }
@@ -463,8 +475,9 @@ EOF
   PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
   [ "$status" -eq 0 ]
 
-  grep -qF 'issue close 100 --comment Fixed by PR #999 (story E900-S1)' "$GH_CALL_LOG"
-  grep -qF 'issue close 200 --comment Fixed by PR #999 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF 'Fixed by PR #999 (story E900-S1)' "$GH_CALL_LOG"
+  grep -qF -- '-- 100' "$GH_CALL_LOG"
+  grep -qF -- '-- 200' "$GH_CALL_LOG"
 }
 
 # ── Blocker 5: no PR ref when no merged PR found ───────────────────────────
@@ -487,8 +500,149 @@ STUB
   [ "$status" -eq 0 ]
 
   # Exact comment wording without PR: Fixed by story <key>
-  grep -qF 'issue close 100 --comment Fixed by story E900-S1' "$GH_CALL_LOG"
+  grep -qF 'Fixed by story E900-S1' "$GH_CALL_LOG"
+  grep -qF -- '-- 100' "$GH_CALL_LOG"
   # No "PR #" in the comment (no PR found)
   run bash -c "grep 'issue close 100' '$GH_CALL_LOG' | grep -q 'PR #'"
+  [ "$status" -ne 0 ]
+}
+
+# ── block-style YAML traces_to ────────────────────────────────────────────
+
+@test "block-style YAML traces_to parsed and issues closed" {
+  # Write story with block-style (indented dash list) traces_to
+  local dir="$TEST_TMP/docs/implementation-artifacts/epic-E900-traced-issue-test/${STORY_KEY}-traced-issue-fixture"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S1"
+title: "Block-style fixture"
+epic: "E900"
+status: review
+sprint_id: "fixture-sprint"
+priority: "P1"
+size: "S"
+points: 1
+risk: "low"
+traces_to:
+  - "GitHub #400"
+  - "GitHub #401"
+---
+
+# Story: Block-style fixture
+
+> **Status:** review
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | — |
+| QA Tests | PASSED | — |
+| Security Review | PASSED | — |
+| Test Automation | PASSED | — |
+| Test Review | PASSED | — |
+| Performance Review | PASSED | — |
+STORY
+  _write_pr_stub 777
+
+  PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # Both issues from the block-style list are closed
+  grep -qF -- '-- 400' "$GH_CALL_LOG"
+  grep -qF -- '-- 401' "$GH_CALL_LOG"
+  grep -qF 'Fixed by PR #777 (story E900-S1)' "$GH_CALL_LOG"
+}
+
+# ── reverse-prefix self-skip ──────────────────────────────────────────────
+
+@test "reverse prefix direction: longer key transitioning, shorter key is other tracer" {
+  # E900-S10 transitions to done, E900-S1 is the other tracer (reverse direction).
+  # The self-skip must use exact key comparison, not prefix matching.
+  local long_key="E900-S10"
+  _write_story_file "$long_key" review '["GitHub #500"]'
+  _write_story_file "E900-S1" in-progress '["GitHub #500"]'
+
+  # Set up sprint/epics/index for E900-S10
+  cat > "$SPRINT_YAML" <<EOF
+sprint_id: "fixture-sprint"
+stories:
+  - key: $long_key
+    status: "review"
+EOF
+  cat > "$EPICS_MD" <<EOF
+# Epics and Stories
+
+## Epic E900 — Traced-issue test epic
+
+### Story ${long_key}: Reverse-prefix fixture
+
+- **Epic:** E900
+- **Priority:** P1
+- **Status:** review
+EOF
+  cat > "$INDEX_YAML" <<EOF
+# Auto-maintained
+last_updated: "2026-10-16T00:00:00Z"
+stories:
+  ${long_key}:
+    story_key: "${long_key}"
+    title: "Reverse-prefix fixture"
+    epic: "E900"
+    priority: "P1"
+    risk: "low"
+    author: "Test"
+    file: "${long_key}-traced-issue-fixture/story.md"
+    status: "review"
+EOF
+  _write_pr_stub 888
+
+  PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$long_key" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # Issue #500 is partially addressed (E900-S1 is still in-progress)
+  grep -qF 'Remaining: `E900-S1`.' "$GH_CALL_LOG"
+  # Must NOT have closed the issue (only commented)
+  run grep -q 'issue close.*500' "$GH_CALL_LOG"
+  [ "$status" -ne 0 ]
+}
+
+# ── branch-name PR search ────────────────────────────────────────────────
+
+@test "merged PR resolved by branch name, not free-text title" {
+  # Create a local branch matching the story-key convention so the
+  # branch-based search finds it before falling back to body search.
+  # A commit is needed for the ref to be visible via for-each-ref.
+  (cd "$TEST_TMP" && git add -A && git commit -q --allow-empty -m "init" && \
+   git checkout -q -b feat/E900-S1-traced-issue-fixture 2>/dev/null) || true
+
+  # gh stub that logs args and returns a PR number only for --head queries
+  cat > "$GH_STUB_DIR/gh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GH_CALL_LOG"
+case "\$1" in
+  pr)
+    if [ "\$2" = "list" ]; then
+      # Return PR number for any query
+      printf '555\n'
+      exit 0
+    fi ;;
+  issue)
+    exit 0 ;;
+esac
+exit 0
+STUB
+  chmod +x "$GH_STUB_DIR/gh"
+
+  PATH="$GH_STUB_DIR:$PATH" run bash "$TRANSITION" "$STORY_KEY" --to done --from review
+  [ "$status" -eq 0 ]
+
+  # The first PR search should use --head (branch-based), not --search with
+  # a bare story key (free-text title match).
+  grep -qF -- '--head feat/E900-S1-traced-issue-fixture' "$GH_CALL_LOG"
+  # And the story key does NOT appear as a bare --search argument
+  run grep -qE -- '--search E900-S1[^"]' "$GH_CALL_LOG"
   [ "$status" -ne 0 ]
 }

@@ -1975,21 +1975,42 @@ fi
 # path can rebase cleanly around this block.
 
 # _parse_traces_to — extract GitHub issue numbers from the traces_to
-# frontmatter field. Handles flow-style YAML lists: `["GitHub #1", "GitHub #2"]`.
+# frontmatter field. Handles both flow-style (`["GitHub #1", "GitHub #2"]`)
+# and block-style YAML lists (indented `- "GitHub #N"` lines).
 # Outputs one issue number per line; empty output when the field is absent,
 # empty, or contains no GitHub references.
 _parse_traces_to() {
   local file="$1"
   awk '
-    BEGIN { in_fm = 0; seen = 0 }
+    BEGIN { in_fm = 0; seen = 0; in_block = 0 }
     /^---[[:space:]]*$/ {
       if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
       if (in_fm) exit
     }
+    in_fm && in_block {
+      # Block-style continuation: indented lines starting with -
+      if (/^[[:space:]]+-/) {
+        v = $0
+        while (match(v, /GitHub #[0-9]+/)) {
+          s = substr(v, RSTART, RLENGTH)
+          sub(/^GitHub #/, "", s)
+          print s
+          v = substr(v, RSTART + RLENGTH)
+        }
+        next
+      }
+      # Non-indented line ends the block list
+      in_block = 0
+    }
     in_fm && /^traces_to:/ {
       v = $0
       sub(/^traces_to:[[:space:]]*/, "", v)
-      # Extract all GitHub #N references from the flow-style list
+      # Check if the remaining value is empty or whitespace-only (block style)
+      if (v ~ /^[[:space:]]*$/) {
+        in_block = 1
+        next
+      }
+      # Flow-style: extract all GitHub #N references from the inline value
       while (match(v, /GitHub #[0-9]+/)) {
         s = substr(v, RSTART, RLENGTH)
         sub(/^GitHub #/, "", s)
@@ -2045,13 +2066,84 @@ _gh_with_timeout() {
   return 124
 }
 
+# _resolve_gh_repo — derive owner/repo from the git remote so every gh call
+# targets the correct repository even when run from a fork or multi-remote
+# checkout. Prefers the 'upstream' remote (fork convention), then 'origin'.
+# Returns 0 with owner/repo on stdout, or 1 when resolution fails (the
+# caller falls back to gh's own remote-detection default).
+_resolve_gh_repo() {
+  local remote_url="" rname
+  for rname in upstream origin; do
+    remote_url="$(git -C "${PROJECT_PATH:-.}" config "remote.${rname}.url" 2>/dev/null || true)"
+    [ -n "$remote_url" ] && break
+  done
+  [ -n "$remote_url" ] || return 1
+
+  local owner_repo=""
+  case "$remote_url" in
+    *github.com:*)
+      owner_repo="${remote_url#*github.com:}"
+      owner_repo="${owner_repo%.git}" ;;
+    *github.com/*)
+      owner_repo="${remote_url#*github.com/}"
+      owner_repo="${owner_repo%.git}" ;;
+    *) return 1 ;;
+  esac
+  [ -n "$owner_repo" ] || return 1
+  printf '%s' "$owner_repo"
+}
+
+# _gh_issue — run a `gh issue` subcommand with optional --repo pinning.
+# Centralises the repo flag so each call site does not repeat the conditional.
+_gh_issue() {
+  local subcmd="$1"; shift
+  if [ -n "${_TRACED_GH_REPO:-}" ]; then
+    _gh_with_timeout issue "$subcmd" --repo "$_TRACED_GH_REPO" "$@"
+  else
+    _gh_with_timeout issue "$subcmd" "$@"
+  fi
+}
+
+# _gh_pr_list — run `gh pr list` with optional --repo pinning.
+_gh_pr_list() {
+  if [ -n "${_TRACED_GH_REPO:-}" ]; then
+    _gh_with_timeout pr list --repo "$_TRACED_GH_REPO" "$@"
+  else
+    _gh_with_timeout pr list "$@"
+  fi
+}
+
 # _find_merged_pr_number — resolve the merged PR number for a story key.
-# Returns the PR number on stdout, or empty string on failure.
+# Searches by branch name first (precise), then falls back to a structured
+# body reference written by merge.sh. Returns the PR number on stdout,
+# or empty string on failure.
 _find_merged_pr_number() {
   local story_key="$1"
-  local result
-  result="$(_gh_with_timeout pr list --state merged --search "$story_key" \
-    --json number --jq '.[0].number' 2>/dev/null)" || true
+  local result=""
+
+  # Try branch-based search first (more precise than free-text title match).
+  # for-each-ref returns local branches as-is (feat/KEY-slug) and remote
+  # branches with a remote prefix (origin/feat/KEY-slug). The sed strips only
+  # the remote prefix (first path component before feat/) leaving local refs
+  # untouched.
+  local branch_name=""
+  branch_name="$(git -C "${PROJECT_PATH:-.}" for-each-ref --format='%(refname:short)' \
+    "refs/heads/feat/${story_key}-*" "refs/remotes/*/feat/${story_key}-*" 2>/dev/null \
+    | sed 's|^[^/]*/feat/|feat/|' | head -1)" || true
+
+  if [ -n "$branch_name" ]; then
+    result="$(_gh_pr_list --state merged \
+      --head "$branch_name" \
+      --json number --jq '.[0].number' 2>/dev/null)" || true
+  fi
+
+  # Fallback: search in PR body for the structured reference merge.sh writes
+  if [ -z "$result" ] || [ "$result" = "null" ]; then
+    result="$(_gh_pr_list --state merged \
+      --search "\"Story: ${story_key}\" in:body" \
+      --json number --jq '.[0].number' 2>/dev/null)" || true
+  fi
+
   # Filter out non-numeric results (e.g. "null", empty)
   case "$result" in
     ''|null|*[!0-9]*) printf '' ;;
@@ -2106,6 +2198,8 @@ _find_other_tracers() {
 
 # _close_traced_issues — post-transition hook entry point.
 # Called after the done transition succeeds; never blocks the transition.
+# Resolves the target repository from git remotes and passes --repo to every
+# gh call so fork/multi-remote checkouts target the correct issue tracker.
 _close_traced_issues() {
   local story_key="$1" story_file="$2"
 
@@ -2119,6 +2213,12 @@ _close_traced_issues() {
     log "WARNING: gh CLI not available — skipping traced-issue closure for $story_key"
     return 0
   fi
+
+  # Resolve the target repository for --repo pinning. When resolution fails,
+  # _TRACED_GH_REPO stays empty and the _gh_issue / _gh_pr_list helpers fall
+  # back to gh's own remote-detection default (acceptable for single-remote).
+  _TRACED_GH_REPO=""
+  _TRACED_GH_REPO="$(_resolve_gh_repo 2>/dev/null)" || true
 
   # Resolve the story's merged PR number (best-effort)
   local pr_number
@@ -2137,9 +2237,10 @@ _close_traced_issues() {
     remaining="$(_find_other_tracers "$issue_num" "$story_key")"
     if [ -z "$remaining" ]; then
       # Fully addressed — close with comment.
+      # `--` separates options from the positional issue-number argument.
       # Capture the real exit code before `local` resets $?.
       local gh_rc=0
-      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${by_clause}" 2>/dev/null || gh_rc=$?
+      _gh_issue close --comment "Fixed by ${by_clause}" -- "$issue_num" 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
@@ -2149,10 +2250,11 @@ _close_traced_issues() {
       fi
     else
       # Partially addressed — comment naming what remains.
+      # Wrap each remaining key in backtick code spans for correct Markdown.
       local remaining_keys
-      remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
+      remaining_keys="$(printf '%s' "$remaining" | sed 's/.*$/\`&\`/' | tr '\n' ',' | sed 's/,/, /g; s/, $//')"
       local gh_rc=0
-      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      _gh_issue comment --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." -- "$issue_num" 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"

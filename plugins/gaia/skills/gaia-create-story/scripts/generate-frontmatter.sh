@@ -366,6 +366,18 @@ depends_on_yaml="$(_extract_array_aliased "Depends on" "depends_on")"
 blocks_yaml="$(_extract_array_aliased "Blocks" "blocks")"
 traces_to_yaml="$(_extract_array_aliased "Traces to" "traces_to")"
 
+# Auto-populate traces_to from origin_ref when it references a GitHub issue
+# and the extracted value is empty. This ensures the close-on-done hook fires
+# for stories created from GitHub issues without requiring the epics-and-stories
+# bullet to repeat the reference.
+if [ "$traces_to_yaml" = "[]" ] && [ "$origin_ref_set" -eq 1 ]; then
+  _issue_num=""
+  _issue_num="$(printf '%s' "$origin_ref" | sed -n 's/.*GitHub #\([0-9][0-9]*\).*/\1/p')"
+  if [ -n "$_issue_num" ]; then
+    traces_to_yaml="[\"GitHub #${_issue_num}\"]"
+  fi
+fi
+
 # ---------- Validate required fields ----------
 
 [ -n "$title" ]    || die_input "missing field 'title' for story $story_key"
