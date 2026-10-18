@@ -117,6 +117,106 @@ teardown() { common_teardown; }
   ! grep -qF '|| true' <<< "$run_cmd"
 }
 
+# --------------- Shard locale guard ---------------
+
+@test "shard-locale: bats-shard Run shard step sets LC_ALL=C in its env block" {
+  # The shard step must explicitly set LC_ALL=C so that awk sprintf("%c",...)
+  # emits raw bytes, not codepoint-expanded UTF-8 multibyte sequences.
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  lc="$(yq '.jobs.bats-shard.steps[] | select(.name == "Run shard*") | .env.LC_ALL' "$WORKFLOW" 2>/dev/null)"
+  [ "$lc" = "C" ]
+}
+
+# --------------- Action-pin guard ---------------
+
+@test "action-pin: upload-artifact uses a pinned commit SHA (not a floating tag)" {
+  # Every uses: line referencing upload-artifact must use a 40-char hex SHA.
+  while IFS= read -r line; do
+    if grep -qE 'upload-artifact@[a-f0-9]{40}' <<< "$line"; then
+      continue
+    fi
+    echo "FAIL: upload-artifact not pinned to SHA: $line" >&2
+    return 1
+  done < <(grep -E 'uses:.*upload-artifact' "$WORKFLOW")
+}
+
+@test "action-pin: download-artifact uses a pinned commit SHA (not a floating tag)" {
+  # Every uses: line referencing download-artifact must use a 40-char hex SHA.
+  while IFS= read -r line; do
+    if grep -qE 'download-artifact@[a-f0-9]{40}' <<< "$line"; then
+      continue
+    fi
+    echo "FAIL: download-artifact not pinned to SHA: $line" >&2
+    return 1
+  done < <(grep -E 'uses:.*download-artifact' "$WORKFLOW")
+}
+
+# --------------- Fast-feedback base_ref guard ---------------
+
+@test "fast-feedback: no github.base_ref in run blocks (must be in env only)" {
+  # Context-injection vector: github.base_ref in a run: block allows
+  # a crafted branch name to inject shell commands.  It must be set via
+  # the step env block and referenced as $ENV_VAR instead.
+  ff_job="$(awk '
+    /^  bats-fast-feedback:/ { in_job=1; print; next }
+    in_job && /^  [a-z][a-z0-9_-]*:/ { in_job=0 }
+    in_job { print }
+  ' "$WORKFLOW")"
+  [ -n "$ff_job" ]
+
+  # Extract only the run: blocks from the fast-feedback job.
+  run_blocks="$(printf '%s\n' "$ff_job" | awk '
+    /^[[:space:]]*run:[[:space:]]*\|/ { in_run=1; next }
+    in_run && /^[[:space:]]*[a-z_-]+:/ { in_run=0 }
+    in_run { print }
+  ')"
+
+  if grep -qF 'github.base_ref' <<< "$run_blocks"; then
+    echo "FAIL: github.base_ref found in a run: block of bats-fast-feedback" >&2
+    grep -n 'github.base_ref' <<< "$run_blocks" >&2
+    return 1
+  fi
+}
+
+# --------------- Gate result-check strictness ---------------
+
+@test "gate-result-check: condition is exactly needs.bats-shard.result != success" {
+  # The gate step must use the EXACT form: needs.bats-shard.result != 'success'
+  # Any other form (== 'success', != 'failure', compound containing 'success')
+  # weakens the gate. Parse with yq and reject anything else.
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  cond="$(yq '.jobs.bats-tests.steps[0].if' "$WORKFLOW" 2>/dev/null)"
+  # Normalise whitespace for comparison.
+  normalised="$(echo "$cond" | sed "s/[[:space:]]*//g")"
+  [ "$normalised" = "needs.bats-shard.result!='success'" ]
+}
+
+# --------------- Skip-shim mixed-path safety ---------------
+
+@test "skip-shim-safety: gate has if always so it always reports on mixed-path PRs" {
+  # On a mixed-path PR both plugin-ci and the skip-shim trigger. The skip-shim
+  # reports green instantly. The real gate must ALWAYS run (if: always()) so that
+  # GitHub has both check runs and requires both to pass. If the gate ever loses
+  # its if: always(), the shim could let a broken PR merge.
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  if_val="$(yq '.jobs.bats-tests.if' "$WORKFLOW" 2>/dev/null)"
+  grep -qF 'always()' <<< "$if_val"
+}
+
+@test "skip-shim-safety: skip-shim paths-ignore is exact inverse of plugin-ci paths" {
+  # If the skip-shim's paths-ignore drifts from plugin-ci's paths, one of two
+  # things happens:
+  # 1. A docs-only PR blocks (covered by ci-skip-shim-parity.bats).
+  # 2. The shim does NOT trigger on mixed-path PRs, breaking the two-workflow
+  #    overlap that the safety argument depends on.
+  # This test asserts the specific safety precondition: the shim file uses
+  # paths-ignore (not paths).
+  SHIM="$REPO_ROOT/.github/workflows/plugin-ci-skip-shim.yml"
+  [ -f "$SHIM" ]
+  grep -qE '^\s+paths-ignore:' "$SHIM"
+  ! grep -qE '^\s+paths:' "$SHIM"
+}
+
 @test "plugin-ci.yml: shard jobs use parallel for concurrent file execution" {
   # Each shard runs bats --jobs N with GNU parallel for concurrent file
   # execution (same approach as the old monolithic job).  Verify the

@@ -32,6 +32,16 @@ name: plugin-ci-skip-shim
 # required context is ever added to branch protection, add a matching no-op job
 # here too. The parity bats cannot read branch-protection settings, so this
 # coupling is enforced by convention + this comment.
+#
+# MIXED-PATH SAFETY (investigated 2026-10-18): On a mixed-path PR (touching
+# both plugin and non-plugin files), BOTH this shim AND plugin-ci.yml trigger.
+# Both emit a check run named `bats-tests`. GitHub requires ALL check runs
+# sharing a name to pass before branch protection is satisfied, so the shim's
+# instant green does NOT let a PR merge before the real gate completes. The
+# gate's `if: always()` clause ensures it always reports a definitive result
+# (not just "skipped"), so the real check is always present for comparison.
+# Removal of the shim is NOT needed for safety; it remains required for
+# docs-only PRs that would otherwise block permanently.
 
 on:
   pull_request:
