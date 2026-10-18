@@ -785,7 +785,7 @@ YAML
 
   [ -d "$GAIA_BINDING_DIR" ]
   local perms
-  perms="$(stat -f '%Lp' "$GAIA_BINDING_DIR" 2>/dev/null || stat -c '%a' "$GAIA_BINDING_DIR" 2>/dev/null)"
+  perms="$(stat -c '%a' "$GAIA_BINDING_DIR" 2>/dev/null || stat -f '%Lp' "$GAIA_BINDING_DIR" 2>/dev/null)"
   [ "$perms" = "700" ]
 }
 
