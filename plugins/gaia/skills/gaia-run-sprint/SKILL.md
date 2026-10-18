@@ -38,11 +38,21 @@ turn can actually drive a dev-agent through a story (spawning and messaging a
 teammate is a live tool call, not something a background script can do on
 its own). So this skill loops, one real turn at a time:
 
-1. **Plan once**, at the start of the run:
+1. **Bind and plan once**, at the start of the run:
    ```bash
+   # Bind the session to a sprint (concurrent mode only).
+   # In single-sprint mode this is a no-op.
+   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+   BOUND_SPRINT=""
+   BOUND_SPRINT="$(bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-run-sprint/scripts/bind.sh" "$@")" || true
+   # Resolve the sprint state file path.
+   SPRINT_YAML="${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
+   if [ -n "$BOUND_SPRINT" ]; then
+     SPRINT_YAML="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" resolve-file --sprint "$BOUND_SPRINT")"
+   fi
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" plan \
      --repo "${PROJECT_PATH:-.}" \
-     --yaml "${PROJECT_ROOT}/.gaia/state/sprint-status.yaml"
+     --yaml "$SPRINT_YAML"
    ```
    This runs every degradation check up front and prints `mode=parallel
    reason=none` or `mode=sequential reason=<token>` (see the table below).
@@ -172,6 +182,31 @@ intentional — please do not "fix" one to match the other.
   `--discard-ignored` teardown path, which is used **only** after a successful
   merge and never touches memory or checkpoint state. A worktree holding
   uncommitted work is always kept and reported with a recovery command.
+
+## Session-to-sprint binding
+
+When running in concurrent-sprint mode (`sprint.max_concurrent_active` > 1 and
+per-sprint state files exist), the session is bound to exactly one sprint at
+activation time. The binding is immutable for the session's lifetime.
+
+1. **Binding at activation.** When `--sprint <id>` is passed, the session binds
+   to that sprint. Without `--sprint`: 0 active sprints = no binding (existing
+   behavior), 1 active sprint = auto-bind, multiple active sprints = refuse
+   with listing.
+2. **Re-entry.** Re-invoking with the same sprint (or without `--sprint` in a
+   bound session) reuses the binding idempotently. A different sprint ID is
+   refused.
+3. **Binding file.** The binding is stored at `$GAIA_BINDING_DIR/bound_sprint_id`
+   (write-once via `set -C`). Consumers re-derive the binding from this file on
+   every Bash call — each call is a fresh shell.
+4. **Closed-sprint guard.** When the bound sprint is closed (by this or another
+   session), planning-level subcommands (`init`, `advance`, `rollover`,
+   `set-story-sprint`) are refused. Other mutating subcommands proceed normally.
+   Read-only commands always work. Planning the next sprint requires a new
+   session.
+
+In single-sprint mode (the default), no binding file is written or read, and
+all behavior is unchanged.
 
 ## Cross-session resource ledger lifecycle
 
