@@ -3,6 +3,40 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.222.0] — 2026-10-18
+
+### Added
+
+- (independence) add rules (a) and (b) independence check (#2240)
+- (binding) add session-to-sprint binding and environment propagation (#2241)
+- (sprint-state) add per-sprint state file layout, resolver, and migration (#2237)
+- (transition) block done transition with untriaged findings (#2236)
+- (merge) serialize promotion merges via L3 lock in concurrent mode (#2234)
+- (ledger) add cross-session resource ledger for concurrent sprint budgets (#2233)
+- (ci) add macOS bash 3.2 job, diff-based selection, extended lint (#2219)
+- (concurrent-sprint) add catch-all epic flag parser (#2229)
+- (glossary) add concurrent sprints and phase-parallel execution entries (#2226)
+- (merge) add pre-merge guards for checks, stale base and trailers (#2222)
+- (create-story) add predicted_touch_set field and population pipeline (#2228)
+- add sanctioned checkbox writer for story task ticking (#2227)
+- (transition) close traced github issues when a story reaches done (#2220)
+- (config) add sprint.max_concurrent_active property (#2221)
+- (lock) add flat non-nested lock architecture with five independent locks (#2224)
+- (review) bind each review round to its commit and freeze scope and evidence (#2217)
+
+### Changed
+
+- (tick-story-checkbox) add integration test using real snapshot script (#2242)
+- shard bats suite into 4 parallel jobs for faster CI feedback (#2235)
+
+### Fixed
+
+- (transition) match the issue close comment wording to the spec (#2243)
+- (review) close injection, unfinished-gate listing and evidence-tamper gaps in round records (#2238)
+- (orchestrator) resolve five defects in phase-parallel-orchestrator next (#2225)
+- (tests) isolate root variables in sprint-state bats suites (#2223)
+- (sprint-review) use git check-ignore and relative path in gitignore pre-flight (#2218)
+
 ## [1.221.0] — 2026-10-16
 
 ### Added
