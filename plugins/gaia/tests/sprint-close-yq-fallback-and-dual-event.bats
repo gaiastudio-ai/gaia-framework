@@ -390,12 +390,14 @@ STUB
   #    WITHOUT sprint-state.sh — only lifecycle-event.sh (close.sh line 25-26).
   local iso_root="$TEST_TMP/isolated-root"
   local iso_skill="$iso_root/skills/gaia-sprint-close/scripts"
-  mkdir -p "$iso_skill" "$iso_root/scripts"
+  mkdir -p "$iso_skill" "$iso_root/scripts/lib"
   cp "$real_skill_scripts/close.sh" "$iso_skill/close.sh"
   chmod +x "$iso_skill/close.sh"
   # close.sh line 25: PLUGIN_SCRIPTS_DIR = dirname/$SCRIPT_DIR/../../../scripts
   cp "$real_scripts/lifecycle-event.sh" "$iso_root/scripts/"
   chmod +x "$iso_root/scripts/lifecycle-event.sh"
+  # lifecycle-event.sh sources the shared lock library from its lib/ sibling.
+  cp "$real_scripts/lib/acquire-lock.sh" "$iso_root/scripts/lib/"
 
   # 2. Build a separate custom plugin root WITH the full scripts tree.
   local plugin_root="$TEST_TMP/custom-plugin-root"
