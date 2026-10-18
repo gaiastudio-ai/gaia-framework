@@ -106,10 +106,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC1: Session binds to one sprint with validation and re-entry
+# Session binding with validation and re-entry
 # =========================================================================
 
-@test "AC1: session binds to sprint via write_binding and read_binding returns it" {
+@test "session binds to sprint via write_binding and read_binding returns it" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac1-bind"
@@ -130,7 +130,7 @@ setup_binding() {
   [ "$result" = "sprint-900" ]
 }
 
-@test "AC1: re-entry with same sprint is idempotent" {
+@test "re-entry with same sprint is idempotent" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac1-reentry"
@@ -146,7 +146,7 @@ setup_binding() {
   [ "$content" = "sprint-900" ]
 }
 
-@test "AC1: re-entry without --sprint reuses binding" {
+@test "re-entry without --sprint reuses binding" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac1-no-sprint"
@@ -160,7 +160,7 @@ setup_binding() {
   [ "$result" = "sprint-900" ]
 }
 
-@test "AC1: different sprint refused with 'already bound to'" {
+@test "different sprint refused with 'already bound to'" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -174,7 +174,7 @@ setup_binding() {
   [[ "$output" == *"already bound to sprint-900"* ]]
 }
 
-@test "AC1: sprint ID validation rejects invalid chars" {
+@test "sprint ID validation rejects invalid characters" {
   set_max_concurrent 3
   export CLAUDE_CODE_SESSION_ID="sess-ac1-invalid"
   source "$SESSION_BINDING"
@@ -186,10 +186,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC2: Auto-bind rules for zero, one, and multiple active sprints
+# Auto-bind rules for zero, one, and multiple active sprints
 # =========================================================================
 
-@test "AC2: zero active sprints — no binding written" {
+@test "zero active sprints — no binding written" {
   set_max_concurrent 3
   # No per-sprint files with active status.
   seed_per_sprint_file "sprint-900" "closed"
@@ -202,7 +202,7 @@ setup_binding() {
   [ ! -f "$SESSION_DIR/sess-ac2-zero/bound_sprint_id" ]
 }
 
-@test "AC2: one active sprint — auto-binds" {
+@test "one active sprint — auto-binds" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac2-one"
@@ -213,7 +213,7 @@ setup_binding() {
   [[ "$output" == *"sprint-900"* ]]
 }
 
-@test "AC2: multiple active sprints without --sprint — refuses with listing" {
+@test "multiple active sprints without --sprint — refuses with listing" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -227,10 +227,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC3: Cross-validation of env var against binding file
+# Cross-validation of env var against binding file
 # =========================================================================
 
-@test "AC3: cross-validation passes when env var matches binding file" {
+@test "cross-validation passes when env var matches binding file" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac3-match"
@@ -243,7 +243,7 @@ setup_binding() {
   [ "$status" -eq 0 ]
 }
 
-@test "AC3: cross-validation halts with binding_mismatch when env var differs" {
+@test "cross-validation halts with binding_mismatch when env var differs" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac3-mismatch"
@@ -257,7 +257,7 @@ setup_binding() {
   [[ "$output" == *"binding_mismatch"* ]]
 }
 
-@test "AC3: read-only subcommands skip binding validation" {
+@test "read-only subcommands skip binding validation" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac3-readonly"
@@ -274,7 +274,7 @@ setup_binding() {
   [[ "$output" != *"binding_mismatch"* ]]
 }
 
-@test "AC3: mutating subcommand halts on env/binding mismatch" {
+@test "mutating subcommand halts on env/binding mismatch" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac3-mutate"
@@ -289,10 +289,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC4: Binding file is sole authority over env var
+# Binding file is sole authority over env var
 # =========================================================================
 
-@test "AC4: env var alone cannot redirect sprint operations" {
+@test "env var alone cannot redirect sprint operations" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-999" "active"
@@ -310,10 +310,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC5: Closed-sprint guard refuses planning subcommands
+# Closed-sprint guard refuses planning subcommands
 # =========================================================================
 
-@test "AC5: init refused when bound sprint is closed" {
+@test "init refused when bound sprint is closed" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
   # Seed target sprint as closed so init would normally re-seed over it.
@@ -339,7 +339,7 @@ setup_binding() {
   [ "$after_status" = "closed" ]
 }
 
-@test "AC5: non-planning mutating subcommand NOT refused by closed guard" {
+@test "non-planning mutating subcommand not refused by closed guard" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
   export CLAUDE_CODE_SESSION_ID="sess-ac5-nonplan"
@@ -354,7 +354,7 @@ setup_binding() {
   [[ "$output" != *"your bound sprint is closed"* ]]
 }
 
-@test "AC5: read-only subcommand succeeds when bound sprint is closed" {
+@test "read-only subcommand succeeds when bound sprint is closed" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
   export CLAUDE_CODE_SESSION_ID="sess-ac5-ro"
@@ -368,10 +368,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC6: No session identity produces controlled diagnostic
+# No session identity produces controlled diagnostic
 # =========================================================================
 
-@test "AC6: no session identity fails with diagnostic naming expected vars" {
+@test "no session identity fails with diagnostic naming expected variables" {
   unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
   source "$SESSION_BINDING"
 
@@ -382,24 +382,24 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC7: Byte-identical mirrors
+# Byte-identical mirrors
 # =========================================================================
 
-@test "AC7: session-binding.sh mirrors are byte-identical" {
+@test "session-binding.sh mirrors are byte-identical" {
   diff "$BATS_TEST_SCRIPT_DIR/scripts/lib/session-binding.sh" \
        "$BATS_TEST_SCRIPT_DIR/skills/gaia-dev-story/scripts/lib/session-binding.sh"
 }
 
-@test "AC7: sprint-state.sh mirrors are byte-identical" {
+@test "sprint-state.sh mirrors are byte-identical" {
   diff "$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh" \
        "$BATS_TEST_SCRIPT_DIR/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
 # =========================================================================
-# AC8: No internal IDs in published files
+# No internal identifiers in published files
 # =========================================================================
 
-@test "AC8: no internal traceability IDs in published session-binding files" {
+@test "no internal traceability identifiers in published session-binding files" {
   local files_to_scan=(
     "$BATS_TEST_SCRIPT_DIR/scripts/lib/session-binding.sh"
     "$BATS_TEST_SCRIPT_DIR/skills/gaia-run-sprint/scripts/bind.sh"
@@ -417,10 +417,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC9: Binding-dir provisioning from session ID with spoofing detection
+# Binding-dir provisioning from session ID with spoofing detection
 # =========================================================================
 
-@test "AC9: binding dir provisioned from CLAUDE_CODE_SESSION_ID" {
+@test "binding dir provisioned from CLAUDE_CODE_SESSION_ID" {
   export CLAUDE_CODE_SESSION_ID="abc123"
   source "$SESSION_BINDING"
   provision_binding_dir
@@ -429,7 +429,7 @@ setup_binding() {
   [[ "$GAIA_BINDING_DIR" == *"/abc123" ]]
 }
 
-@test "AC9: fallback to CLAUDE_SESSION_ID when CLAUDE_CODE_SESSION_ID unset" {
+@test "fallback to CLAUDE_SESSION_ID when CLAUDE_CODE_SESSION_ID unset" {
   unset CLAUDE_CODE_SESSION_ID
   export CLAUDE_SESSION_ID="def456"
   source "$SESSION_BINDING"
@@ -438,7 +438,7 @@ setup_binding() {
   [[ "$GAIA_BINDING_DIR" == *"/def456" ]]
 }
 
-@test "AC9: inherited GAIA_BINDING_DIR mismatching derived path refused as spoofing" {
+@test "inherited GAIA_BINDING_DIR mismatching derived path refused as spoofing" {
   export CLAUDE_CODE_SESSION_ID="abc123"
   export GAIA_BINDING_DIR="/tmp/evil-dir"
   source "$SESSION_BINDING"
@@ -448,7 +448,7 @@ setup_binding() {
   [[ "$output" == *"spoofing"* ]]
 }
 
-@test "AC9: inherited GAIA_BINDING_DIR matching derived path accepted" {
+@test "inherited GAIA_BINDING_DIR matching derived path accepted" {
   export CLAUDE_CODE_SESSION_ID="abc123"
   source "$SESSION_BINDING"
   provision_binding_dir
@@ -461,10 +461,10 @@ setup_binding() {
 }
 
 # =========================================================================
-# AC10: Single-sprint mode skips binding entirely
+# Single-sprint mode skips binding entirely
 # =========================================================================
 
-@test "AC10: single-sprint mode skips binding entirely" {
+@test "single-sprint mode skips binding entirely" {
   # Default config: no max_concurrent_active, no per-sprint files.
   export CLAUDE_CODE_SESSION_ID="sess-ac10-single"
   export PROJECT_CONFIG="$CONFIG_DIR/project-config.yaml"
@@ -474,7 +474,7 @@ setup_binding() {
   [ ! -f "$SESSION_DIR/sess-ac10-single/bound_sprint_id" ]
 }
 
-@test "AC10: transitional state (per-sprint files remain with limit 1) keeps validating" {
+@test "transitional state keeps validating when per-sprint files remain with limit 1" {
   # max=1 but per-sprint files exist.
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: "test-project"
@@ -495,10 +495,10 @@ YAML
 }
 
 # =========================================================================
-# AC11: Per-subcommand --sprint override semantics
+# Per-subcommand --sprint override semantics
 # =========================================================================
 
-@test "AC11: explicit --sprint override on transition logged" {
+@test "explicit --sprint override on transition logged" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -517,7 +517,7 @@ YAML
   [[ "$captured_stderr" == *"sprint override: bound=sprint-900 target=sprint-901 command=transition"* ]]
 }
 
-@test "AC11: set-story-sprint --sprint is destination, not override" {
+@test "set-story-sprint --sprint is destination not override" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -532,7 +532,7 @@ YAML
   [[ "$output" != *"sprint override:"* ]]
 }
 
-@test "AC11: env/binding mismatch halts even with explicit --sprint" {
+@test "env/binding mismatch halts even with explicit --sprint" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -548,10 +548,10 @@ YAML
 }
 
 # =========================================================================
-# AC12: init/advance with nonexistent --sprint-id refused in bound session
+# init/advance with nonexistent --sprint-id refused in bound session
 # =========================================================================
 
-@test "AC12: init with nonexistent --sprint-id refused in bound session" {
+@test "init with nonexistent --sprint-id refused in bound session" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ac12-init"
@@ -566,7 +566,7 @@ YAML
   [[ "$output" == *"start a new session to plan the next sprint"* ]]
 }
 
-@test "AC12: init with nonexistent --sprint-id in unbound session proceeds" {
+@test "init with nonexistent --sprint-id in unbound session proceeds" {
   set_max_concurrent 3
   # No binding, no session ID.
   unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
@@ -578,10 +578,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC1: Unsafe session ID characters refused
+# Unsafe session ID characters refused
 # =========================================================================
 
-@test "AC-EC1: session ID with path separator refused" {
+@test "session ID with path separator refused" {
   export CLAUDE_CODE_SESSION_ID="../../../etc"
   source "$SESSION_BINDING"
   run provision_binding_dir
@@ -589,7 +589,7 @@ YAML
   [[ "$output" == *"path separator"* ]]
 }
 
-@test "AC-EC1: session ID with leading dot refused" {
+@test "session ID with leading dot refused" {
   export CLAUDE_CODE_SESSION_ID=".hidden"
   source "$SESSION_BINDING"
   run provision_binding_dir
@@ -597,7 +597,7 @@ YAML
   [[ "$output" == *"leading dot"* ]]
 }
 
-@test "AC-EC1: session ID with whitespace refused" {
+@test "session ID with whitespace refused" {
   export CLAUDE_CODE_SESSION_ID="has space"
   source "$SESSION_BINDING"
   run provision_binding_dir
@@ -606,10 +606,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC2: Partial binding file content detected
+# Partial binding file content detected
 # =========================================================================
 
-@test "AC-EC2: partial content in binding file halts with diagnostic" {
+@test "partial content in binding file halts with diagnostic" {
   set_max_concurrent 3
   export CLAUDE_CODE_SESSION_ID="sess-ec2-partial"
   source "$SESSION_BINDING"
@@ -624,10 +624,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC3: Env var without binding file halts in concurrent mode
+# Env var without binding file halts in concurrent mode
 # =========================================================================
 
-@test "AC-EC3: env var set without binding file halts with binding_mismatch" {
+@test "env var set without binding file halts with binding_mismatch" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ec3-nofile"
@@ -641,7 +641,7 @@ YAML
   [[ "$output" == *"binding_mismatch"* ]]
 }
 
-@test "AC-EC3: env var ignored in single-sprint mode" {
+@test "env var ignored in single-sprint mode" {
   # Single-sprint mode: no max_concurrent, no per-sprint files.
   export CLAUDE_CODE_SESSION_ID="sess-ec3-single"
   export GAIA_BOUND_SPRINT_ID="sprint-900"
@@ -653,10 +653,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC4: External close triggers guard on next planning subcommand
+# External close triggers guard on next planning subcommand
 # =========================================================================
 
-@test "AC-EC4: external close triggers closed-guard on init" {
+@test "external close triggers closed-guard on init" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ec4-ext"
@@ -674,10 +674,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC5: NFS noclobber best-effort (documented limitation)
+# NFS noclobber best-effort (documented limitation)
 # =========================================================================
 
-@test "AC-EC5: noclobber and realpath containment are implemented" {
+@test "noclobber and realpath containment are implemented" {
   # This test verifies the defense mechanisms exist in the source code,
   # not that NFS atomicity is enforced (documented limitation).
   /usr/bin/grep -q 'set -C' "$SESSION_BINDING"
@@ -686,10 +686,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC6: Long-running session detects mid-session sprint close
+# Long-running session detects mid-session sprint close
 # =========================================================================
 
-@test "AC-EC6: closed-sprint detection triggers regardless of session age" {
+@test "closed-sprint detection triggers regardless of session age" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ec6-long"
@@ -712,10 +712,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC7: Same-session-ID race prevented by noclobber
+# Same-session-ID race prevented by noclobber
 # =========================================================================
 
-@test "AC-EC7: noclobber prevents overwrite when same session ID binds different sprints" {
+@test "noclobber prevents overwrite when same session ID binds different sprints" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   seed_per_sprint_file "sprint-901" "active"
@@ -736,7 +736,7 @@ YAML
   [ "$status" -eq 0 ]
 }
 
-@test "AC-EC7: different session IDs sharing GAIA_BINDING_DIR refused as spoofing" {
+@test "different session IDs sharing GAIA_BINDING_DIR refused as spoofing" {
   set_max_concurrent 3
   export CLAUDE_CODE_SESSION_ID="session-x"
   source "$SESSION_BINDING"
@@ -752,10 +752,10 @@ YAML
 }
 
 # =========================================================================
-# AC-EC8: Symlink traversal detected by realpath containment
+# Symlink traversal detected by realpath containment
 # =========================================================================
 
-@test "AC-EC8: symlink pointing outside binding dir is refused" {
+@test "symlink pointing outside binding dir is refused" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-ec8-symlink"
@@ -778,7 +778,7 @@ YAML
 # Additional story-local test scenarios
 # =========================================================================
 
-@test "story-local: BINDING-DIR — directory created mode 0700" {
+@test "binding directory created with mode 0700" {
   export CLAUDE_CODE_SESSION_ID="sess-dir-0700"
   source "$SESSION_BINDING"
   provision_binding_dir
@@ -789,7 +789,7 @@ YAML
   [ "$perms" = "700" ]
 }
 
-@test "story-local: BACK-COMPAT — sprint-state.sh works without binding in single-sprint mode" {
+@test "sprint-state.sh works without binding in single-sprint mode" {
   # Single-sprint mode, no concurrent features.
   unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
   export PROJECT_CONFIG="$CONFIG_DIR/project-config.yaml"
@@ -801,7 +801,7 @@ YAML
   [[ "$output" != *"spoofing"* ]]
 }
 
-@test "story-local: BINDABLE-STATES — review and correction remain valid binding" {
+@test "review and correction remain valid binding" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="sess-bindable"
@@ -829,7 +829,7 @@ YAML
   [ "$status" -eq 2 ]
 }
 
-@test "story-local: PLANNED-NOT-BINDABLE — planned sprint cannot be bound" {
+@test "planned sprint cannot be bound" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "planned"
   export CLAUDE_CODE_SESSION_ID="sess-planned"
@@ -841,7 +841,7 @@ YAML
   [[ "$output" == *"planned"* ]]
 }
 
-@test "story-local: EXIT-CODES — read_binding exit codes for each state" {
+@test "read_binding exit codes match binding state" {
   set_max_concurrent 3
   export CLAUDE_CODE_SESSION_ID="sess-exit-codes"
   source "$SESSION_BINDING"
@@ -865,7 +865,7 @@ YAML
   [[ "$output" == *"sprint-900"* ]]
 }
 
-@test "story-local: CLI-OPTIONS — session-binding.sh read with --session-id and --project-root" {
+@test "session-binding.sh read with explicit --session-id and --project-root" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   # Pre-provision the binding.
@@ -877,7 +877,7 @@ YAML
   [[ "$output" == "sprint-900" ]]
 }
 
-@test "story-local: CLOSED-OVERRIDE-REFUSED — closed-bound blocks --sprint on init" {
+@test "closed-bound blocks explicit --sprint on init" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
   seed_per_sprint_file "sprint-901" "active"
@@ -893,7 +893,7 @@ YAML
   [[ "$output" == *"your bound sprint is closed"* ]]
 }
 
-@test "story-local: CLOSED-OVERRIDE-ALLOWED — non-planning override to non-closed proceeds" {
+@test "non-planning override to non-closed sprint proceeds" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "closed"
   seed_per_sprint_file "sprint-901" "active"
@@ -909,14 +909,14 @@ YAML
   [[ "$output" != *"your bound sprint is closed"* ]]
 }
 
-@test "story-local: MIRROR-SYNC — mirrors verified byte-identical" {
+@test "mirrors verified byte-identical" {
   diff "$BATS_TEST_SCRIPT_DIR/scripts/lib/session-binding.sh" \
        "$BATS_TEST_SCRIPT_DIR/skills/gaia-dev-story/scripts/lib/session-binding.sh"
   diff "$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh" \
        "$BATS_TEST_SCRIPT_DIR/skills/gaia-dev-story/scripts/sprint-state.sh"
 }
 
-@test "story-local: CHILD-ENV-NO-FILE — child inherits env var but has no binding file" {
+@test "child inherits env var but has no binding file" {
   set_max_concurrent 3
   seed_per_sprint_file "sprint-900" "active"
   export CLAUDE_CODE_SESSION_ID="child-different-session"

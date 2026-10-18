@@ -25,7 +25,6 @@ LC_ALL=C; export LC_ALL
 
 _SB_BINDING_FILENAME="bound_sprint_id"
 _SB_SESSION_DIR_NAME="sessions"
-_SB_STATE_SUBDIR=".gaia/state"
 _SB_SCRIPT_NAME="${0##*/}"
 
 # ---------- Realpath helper ----------
@@ -164,18 +163,18 @@ _sb_resolve_project_root() {
     return 0
   fi
 
-  # Walk up from CWD to find .gaia/state/.
+  # Walk up from CWD to find the state directory.
   local dir
   dir="$(pwd)"
   while [ "$dir" != "/" ]; do
-    if [ -d "$dir/$_SB_STATE_SUBDIR" ]; then
+    if [ -d "$dir/.gaia/state" ]; then
       printf '%s' "$dir"
       return 0
     fi
     dir="$(dirname "$dir")"
   done
 
-  printf '%s: error: cannot resolve project root (no .gaia/state/ found)\n' \
+  printf '%s: error: cannot resolve project root (no state directory found)\n' \
     "$_SB_SCRIPT_NAME" >&2
   return 1
 }
@@ -198,7 +197,7 @@ provision_binding_dir() {
 
   project_root="$(_sb_resolve_project_root "$@")" || return 1
 
-  local derived_dir="${project_root%/}/${_SB_STATE_SUBDIR}/${_SB_SESSION_DIR_NAME}/${sid}"
+  local derived_dir="${project_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME}/${sid}"
 
   # Create the directory if absent.
   if [ ! -d "$derived_dir" ]; then
@@ -395,7 +394,7 @@ read_binding() {
   local state_dir=""
   local project_root="${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}"
   if [ -n "$project_root" ]; then
-    state_dir="${project_root%/}/${_SB_STATE_SUBDIR}"
+    state_dir="${project_root%/}/.gaia/state"
   elif [ -n "${GAIA_BINDING_DIR:-}" ]; then
     # Walk up from binding dir: .gaia/state/sessions/<id>/ -> .gaia/state/
     state_dir="$(dirname "$(dirname "${GAIA_BINDING_DIR}")")"
