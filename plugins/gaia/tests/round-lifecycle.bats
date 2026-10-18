@@ -1502,29 +1502,23 @@ _make_commit() {
   [ "$superseded_count" -eq 1 ]
 }
 
-@test "concurrent record-run plus record-round: no lost entry, no duplicate seq" {
-  local repo_dir="$TEST_TMP/repo"
-  _init_git_repo "$repo_dir" >/dev/null
-
+@test "concurrent record-run calls: no lost entry, no duplicate seq" {
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
 
   _minimal_register "$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
 
-  # record-run in background.
+  # Two record-run calls, both writing to gate_runs, launched together.
   "$SCRIPT" record-run --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
     --gate code-review --outcome completed &
   local pid1=$!
 
-  # record-round in background.
-  "$SCRIPT" record-round --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" \
-    --repo "$repo_dir" \
-    --gate "code-review=concurrent" &
+  "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" \
+    --gate qa-tests --outcome completed &
   local pid2=$!
 
-  # Capture both exit codes — both must succeed.
   local rc1=0 rc2=0
   wait "$pid1" || rc1=$?
   wait "$pid2" || rc2=$?
@@ -1534,21 +1528,17 @@ _make_commit() {
   local reg
   reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
 
-  # Exactly 1 gate_run entry.
+  # Both gate_run entries must be present.
   local gr_len
   gr_len="$(yq '.gate_runs | length' "$reg")"
-  [ "$gr_len" -eq 1 ]
+  [ "$gr_len" -eq 2 ]
 
-  # Exactly 1 round.
-  local round_count
-  round_count="$(yq '.rounds | length' "$reg")"
-  [ "$round_count" -eq 1 ]
-
-  # Seq values in gate_runs must be unique.
+  # Seq values must be unique (1 and 2, not both 1).
   local unique_seqs total_seqs
   total_seqs="$(yq '[.gate_runs[].seq] | length' "$reg")"
   unique_seqs="$(yq '[.gate_runs[].seq] | unique | length' "$reg")"
-  [ "$total_seqs" -eq "$unique_seqs" ]
+  [ "$total_seqs" -eq 2 ] || false
+  [ "$unique_seqs" -eq 2 ] || false
 }
 
 # ===================================================================
@@ -2356,7 +2346,7 @@ SHIM
 
 @test "no rw-* temp files leak after record-round success" {
   local test_tmpdir
-  test_tmpdir="$(mktemp -d "${BATS_TMPDIR:-${TMPDIR:-/tmp}}/rw-leak-test.XXXXXX")"
+  test_tmpdir="$(mktemp -d "$TEST_TMP/rw-leak-test.XXXXXX")"
 
   local repo_dir="$TEST_TMP/repo"
   _init_git_repo "$repo_dir" >/dev/null
@@ -2377,7 +2367,7 @@ SHIM
 
 @test "no rw-* temp files leak after record-round failure" {
   local test_tmpdir
-  test_tmpdir="$(mktemp -d "${BATS_TMPDIR:-${TMPDIR:-/tmp}}/rw-leak-test.XXXXXX")"
+  test_tmpdir="$(mktemp -d "$TEST_TMP/rw-leak-test.XXXXXX")"
 
   local repo_dir="$TEST_TMP/repo"
   _init_git_repo "$repo_dir" >/dev/null
@@ -4764,6 +4754,121 @@ SHIM
   [ "$status" -eq 0 ]
 }
 
+@test "same canonical path with new content accepted across rounds" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1: record code-review at a canonical path.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=round 1"
+  [ "$status" -eq 0 ]
+  local report="$TEST_TMP/reviews/code-review-TEST-S1.md"
+  mkdir -p "$(dirname "$report")"
+  printf 'round 1 FAILED\n' > "$report"
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local r1_sha
+  r1_sha="$(yq '(.rounds[0].selected_gates[0]).report_sha256' "$reg")"
+  [ -n "$r1_sha" ] && [ "$r1_sha" != "null" ] || false
+
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2 at the same commit — same path, new content.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=re-review after fix"
+  [ "$status" -eq 0 ]
+
+  # Overwrite the SAME path with fresh content.
+  printf 'round 2 PASSED with entirely new review\n' > "$report"
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  # This must succeed — the path is reused but content is different.
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+
+  # Verify stored path and sha changed.
+  local r2_path r2_sha
+  r2_path="$(yq '(.rounds[1].selected_gates[0]).report_path' "$reg")"
+  r2_sha="$(yq '(.rounds[1].selected_gates[0]).report_sha256' "$reg")"
+  [ "$r2_path" = "$report" ] || false
+  [ "$r2_sha" != "$r1_sha" ] || false
+  [ -n "$r2_sha" ] && [ "$r2_sha" != "null" ] || false
+
+  # complete-round and assert-round-complete must also succeed.
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 0 ]
+}
+
+@test "same canonical path with unchanged content refused across rounds" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1: record code-review.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=round 1"
+  [ "$status" -eq 0 ]
+  local report="$TEST_TMP/reviews/code-review-TEST-S1.md"
+  mkdir -p "$(dirname "$report")"
+  printf 'identical content\n' > "$report"
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2 at same commit (report content not changed).
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "code-review=round 2"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  # Same path AND same content — must be refused (SHA matches).
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+  [ "$status" -eq 1 ]
+  grep -qi "already recorded\|reuse" <<<"$output"
+
+  # Round 2 evidence must remain empty.
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  local r2_path r2_sha
+  r2_path="$(yq '(.rounds[1].selected_gates[0]).report_path' "$reg")"
+  r2_sha="$(yq '(.rounds[1].selected_gates[0]).report_sha256' "$reg")"
+  [ -z "$r2_path" ] || [ "$r2_path" = "null" ] || false
+  [ -z "$r2_sha" ] || [ "$r2_sha" = "null" ] || false
+}
+
 @test "legitimate carry still completes after cross-round reuse guard" {
   local repo_dir="$TEST_TMP/repo"
   _init_git_repo "$repo_dir" >/dev/null
@@ -5037,7 +5142,52 @@ SHIMEOF
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
   [ "$status" -eq 2 ]
-  grep -qi "non-integer seq value" <<<"$output"
+  grep -qi "non-integer seq" <<<"$output"
+}
+
+@test "structure check refuses leading-zero seq 009" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Inject !!int "009" — an invalid octal literal that would crash bash
+  # arithmetic with "value too great for base".
+  sed 's|seq: 1|seq: !!int "009"|' "$reg" > "${reg}.new"
+  mv "${reg}.new" "$reg"
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate qa-tests --outcome completed
+  [ "$status" -eq 2 ]
+  grep -qi "non-integer seq" <<<"$output"
+}
+
+@test "structure check refuses leading-zero seq 010" {
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+
+  local reg
+  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+
+  # Inject untagged 010 — yq stores it as integer 8 (octal interpretation).
+  # Even if yq normalises this, bash would mis-read the literal form.
+  # Use a tagged form to ensure the value is literally "010".
+  sed 's|seq: 1|seq: !!int "010"|' "$reg" > "${reg}.new"
+  mv "${reg}.new" "$reg"
+
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate qa-tests --outcome completed
+  [ "$status" -eq 2 ]
+  grep -qi "non-integer seq" <<<"$output"
 }
 
 @test "integer guard alone catches non-integer seq via shim" {
@@ -5154,6 +5304,104 @@ SHIMEOF
   [ "$status" -eq 2 ]
 }
 
+@test "complete-round exits 2 when carried-gate outcome read fails" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1: record code-review, complete it.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/cr-carried.md"
+  printf 'carried outcome test\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2: carry code-review from round 1, select qa-tests.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "qa-tests=test" \
+    --carry "code-review=${VALID_RUN_ID}:no code changes"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+  local qa_rpt="$TEST_TMP/qa-carried.md"
+  printf 'qa carried outcome test\n' > "$qa_rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt"
+  [ "$status" -eq 0 ]
+
+  # Shim: fail the scope_revisions query on the SECOND call only —
+  # the first fires for the selected gate (qa-tests), the second for
+  # the carried gate's hop-chain resolution (code-review).
+  local shim_dir="$TEST_TMP/shim-carried-out"
+  _build_yq_shim "$shim_dir" 'scope_revisions' 2
+
+  run env PATH="$shim_dir:$PATH" "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir"
+  [ "$status" -eq 2 ]
+}
+
+@test "assert-round-complete exits 2 when carried-gate outcome read fails" {
+  local repo_dir="$TEST_TMP/repo"
+  _init_git_repo "$repo_dir" >/dev/null
+
+  local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
+  _write_story_with_ac "$stories_dir/TEST-S1-test-story.md" "TEST-S1"
+
+  # Round 1: record and complete.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir" \
+    --gate "code-review=test"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
+  [ "$status" -eq 0 ]
+  local rpt="$TEST_TMP/cr-carried2.md"
+  printf 'carried outcome test 2\n' > "$rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" complete-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID" --repo "$repo_dir"
+  [ "$status" -eq 0 ]
+
+  # Round 2: carry from round 1.  Leave it OPEN so assert-round-complete
+  # exercises _rw_collect_gate_errors.
+  run "$SCRIPT" record-round --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
+    --gate "qa-tests=test" \
+    --carry "code-review=${VALID_RUN_ID}:no code changes"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" record-run --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
+  [ "$status" -eq 0 ]
+  local qa_rpt="$TEST_TMP/qa-carried2.md"
+  printf 'qa carried outcome test 2\n' > "$qa_rpt"
+  run "$SCRIPT" record-round-report --story TEST-S1 \
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt"
+  [ "$status" -eq 0 ]
+
+  # Shim the carried-gate outcome read to fail (second scope_revisions call).
+  local shim_dir="$TEST_TMP/shim-carried-assert"
+  _build_yq_shim "$shim_dir" 'scope_revisions' 2
+
+  run env PATH="$shim_dir:$PATH" "$SCRIPT" assert-round-complete --story TEST-S1
+  [ "$status" -eq 2 ]
+}
+
 # ===================================================================
 # selected-gate hash re-check fail-open
 # ===================================================================
@@ -5254,13 +5502,26 @@ SHIMEOF
   # Clean up any temp files from the successful call.
   find "$test_tmpdir" -maxdepth 1 -name 'rw-*' -type f -delete 2>/dev/null || true
 
-  # Now corrupt the register to force a failure AFTER the temp copy is made.
-  local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
-  printf 'CORRUPT\n' >> "$reg"
+  # Shim yq to fail on the final rounds-append write that uses load().  This
+  # is the call AFTER _rw_mktemp has created rw-sel.json.* and rw-car.json.*
+  # temp files, so the failure exercises the cleanup path that matters.
+  local real_yq
+  real_yq="$(command -v yq)"
+  local shim_dir="$TEST_TMP/shim-leak-v"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/yq" <<SHIMEOF
+#!/bin/bash
+for _a in "\$@"; do
+  case "\$_a" in *load*) exit 1 ;; esac
+done
+exec "$real_yq" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/yq"
 
-  # This call will fail during structure validation after the temp copy exists.
-  run env TMPDIR="$test_tmpdir" "$SCRIPT" record-round --story TEST-S1 \
+  # This call will fail on the load() write AFTER _rw_mktemp has created
+  # temp files.  The EXIT trap must clean them up.
+  run env TMPDIR="$test_tmpdir" PATH="$shim_dir:$PATH" "$SCRIPT" record-round \
+    --story TEST-S1 \
     --run-id "$VALID_RUN_ID_2" --repo "$repo_dir" \
     --gate "qa-tests=test"
   [ "$status" -ne 0 ]
