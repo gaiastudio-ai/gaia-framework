@@ -18,6 +18,7 @@ delivered: false
 deferred_implementation: false
 # manual_verification: set to true when the story has a user-facing surface that needs a manual / functional verification pass. true makes the per-story-review manual-test gate required (a verdict must be recorded); false/absent means no manual verification is required. Offered (opt-in by surface), not mandatory — symmetric with how acceptance tests are offered by risk. Capture the scenario in the `## Manual Test` section below.
 manual_verification: false
+{predicted_touch_set}
 origin: {origin}
 origin_ref: {origin_ref}
 # design_ref: optional — path to the design record (e.g. ".gaia/state/design-record.yaml"). When present, the UX-scope detector classifies this story as design-scoped and spawns the UX Designer subagent during elaboration. Omit for backend-only stories.

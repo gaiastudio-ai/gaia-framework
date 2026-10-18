@@ -2,9 +2,25 @@
 # acquire-lock.sh — shared locking helper.
 #
 # Public API:
-#   acquire_lock <lock_file> <timeout_seconds> <fd_number>
+#   acquire_lock <lock_file> <timeout_seconds> <fd_number> [--strict]
 #   release_lock <fd_number>
 #   require_flock_for_parallel
+#   acquire_lock_close_predicate <max_concurrent_active> <state_dir>
+#
+# Lock constants (exported after sourcing):
+#   GAIA_LOCK_L1_TEMPLATE — per-sprint state lock path template
+#   GAIA_LOCK_L2_PATH     — resource ledger lock (relative to state dir)
+#   GAIA_LOCK_L3_PATH     — promotion-merge lock (relative to state dir)
+#   GAIA_LOCK_L4_PATH     — sprint lifecycle lock (relative to state dir)
+#   GAIA_LOCK_L5_PATH     — proxy lock (relative to state dir)
+#   GAIA_LOCK_L1_TIMEOUT  — 5s
+#   GAIA_LOCK_L2_TIMEOUT  — 5s
+#   GAIA_LOCK_L3_TIMEOUT  — 120s (overridable via GAIA_MERGE_LOCK_TIMEOUT)
+#   GAIA_LOCK_L4_TIMEOUT  — 10s
+#   GAIA_LOCK_L5_TIMEOUT  — 2s
+#   ACQUIRE_LOCK_EXIT_TIMEOUT  — exit code 3 (lock timeout)
+#   ACQUIRE_LOCK_EXIT_SYMLINK  — exit code 4 (strict-mode non-regular-file)
+#   ACQUIRE_LOCK_EXIT_IDENTITY — exit code 5 (strict-mode identity mismatch)
 #
 # Network-mounted .gaia/ state trees are unsupported for parallel mode.
 # The fallback uses ln(2) hard-link creation for atomicity; on NFS a lost
@@ -90,6 +106,28 @@ else
   _ACQUIRE_LOCK_STAT_FMT=""
 fi
 
+# --- Lock constants (five independent, non-nested locks) ---
+
+# Lock path templates (relative to the state directory).
+# L1 is parameterized by sprint_id; the rest are fixed filenames.
+export GAIA_LOCK_L1_TEMPLATE="sprint-status-{sprint_id}.yaml.lock"
+export GAIA_LOCK_L2_PATH=".concurrent-resource-ledger.lock"
+export GAIA_LOCK_L3_PATH=".promotion-merge.lock"
+export GAIA_LOCK_L4_PATH=".sprint-lifecycle.lock"
+export GAIA_LOCK_L5_PATH=".sprint-proxy.lock"
+
+# Timeouts (seconds). L3 is overridable via GAIA_MERGE_LOCK_TIMEOUT.
+export GAIA_LOCK_L1_TIMEOUT=5
+export GAIA_LOCK_L2_TIMEOUT=5
+export GAIA_LOCK_L3_TIMEOUT="${GAIA_MERGE_LOCK_TIMEOUT:-120}"
+export GAIA_LOCK_L4_TIMEOUT=10
+export GAIA_LOCK_L5_TIMEOUT=2
+
+# Distinct exit codes.
+export ACQUIRE_LOCK_EXIT_TIMEOUT=3
+export ACQUIRE_LOCK_EXIT_SYMLINK=4
+export ACQUIRE_LOCK_EXIT_IDENTITY=5
+
 # --- Internal: per-fd registry (Bash 3.2 compatible via indirect vars) ---
 # Each fd gets two variables: _AL_PATH_<fd> and _AL_MODE_<fd>.
 # Mode is "flock" or "fallback". Path is the lock file path.
@@ -164,6 +202,25 @@ _al_inode() {
     ''|*[!0-9]*) return 1 ;;
   esac
   printf '%s' "$ino"
+}
+
+# --- Internal: device:inode identity of a path (portable, ALWAYS dereferencing) ---
+#
+# Returns "dev:ino" on stdout, or fails. Used by strict-mode post-lock
+# identity re-checks where inode alone is insufficient (a recycled inode on
+# a different device would be a false match).
+
+_al_dev_ino() {
+  local path="$1" result=""
+  if [ "$_ACQUIRE_LOCK_STAT_FMT" = "gnu" ]; then
+    result="$(stat -L -c '%d:%i' "$path" 2>/dev/null)" || result=""
+  elif [ "$_ACQUIRE_LOCK_STAT_FMT" = "bsd" ]; then
+    result="$(stat -L -f '%d:%i' "$path" 2>/dev/null)" || result=""
+  fi
+  if [ -z "$result" ]; then
+    return 1
+  fi
+  printf '%s' "$result"
 }
 
 # --- Internal: verify an opened descriptor still refers to the lock path ---
@@ -263,6 +320,66 @@ _al_enforce_path_type() {
   return 0
 }
 
+# --- Internal: strict-mode path type enforcer ---
+#
+# Like _al_enforce_path_type but REFUSES (rather than cleaning up) any
+# non-regular file at the lock path. Used only by cross-session locks
+# (L2, L3, L4) in strict mode. Returns ACQUIRE_LOCK_EXIT_SYMLINK (4)
+# with a stable diagnostic when the path is not a regular file.
+
+_al_enforce_path_type_strict() {
+  local lock_file="$1"
+
+  # Symlink, directory, fifo, socket, device: refuse with a diagnostic.
+  if [ -L "$lock_file" ] || { [ -e "$lock_file" ] && [ ! -f "$lock_file" ]; }; then
+    printf 'lock_symlink_detected: %s\n' "$lock_file" >&2
+    return "$ACQUIRE_LOCK_EXIT_SYMLINK"
+  fi
+
+  # Absent or already a regular file: fine.
+  return 0
+}
+
+# --- Internal: strict-mode post-lock identity re-check ---
+#
+# After the lock is held, verify that the lock file's inode matches the
+# held fd's inode. On mismatch, release and retry. Returns 0 on match,
+# 1 on mismatch. Where stat is unavailable, degrades to pass (return 0).
+#
+# Uses inode-only comparison for the fd vs. lock-path check because the
+# fd path's device number is unreliable: on macOS /dev/fd/N is a devfs
+# device node whose stat reports the devfs device, not the real file's
+# device, so a dev:ino comparison always fails there. The inode alone is
+# sufficient to detect a replaced file (a swap produces a different inode).
+# The dev:ino helper is used for the LOCK PATH side only when comparing
+# two real paths (e.g. in the fallback identity re-check).
+
+_al_verify_identity_strict() {
+  local lock_file="$1" fd="$2"
+
+  # Test-only hook: when _al_identity_hook is a function, call it to let
+  # tests inject a deterministic mismatch (e.g. swap the lock file between
+  # acquisition and re-check). Not a user-facing surface.
+  if declare -F _al_identity_hook >/dev/null 2>&1; then
+    _al_identity_hook "$lock_file" "$fd"
+  fi
+
+  local fd_path=""
+  if [ -e "/proc/self/fd/${fd}" ]; then
+    fd_path="/proc/self/fd/${fd}"
+  elif [ -e "/dev/fd/${fd}" ]; then
+    fd_path="/dev/fd/${fd}"
+  else
+    return 0  # Cannot verify — degrade to pass.
+  fi
+
+  # Inode-only comparison (same strategy as _al_verify_opened_fd).
+  local path_ino fd_ino
+  path_ino="$(_al_inode "$lock_file" 2>/dev/null)" || return 0
+  fd_ino="$(_al_inode "$fd_path" 2>/dev/null)" || return 0
+  [ "$path_ino" = "$fd_ino" ]
+}
+
 # --- Internal: debug trace ---
 
 _al_trace() {
@@ -337,11 +454,28 @@ _al_try_reap() {
   return 1
 }
 
-# --- Public: acquire_lock <lock_file> <timeout_seconds> <fd_number> ---
+# --- Public: acquire_lock <lock_file> <timeout_seconds> <fd_number> [--strict] ---
 
 acquire_lock() {
   local lock_file="$1" timeout="$2" fd="$3"
-  mkdir -p "$(dirname "$lock_file")" 2>/dev/null || true
+  local _al_strict=0
+  if [ "${4:-}" = "--strict" ]; then
+    _al_strict=1
+  fi
+
+  # Harden mkdir: emit a diagnostic naming the directory and return
+  # non-zero on failure, instead of silently continuing.
+  local _al_lock_dir
+  _al_lock_dir="$(dirname "$lock_file")"
+  if ! mkdir -p "$_al_lock_dir" 2>/dev/null; then
+    printf 'acquire-lock: cannot create lock directory: %s\n' "$_al_lock_dir" >&2
+    return 1
+  fi
+
+  # Strict-mode pre-check: refuse any non-regular file at the lock path.
+  if [ "$_al_strict" = "1" ]; then
+    _al_enforce_path_type_strict "$lock_file" || return $?
+  fi
 
   # Fast path: flock present (unless GAIA_LOCK_FORCE_FALLBACK overrides).
   if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
@@ -364,23 +498,73 @@ acquire_lock() {
     #      regular file whose inode matches the one actually opened, so a
     #      swap that wins the remaining window becomes a detected refusal
     #      rather than a lock nobody else is excluded from.
-    _al_enforce_path_type "$lock_file" || return 1
+    if [ "$_al_strict" = "0" ]; then
+      _al_enforce_path_type "$lock_file" || return 1
+    fi
     ( set -C; : > "$lock_file" ) 2>/dev/null || true
-    eval "exec ${fd}>>\"${lock_file}\""
+    if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
+      printf 'acquire-lock: permission denied opening lock file: %s\n' \
+        "$lock_file" >&2
+      return 1
+    fi
     if ! _al_verify_opened_fd "$lock_file" "$fd"; then
       eval "exec ${fd}>&-" 2>/dev/null || true
       printf 'acquire-lock: lock path changed identity during open: %s\n' \
         "$lock_file" >&2
       return 1
     fi
-    if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
-      _al_set_registry "$fd" "flock" "$lock_file"
-      _al_trace "acquire" "$lock_file"
-      return 0
+
+    if [ "$_al_strict" = "1" ]; then
+      # Strict-mode flock path: acquire the lock, then verify identity.
+      # On identity mismatch, release and retry until the timeout expires.
+      local _al_flock_start
+      _al_flock_start="$(date +%s)"
+      while true; do
+        if ! "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
+          eval "exec ${fd}>&-" 2>/dev/null || true
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+        fi
+        # Post-lock identity re-check via dev:ino.
+        if _al_verify_identity_strict "$lock_file" "$fd"; then
+          _al_set_registry "$fd" "flock" "$lock_file"
+          _al_trace "acquire" "$lock_file"
+          return 0
+        fi
+        # Identity mismatch — release and retry.
+        if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+        fi
+        eval "exec ${fd}>&-" 2>/dev/null || true
+        local _al_now
+        _al_now="$(date +%s)"
+        if [ $(( _al_now - _al_flock_start )) -ge "$timeout" ]; then
+          printf 'lock_identity_unstable: identity re-check mismatch: %s\n' \
+            "$lock_file" >&2
+          return "$ACQUIRE_LOCK_EXIT_IDENTITY"
+        fi
+        # Re-open the fd for the next attempt.
+        _al_enforce_path_type_strict "$lock_file" || return $?
+        ( set -C; : > "$lock_file" ) 2>/dev/null || true
+        if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
+          printf 'acquire-lock: permission denied opening lock file: %s\n' \
+            "$lock_file" >&2
+          return 1
+        fi
+        sleep 0.1 2>/dev/null || sleep 1
+      done
+    else
+      # Non-strict flock path (existing behavior).
+      if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
+        _al_set_registry "$fd" "flock" "$lock_file"
+        _al_trace "acquire" "$lock_file"
+        return 0
+      fi
+      # Timeout — close the fd and report failure.
+      eval "exec ${fd}>&-" 2>/dev/null || true
+      printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+      return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
     fi
-    # Timeout — close the fd and report failure.
-    eval "exec ${fd}>&-" 2>/dev/null || true
-    return 1
   fi
 
   # Fallback path: ln(2) EEXIST atomic-create spin-loop with exponential
@@ -400,7 +584,13 @@ acquire_lock() {
     now_epoch="$(date +%s)"
     local elapsed=$(( now_epoch - start_epoch ))
     if [ "$elapsed" -ge "$timeout" ]; then
-      return 1
+      printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+      return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+    fi
+
+    # In strict mode, re-check path type on every iteration.
+    if [ "$_al_strict" = "1" ]; then
+      _al_enforce_path_type_strict "$lock_file" || return $?
     fi
 
     # Try to reap stale lock.
@@ -412,8 +602,10 @@ acquire_lock() {
     # mutual exclusion would silently disappear. The reaper above already
     # routes through the same gate; re-assert it here because it is the
     # invariant the ln(2) below depends on for its atomicity.
-    if ! _al_enforce_path_type "$lock_file"; then
-      return 1
+    if [ "$_al_strict" = "0" ]; then
+      if ! _al_enforce_path_type "$lock_file"; then
+        return 1
+      fi
     fi
 
     # Atomic create-with-content: write to a temp file, then hard-link.
@@ -455,6 +647,20 @@ acquire_lock() {
       tmp_ino="$(_al_inode "$tmp_lock" 2>/dev/null)" || tmp_ino=""
       if [ ! -L "$lock_file" ] && [ -f "$lock_file" ] && \
          [ "$published_ino" = "$tmp_ino" ]; then
+        # Strict-mode post-lock identity re-check (fallback path).
+        # The fallback path uses the temp file's dev:ino as the reference.
+        if [ "$_al_strict" = "1" ]; then
+          local _al_path_id _al_tmp_id
+          _al_path_id="$(_al_dev_ino "$lock_file" 2>/dev/null)" || _al_path_id=""
+          _al_tmp_id="$(_al_dev_ino "$tmp_lock" 2>/dev/null)" || _al_tmp_id=""
+          if [ -n "$_al_path_id" ] && [ -n "$_al_tmp_id" ] && \
+             [ "$_al_path_id" != "$_al_tmp_id" ]; then
+            # Identity mismatch in fallback — cannot retry easily, fail.
+            rm -f "$tmp_lock" 2>/dev/null || true
+            rm -f "$lock_file" 2>/dev/null || true
+            continue
+          fi
+        fi
         rm -f "$tmp_lock" 2>/dev/null || true
         _al_set_registry "$fd" "fallback" "$lock_file"
         _al_trace "acquire" "$lock_file"
@@ -556,6 +762,78 @@ require_flock_for_parallel() {
     printf 'forces the hard-link fallback path. Unset it, or run sequentially.\n' >&2
     return 1
   fi
+}
+
+# --- Public: acquire_lock_close_predicate <max_concurrent_active> <state_dir> ---
+#
+# Determines which lock a close write should acquire. The library stays
+# config-agnostic: callers resolve the concurrent-sprint limit themselves
+# and pass it as the first argument. The second argument is the state
+# directory to probe for per-sprint state files.
+#
+# Returns two words on stdout: <lock_path> <timeout>.
+#   - L4 (lifecycle lock) when max_concurrent_active > 1, OR when per-sprint
+#     state files exist in the state directory (the transitional state).
+#   - L1 (per-sprint state lock) only in single-sprint mode: limit absent
+#     or 1 AND no per-sprint files.
+#
+# The caller is responsible for resolving the sprint_id for L1.
+
+acquire_lock_close_predicate() {
+  local limit="${1:-}" state_dir="${2:-}"
+
+  # Concurrent mode: limit > 1 always takes L4.
+  if [ -n "$limit" ] && [ "$limit" -gt 1 ] 2>/dev/null; then
+    printf '%s %s\n' "${state_dir:+${state_dir}/}${GAIA_LOCK_L4_PATH}" "$GAIA_LOCK_L4_TIMEOUT"
+    return 0
+  fi
+
+  # Transitional state: per-sprint files exist even though limit is 1 or absent.
+  # This covers reverse migration where per-sprint files still exist.
+  local _al_per_sprint_files=""
+  if [ -n "$state_dir" ] && [ -d "$state_dir" ]; then
+    _al_per_sprint_files="$(find "$state_dir" -maxdepth 1 -name 'sprint-status-*.yaml' ! -name '*.lock' ! -name '*.result' 2>/dev/null | head -1)" || _al_per_sprint_files=""
+  fi
+  if [ -n "$_al_per_sprint_files" ]; then
+    printf '%s %s\n' "${state_dir:+${state_dir}/}${GAIA_LOCK_L4_PATH}" "$GAIA_LOCK_L4_TIMEOUT"
+    return 0
+  fi
+
+  # Single-sprint mode: use L1. The caller must substitute {sprint_id}.
+  printf '%s %s\n' "${state_dir:+${state_dir}/}${GAIA_LOCK_L1_TEMPLATE}" "$GAIA_LOCK_L1_TIMEOUT"
+  return 0
+}
+
+# --- Public: acquire_lock_is_concurrent_mode <max_concurrent_active> <state_dir> ---
+#
+# Returns 0 when the project is in concurrent mode, 1 for single-sprint.
+# The library stays config-agnostic: callers resolve the concurrent-sprint
+# limit themselves and pass it as the first argument. The second argument is
+# the state directory to probe for per-sprint state files.
+#
+# Concurrent: max_concurrent_active > 1, OR per-sprint files exist in the
+# state directory (the transitional state where per-sprint files remain from
+# a reverse migration). Single-sprint: limit absent or 1 AND no per-sprint
+# files.
+
+acquire_lock_is_concurrent_mode() {
+  local limit="${1:-}" state_dir="${2:-}"
+
+  # Concurrent mode: limit > 1.
+  if [ -n "$limit" ] && [ "$limit" -gt 1 ] 2>/dev/null; then
+    return 0
+  fi
+
+  # Transitional state: per-sprint files exist even though limit is 1 or absent.
+  local _al_cm_psf=""
+  if [ -n "$state_dir" ] && [ -d "$state_dir" ]; then
+    _al_cm_psf="$(find "$state_dir" -maxdepth 1 -name 'sprint-status-*.yaml' ! -name '*.lock' ! -name '*.result' 2>/dev/null | head -1)" || _al_cm_psf=""
+  fi
+  if [ -n "$_al_cm_psf" ]; then
+    return 0
+  fi
+
+  return 1
 }
 
 # --- CLI entry point (only when executed directly, not sourced) ---

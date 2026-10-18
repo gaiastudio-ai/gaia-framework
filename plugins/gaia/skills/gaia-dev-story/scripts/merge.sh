@@ -4,6 +4,12 @@
 # Merges a PR after CI passes. Handles conflict detection, branch protection
 # failures, and merge strategy selection from the promotion chain config.
 #
+# In concurrent mode (max_concurrent_active > 1 or per-sprint files exist),
+# the merge is serialized via L3 (.gaia/state/.promotion-merge.lock) using
+# strict-mode locking. Post-merge verification (git fetch + verify-pr-merged)
+# runs inside the L3 critical section. In single-sprint mode, no lock is
+# acquired and behavior is unchanged.
+#
 # Never uses admin-override or any branch-protection bypass flag.
 #
 # Usage:
@@ -13,10 +19,19 @@
 #   PROJECT_PATH — required. The git working directory. Resolved and entered
 #                  BEFORE the non-git guard runs and before arguments are
 #                  parsed, so relative path arguments resolve against it.
+#   PROJECT_ROOT / CLAUDE_PROJECT_ROOT — optional. The shared project root
+#                  for resolving L3 lock paths and config. When absent, the
+#                  script walks up from $PWD to the first directory containing
+#                  .gaia/state/.
+#   GAIA_MERGE_LOCK_TIMEOUT — optional. L3 timeout in seconds (default 120).
 #
 # Exit codes:
-#   0 — PR merged successfully
-#   1 — merge failed (conflict, protection, or other error)
+#   0 — PR merged successfully (and verified in concurrent mode)
+#   1 — merge failed (conflict, protection, verification, or other error)
+#   3 — merge deferred (L3 timeout in concurrent mode)
+#   4 — lock path is a symlink (strict-mode refusal)
+#   5 — lock identity mismatch (strict-mode refusal)
+#   7 — other lock failure (lock directory creation, generic refusal)
 
 set -euo pipefail
 LC_ALL=C
@@ -39,11 +54,43 @@ fi
 # shellcheck disable=SC1090
 source "$INVARIANTS_LIB"
 
+# Locking library. Used by the concurrent-mode promotion-merge lock (L3).
+# Sourced unconditionally; no observable side effects for this script.
+# shellcheck source=../../../scripts/lib/acquire-lock.sh
+. "$SCRIPT_DIR/../../../scripts/lib/acquire-lock.sh"
+
 # Non-git CWD guard: skip-with-warning when CWD is outside any git work tree.
 # Runs BEFORE the security invariants so a non-git CWD never reaches the
 # protected-branch / staged-secrets / pr-target checks.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 . "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+
+# ---------------------------------------------------------------------------
+# Resolve the shared project root BEFORE cd to PROJECT_PATH (per R88).
+# The promotion-merge lock, holder sidecar, per-sprint file probe, and config
+# read all anchor at the shared root, never at PROJECT_PATH (which may be a
+# story worktree holding its own .gaia/state decoy).
+# ---------------------------------------------------------------------------
+_MERGE_SHARED_ROOT=""
+for _merge_candidate in "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}"; do
+  if [ -n "$_merge_candidate" ] && [ -d "$_merge_candidate/.gaia/state" ]; then
+    _MERGE_SHARED_ROOT="$_merge_candidate"
+    break
+  fi
+done
+if [ -z "$_MERGE_SHARED_ROOT" ]; then
+  _merge_walkup="$PWD"
+  while [ "$_merge_walkup" != "/" ]; do
+    if [ -d "$_merge_walkup/.gaia/state" ]; then
+      _MERGE_SHARED_ROOT="$_merge_walkup"
+      break
+    fi
+    _merge_walkup="$(dirname "$_merge_walkup")"
+  done
+  unset _merge_walkup
+fi
+unset _merge_candidate
+
 # Resolve the working directory BEFORE the non-git guard: the guard reads
 # CWD, so it must test the directory this script is meant to act on, not the
 # caller's. Argument parsing follows, so relative path arguments resolve
@@ -102,7 +149,8 @@ remote_pr_state() {
   gh pr view "$pr" --json "state,${extra}" --jq '.state' 2>/dev/null || echo "UNKNOWN"
 }
 
-# Idempotency check: is PR already merged?
+# Idempotency check: is PR already merged? Fires BEFORE L3 acquisition and
+# stays lock-free in both concurrent and single-sprint modes.
 pr_state=$(remote_pr_state "$PR_NUMBER")
 if [ "$pr_state" = "MERGED" ]; then
   log "PR #${PR_NUMBER} already merged — skipping"
@@ -124,6 +172,301 @@ if [ -z "$PR_TARGET" ]; then
   PR_TARGET="staging"
 fi
 assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant failed"
+
+# ---------------------------------------------------------------------------
+# Pre-merge guards (run AFTER security invariants, BEFORE gh pr merge).
+# Guard order: (1) check state, (2) stale base, (3) attribution trailers.
+# Each guard exits on the first failure it finds.
+# ---------------------------------------------------------------------------
+
+# Guard 1: every PR check must be pass or skipping.
+# gh pr checks returns a JSON array of {bucket,name} objects. The accepted
+# bucket values are "pass" and "skipping"; anything else (fail, pending, …)
+# blocks the merge. Fails closed: query errors, jq absence, and empty check
+# lists all exit non-zero with an actionable message.
+_gh_checks_err="$(mktemp "${TMPDIR:-/tmp}/merge-gh-checks.XXXXXX")"
+checks_json="$(gh pr checks "$PR_NUMBER" --json bucket,name 2>"$_gh_checks_err")" || {
+  log "aborting: could not query PR checks (gh pr checks failed)."
+  log "  $(cat "$_gh_checks_err" 2>/dev/null)"
+  log "Check network connectivity, authentication, and rate limits, then retry."
+  rm -f "$_gh_checks_err"
+  exit 1
+}
+rm -f "$_gh_checks_err"
+# Parse checks: try jq first, fall back to grep-based parsing if jq is
+# absent or fails.
+check_count=""
+bad_checks=""
+if command -v jq >/dev/null 2>&1; then
+  check_count="$(printf '%s' "$checks_json" | jq 'length' 2>/dev/null || true)"
+  if [ -n "$check_count" ]; then
+    bad_checks="$(printf '%s' "$checks_json" | jq -r '.[] | select(.bucket != "pass" and .bucket != "skipping") | .name' 2>/dev/null || true)"
+  fi
+fi
+# Fallback: grep-based parsing when jq is absent or returned nothing.
+if [ -z "$check_count" ]; then
+  check_count="$(printf '%s' "$checks_json" | grep -c '"bucket"' 2>/dev/null)" || check_count="0"
+  bad_checks="$(printf '%s' "$checks_json" \
+    | grep -o '"bucket":"[^"]*","name":"[^"]*"' 2>/dev/null \
+    | grep -v '"bucket":"pass"' \
+    | grep -v '"bucket":"skipping"' \
+    | sed 's/.*"name":"\([^"]*\)".*/\1/' 2>/dev/null || true)"
+fi
+# Validate check_count is a non-negative integer; fail closed otherwise.
+case "$check_count" in
+  ''|*[!0-9]*) check_count=0 ;;
+esac
+if [ "$check_count" -eq 0 ]; then
+  log "aborting: no checks reported yet for PR #${PR_NUMBER}."
+  log "Wait for CI to register checks and retry."
+  exit 1
+fi
+if [ -n "$bad_checks" ]; then
+  log "aborting: one or more PR checks have not passed:"
+  printf '%s\n' "$bad_checks" | while IFS= read -r chk; do
+    log "  - $chk"
+  done
+  log "Wait for pending checks to finish or fix failing ones, then retry."
+  exit 1
+fi
+
+# Shared prerequisite for guards 2 and 3: fetch and resolve origin/<base>.
+# A merge gate must fail closed — both a failed fetch and an unresolvable
+# ref exit non-zero with an actionable message.
+if ! git fetch origin "$PR_TARGET" --quiet 2>/dev/null; then
+  log "aborting: 'git fetch origin ${PR_TARGET}' failed."
+  log "Check network connectivity and that the remote branch exists, then retry."
+  exit 1
+fi
+if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
+  log "aborting: cannot resolve origin/${PR_TARGET}."
+  log "Run 'git fetch origin ${PR_TARGET}' and retry."
+  exit 1
+fi
+
+# Guard 2: the branch must be based on the current base tip.
+# A stale base means the PR was opened against an older revision and needs a
+# rebase before it can land cleanly.
+if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
+  head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
+  log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+  log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
+  exit 1
+fi
+
+# Guard 3: no commit in the PR range may carry an assistant attribution trailer.
+# Maintainable pattern list — extend by adding entries below.
+ASSISTANT_TRAILER_PATTERNS=(
+  "noreply@anthropic.com"
+  "Claude"
+  "GitHub Copilot"
+  "copilot@github.com"
+  "Anthropic"
+)
+
+_build_trailer_regex() {
+  local pat result=""
+  for pat in "${ASSISTANT_TRAILER_PATTERNS[@]}"; do
+    if [ -n "$result" ]; then
+      result="${result}|${pat}"
+    else
+      result="$pat"
+    fi
+  done
+  printf '%s' "$result"
+}
+
+trailer_regex="$(_build_trailer_regex)"
+# Scan every line of every commit body in the PR range for Co-Authored-By
+# trailers that match the assistant pattern list. Uses NUL as the record
+# separator to handle multi-line bodies (including trailers after description
+# paragraphs).
+while IFS= read -r commit_hash; do
+  [ -z "$commit_hash" ] && continue
+  body="$(git log -1 --format='%B' "$commit_hash" 2>/dev/null || true)"
+  matched="$(printf '%s\n' "$body" | grep -iE "^Co-Authored-By:.*($trailer_regex)" 2>/dev/null | head -1 || true)"
+  if [ -n "$matched" ]; then
+    short_hash="$(git rev-parse --short "$commit_hash" 2>/dev/null || echo "$commit_hash")"
+    log "aborting: commit ${short_hash} carries an assistant attribution trailer:"
+    log "  ${matched}"
+    log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
+    exit 1
+  fi
+done < <(git log --format='%H' "origin/${PR_TARGET}..HEAD" 2>/dev/null)
+
+# ---------------------------------------------------------------------------
+# Concurrent-mode promotion-merge lock (L3).
+#
+# In concurrent mode (max_concurrent_active > 1 or per-sprint files exist),
+# serialize merges via L3 to prevent simultaneous promotions from corrupting
+# the promotion branch. In single-sprint mode, no lock is acquired.
+# ---------------------------------------------------------------------------
+
+_MERGE_CONCURRENT=0
+_MERGE_L3_FD=200
+_MERGE_L3_WRITER=0
+
+# _merge_read_max_concurrent <config_file> — read sprint.max_concurrent_active
+# from the project configuration. Returns the value on stdout; empty when the
+# key is absent or unreadable.
+_merge_read_max_concurrent() {
+  local cfg="$1" val=""
+  [ -n "$cfg" ] && [ -f "$cfg" ] || return 0
+  if command -v yq >/dev/null 2>&1; then
+    val="$(yq -r '.sprint.max_concurrent_active' "$cfg" 2>/dev/null)" || val=""
+    [ "$val" = "null" ] && val=""
+  fi
+  if [ -z "$val" ]; then
+    val="$(awk '/^sprint:/{s=1; next} s && /^[^ ]/{exit} s && /max_concurrent_active:/{sub(/.*max_concurrent_active:[[:space:]]*/,""); gsub(/[^0-9]/,""); print}' "$cfg" 2>/dev/null)" || val=""
+  fi
+  printf '%s' "$val"
+}
+
+# _merge_resolve_target_branch <config_file> — read the first promotion chain
+# branch from project config. Empty when no promotion chain is configured.
+_merge_resolve_target_branch() {
+  local cfg="$1" branch=""
+  [ -n "$cfg" ] && [ -f "$cfg" ] || return 0
+  if command -v yq >/dev/null 2>&1; then
+    branch="$(yq -r '.ci_cd.promotion_chain[0].branch' "$cfg" 2>/dev/null)" || branch=""
+    [ "$branch" = "null" ] && branch=""
+  fi
+  if [ -z "$branch" ]; then
+    branch="$(awk '
+      /^[[:space:]]*promotion_chain:[[:space:]]*$/ { in_chain = 1; next }
+      in_chain && /^[[:space:]]*-/ { in_item = 1 }
+      in_chain && in_item && /branch:/ {
+        sub(/.*branch:[[:space:]]*/, "")
+        gsub(/"/, "")
+        print
+        exit
+      }
+      in_chain && /^[^[:space:]-]/ { exit }
+    ' "$cfg" 2>/dev/null)" || branch=""
+  fi
+  printf '%s' "$branch"
+}
+
+# Determine concurrent mode. All state reads use the shared root (R88).
+if [ -n "$_MERGE_SHARED_ROOT" ]; then
+  _merge_cfg="${_MERGE_SHARED_ROOT}/.gaia/config/project-config.yaml"
+  _merge_limit="$(_merge_read_max_concurrent "$_merge_cfg")"
+  _merge_state_dir="${_MERGE_SHARED_ROOT}/.gaia/state"
+
+  if acquire_lock_is_concurrent_mode "$_merge_limit" "$_merge_state_dir"; then
+    _MERGE_CONCURRENT=1
+  fi
+  unset _merge_cfg _merge_limit _merge_state_dir
+fi
+
+# _merge_verify_in_l3 — run post-merge verification inside the L3 critical
+# section. Resolves the target branch from config (falling back to the PR's
+# baseRefName), fetches the remote ref, and runs verify-pr-merged.sh.
+# Returns 0 on success; returns 1 on failure (the caller exits 1).
+# Only called in concurrent mode.
+_merge_verify_in_l3() {
+  local target=""
+  target="$(_merge_resolve_target_branch "${_MERGE_SHARED_ROOT}/.gaia/config/project-config.yaml")"
+  [ -z "$target" ] && target="$PR_TARGET"
+
+  if [ -n "$target" ]; then
+    local fetch_rc=0
+    git fetch origin "$target" --quiet 2>/dev/null || fetch_rc=$?
+    if [ "$fetch_rc" -ne 0 ]; then
+      log "WARNING: git fetch origin ${target} failed — merged but unverified"
+      return 1
+    fi
+    local verify_rc=0
+    "$SCRIPT_DIR/verify-pr-merged.sh" "$STORY_KEY" "origin/${target}" || verify_rc=$?
+    case "$verify_rc" in
+      0|3) return 0 ;; # pass or no-chain skip → merge exit 0
+      *)
+        log "WARNING: post-merge verification failed (exit ${verify_rc})"
+        return 1
+        ;;
+    esac
+  else
+    # No target branch — call with --no-chain.
+    # Exit 3 (no promotion chain) maps to merge exit 0.
+    "$SCRIPT_DIR/verify-pr-merged.sh" "$STORY_KEY" --no-chain 2>/dev/null || true
+    return 0
+  fi
+}
+
+# Concurrent-mode trap and lock acquisition.
+if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
+  _MERGE_L3_PATH="${_MERGE_SHARED_ROOT}/.gaia/state/${GAIA_LOCK_L3_PATH}"
+  _MERGE_HOLDER_PATH="${_MERGE_SHARED_ROOT}/.gaia/state/.promotion-merge.holder"
+  _MERGE_L3_TIMEOUT="${GAIA_MERGE_LOCK_TIMEOUT:-${GAIA_LOCK_L3_TIMEOUT}}"
+
+  # Trap: release L3 and remove the holder sidecar (only when this process
+  # wrote it) on every exit path. Covers EXIT, INT, TERM (no HUP, per R44).
+  _merge_cleanup() {
+    if [ "$_MERGE_L3_WRITER" -eq 1 ]; then
+      local _holder_pid=""
+      read -r _holder_pid _ < "$_MERGE_HOLDER_PATH" 2>/dev/null || _holder_pid=""
+      if [ "$_holder_pid" = "$$" ]; then
+        rm -f "$_MERGE_HOLDER_PATH" 2>/dev/null || true
+      fi
+    fi
+    release_lock "$_MERGE_L3_FD" 2>/dev/null || true
+  }
+  trap _merge_cleanup EXIT INT TERM
+
+  # Emit waiting message when holder sidecar exists before acquire.
+  if [ -f "$_MERGE_HOLDER_PATH" ]; then
+    log "waiting for promotion lock"
+  fi
+
+  # Acquire L3 (strict mode).
+  _merge_acq_start="$(date +%s)"
+  _merge_acq_rc=0
+  acquire_lock "$_MERGE_L3_PATH" "$_MERGE_L3_TIMEOUT" "$_MERGE_L3_FD" --strict || _merge_acq_rc=$?
+
+  case "$_merge_acq_rc" in
+    0) ;; # Acquired successfully.
+    "$ACQUIRE_LOCK_EXIT_TIMEOUT")
+      # L3 timeout — merge deferred.
+      _merge_elapsed="$(( $(date +%s) - _merge_acq_start ))"
+      _merge_holder_pid="unknown"
+      if [ -f "$_MERGE_HOLDER_PATH" ]; then
+        read -r _hp _ < "$_MERGE_HOLDER_PATH" 2>/dev/null || _hp=""
+        if [ -n "$_hp" ] && kill -0 "$_hp" 2>/dev/null; then
+          _merge_holder_pid="$_hp"
+        fi
+      fi
+      if [ "$_merge_holder_pid" = "unknown" ]; then
+        if command -v lsof >/dev/null 2>&1; then
+          _hp="$(lsof -t "$_MERGE_L3_PATH" 2>/dev/null | head -1)" || _hp=""
+          [ -n "$_hp" ] && _merge_holder_pid="$_hp"
+        elif command -v fuser >/dev/null 2>&1; then
+          _hp="$(fuser "$_MERGE_L3_PATH" 2>/dev/null | tr -d ' ')" || _hp=""
+          [ -n "$_hp" ] && _merge_holder_pid="$_hp"
+        fi
+      fi
+      printf 'merge_deferred: %s after %ss (holder_pid=%s)\n' \
+        "$_MERGE_L3_PATH" "$_merge_elapsed" "$_merge_holder_pid" >&2
+      exit 3
+      ;;
+    "$ACQUIRE_LOCK_EXIT_SYMLINK")
+      # Strict-mode: lock path is a symlink.
+      exit 4
+      ;;
+    "$ACQUIRE_LOCK_EXIT_IDENTITY")
+      # Strict-mode: identity mismatch after acquire.
+      exit 5
+      ;;
+    *)
+      # Generic lock failure.
+      log "lock_failure: could not acquire promotion-merge lock (exit ${_merge_acq_rc})"
+      exit 7
+      ;;
+  esac
+
+  # Write holder sidecar.
+  printf '%s %s\n' "$$" "$(date +%s)" > "$_MERGE_HOLDER_PATH" 2>/dev/null || true
+  _MERGE_L3_WRITER=1
+fi
 
 # Build merge command
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
@@ -178,6 +521,10 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
     fi
     log "PR #${PR_NUMBER} merged via ${STRATEGY}"
     echo "merged:${STRATEGY}"
+    # Recovery path: verify inside L3 in concurrent mode.
+    if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
+      _merge_verify_in_l3 || exit 1
+    fi
     exit 0
   fi
 
@@ -198,4 +545,8 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
 
 log "PR #${PR_NUMBER} merged via ${STRATEGY}"
 echo "merged:${STRATEGY}"
+# Normal success path: verify inside L3 in concurrent mode.
+if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
+  _merge_verify_in_l3 || exit 1
+fi
 exit 0

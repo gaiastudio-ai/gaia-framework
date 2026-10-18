@@ -262,6 +262,16 @@ This warning is shown once per session.
             it.
           </li>
           <li>
+            <span class="step-title">Round guard (rework mode only)</span>
+            In rework mode, before the developer is dispatched, the
+            orchestrator verifies the latest review round is complete by
+            calling <code>assert-round-complete</code>. It also writes and
+            binds the correction brief (or supersedes an existing one).
+            If the round is incomplete or the brief was silently widened,
+            the command halts. Legacy stories with no orchestrated round
+            skip this check.
+          </li>
+          <li>
             <span class="step-title">Plan implementation</span>
             Reads the architecture, UX design, and story acceptance criteria.
             Generates a detailed implementation plan covering: context,

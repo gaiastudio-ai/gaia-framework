@@ -306,11 +306,43 @@ echo "[gaia-create-story] Canonical basename preview: ${STORY_KEY}-${SLUG}.md"
 # 3. Frontmatter YAML — delegated to generate-frontmatter.sh,
 #    which derives points from size via the resolved sizing_map
 #    and HALTs on resolver failure (no silent fallback).
+# 3a. Touch-set inference — deterministic helper extracts candidate paths
+#     from AC text and prior same-epic stories' existing touch-sets. The
+#     helper outputs one PROJECT_ROOT-relative path per line; empty output
+#     means nothing was inferred. The helper takes no mode flags (output is
+#     identical regardless of YOLO state).
+EPIC_KEY="${STORY_KEY%%-S*}"
+EPIC_DIR_INFER=$(!${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-epic-slug.sh \
+  --epic-key "$EPIC_KEY" \
+  --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md" 2>/dev/null || echo "")
+AC_FILE=$(mktemp)
+# ... write the story's AC text to AC_FILE ...
+INFERRED_PATHS=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/infer-touch-set.sh \
+  --ac-file "$AC_FILE" \
+  --epic-dir "${IMPLEMENTATION_ARTIFACTS}/${EPIC_DIR_INFER}" || true)
+rm -f "$AC_FILE"
+
+# Compose --touch-path flags from inferred and LLM-assisted paths.
+# The SKILL.md orchestration determines the user confirmation flow:
+#   - Non-YOLO: show inferred paths, prompt user to accept/edit/skip.
+#   - YOLO (detected via scripts/yolo-mode.sh): auto-accept inferred paths.
+# When paths are inferred and the user (or YOLO auto-accept) confirms:
+#   pass each path as --touch-path to generate-frontmatter.sh.
+# When zero paths are inferred and the user explicitly confirms "touches
+#   no files": pass --touch-empty to generate-frontmatter.sh.
+# When zero paths are inferred and no explicit confirmation (including
+#   YOLO with zero inferred): omit both flags (field absent).
+# When no pattern resolves to an existing file, emit an advisory warning
+#   ("path does not exist yet; fine if this story creates it") but proceed.
+TOUCH_FLAGS=""
+# ... orchestrator sets TOUCH_FLAGS based on the confirmation flow ...
+
 FRONTMATTER_YAML=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/generate-frontmatter.sh \
   --story-key "<story_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md" \
   --project-config "${PROJECT_ROOT:-$(pwd)}/.gaia/config/project-config.yaml" \
-  [--origin <s>] [--origin-ref <s>])
+  [--origin <s>] [--origin-ref <s>] \
+  $TOUCH_FLAGS)
 # Pass `--project-config` as an absolute path. The relative
 # form (`.gaia/config/project-config.yaml`) fails when the caller's
 # CWD is not the project root (e.g., orchestrator dispatched from inside a

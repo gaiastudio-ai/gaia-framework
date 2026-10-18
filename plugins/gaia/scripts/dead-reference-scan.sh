@@ -340,6 +340,11 @@ is_allowlisted() {
   # (still-failing) cases against the same retired tokens, so the literal v1
   # filenames appear in test bodies.
   [[ "$path" == */plugins/gaia/tests/dead-reference-scan.bats ]] && return 0
+  # concurrent-sprint-glossary.bats asserts that workflow-manifest.csv and
+  # gaia-help.csv descriptions mention "concurrent sprints". The CSV filenames
+  # are the contractual assertion target — same precedent as
+  # design-registration-completeness.bats above.
+  [[ "$path" == */plugins/gaia/tests/concurrent-sprint-glossary.bats ]] && return 0
   # SKILL.md and skill-companion-script files that cite legacy filenames
   # (workflow.yaml, instructions.xml, checklist.md) as parity references.
   # These are historical documentation, not active loads. The commands-guard

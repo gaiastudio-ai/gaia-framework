@@ -49,7 +49,7 @@
 #                                                `barrier phase=P waiting=N` when
 #                                                the phase cannot admit more;
 #                                                `sprint_complete` when done
-#   ppo_record_outcome <key> <done|failed|timeout|merged>
+#   ppo_record_outcome <key> <done|failed|timeout|merged|deferred>
 #                                                the skill reports what it
 #                                                observed from a real driven
 #                                                turn; on `merged` this engine
@@ -106,6 +106,26 @@ _PPO_NAME="phase-parallel-orchestrator.sh"
 _PPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _ppo_log() { printf '%s: %s\n' "$_PPO_NAME" "$*" >&2; }
+
+# --- Cross-session resource ledger integration ---
+# Ledger claim/release runs OUTSIDE the engine lock (_ppo_engine_lock_run).
+# The ledger script lives as a sibling in the same scripts/ directory.
+
+_PPO_LEDGER_SH="${_PPO_DIR}/concurrent-resource-ledger.sh"
+
+_ppo_ledger_claim() {
+  [ -x "$_PPO_LEDGER_SH" ] || return 0
+  local sprint_id="${1:-}" pid="${2:-}" dev="${3:-0}" tm="${4:-0}"
+  bash "$_PPO_LEDGER_SH" claim \
+    --sprint "$sprint_id" --pid "$pid" --dev "$dev" --teammates "$tm" || return $?
+}
+
+_ppo_ledger_release() {
+  [ -x "$_PPO_LEDGER_SH" ] || return 0
+  local sprint_id="${1:-}" pid="${2:-}" dev="${3:-0}" tm="${4:-0}"
+  bash "$_PPO_LEDGER_SH" release \
+    --sprint "$sprint_id" --pid "$pid" --dev "$dev" --teammates "$tm" || return $?
+}
 
 # Telemetry: one structured line per event. Machine-readable k=v tokens, and
 # the mode is emitted even on the happy path so "why did this run the way it
@@ -184,8 +204,59 @@ _PPO_SEEN="|"
 # Run state is also written under the session directory. The run may be invoked
 # in a subshell (a harness, a pipeline), and a variable set there dies with it,
 # so the accessors below read the files and fall back to the variables.
+
+# _ppo_session_fallback — the ONE place the session-dir fallback is defined.
+# When GAIA_SESSION_DIR is unset or empty, every path builder in this file reads
+# a breadcrumb left by `plan` at a fixed location. The breadcrumb names a
+# writable temp directory whose identity is derived from the sprint yaml and
+# repo paths — stable across the separate bash processes the run-sprint skill
+# spawns (plan, next, record, status), yet collision-free between two concurrent
+# sprints or projects. A missing breadcrumb means plan was never called; the
+# fallback itself is then ${TMPDIR}/gaia-ppo-<PID> so the caller gets a writable
+# path rather than an empty one, and ppo_next's own "no plan" guard reports the
+# real problem.
+_PPO_BREADCRUMB="${TMPDIR:-/tmp}/.gaia-ppo-active"
+
+_ppo_session_fallback() {
+  if [ -n "${GAIA_SESSION_DIR:-}" ]; then
+    printf '%s' "$GAIA_SESSION_DIR"
+    return 0
+  fi
+  # Read the breadcrumb left by plan.
+  if [ -f "$_PPO_BREADCRUMB" ]; then
+    cat "$_PPO_BREADCRUMB" 2>/dev/null
+    return 0
+  fi
+  # No breadcrumb — use a PID-scoped path so callers never get an empty string.
+  printf '%s' "${TMPDIR:-/tmp}/gaia-ppo-$$"
+}
+
+# _ppo_session_fallback_for <yaml> <repo> — compute a DETERMINISTIC fallback
+# session dir from the sprint yaml and repo paths. Called once by plan to
+# establish the breadcrumb; all subsequent calls (next, record, ...) read the
+# breadcrumb through _ppo_session_fallback above.
+_ppo_session_fallback_for() {
+  local yaml="${1:-}" repo="${2:-}"
+  local fingerprint cksum
+  fingerprint="$(cd "$(dirname "$yaml")" 2>/dev/null && pwd)/$(basename "$yaml"):$(cd "$repo" 2>/dev/null && pwd)"
+  # cksum is POSIX; its output format is "CKSUM SIZE" — take the first word.
+  cksum="$(printf '%s' "$fingerprint" | cksum | awk '{print $1}')"
+  printf '%s/gaia-ppo-%s' "${TMPDIR:-/tmp}" "$cksum"
+}
+
+# _ppo_write_breadcrumb <session_dir> — persist the fallback so later
+# invocations (next, record, status) find the same directory.
+_ppo_write_breadcrumb() {
+  printf '%s' "${1:-}" > "$_PPO_BREADCRUMB" 2>/dev/null || true
+}
+
+# _ppo_clear_breadcrumb — remove the breadcrumb (e.g. at sprint_complete).
+_ppo_clear_breadcrumb() {
+  rm -f "$_PPO_BREADCRUMB" 2>/dev/null || true
+}
+
 _ppo_state_dir() {
-  printf '%s/ppo-state' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}"
+  printf '%s/ppo-state' "$(_ppo_session_fallback)"
 }
 
 _ppo_state_put() {
@@ -223,7 +294,7 @@ _ppo_state_reset() {
 # next, then record, ...) can pick back up a run another invocation started,
 # which ppo-state/'s in-memory-first accessors were never designed for.
 _ppo_engine_dir() {
-  printf '%s/ppo' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}"
+  printf '%s/ppo' "$(_ppo_session_fallback)"
 }
 
 _ppo_engine_reset() {
@@ -428,7 +499,7 @@ ppo_resolve_ceiling() {
 # every slot its own registry, each counting one, and the ceiling would never
 # bind. Per-slot isolation comes from the worktree and the scratch dir below.
 ppo_session_dir_for() {
-  printf '%s' "${GAIA_SESSION_DIR:-}"
+  _ppo_session_fallback
 }
 
 # ppo_slot_scratch_for <story_key> — per-slot scratch under the shared session
@@ -440,7 +511,7 @@ ppo_session_dir_for() {
 # caller discipline alone.
 ppo_slot_scratch_for() {
   _ppo_validate_key "${1:-}" || return 1
-  printf '%s/slots/%s' "${GAIA_SESSION_DIR:-}" "$1"
+  printf '%s/slots/%s' "$(_ppo_session_fallback)" "$1"
 }
 
 # ---------- Sprint reading ----------
@@ -504,6 +575,111 @@ PPOYAML
   fi
   [ -n "$out" ] || return 3
   printf '%s\n' "$out"
+}
+
+# _ppo_read_story_title <yaml> <key> — read the title for one story from the
+# sprint yaml. Echoes the title on stdout; returns 1 when the key is not found.
+# Uses the same indentation-aware awk pattern as ppo_read_phases: the title is
+# the value of the `title:` field under the list entry whose `key:` field
+# matches the requested key.
+_ppo_read_story_title() {
+  local yaml="${1:-}" key="${2:-}"
+  [ -n "$yaml" ] && [ -f "$yaml" ] && [ -n "$key" ] || return 1
+  awk -v target="$key" '
+    /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
+      k = $0
+      sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
+      gsub(/^["'"'"']|["'"'"']$/, "", k)
+      cur = k; title = ""
+      next
+    }
+    /^[[:space:]]+title:[[:space:]]*/ {
+      if (cur != target) next
+      t = $0
+      sub(/^[[:space:]]+title:[[:space:]]*/, "", t)
+      gsub(/^["'"'"']|["'"'"']$/, "", t)
+      if (t != "") { print t; exit 0 }
+      next
+    }
+  ' "$yaml" 2>/dev/null
+}
+
+# The slug length cap — must match _SW_SLUG_MAX in story-worktree.sh (60)
+# so the branch name worktree_branch_state checks is the same one
+# worktree_create builds.
+_PPO_SLUG_MAX=60
+
+# _ppo_slugify <string> — the same byte-deterministic slug algorithm as the
+# canonical slugify.sh: lowercase, non-alnum to hyphen, collapse runs, trim
+# edges, cap to _PPO_SLUG_MAX. LC_ALL=C is set at the top of this file so
+# character classes are byte-level ASCII. Inlined here so the orchestrator does
+# not depend on the create-story skill tree at runtime.
+_ppo_slugify() {
+  # shellcheck disable=SC2018,SC2019  # LC_ALL=C: byte-level A-Z→a-z is deliberate
+  printf '%s' "${1:-}" \
+    | tr 'A-Z' 'a-z' \
+    | tr -c '[:alnum:]' '-' \
+    | tr -s '-' \
+    | sed 's/^-//; s/-$//' \
+    | cut -c "1-${_PPO_SLUG_MAX}"
+}
+
+# _ppo_is_bogus_slug_branch <branch_name> — return 0 when <branch_name> is
+# exactly feat/<STORY_KEY>-slug (the literal word "slug" as the entire slug
+# portion). The branch must end in "-slug" AND that suffix must immediately
+# follow the story key with no other slug words in between. We detect this by
+# checking that stripping the trailing "-slug" leaves a valid story key (no
+# lowercase letters — real slugified words always contain lowercase). Branches
+# whose REAL title-derived slug happens to end in "-slug" (e.g.
+# feat/E900-S4-handle-a-slug) are NOT pruned because the middle portion
+# "E900-S4-handle-a" contains lowercase letters from the slug words.
+_ppo_is_bogus_slug_branch() {
+  local b="${1:-}"
+  # Must start with feat/ and end in exactly "-slug"
+  case "$b" in feat/*-slug) ;; *) return 1 ;; esac
+  # Strip "feat/" prefix and "-slug" suffix — what remains should be the key
+  local middle="${b#feat/}"
+  middle="${middle%-slug}"
+  [ -n "$middle" ] || return 1
+  # A story key (e.g. K1, E9-S4) has NO lowercase letters. A real slug
+  # appended to a key (e.g. "K1-handle-a") DOES have lowercase. This
+  # distinguishes feat/K1-slug (bogus: middle=K1, no lowercase) from
+  # feat/K1-handle-a-slug (real: middle=K1-handle-a, has lowercase).
+  case "$middle" in
+    *[a-z]*) return 1 ;;  # contains lowercase → real slug, not bogus
+  esac
+  return 0
+}
+
+# _ppo_prune_bogus_slug_worktrees <repo> — remove any worktree whose branch
+# matches the bogus feat/<KEY>-slug pattern left by the pre-fix orchestrator.
+_ppo_prune_bogus_slug_worktrees() {
+  local repo="${1:-}"
+  [ -n "$repo" ] || return 0
+  local line wt_path branch
+  wt_path="" ; branch=""
+  git -C "$repo" worktree list --porcelain 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        wt_path="${line#worktree }"
+        branch=""
+        ;;
+      "branch refs/heads/"*)
+        branch="${line#branch refs/heads/}"
+        ;;
+      "")
+        if [ -n "$branch" ] && [ -n "$wt_path" ] && [ -d "$wt_path" ]; then
+          if _ppo_is_bogus_slug_branch "$branch"; then
+            git -C "$repo" worktree unlock "$wt_path" 2>/dev/null || true
+            git -C "$repo" worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null || true
+          fi
+        fi
+        wt_path=""
+        branch=""
+        ;;
+    esac
+  done
+  git -C "$repo" worktree prune 2>/dev/null || true
 }
 
 # ppo_plan_sequential --repo R --yaml Y — the worklist a degraded run follows:
@@ -580,7 +756,7 @@ ppo_preflight() {
 
   _ppo_load_lock_lib || { _ppo_emit "mode=sequential reason=admission-error"; return 0; }
   if ! require_flock_for_parallel 2>/dev/null; then
-    _ppo_emit "mode=sequential reason=flock-unavailable — parallel execution needs the lock primitive; running sequentially"
+    _ppo_emit "mode=sequential reason=flock-unavailable — parallel execution needs the lock primitive (brew install flock on macOS); running sequentially"
     return 0
   fi
 
@@ -621,7 +797,7 @@ ppo_preflight() {
   # This uses the same read path the per-story claim uses, so the two never
   # disagree about capacity.
   local reg count
-  reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
+  reg="$(_ppo_session_fallback)/registry"
   if [ -d "$reg" ]; then
     count="$(find "$reg" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')"
     if [ "${count:-0}" -ge "$ceiling" ]; then
@@ -669,6 +845,18 @@ ppo_plan() {
     esac
   done
 
+  # Establish the session fallback: compute a deterministic directory from the
+  # yaml + repo, write the breadcrumb so later invocations (next/record/status)
+  # find the same dir, and create it.
+  if [ -z "${GAIA_SESSION_DIR:-}" ]; then
+    local fallback_dir
+    fallback_dir="$(_ppo_session_fallback_for "$yaml" "$repo")"
+    _ppo_write_breadcrumb "$fallback_dir"
+    mkdir -p "$fallback_dir" 2>/dev/null || true
+  else
+    mkdir -p "$GAIA_SESSION_DIR" 2>/dev/null || true
+  fi
+
   _PPO_OUTCOMES=""; _PPO_WORKTREES=""; _PPO_PEAK=0; _PPO_SEEN="|"
   _PPO_BARRIER_VIOLATIONS=0; _PPO_BACKFILL_BEFORE_DONE=0
   _ppo_state_reset
@@ -710,6 +898,10 @@ ppo_plan() {
   # Reap whatever a previously killed run left behind, before anything is
   # created, so a story whose branch survives can attach cleanly.
   worktree_prune_stale "$repo" >/dev/null 2>&1 || true
+  # Prune worktrees left on bogus literal-"-slug" branches by a previous
+  # broken run. These are identifiable by a branch ending in exactly "-slug"
+  # (the literal word), which no real title produces.
+  _ppo_prune_bogus_slug_worktrees "$repo"
   export GAIA_WORKTREE_PRUNE_ON_CREATE=0
 
   # A reservation orphaned by a killed run counts toward the ceiling forever,
@@ -809,7 +1001,7 @@ _ppo_resolve_persona() {
 # tearing down. Conflating the two would mean writing into a directory the
 # library owns and expects only its own record shape in.
 _ppo_live_dir() {
-  printf '%s/ppo-live-teammates' "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}"
+  printf '%s/ppo-live-teammates' "$(_ppo_session_fallback)"
 }
 
 # _ppo_handle_track <handle> — record a just-spawned handle as live for THIS
@@ -894,7 +1086,7 @@ _ppo_admit_bookkeeping() {
   _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=admit reason=invalid-key story=${key}"; return 1; }
 
   local rc=0 locked=0 token="" reg="" ceiling=0 count=0
-  reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry"
+  reg="$(_ppo_session_fallback)/registry"
   mkdir -p "$reg" 2>/dev/null || true
   ceiling="$(ppo_resolve_ceiling)"
 
@@ -906,7 +1098,7 @@ _ppo_admit_bookkeeping() {
   if ! _ppo_load_lock_lib 2>/dev/null || ! command -v acquire_lock >/dev/null 2>&1; then
     return 10
   fi
-  if ! acquire_lock "${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/.ppo-admit.lock" \
+  if ! acquire_lock "$(_ppo_session_fallback)/.ppo-admit.lock" \
       "${GAIA_PPO_LOCK_TIMEOUT:-10}" 8 2>/dev/null; then
     return 10
   fi
@@ -1053,13 +1245,25 @@ _ppo_next_locked() {
       continue
     fi
 
+    # Derive the slug from the story title in the sprint yaml. Fall back to the
+    # key itself (minus the E-S prefix) so that a missing title row never
+    # produces an empty or literal-"slug" branch.
+    local story_title story_slug yaml_file
+    yaml_file="$(_ppo_engine_get yaml)"
+    story_title="$(_ppo_read_story_title "$yaml_file" "$key")"
+    if [ -n "$story_title" ]; then
+      story_slug="$(_ppo_slugify "$story_title")"
+    else
+      story_slug="$(_ppo_slugify "$key")"
+    fi
+
     local bstate seen
     seen="$(_ppo_engine_get seen)"
     case "|${seen}|" in
       *"|${key}|"*) bstate="absent" ;;
       *)
         _ppo_load_worktree_lib 2>/dev/null || true
-        bstate="$(worktree_branch_state "$repo" "feat/${key}-slug" 2>/dev/null || printf 'absent')"
+        bstate="$(worktree_branch_state "$repo" "feat/${key}-${story_slug}" 2>/dev/null || printf 'absent')"
         ;;
     esac
     _ppo_engine_put seen "${seen}${seen:+ }${key}"
@@ -1080,7 +1284,7 @@ _ppo_next_locked() {
 
     mkdir -p "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true
     local wt=""
-    wt="$(worktree_create "$repo" "$key" "slug" 2>/dev/null)" || wt=""
+    wt="$(worktree_create "$repo" "$key" "$story_slug" 2>/dev/null)" || wt=""
     if [ -n "$wt" ]; then
       _PPO_WORKTREES="${_PPO_WORKTREES}${_PPO_WORKTREES:+$'\n'}${wt}"
       _ppo_state_append worktrees "$wt"
@@ -1126,11 +1330,29 @@ _ppo_next_locked() {
           return 0
           ;;
         *)
-          # Story-file ambiguity or an unclassified spawn failure: the
-          # story itself is refused, siblings continue.
-          _ppo_record "$key" "failed" "$p"
-          pending="$rest"; _ppo_engine_put pending "$pending"
-          continue
+          # Unclassified admission failure: emit the event, clean up the
+          # worktree that may have been created, and degrade the entire run
+          # to sequential — an unclassified error means we cannot trust
+          # parallel admission for the remaining stories.
+          _ppo_emit "event=admission_failure story=${key} reason=unclassified-rc-${arc}"
+
+          # Clean up orphaned worktree created before the failed bookkeeping
+          if [ -n "$wt" ] && [ -d "$wt" ]; then
+            _ppo_load_worktree_lib 2>/dev/null || true
+            git worktree unlock "$wt" 2>/dev/null || true
+            git worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt" 2>/dev/null || true
+            git worktree prune 2>/dev/null || true
+          fi
+          # Clean up the slot scratch directory
+          rm -rf "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true
+
+          _ppo_engine_put mode "mode=sequential reason=admission-error — an unclassified admission failure; running sequentially"
+          _ppo_emit "mode=sequential reason=admission-error — an unclassified admission failure; running sequentially"
+          local yaml; yaml="$(_ppo_engine_get yaml)"
+          ppo_plan_sequential --repo "$repo" --yaml "$yaml" | while IFS= read -r sk; do
+            [ -n "$sk" ] && _ppo_emit "event=sequential story=${sk}"
+          done
+          return 0
           ;;
       esac
     fi
@@ -1261,7 +1483,7 @@ _ppo_record_outcome_locked_internal_mnd() {
 
 _ppo_record_outcome_locked() {
   local key="${1:-}" outcome="${2:-}"
-  [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged>"; return 1; }
+  [ -n "$key" ] && [ -n "$outcome" ] || { _ppo_log "event=record action=refused reason=usage — record <key> <done|failed|timeout|merged|deferred>"; return 1; }
 
   _ppo_validate_key "$key" || { _ppo_log "event=key_refused verb=record reason=invalid-key story=${key}"; return 1; }
 
@@ -1314,13 +1536,22 @@ _ppo_record_outcome_locked() {
         _ppo_apply_mnd_clean "$key" "$p" "$wt" "$repo" "$handle" "$running_file"
       fi
       ;;
+    deferred)
+      # merge.sh exit 3 — merge deferred due to promotion-lock contention.
+      # Release the dev slot, keep the worktree and branch, keep the story
+      # in review; the next cycle's resume re-enters at the merge step.
+      rm -f "$running_file" 2>/dev/null || true
+      _ppo_emit "event=story_merge_deferred story=${key} phase=${p} outcome=deferred"
+      _ppo_record "$key" "deferred" "$p"
+      ;;
     *)
       # `merged-not-done` is deliberately refused here, same as any other
       # unrecognised literal: it is not part of this entry point's
-      # CLI-reachable vocabulary (done|failed|timeout|merged) precisely
-      # because it would let a caller skip _ppo_is_merged_not_done's audit
-      # and assert the resume/give-up transition on its own say-so. The
-      # legacy in-process test hook that used to pass this literal now calls
+      # CLI-reachable vocabulary (done|failed|timeout|merged|deferred)
+      # precisely because it would let a caller skip
+      # _ppo_is_merged_not_done's audit and assert the resume/give-up
+      # transition on its own say-so. The legacy in-process test hook that
+      # used to pass this literal now calls
       # _ppo_record_outcome_internal_mnd directly instead (see `run`'s
       # exit-11 branch) -- a function with no outcome-string parameter at
       # all, so no CLI argument can reach it.
@@ -1466,7 +1697,8 @@ ppo_status() {
 # ppo_release_reservations — drop every reservation this run still holds.
 # Installed on the interrupt paths, where no per-slot cleanup gets to run.
 ppo_release_reservations() {
-  local reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry" f
+  local reg f
+  reg="$(_ppo_session_fallback)/registry"
   [ -d "$reg" ] || return 0
   for f in "$reg"/.reserved-*; do
     [ -f "$f" ] || continue
@@ -1481,7 +1713,8 @@ ppo_release_reservations() {
 # before it could release them. A reservation counts toward the ceiling, so one
 # orphaned by a kill would silently shrink every later sprint's budget.
 ppo_reap_stale_reservations() {
-  local reg="${GAIA_SESSION_DIR:-${TMPDIR:-/tmp}}/registry" f owner
+  local reg f owner
+  reg="$(_ppo_session_fallback)/registry"
   [ -d "$reg" ] || return 0
   for f in "$reg"/.reserved-*; do
     [ -f "$f" ] || continue
@@ -1756,6 +1989,8 @@ ppo_run_sprint() {
 
   local slot_seq=0
   _ppo_engine_put ceiling-refusals 0
+  local _ppo_ledger_refusals=0
+  local _ppo_ledger_backoff="${GAIA_LEDGER_BACKOFF_BASE:-2}"
   while :; do
     # A ceiling that never frees would re-queue forever (see the hook's
     # exit-8 handling below) -- give up once refusals have piled up with no
@@ -1773,17 +2008,74 @@ ppo_run_sprint() {
       return 0
     fi
 
+    # Ledger claim: one dev slot per ppo_next call, outside the engine lock.
+    # A refused claim (exit 1 = budget exhausted) blocks admission with
+    # bounded backoff. Error exits (6/7) surface and stop.
+    local _ppo_ledger_sprint="${GAIA_LEDGER_SPRINT:-}"
+    local _ppo_ledger_pid="${GAIA_LEDGER_PID:-}"
+    local _ppo_ledger_granted=0
+    if [ -n "$_ppo_ledger_sprint" ] && [ -n "$_ppo_ledger_pid" ]; then
+      local _ppo_claim_rc=0
+      _ppo_ledger_claim "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || _ppo_claim_rc=$?
+      case "$_ppo_claim_rc" in
+        0) _ppo_ledger_granted=1; _ppo_ledger_refusals=0; _ppo_ledger_backoff="${GAIA_LEDGER_BACKOFF_BASE:-2}" ;;
+        1) # Budget exhausted -- bounded backoff, then retry.
+          _ppo_ledger_refusals=$((_ppo_ledger_refusals + 1))
+          if [ "$_ppo_ledger_refusals" -ge "$_PPO_CEILING_GIVEUP" ]; then
+            _ppo_emit "barrier phase=ledger-budget waiting=giveup"
+            return 0
+          fi
+          _ppo_emit "barrier phase=ledger-budget waiting=$_ppo_ledger_refusals"
+          sleep "$_ppo_ledger_backoff" 2>/dev/null || sleep 1
+          _ppo_ledger_backoff=$((_ppo_ledger_backoff * 2))
+          continue ;;
+        6|7) # Corrupt ledger or lock unavailable -- surface and stop.
+          _ppo_log "ledger_error: exit $_ppo_claim_rc — stopping"
+          return "$_ppo_claim_rc" ;;
+        *) # Lock exit codes (3/4/5) pass through.
+          return "$_ppo_claim_rc" ;;
+      esac
+    fi
+
     local out rc=0
     out="$(ppo_next)"; rc=$?
     printf '%s\n' "$out"
 
+    # Release unused grant: on barrier, sprint_complete, or zero admits,
+    # release the full grant immediately (outside the engine lock).
+    local _ppo_admitted=0
     case "$out" in
-      *sprint_complete*) return 0 ;;
+      *dispatch\ story=*) _ppo_admitted=1 ;;
+    esac
+
+    case "$out" in
+      *sprint_complete*)
+        if [ "$_ppo_ledger_granted" -eq 1 ]; then
+          _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+        fi
+        return 0
+        ;;
     esac
     case "$out" in
-      mode=sequential*) return 0 ;;
+      mode=sequential*)
+        if [ "$_ppo_ledger_granted" -eq 1 ]; then
+          _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+        fi
+        return 0
+        ;;
     esac
-    [ "$rc" -eq 0 ] || return 0
+    if [ "$rc" -ne 0 ]; then
+      if [ "$_ppo_ledger_granted" -eq 1 ]; then
+        _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+      fi
+      return 0
+    fi
+
+    # Release the unused portion: if nothing was admitted but we got a barrier,
+    # release the full grant.
+    if [ "$_ppo_admitted" -eq 0 ] && [ "$_ppo_ledger_granted" -eq 1 ]; then
+      _ppo_ledger_release "$_ppo_ledger_sprint" "$_ppo_ledger_pid" 1 0 || true
+    fi
 
     # Re-emit each `dispatch` line in the legacy shape and drive it to
     # completion via the hook, all backgrounded so multiple admissions from
@@ -1840,8 +2132,17 @@ ppo_run_sprint() {
             wait "$tpid" || hrc=$?
             [ "$hrc" -eq 124 ] && hrc=9
             case "$hrc" in
-              0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0 ;;
-              9) ppo_record_outcome "$key" "timeout"; _ppo_engine_put ceiling-refusals 0 ;;
+              0) ppo_record_outcome "$key" "done"; _ppo_engine_put ceiling-refusals 0
+                # Release completed-story dev slot (outside engine lock).
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
+              9) ppo_record_outcome "$key" "timeout"; _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
               11)
                 # The legacy hook's own exit-11 IS the merged-not-done
                 # signal within this gated test-only context -- there is no
@@ -1858,6 +2159,9 @@ ppo_run_sprint() {
                 # instead, and the audit decides.
                 _ppo_record_outcome_internal_mnd "$key"
                 _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
                 ;;
               8)
                 # Capacity, never a story outcome -- see the legacy hook
@@ -1881,7 +2185,11 @@ ppo_run_sprint() {
                 _ppo_requeue "$key"
                 _ppo_engine_lock_run _ppo_engine_put mode "mode=sequential reason=mode-b-fallback — the agent substrate is unavailable; running sequentially in phase order"
                 ;;
-              *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0 ;;
+              *) ppo_record_outcome "$key" "failed"; _ppo_engine_put ceiling-refusals 0
+                if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+                  _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+                fi
+                ;;
             esac
           ) &
           echo "$!" >> "$(_ppo_engine_dir)/run-pids"
@@ -2103,11 +2411,52 @@ _ppo_cli() {
       ;;
     next)
       shift
-      ppo_next "$@"
+      # Ledger claim before admission (outside engine lock).
+      # A refused claim (exit 1 = budget exhausted) blocks admission.
+      # Error exits (6 = corrupt ledger, 7 = lock unavailable) surface and stop.
+      local _cli_ledger_granted=0
+      if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        local _cli_claim_rc=0
+        _ppo_ledger_claim "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || _cli_claim_rc=$?
+        case "$_cli_claim_rc" in
+          0) _cli_ledger_granted=1 ;;
+          1) # Budget exhausted -- emit barrier, do not admit.
+            printf 'barrier phase=ledger-budget waiting=1\n'
+            exit 0 ;;
+          6|7) # Corrupt ledger or lock unavailable -- surface and stop.
+            printf 'ledger_error: exit %d — stopping\n' "$_cli_claim_rc" >&2
+            exit "$_cli_claim_rc" ;;
+          *) # Lock exit codes (3/4/5) pass through.
+            exit "$_cli_claim_rc" ;;
+        esac
+      fi
+      local _cli_next_out _cli_next_rc=0
+      _cli_next_out="$(ppo_next "$@")" || _cli_next_rc=$?
+      printf '%s\n' "$_cli_next_out"
+      # Release unused grant after ppo_next returns.
+      if [ "$_cli_ledger_granted" -eq 1 ] && [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        local _cli_admitted=0
+        case "$_cli_next_out" in
+          *dispatch\ story=*) _cli_admitted=1 ;;
+        esac
+        case "$_cli_next_out" in
+          *sprint_complete*|*mode=sequential*)
+            _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true ;;
+          *)
+            if [ "$_cli_admitted" -eq 0 ]; then
+              _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+            fi ;;
+        esac
+      fi
+      exit "$_cli_next_rc"
       ;;
     record)
       shift
       ppo_record_outcome "$@"
+      # Release completed-story dev slot after recording outcome (outside engine lock).
+      if [ -n "${GAIA_LEDGER_SPRINT:-}" ] && [ -n "${GAIA_LEDGER_PID:-}" ]; then
+        _ppo_ledger_release "$GAIA_LEDGER_SPRINT" "$GAIA_LEDGER_PID" 1 0 || true
+      fi
       ;;
     status)
       shift

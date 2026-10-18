@@ -96,7 +96,11 @@ log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 # story-index.yaml. Sibling of the same helper in sprint-state.sh.
 yaml_single_quote() {
   local s="$1"
-  s="${s//\'/\'\'}"
+  # Double inner single-quotes per the YAML single-quote escape rule.
+  # Uses sed instead of ${s//\'/\'\'} because bash 3.2 interprets the
+  # backslash-escape in // substitution differently (treats \' as a
+  # literal two-char sequence rather than an escaped quote).
+  s="$(printf '%s' "$s" | sed "s/'/''/g")"
   printf "'%s'" "$s"
 }
 
@@ -1662,6 +1666,95 @@ if [ "$RECONCILE_ONLY" != "1" ] \
   fi
 fi
 
+# Untriaged-findings gate on the review -> done path.
+# Refuses the transition when the story's Findings table has any row without
+# a [TRIAGED -> ...] or [DISMISSED] marker. The gate must fire BEFORE the
+# snapshot/commit phase so that no writer touches disk on a refused transition.
+# Override: GAIA_ALLOW_UNTRIAGED_DONE=1 downgrades the refusal to a WARNING.
+_check_untriaged_findings() {
+  local story_file="$1" story_key="$2"
+
+  # Extract the ## Findings section (stop at next ## heading or EOF).
+  local findings_section
+  findings_section="$(awk '
+    /^## Findings[[:space:]]*$/ { in_section = 1; next }
+    in_section && /^## / { exit }
+    in_section { print }
+  ' "$story_file")"
+
+  # No Findings section at all -> no-op.
+  [ -n "$findings_section" ] || return 0
+
+  # Walk each pipe-delimited row, skipping header/separator/placeholder rows.
+  # Check the WHOLE row text for a triage marker rather than splitting on pipes,
+  # because finding text may itself contain pipe characters (e.g. `||`, `a | b`)
+  # that shift columns and push the marker into the unchecked tail.
+  local untriaged_rows="" untriaged_count=0
+  local line col1 trimmed
+  while IFS= read -r line; do
+    # Only pipe-delimited rows.
+    case "$line" in *\|*) ;; *) continue ;; esac
+    # Skip separator rows: every cell is dashes (optionally with colons for
+    # alignment). A loose `*---*` glob would skip any row whose finding text
+    # happens to contain three dashes, silently letting untriaged rows pass.
+    if printf '%s\n' "$line" | /usr/bin/grep -qE '^\|?([[:space:]]*:?-+:?[[:space:]]*\|)+[[:space:]]*$'; then
+      continue
+    fi
+
+    trimmed="${line## }"; trimmed="${trimmed%% }"
+    # Extract column 1 (row number) for the error message.  Read only
+    # the first two pipe-separated fields; the rest stays unsplit.
+    col1="$(printf '%s' "$trimmed" | awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2 }')"
+
+    # Skip header rows.
+    case "$col1" in '#'|'ID'|'—'|'') continue ;; esac
+
+    # Check the WHOLE row for a closed-bracket triage marker. Accepted
+    # forms (all require the closing bracket):
+    #   [TRIAGED]                         — bare (legacy)
+    #   [TRIAGED -> <target>]             — ASCII arrow
+    #   [TRIAGED → <target>]              — Unicode arrow
+    #   [DISMISSED]                       — bare
+    #   [DISMISSED: <explanation>]         — with reason
+    # Rejected: unclosed tokens like "[DISMISSED prematurely" or
+    # "[TRIAGED -> but never closed".
+    if printf '%s\n' "$line" | /usr/bin/grep -qE '\[TRIAGED( (->|→) [^]]+)?\]|\[DISMISSED(: [^]]+)?\]'; then
+      continue
+    fi
+
+    # This row is untriaged.
+    untriaged_count=$((untriaged_count + 1))
+    # Extract a snippet for the error message (column 4, best-effort).
+    local finding_text
+    finding_text="$(printf '%s' "$trimmed" | awk -F'|' '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5 }')"
+    [ -n "$finding_text" ] || finding_text="(empty)"
+    untriaged_rows="${untriaged_rows}  row ${col1}: ${finding_text}
+"
+  done <<< "$findings_section"
+
+  [ "$untriaged_count" -gt 0 ] || return 0
+
+  # There are untriaged rows. Check the override.
+  if [ "${GAIA_ALLOW_UNTRIAGED_DONE:-0}" = "1" ]; then
+    log "WARNING: ${untriaged_count} untriaged finding(s) in ${story_key} — proceeding (GAIA_ALLOW_UNTRIAGED_DONE=1):"
+    printf '%s' "$untriaged_rows" >&2
+    return 0
+  fi
+
+  log "ERROR: review -> done refused — ${untriaged_count} untriaged finding(s) in ${story_key}."
+  log "       Untriaged rows:"
+  printf '%s' "$untriaged_rows" >&2
+  log "       Run /gaia-triage-findings ${story_key} to triage, or set"
+  log "       GAIA_ALLOW_UNTRIAGED_DONE=1 to override."
+  exit 8
+}
+
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ]; then
+  _check_untriaged_findings "$STORY_FILE" "$STORY_KEY"
+fi
+
 # Snapshot every file we may touch so we can roll back on partial failure.
 SNAP_STORY="$(snapshot_for_rollback "$STORY_FILE")"
 SNAP_YAML=""
@@ -1865,6 +1958,215 @@ if [ "$NEW_STATUS" = "done" ]; then
     }
     _emit_brain_freshness || true
   fi
+fi
+
+# Traced-issue closure hook on the story→done path.
+# Reads the story's `traces_to` frontmatter list and, for each GitHub issue
+# reference, either closes the issue (fully addressed) or adds a comment
+# (partially addressed — other stories also trace to it and are not yet done).
+#
+# BEST-EFFORT: a committed transition must never be rolled back because the
+# issue-closure hook failed. Every gh call is wrapped in a non-fatal guard
+# with a portable time bound. When gh is absent, returns non-zero, or exceeds
+# the timeout, a WARNING is emitted and the transition completes normally.
+#
+# Design: small, independently-callable functions so sibling stories
+# (task-box ticking, findings-triage guard) that later hook the same done
+# path can rebase cleanly around this block.
+
+# _parse_traces_to — extract GitHub issue numbers from the traces_to
+# frontmatter field. Handles flow-style YAML lists: `["GitHub #1", "GitHub #2"]`.
+# Outputs one issue number per line; empty output when the field is absent,
+# empty, or contains no GitHub references.
+_parse_traces_to() {
+  local file="$1"
+  awk '
+    BEGIN { in_fm = 0; seen = 0 }
+    /^---[[:space:]]*$/ {
+      if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
+      if (in_fm) exit
+    }
+    in_fm && /^traces_to:/ {
+      v = $0
+      sub(/^traces_to:[[:space:]]*/, "", v)
+      # Extract all GitHub #N references from the flow-style list
+      while (match(v, /GitHub #[0-9]+/)) {
+        s = substr(v, RSTART, RLENGTH)
+        sub(/^GitHub #/, "", s)
+        print s
+        v = substr(v, RSTART + RLENGTH)
+      }
+      exit
+    }
+  ' "$file"
+}
+
+# _gh_with_timeout — run a gh command with a portable time bound.
+# Uses timeout/gtimeout when available; falls back to background+kill.
+# Returns the gh exit code, or 124 on timeout. Stdout/stderr pass through.
+_gh_with_timeout() {
+  local limit="${GAIA_GH_TIMEOUT:-30}"
+  # Try timeout (Linux, Homebrew coreutils) then gtimeout (macOS brew)
+  local timeout_cmd=""
+  if command -v timeout >/dev/null 2>&1; then
+    timeout_cmd="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    timeout_cmd="gtimeout"
+  fi
+  if [ -n "$timeout_cmd" ]; then
+    "$timeout_cmd" "$limit" gh "$@"
+    return $?
+  fi
+  # Portable fallback: background the call, wait up to $limit seconds.
+  # Escalates SIGTERM -> SIGKILL if the process ignores SIGTERM.
+  gh "$@" &
+  local gh_pid=$!
+  local elapsed=0
+  while [ "$elapsed" -lt "$limit" ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then
+      wait "$gh_pid" 2>/dev/null
+      return $?
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  # Timed out — SIGTERM first, then SIGKILL if still alive after 2s
+  kill "$gh_pid" 2>/dev/null || true
+  local kill_wait=0
+  while [ "$kill_wait" -lt 2 ]; do
+    if ! kill -0 "$gh_pid" 2>/dev/null; then break; fi
+    sleep 1
+    kill_wait=$((kill_wait + 1))
+  done
+  if kill -0 "$gh_pid" 2>/dev/null; then
+    kill -9 "$gh_pid" 2>/dev/null || true
+  fi
+  wait "$gh_pid" 2>/dev/null || true
+  return 124
+}
+
+# _find_merged_pr_number — resolve the merged PR number for a story key.
+# Returns the PR number on stdout, or empty string on failure.
+_find_merged_pr_number() {
+  local story_key="$1"
+  local result
+  result="$(_gh_with_timeout pr list --state merged --search "$story_key" \
+    --json number --jq '.[0].number' 2>/dev/null)" || true
+  # Filter out non-numeric results (e.g. "null", empty)
+  case "$result" in
+    ''|null|*[!0-9]*) printf '' ;;
+    *) printf '%s' "$result" ;;
+  esac
+}
+
+# _find_other_tracers — find other non-done stories that trace the same issue.
+# Two-phase scan for performance: (1) find story.md files and pre-filter with
+# a single grep -l for the issue number (fixed-string), then (2) parse only
+# the few candidates with _parse_traces_to for exact issue-number matching.
+# Compares story keys exactly (not by substring).
+# Outputs one non-done story key per line. Empty output means fully addressed.
+_find_other_tracers() {
+  local issue_num="$1" story_key="$2"
+  local story_file other_key other_status other_nums
+  # Phase 1: pre-filter with a single grep -l for the issue number.
+  # Restricts to story.md (canonical per-story layout) for speed (~0.2 s on
+  # ~500 files vs ~1.3 s on ~8000). Phase 2 then runs the per-file
+  # traces_to parser only on the handful of candidates (typically 0-2 files).
+  local candidates
+  candidates="$(find "$IMPLEMENTATION_ARTIFACTS" -name 'story.md' -type f \
+    -exec grep -l "GitHub #${issue_num}" {} + 2>/dev/null || true)"
+  [ -n "$candidates" ] || return 0
+  # Phase 2: parse only the candidates with the exact traces_to parser.
+  while IFS= read -r story_file; do
+    [ -n "$story_file" ] || continue
+    # Read the key from frontmatter — exact match, not substring
+    other_key="$(read_frontmatter_field "$story_file" key 2>/dev/null || true)"
+    [ -n "$other_key" ] || continue
+    # Skip the current story (exact key comparison)
+    [ "$other_key" != "$story_key" ] || continue
+    # Parse traces_to and check for exact issue number match
+    other_nums="$(_parse_traces_to "$story_file")"
+    [ -n "$other_nums" ] || continue
+    local found_match=0
+    local n
+    while IFS= read -r n; do
+      if [ "$n" = "$issue_num" ]; then
+        found_match=1
+        break
+      fi
+    done <<< "$other_nums"
+    [ "$found_match" -eq 1 ] || continue
+    # Check status — only report non-done stories
+    other_status="$(read_frontmatter_status "$story_file" 2>/dev/null || true)"
+    if [ -n "$other_status" ] && [ "$other_status" != "done" ]; then
+      printf '%s\n' "$other_key"
+    fi
+  done <<< "$candidates"
+}
+
+# _close_traced_issues — post-transition hook entry point.
+# Called after the done transition succeeds; never blocks the transition.
+_close_traced_issues() {
+  local story_key="$1" story_file="$2"
+
+  # Parse traced issue numbers from frontmatter
+  local issue_nums
+  issue_nums="$(_parse_traces_to "$story_file")"
+  [ -n "$issue_nums" ] || return 0
+
+  # Check gh availability
+  if ! command -v gh >/dev/null 2>&1; then
+    log "WARNING: gh CLI not available — skipping traced-issue closure for $story_key"
+    return 0
+  fi
+
+  # Resolve the story's merged PR number (best-effort)
+  local pr_number
+  pr_number="$(_find_merged_pr_number "$story_key")"
+
+  local by_clause="story ${story_key}"
+  if [ -n "$pr_number" ]; then
+    by_clause="PR #${pr_number} (story ${story_key})"
+  fi
+
+  local issue_num
+  while IFS= read -r issue_num; do
+    [ -n "$issue_num" ] || continue
+
+    local remaining
+    remaining="$(_find_other_tracers "$issue_num" "$story_key")"
+    if [ -z "$remaining" ]; then
+      # Fully addressed — close with comment.
+      # Capture the real exit code before `local` resets $?.
+      local gh_rc=0
+      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${by_clause}" 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
+          log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to close traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
+      fi
+    else
+      # Partially addressed — comment naming what remains.
+      local remaining_keys
+      remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
+      local gh_rc=0
+      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      if [ "$gh_rc" -ne 0 ]; then
+        if [ "$gh_rc" -eq 124 ]; then
+          log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"
+        else
+          log "WARNING: failed to comment on traced issue #${issue_num} for ${story_key} — gh returned non-zero"
+        fi
+      fi
+      log "WARNING: issue #${issue_num} partially addressed by ${story_key} — commented but not closed (remaining: ${remaining_keys})"
+    fi
+  done <<< "$issue_nums"
+}
+
+if [ "$NEW_STATUS" = "done" ]; then
+  _close_traced_issues "$STORY_KEY" "$STORY_FILE" || true
 fi
 
 log "$STORY_KEY transitioned $CURRENT_STATUS -> $NEW_STATUS"

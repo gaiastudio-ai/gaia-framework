@@ -352,6 +352,20 @@ Resolve the developer persona via the shared resolver (it runs in the parent con
 
 **YOLO inheritance.** When the orchestrator is in YOLO mode, it MUST `export GAIA_YOLO_MODE=1` into the developer dispatch's environment — a child does not inherit YOLO intent implicitly (see the Subagent YOLO inheritance note at Step 4).
 
+### Step 3c -- REWORK round guard
+
+In REWORK mode (detect-mode.sh printed REWORK), before dispatching the developer (Step 4), verify the latest review round is complete and bind the correction brief:
+
+1. **Call `round-info --story {key}`.** Exit 1 (no orchestrated round, legacy story): skip `bind-brief`/`supersede-brief` below; `assert-round-complete` will print "no orchestrated round" and exit 0. Exit 0: capture `run_id`, `brief_path` and `brief_sha256` from the output.
+
+2. **Resolve the correction-brief path** via `resolve-review-report-path.sh --key {key} --type correction-brief`. Write the correction brief to the resolved path.
+
+3. **Bind or supersede the brief.** When `round-info` printed `brief_path none`: call `register-write.sh bind-brief --story {key} --run-id {id} --brief {path}`. When `round-info` printed `brief_path <existing-path>` and the file's current SHA-256 equals `brief_sha256`: call `bind-brief` (idempotent no-op, exit 0). Otherwise: call `register-write.sh supersede-brief --story {key} --run-id {id} --brief {path} --rationale <why the brief changed>`.
+
+4. **Call `register-write.sh assert-round-complete --story {key}`.** HALT on any non-zero exit. The only non-zero exit that does not halt REWORK is `round-info` exit 1 in step 1 above (legacy path — `assert-round-complete` then prints "no orchestrated round" and exits 0).
+
+For FRESH and RESUME modes, skip this step.
+
 ### Step 4 -- Plan Implementation
 
 <!-- design-gate begin -->
@@ -479,7 +493,17 @@ The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent 
 - The developer follows the playbook's design approach reasoning.
 - For each subtask: the developer implements the minimum code to make failing tests pass.
 - Run the test suite -- verify all tests PASS.
-- The developer marks each completed subtask in the story file.
+- The developer marks each completed subtask in the story file via the sanctioned writer:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/tick-story-checkbox.sh" \
+    --file "$STORY_FILE" --task {N} --subtask {M}
+  ```
+  After all subtasks of a task are ticked, tick the parent task:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/tick-story-checkbox.sh" \
+    --file "$STORY_FILE" --task {N}
+  ```
+  The script is idempotent, atomic (temp-file + mv), and concurrent-safe (flock). It exits 0 on success or when the checkbox is already ticked; exit 1 means no matching line was found — surface the error and continue (a tick failure is non-blocking).
 
 ### Step 6a -- TDD Review Gate (Green phase)
 
@@ -783,7 +807,12 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 13 merge-pr {story_key}` to record the step-boundary event.
 
 - Run `scripts/merge.sh {pr_number} {story_key}` to merge the PR.
-- The script handles conflict detection, branch protection, and strategy selection.
+- The script handles conflict detection, branch protection, strategy selection, and — in concurrent mode — serialized promotion-merge locking and post-merge verification.
+- **Exit code handling:**
+  - **Exit 0:** Merge succeeded (and verified in concurrent mode). Proceed to Step 14.
+  - **Exit 1:** Merge or verification failed. Report the failure and halt.
+  - **Exit 3:** Merge deferred due to promotion-lock contention. The story stays in `review`, the worktree and branch are kept. Report "deferred" to the caller or orchestrator. **Step 14 is skipped when Step 13 returns exit 3.**
+  - **Exit 4, 5, 7:** Lock errors (symlink detected, identity mismatch, or lock directory failure). Surface the error and halt.
 
 ### Step 14 -- Post-Completion Gate
 

@@ -91,6 +91,67 @@ _post_validate_test_policy_refs() {
 }
 
 # ---------------------------------------------------------------------------
+# _post_validate_sprint — validates sprint.max_concurrent_active is an
+# integer >= 1 when present.
+#
+# JSON Schema draft-07 validates type and minimum, but the jq degraded path
+# does not. Running this post-validate hook on every backend makes the
+# rejection engine-independent.
+#
+# Args: $1 = path to the converted JSON file
+# Returns: 0 if valid or the section is absent; 1 if violations found.
+# ---------------------------------------------------------------------------
+_post_validate_sprint() {
+  local json_file="$1"
+  local raw="" reader=""
+
+  if command -v jq >/dev/null 2>&1; then
+    raw="$(jq -r '.sprint.max_concurrent_active // empty' "$json_file" 2>/dev/null)" || raw=""
+    reader=jq
+  elif command -v python3 >/dev/null 2>&1; then
+    raw="$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+v = (d.get('sprint') or {}).get('max_concurrent_active')
+if v is not None:
+    print(v)
+" "$json_file" 2>/dev/null)" || raw=""
+    reader=python3
+  fi
+
+  # Fail closed: if no reader could extract the value, refuse.
+  if [ -z "$reader" ]; then
+    fail "\$.sprint.max_concurrent_active" \
+      "cannot verify — install jq or python3"
+    return 1
+  fi
+
+  # Absent or empty — valid (defaults to 1 at resolve time).
+  [ -z "$raw" ] && return 0
+
+  # Strict integer check: must be one or more digits only (no sign, no
+  # decimal point, no embedded hyphens, no trailing garbage). This rejects
+  # "1-2", "--5", "1-", "1.5", "two", and any other non-integer shape
+  # regardless of which validation backend ran.
+  case "$raw" in
+    *[!0-9]*)
+      fail "\$.sprint.max_concurrent_active" \
+        "must be an integer >= 1, got: $raw"
+      return 1
+      ;;
+  esac
+
+  # Must be >= 1 (rejects 0).
+  if [ "$raw" -lt 1 ]; then
+    fail "\$.sprint.max_concurrent_active" \
+      "must be an integer >= 1, got: $raw"
+    return 1
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # _post_validate_parallel_execution — cross-field concurrency-budget check
 #
 # JSON Schema draft-07 cannot express an arithmetic relation between two
@@ -359,6 +420,7 @@ if command -v ajv >/dev/null 2>&1; then
   if ajv_out="$(ajv validate -s "$SCHEMA" -d "$TMP_JSON" 2>&1)"; then
     _post_validate_test_policy_refs "$TMP_JSON" || exit 1
     _post_validate_parallel_execution "$TMP_JSON" || exit 1
+    _post_validate_sprint "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -407,6 +469,7 @@ PY
 )"; then
     _post_validate_test_policy_refs "$TMP_JSON" || exit 1
     _post_validate_parallel_execution "$TMP_JSON" || exit 1
+    _post_validate_sprint "$TMP_JSON" || exit 1
     printf 'PASS: %s\n' "$INPUT"
     exit 0
   else
@@ -532,6 +595,7 @@ fi
 
 _post_validate_test_policy_refs "$TMP_JSON" || exit 1
 _post_validate_parallel_execution "$TMP_JSON" || exit 1
+_post_validate_sprint "$TMP_JSON" || exit 1
 
 # Emit the DEGRADED marker so downstream consumers (CI, /gaia-config-validate
 # skill) can distinguish a full schema-engine PASS from a structural-only PASS.

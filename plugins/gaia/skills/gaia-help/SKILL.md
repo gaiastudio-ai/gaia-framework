@@ -226,6 +226,12 @@ Conclude with: `Run one of these now? Reply with the command name, or say "no" t
 
 Every one of the above MUST survive the Step 4 manifest cross-check before being emitted — this skill never hard-codes a suggestion that is not validated against `${CLAUDE_PLUGIN_ROOT}/knowledge/workflow-manifest.csv` at runtime.
 
+## Terminology
+
+> **Concurrent sprints vs phase-parallel execution.** These are distinct,
+> orthogonal features. See the
+> [glossary](glossary.html#concurrent-sprints) for definitions.
+
 ## References
 
 - Source: `_gaia/core/tasks/help.md` (legacy 45-line task body — ported).

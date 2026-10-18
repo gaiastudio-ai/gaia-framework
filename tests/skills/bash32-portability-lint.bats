@@ -16,6 +16,7 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   SCANNER="$REPO_ROOT/.github/scripts/lint-bash32-portability.sh"
+  BASELINE="$REPO_ROOT/.github/scripts/bash32-portability-baseline.tsv"
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   FIXTURE_DIR="$(mktemp -d -t bash32lint.XXXXXX)"
 }
@@ -247,9 +248,347 @@ YAML
   [[ "$output" == '["*"]' ]]
 }
 
-# ---------- Tree-wide: actual scripts tree passes the lint (AC2) ----------
+# ---------- New construct fixture tests: local -A (AC3) ----------
 
-@test "scripts tree passes bash-3.2 portability lint (AC2)" {
-  run bash "$SCANNER" "$SCRIPTS_DIR"
+@test "scanner rejects local -A in a function (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/local-a.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A myarray
+  myarray[key]="val"
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local -A"* ]]
+}
+
+# ---------- New construct fixture tests: typeset -A (AC3) ----------
+
+@test "scanner rejects typeset -A (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/typeset-a.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  typeset -A myarray
+  myarray[key]="val"
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"typeset -A"* ]]
+}
+
+# ---------- New construct fixture tests: local -n (AC3) ----------
+
+@test "scanner rejects local -n (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/local-n.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -n ref=target
+  echo "$ref"
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local -n"* ]]
+}
+
+# ---------- New construct fixture tests: local -g (AC3) ----------
+
+@test "scanner rejects local -g (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/local-g.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -g myvar="hello"
+  echo "$myvar"
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local -g"* ]]
+}
+
+# ---------- New construct fixture tests: [[ -v (AC3) ----------
+
+@test "scanner rejects [[ -v variable-set test (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/test-v.sh" <<'SH'
+#!/usr/bin/env bash
+if [[ -v MY_VAR ]]; then
+  echo "set"
+fi
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"[[ -v"* ]]
+}
+
+# ---------- New construct fixture tests: &>> (AC3) ----------
+
+@test "scanner rejects &>> append-redirect (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/append-redir.sh" <<'SH'
+#!/usr/bin/env bash
+echo "hello" &>> /tmp/log.txt
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"&>>"* ]]
+}
+
+# ---------- New construct fixture tests: |& (AC3) ----------
+
+@test "scanner rejects |& pipe-stderr (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/pipe-stderr.sh" <<'SH'
+#!/usr/bin/env bash
+some_cmd |& grep "error"
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"|&"* ]]
+}
+
+# ---------- New construct fixture tests: coproc (AC3) ----------
+
+@test "scanner rejects coproc (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/coproc.sh" <<'SH'
+#!/usr/bin/env bash
+coproc mycoproc { cat; }
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"coproc"* ]]
+}
+
+# ---------- New construct fixture tests: $BASHPID (AC3) ----------
+
+@test "scanner rejects BASHPID variable (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\necho "pid=$BASHPID"\n' \
+    > "$FIXTURE_DIR/scripts/bashpid.sh"
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"BASHPID"* ]]
+}
+
+# ---------- New construct fixture tests: read -i (AC3) ----------
+
+@test "scanner rejects read -i (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/read-i.sh" <<'SH'
+#!/usr/bin/env bash
+read -e -i "default" -p "Enter: " val
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"read"* ]]
+}
+
+# ---------- New construct fixture tests: read -N (AC3) ----------
+
+@test "scanner rejects read -N (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/read-n.sh" <<'SH'
+#!/usr/bin/env bash
+read -N 5 chars
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"read"* ]]
+}
+
+# ---------- New construct fixture tests: {var}> named-fd (AC3) ----------
+
+@test "scanner rejects {var}> named-fd redirection (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/named-fd.sh" <<'SH'
+#!/usr/bin/env bash
+exec {myfd}>/tmp/out.txt
+echo "hello" >&${myfd}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"{myfd}>"* ]]
+}
+
+# ---------- False positive: comment with local -A is ignored (AC-EC1) ----------
+
+@test "scanner ignores local -A inside a comment (AC-EC1)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/comment-local-a.sh" <<'SH'
+#!/usr/bin/env bash
+# We avoid local -A for bash 3.2 compat
+echo "clean"
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
   [ "$status" -eq 0 ]
+}
+
+@test "scanner flags local -A in code but not on a comment line in same file (AC-EC1)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/mixed.sh" <<'SH'
+#!/usr/bin/env bash
+# We used to use: local -A mymap
+my_func() {
+  local -A actual_violation
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  # Only the code line is flagged — count violation lines (file:line: format),
+  # not the summary on stderr which also mentions construct names.
+  line_count="$(echo "$output" | grep -c 'mixed\.sh:[0-9]*:.*local -A')"
+  [ "$line_count" -eq 1 ]
+}
+
+# ---------- False positive: variable expansion ${fd}>> is not named-fd (AC3) ----------
+
+@test "scanner ignores variable expansion followed by redirect (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\neval "exec ${fd}>>\"${lock_file}\""\n' \
+    > "$FIXTURE_DIR/scripts/var-redir.sh"
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- False positive: |& inside regex strings is not pipe-stderr (AC3) ----------
+
+@test "scanner ignores pipe-ampersand inside regex character class (AC3)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/regex-pipe.sh" <<'SH'
+#!/usr/bin/env bash
+pattern='(^|[;|&=`($])[[:space:]]*security'
+echo "$pattern"
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/scripts"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- Multi-directory scanning (AC3) ----------
+
+@test "scanner accepts multiple directory arguments (AC3)" {
+  mkdir -p "$FIXTURE_DIR/dir1" "$FIXTURE_DIR/dir2"
+  cat > "$FIXTURE_DIR/dir1/clean1.sh" <<'SH'
+#!/usr/bin/env bash
+echo "clean"
+SH
+  cat > "$FIXTURE_DIR/dir2/clean2.sh" <<'SH'
+#!/usr/bin/env bash
+echo "also clean"
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/dir1" "$FIXTURE_DIR/dir2"
+  [ "$status" -eq 0 ]
+}
+
+@test "scanner catches violations across multiple directories (AC3)" {
+  mkdir -p "$FIXTURE_DIR/dir1" "$FIXTURE_DIR/dir2"
+  cat > "$FIXTURE_DIR/dir1/clean.sh" <<'SH'
+#!/usr/bin/env bash
+echo "clean"
+SH
+  cat > "$FIXTURE_DIR/dir2/bad.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A badmap
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/dir1" "$FIXTURE_DIR/dir2"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"dir2/bad.sh"* ]]
+}
+
+# ---------- Skill scripts directory scanning (AC3) ----------
+
+@test "scanner catches violations in skill scripts directory (AC3)" {
+  mkdir -p "$FIXTURE_DIR/skills/myfoo/scripts"
+  cat > "$FIXTURE_DIR/skills/myfoo/scripts/bar.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A badmap
+}
+SH
+  run bash "$SCANNER" "$FIXTURE_DIR/skills/myfoo/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bar.sh"* ]]
+}
+
+# ---------- Tree-wide: actual directory trees pass the lint (AC4) ----------
+
+@test "scripts tree passes bash-3.2 portability lint with baseline (AC4)" {
+  # Run from REPO_ROOT so find produces relative paths matching the baseline.
+  cd "$REPO_ROOT"
+  run bash "$SCANNER" --baseline "$BASELINE" plugins/gaia/scripts
+  [ "$status" -eq 0 ]
+}
+
+@test "skills scripts trees pass bash-3.2 portability lint with baseline (AC4)" {
+  cd "$REPO_ROOT"
+  # Collect all skills/*/scripts/ directories that exist
+  local -a skill_dirs=()
+  while IFS= read -r d; do
+    [ -d "$d" ] && skill_dirs+=("$d")
+  done < <(find plugins/gaia/skills -mindepth 2 -maxdepth 2 -name scripts -type d 2>/dev/null | sort)
+  # Only run if there are skill scripts directories
+  [ "${#skill_dirs[@]}" -gt 0 ] || return 0
+  run bash "$SCANNER" --baseline "$BASELINE" "${skill_dirs[@]}"
+  [ "$status" -eq 0 ]
+}
+
+# ---------- Baseline enforcement: new violations exceed ceiling (AC4) ----------
+
+@test "baseline ceiling blocks a new violation in a baselined file (AC4)" {
+  # Create a fixture with a baselined file that EXCEEDS its ceiling.
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/baselined.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A first_violation
+  local -A second_violation
+}
+SH
+  # Baseline allows 1 violation, but the file has 2.
+  printf '%s\t%s\n' "$FIXTURE_DIR/scripts/baselined.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"exceeds baseline ceiling"* ]]
+}
+
+@test "baseline ceiling allows violations at or below the ceiling (AC4)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/baselined.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A one_violation
+}
+SH
+  # Baseline allows 1 violation, file has exactly 1.
+  printf '%s\t%s\n' "$FIXTURE_DIR/scripts/baselined.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -eq 0 ]
+}
+
+@test "non-baselined file with violations fails even with a baseline file (AC4)" {
+  mkdir -p "$FIXTURE_DIR/scripts"
+  cat > "$FIXTURE_DIR/scripts/other.sh" <<'SH'
+#!/usr/bin/env bash
+my_func() {
+  local -A unbaselined
+}
+SH
+  # Baseline does not include this file.
+  printf '%s\t%s\n' "some/other/file.sh" "1" \
+    > "$FIXTURE_DIR/baseline.tsv"
+  run bash "$SCANNER" --baseline "$FIXTURE_DIR/baseline.tsv" "$FIXTURE_DIR/scripts"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no baseline; expected 0"* ]]
 }

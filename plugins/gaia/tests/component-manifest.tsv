@@ -67,6 +67,7 @@ core	af-2026-06-02-6-test17-sweep.bats
 core	af-2026-06-03-2-tc-osv-trace.bats
 core	af-2026-06-03-3-adversarial-schema.bats
 core	analysis-results-schema.bats
+core	assert-gitignored-git-check-ignore.bats
 core	audit-v2-migration.bats
 core	backup-integrity.bats
 core	bash-dev-wiring.bats
@@ -103,6 +104,15 @@ core	component-manifest-drift-guard.bats
 core	component-manifest-subdirectory-reach.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	concurrent-sprint-binding.bats
+core	concurrent-sprint-catch-all.bats
+core	concurrent-sprint-config.bats
+core	concurrent-sprint-glossary.bats
+core	concurrent-sprint-ledger.bats
+core	concurrent-sprint-lock.bats
+core	concurrent-sprint-merge.bats
+core	concurrent-sprint-state.bats
+core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
@@ -286,6 +296,7 @@ core	path-split-resolution.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
+core	phase-parallel-orchestrator-next-fix.bats
 core	phase-parallel-orchestrator.bats
 core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
@@ -319,6 +330,9 @@ core	review-parity/gaia-test-automate/action-skill-contract.bats
 core	review-parity/gaia-test-e2e/action-skill-contract.bats
 core	review-parity/gaia-test-perf/action-skill-contract.bats
 core	review-rubric-rebind.bats
+core	round-lifecycle-integration.bats
+core	round-lifecycle.bats
+core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
@@ -376,6 +390,7 @@ core	test-manual-surface-docs.bats
 core	test-plan-schema-detection.bats
 core	transition-story-status-legacy-flat-mirror.bats
 core	transition-story-status-lifecycle-emit.bats
+core	transition-story-status-untriaged-findings.bats
 core	transition-story-status.bats
 core	triage-findings-fallback.bats
 core	triage-findings-finalize-sentinel.bats
@@ -480,6 +495,7 @@ scripts-core	cluster-9/review-nudge.bats
 scripts-core	cluster-9/review-skip-check.bats
 scripts-core	cluster-9/review-summary-gen.bats
 scripts-core	cluster-9/run-all-reviews.bats
+scripts-core	concurrent-sprint-independence-ab.bats
 scripts-core	config-phase-gate.bats
 scripts-core	coppa-regime.bats
 scripts-core	create-ux-claude-design.bats
@@ -627,6 +643,7 @@ scripts-core	test-policy-schema.bats
 scripts-core	test-policy-trigger-scope.bats
 scripts-core	test-review-gate-plan-id.bats
 scripts-core	test-val-integration.bats
+scripts-core	tick-story-checkbox.bats
 scripts-core	tool-availability-probe.bats
 scripts-core	val-sidecar-write-jq-cleanliness.bats
 scripts-core	val-validate-plan.bats
@@ -752,6 +769,7 @@ scripts-sprint	sprint-state-detect-auto-close.bats
 scripts-sprint	sprint-state-goals-and-state-machine.bats
 scripts-sprint	sprint-state-inject-points-ux.bats
 scripts-sprint	sprint-state-rollover.bats
+scripts-sprint	sprint-state-root-isolation-lint.bats
 scripts-sprint	sprint-state-sweep.bats
 scripts-sprint	sprint-state-trap.bats
 scripts-sprint	sprint-state-usage-discoverability.bats
@@ -760,6 +778,7 @@ scripts-sprint	sprint-status-dashboard-auto-close-banner.bats
 scripts-sprint	sprint-status-dashboard-stranded-ready.bats
 scripts-sprint	story-state-path-resolution.bats
 scripts-sprint	transition-story-status-sweep.bats
+scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats
 skills	af-2026-05-21-10-create-prd-canonical.bats
 skills	af-2026-05-21-11-create-arch-canonical.bats
@@ -833,6 +852,7 @@ skills	issue-1393-primary-platform-normalization.bats
 skills	issue-1394-readiness-report-date-adr.bats
 skills	meeting-dispatch-integration.bats
 skills	meeting-notes-cost-breakdown-yaml.bats
+skills	merge-pre-merge-guards.bats
 skills	merge-remote-state-confirmation.bats
 skills	partial-deploy.bats
 skills	per-component-smoke.bats

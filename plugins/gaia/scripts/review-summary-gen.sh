@@ -217,8 +217,16 @@ _story_mtime_date() {
 STORY_KEY=""
 OUTPUT_PATH=""
 SYNOPSIS_FILE=""
+ROUND_RUN_ID=""
+ROUND_COMMIT_SHA=""
+ROUND_REQUIREMENT_VERSION=""
 
 parse_args() {
+  # Validation patterns stored in variables (bash 3.2 regex compat).
+  local _re_round_id='^round-[0-9]{8}T[0-9]{6}Z-[0-9]+$'
+  local _re_sha='^([0-9a-f]{40}|[0-9a-f]{64})$'
+  local _re_reqver='^sha256:[0-9a-f]{64}$'
+
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)
@@ -248,6 +256,33 @@ parse_args() {
         SYNOPSIS_FILE="$2"
         shift 2
         ;;
+      --run-id)
+        if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+          _log "--run-id requires a value"
+          usage >&2
+          exit 2
+        fi
+        ROUND_RUN_ID="$2"
+        shift 2
+        ;;
+      --commit-sha)
+        if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+          _log "--commit-sha requires a value"
+          usage >&2
+          exit 2
+        fi
+        ROUND_COMMIT_SHA="$2"
+        shift 2
+        ;;
+      --requirement-version)
+        if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+          _log "--requirement-version requires a value"
+          usage >&2
+          exit 2
+        fi
+        ROUND_REQUIREMENT_VERSION="$2"
+        shift 2
+        ;;
       --help|-h)
         usage
         exit 0
@@ -264,6 +299,26 @@ parse_args() {
     _log "--story <key> is required"
     usage >&2
     exit 2
+  fi
+
+  # Validate round-awareness flags if any are provided.
+  if [ -n "$ROUND_RUN_ID" ]; then
+    if ! grep -qE "$_re_round_id" <<<"$ROUND_RUN_ID"; then
+      _log "invalid --run-id format: $ROUND_RUN_ID"
+      exit 2
+    fi
+  fi
+  if [ -n "$ROUND_COMMIT_SHA" ]; then
+    if ! grep -qE "$_re_sha" <<<"$ROUND_COMMIT_SHA"; then
+      _log "invalid --commit-sha format: $ROUND_COMMIT_SHA"
+      exit 2
+    fi
+  fi
+  if [ -n "$ROUND_REQUIREMENT_VERSION" ]; then
+    if ! grep -qE "$_re_reqver" <<<"$ROUND_REQUIREMENT_VERSION"; then
+      _log "invalid --requirement-version format: $ROUND_REQUIREMENT_VERSION"
+      exit 2
+    fi
   fi
 }
 
@@ -507,6 +562,16 @@ _render_summary() {
     printf 'overall_status: %s\n' "$overall"
     # reviewers list rendered as inline YAML flow sequence (V1 form).
     printf 'reviewers: [code-review, qa-tests, security-review, test-automate, test-review, review-perf]\n'
+    # Optional round-awareness header fields (present only when passed).
+    if [ -n "$ROUND_RUN_ID" ]; then
+      printf 'run_id: %s\n' "$ROUND_RUN_ID"
+    fi
+    if [ -n "$ROUND_COMMIT_SHA" ]; then
+      printf 'commit_sha: %s\n' "$ROUND_COMMIT_SHA"
+    fi
+    if [ -n "$ROUND_REQUIREMENT_VERSION" ]; then
+      printf 'requirement_version: %s\n' "$ROUND_REQUIREMENT_VERSION"
+    fi
     printf -- '---\n'
     printf '\n'
     printf '# Review Summary: %s\n' "$key"

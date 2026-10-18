@@ -54,8 +54,10 @@ write_transcript() {
 }
 
 # assert_gitignored <pattern>
-#   HALT (non-zero exit) if `.gitignore` does not contain a line matching
-#   the given pattern. Walks up from CWD to find the nearest `.gitignore`.
+#   HALT (non-zero exit) if the given pattern is not ignored by git.
+#   Inside a git repo, uses `git check-ignore` to honour wildcards,
+#   directory entries, and double-star patterns. Outside a repo, falls
+#   back to a `grep -F` literal match against the nearest `.gitignore`.
 #   Canonical HALT message format applied.
 assert_gitignored() {
   local pattern="$1"
@@ -63,7 +65,20 @@ assert_gitignored() {
     printf 'assert_gitignored: usage: assert_gitignored <pattern>\n' >&2
     return 2
   fi
-  # Find nearest .gitignore by walking up from CWD.
+  # When inside a git repo, use git check-ignore which honours wildcards,
+  # directory entries, and double-star patterns — not just literal matches.
+  # Fall back to grep -F against the nearest .gitignore outside a repo.
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # git check-ignore needs a concrete path, not a prefix — append a dummy
+    # filename so the pattern resolves as a file under the ignored directory.
+    if git check-ignore -q "${pattern}probe" 2>/dev/null; then
+      return 0
+    fi
+    printf 'HALT: %s* must be in .gitignore\n' "$pattern" >&2
+    return 1
+  fi
+
+  # Non-git fallback: find nearest .gitignore by walking up from CWD.
   local cwd gitignore
   cwd="$(pwd)"
   while [ "$cwd" != "/" ]; do
@@ -77,7 +92,6 @@ assert_gitignored() {
     printf 'HALT: %s* must be in .gitignore — no .gitignore found\n' "$pattern" >&2
     return 1
   fi
-  # Match either literal prefix line or a wildcard form covering the pattern.
   if grep -Fq "$pattern" "$gitignore"; then
     return 0
   fi

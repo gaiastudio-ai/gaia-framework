@@ -122,6 +122,8 @@ Delegate to the **architect** subagent (Theo) via `agents/architect` to define e
 
 Either form resolves the per-epic slug correctly for `transition-story-status.sh`, `gaia-dev-story`, and `gaia-sprint-plan`. Do NOT mix forms within a single file. Headings using neither form (e.g., `## 1. Core Brain Vault`) will cause `transition-story-status.sh` to fail with "epic key E{N} not found".
 
+**Catch-all epic marker (offered, never auto-set).** When an epic's title matches a bugs-and-enhancements-like pattern (case-insensitive: `bug`, `enhancement`, `fix`, `maintenance`, `catch-all`, `backlog`, `misc`), offer to place a `<!-- catch_all: true -->` line as the first non-blank line below the epic heading. The marker is always the operator's choice — name matching only decides when to present the offer; the value is never set automatically. Accepted markers are written in Step 8. The heading line itself is never modified.
+
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-create-epics 3 project_name="$PROJECT_NAME" prd_version="$PRD_VERSION" epic_count="$EPIC_COUNT"`
 
 ### Step 4 — Break Into Stories
@@ -191,6 +193,11 @@ Concrete example (this is what the finalize.sh gate regex `^### Story E[0-9]+-S[
 - Acceptance Criteria:
   - AC1: Given a fresh project dir, when `gaia-init` runs, then `.gaia/` is created and committed.
 ```
+
+> **Catch-all marker output.** When the operator accepted a catch-all offer
+> in Step 3 for an epic, write the `<!-- catch_all: true -->` line as the first
+> non-blank line under that epic's heading in `epics-and-stories.md`. The heading
+> line itself is never modified; only a standalone marker line is inserted below it.
 
 > **Heading-format contract.** The story heading is literally
 > `### Story E{N}-S{N}: {Title}` — note the literal letter `S` between the epic
