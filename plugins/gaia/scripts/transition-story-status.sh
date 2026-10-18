@@ -2124,9 +2124,9 @@ _close_traced_issues() {
   local pr_number
   pr_number="$(_find_merged_pr_number "$story_key")"
 
-  local pr_ref=""
+  local by_clause="story ${story_key}"
   if [ -n "$pr_number" ]; then
-    pr_ref=" (PR #${pr_number})"
+    by_clause="PR #${pr_number} (story ${story_key})"
   fi
 
   local issue_num
@@ -2139,7 +2139,7 @@ _close_traced_issues() {
       # Fully addressed — close with comment.
       # Capture the real exit code before `local` resets $?.
       local gh_rc=0
-      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${story_key}${pr_ref}." 2>/dev/null || gh_rc=$?
+      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${by_clause}" 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
@@ -2152,7 +2152,7 @@ _close_traced_issues() {
       local remaining_keys
       remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
       local gh_rc=0
-      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${story_key}${pr_ref}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"
