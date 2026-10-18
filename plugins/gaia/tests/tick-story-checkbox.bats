@@ -414,6 +414,109 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Integration: tick tasks and verify the real snapshot reports correct counts
+# ---------------------------------------------------------------------------
+
+# _write_snapshot_project — scaffold a minimal .gaia project around a story
+# file so the real sprint-progress-snapshot.sh can parse it.
+_write_snapshot_project() {
+  local story_file="$1" story_key="$2"
+  local proj="$TEST_TMP/snap-project"
+  mkdir -p "$proj/.gaia/state" "$proj/.gaia/config"
+
+  local impl="$proj/.gaia/artifacts/implementation-artifacts"
+  local sdir="$impl/epic-test/${story_key}-snap-test"
+  mkdir -p "$sdir"
+  cp "$story_file" "$sdir/story.md"
+
+  cat > "$proj/.gaia/state/sprint-status.yaml" <<YAML
+sprint_id: "sprint-snap"
+status: active
+start_date: "2026-10-01"
+end_date: "2026-10-14"
+total_points: 5
+velocity_capacity: 100
+goals:
+  - "test"
+stories:
+  - key: "${story_key}"
+    title: "Story ${story_key}"
+    status: "in-progress"
+    points: 5
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-10-01"
+YAML
+
+  printf '%s' "$proj"
+}
+
+@test "real snapshot reports correct task count after ticking" {
+  # Build a clean fixture without fenced-code-block tasks so the snapshot's
+  # parser and the tick script agree on the task inventory.
+  local story="$TEST_TMP/snap-story.md"
+  cat > "$story" << 'SNAP_FIXTURE'
+---
+key: "E900-S1"
+status: in-progress
+points: 5
+---
+
+# Story: Snapshot integration fixture
+
+## Tasks / Subtasks
+
+- [ ] Task 1 -- First task
+- [ ] Task 2 -- Second task
+- [ ] Task 3 -- Third task
+- [x] Task 4 -- Already completed
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | UNVERIFIED | --- |
+SNAP_FIXTURE
+
+  # Tick task 1 with the real writer.
+  run bash "$TICK_SCRIPT" --file "$story" --task 1
+  [ "$status" -eq 0 ]
+
+  # Scaffold a project tree and run the real snapshot.
+  local proj story_dir
+  proj="$(_write_snapshot_project "$story" "E900-S1")"
+  story_dir="$proj/.gaia/artifacts/implementation-artifacts/epic-test/E900-S1-snap-test"
+
+  local snap_script
+  snap_script="$(snapshot_script_under_test "$SCRIPTS_DIR/sprint-progress-snapshot.sh")"
+
+  PROJECT_ROOT="$proj" run "$snap_script"
+  [ "$status" -eq 0 ]
+
+  local cache="$proj/.gaia/state/.sprint-progress-cache.json"
+  [ -f "$cache" ]
+
+  # 4 top-level tasks; task 4 was already ticked, task 1 just ticked = 2 done.
+  local done_count total_count
+  done_count="$(jq -r '.stories[0].tasks.done' "$cache")"
+  total_count="$(jq -r '.stories[0].tasks.total' "$cache")"
+  [ "$total_count" -eq 4 ]
+  [ "$done_count" -eq 2 ]
+
+  # Tick one more task in the project copy and re-run — count must increase.
+  bash "$TICK_SCRIPT" --file "$story_dir/story.md" --task 2
+  # Wipe incremental-refresh sidecars so the snapshot re-parses the story.
+  rm -f "$proj/.gaia/state/.sprint-progress-parsed" \
+        "$proj/.gaia/state/.sprint-progress-mtimes"
+  PROJECT_ROOT="$proj" run "$snap_script"
+  [ "$status" -eq 0 ]
+
+  done_count="$(jq -r '.stories[0].tasks.done' "$cache")"
+  [ "$done_count" -eq 3 ]
+}
+
+# ---------------------------------------------------------------------------
 # SKILL.md integration: Step 6 contains the tick instruction
 # ---------------------------------------------------------------------------
 @test "SKILL.md Step 6 contains the tick-story-checkbox.sh instruction" {
