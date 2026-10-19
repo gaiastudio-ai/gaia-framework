@@ -390,12 +390,6 @@ SPRINT  sprint-12  &#9679; live
               <td><code>/gaia-test-manual</code></td>
             </tr>
             <tr>
-              <td>An agent is waiting on the user (reported as waiting for
-                longer than the configured threshold, with no running
-                children)</td>
-              <td>(none)</td>
-            </tr>
-            <tr>
               <td>An action item is assigned to the user (matched by
                 alias)</td>
               <td><code>/gaia-action-items</code></td>
@@ -409,10 +403,7 @@ SPRINT  sprint-12  &#9679; live
         <p>
           The sidebar, band, status line, and
           <code>/gaia-sprint-status</code> all show ACTION NEEDED when
-          applicable, with one exception: <strong>"agent waiting on you"
-          appears only in the sidebar and band of the same session</strong>.
-          It does not appear in the status line or in
-          <code>/gaia-sprint-status</code> output.
+          applicable.
         </p>
         <p>
           Suggested commands come from a fixed allowlist
@@ -433,8 +424,8 @@ SPRINT  sprint-12  &#9679; live
         <h2>Configuration</h2>
         <p>
           The <code>sprint_status_mod</code> section in
-          <code>.gaia/config/project-config.yaml</code> accepts two
-          optional properties:
+          <code>.gaia/config/project-config.yaml</code> accepts one
+          optional property:
         </p>
 
         <h3><code>user_aliases</code></h3>
@@ -457,17 +448,6 @@ sprint_status_mod:
   user_aliases:
     - "alice"
     - "Alice Smith"</code></pre>
-
-        <h3><code>waiting_agent_threshold_seconds</code></h3>
-        <p>
-          An integer specifying how many seconds an agent must be in the
-          waiting state (with no running children) before triggering the
-          "agent waiting on you" indicator. Accepted range: 0--3600.
-        </p>
-        <p>Default: <code>120</code>.</p>
-        <pre><code># Example
-sprint_status_mod:
-  waiting_agent_threshold_seconds: 300</code></pre>
 
         <p>
           View the current values with

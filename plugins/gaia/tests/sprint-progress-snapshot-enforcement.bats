@@ -931,101 +931,6 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# Threshold validation
-# ---------------------------------------------------------------------------
-
-@test "threshold accepts valid integers and rejects non-integers" {
-  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
-  write_story E900-S1 in-progress 5
-
-  local config="$PROJECT_ROOT/.gaia/config/project-config.yaml"
-
-  # Valid: 0
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 0\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "0" ]
-
-  # Valid: 300
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 300\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "300" ]
-
-  # Invalid: "abc" -> fallback to 120
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: abc\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-
-  # Invalid: "-5" -> fallback to 120
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: -5\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-
-  # Invalid: "1e3" -> fallback to 120
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 1e3\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-
-  # Invalid: "12 34" -> fallback to 120
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: "12 34"\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-
-  # Invalid: 30-digit number -> fallback to 120 (length check)
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 123456789012345678901234567890\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-
-  # Empty config -> default 120
-  printf 'sprint_status_mod: {}\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-}
-
-@test "threshold above one hour falls back to the default with a warning" {
-  write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
-  write_story E900-S1 in-progress 5
-  local config="$PROJECT_ROOT/.gaia/config/project-config.yaml"
-
-  # 3600 is the largest value the config schema allows.
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 3600\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run --separate-stderr "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "3600" ]
-  ! grep -q 'invalid threshold' <<< "$stderr" || false
-
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 3601\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run --separate-stderr "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-  grep -q "invalid threshold value '3601', using default 120" <<< "$stderr"
-
-  # Leading zeros are read as decimal, and still capped.
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 0003601\n' > "$config"
-  rm -f "$CACHE" "$PROJECT_ROOT/.gaia/state/.sprint-progress-mtimes"
-  run "$SCRIPT"
-  [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
-}
-
-# ---------------------------------------------------------------------------
 # Control bytes in story paths
 # ---------------------------------------------------------------------------
 
@@ -1332,7 +1237,7 @@ run_bounded() {
   printf -- '---\ntitle: "T"\nstatus: review\nmanual_verification: true\n---\n' > "$dir/story.md"
   local out="$TEST_TMP/outside-meta"; mkdir -p "$out"
   printf 'E900-S1\tmanual-test\tp\tOUTSIDE-VERDICT\n' > "$out/ledger"
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 7\n  user_aliases:\n    - "outsider"\n' > "$out/cfg"
+  printf 'sprint_status_mod:\n  user_aliases:\n    - "outsider"\n' > "$out/cfg"
   printf 'items:\n  - id: "AI-990"\n    status: open\n    assignee: outsider\n' > "$out/ai"
   ln -s "$out/ledger" "$PROJECT_ROOT/.gaia/state/.review-gate-ledger"
   ln -s "$out/cfg" "$PROJECT_ROOT/.gaia/config/project-config.yaml"
@@ -1342,7 +1247,6 @@ run_bounded() {
   local err="$stderr"
   [ "$status" -eq 0 ]
   [ "$(jq '.stories[0].manual_test.verdict' "$CACHE")" = "null" ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
   [ "$(jq '[.action_needed[] | select(.rule == "c")] | length' "$CACHE")" = "0" ]
   run grep -c 'outsider\|OUTSIDE-VERDICT' "$CACHE"
   [ "$output" = "0" ]

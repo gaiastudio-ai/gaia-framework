@@ -182,20 +182,6 @@ _realpath_batch() {
 # Input validation
 # ---------------------------------------------------------------------------
 
-# _validate_threshold STR — return an integer from 0 to 3600 (the range the
-# config schema allows), or 120 with a warning
-_validate_threshold() {
-  local v="$1"
-  # Must be a plain non-negative integer (digits only, bounded length) no
-  # larger than one hour
-  if [ -n "$v" ] && [ "${#v}" -le 10 ] && [[ $v =~ ^[0-9]+$ ]] && [ "$((10#$v))" -le 3600 ]; then
-    printf '%s' "$((10#$v))"
-  else
-    [ -z "$v" ] || _warn "invalid threshold value '${v:0:20}', using default 120"
-    printf '120'
-  fi
-}
-
 # The command allowlist has ONE implementation: the jq `allow` function in
 # _JQ_DEFS, handed _ALLOWED_COMMANDS as positional arguments.  The cold
 # assembly and the warm re-validation both run every command through it.
@@ -598,7 +584,7 @@ _read_sprint_yaml() {
   ' "$yaml_file"
 }
 
-# _read_config_records FILE — L (alias) and H (threshold) records.
+# _read_config_records FILE — L (alias) records.
 _read_config_records() {
   local config_file="$1"
   [ -f "$config_file" ] || return 0
@@ -608,7 +594,6 @@ _read_config_records() {
     in_mod && /user_aliases:/ { in_aliases=1; next }
     in_aliases && /^[[:space:]]+- / { val=$0; sub(/^[[:space:]]+-[[:space:]]*/, "", val); gsub(/["'\'']/, "", val); gsub(/[\037\r\n]/, "", val); print "L\037" val; next }
     in_aliases && /^[[:space:]]/ && !/^[[:space:]]+- / { in_aliases=0 }
-    in_mod && /waiting_agent_threshold_seconds:/ { t=$0; sub(/.*waiting_agent_threshold_seconds:[[:space:]]*/, "", t); gsub(/"/, "", t); gsub(/[\037\r]/, "", t); sub(/[[:space:]]+$/, "", t); if (t!="" && t!="null") print "H\037" t }
   ' "$config_file" 2>/dev/null || true
 }
 
@@ -804,7 +789,6 @@ _JQ_COLD="${_JQ_DEFS}"'
       status: ($r[3] // "" | clean | cap(50) | if . == "NOT STARTED" then "UNVERIFIED" else . end)}])) as $G
 | (reduce ($R[] | select(.[0] == "V")) as $r ({}; .[$r[1]] = ($r[2] // "" | clean | cap(50)))) as $V
 | ([$R[] | select(.[0] == "L") | (.[1] // "") | strip | cap(100) | select(. != "")] | .[0:20]) as $aliases
-| ([$R[] | select(.[0] == "H") | (.[1] // "") | tonumber? ] | (.[0] // 120)) as $thr
 | ([$R[] | select(.[0] == "A") | .[1]] | .[0]
     | if . == null then [] else (try fromjson catch []) end
     | if type == "array" then . else [] end) as $AI
@@ -815,7 +799,7 @@ _JQ_COLD="${_JQ_DEFS}"'
      by_status: {}, day: {current: 0, total: null, pace: null}, active_phase: null,
      phases: [], unphased_stories: [], stories: [], action_needed: [], drift: [],
      readiness: {sprint_review: false, sprint_close: false},
-     user_aliases: $aliases, waiting_agent_threshold_seconds: $thr}
+     user_aliases: $aliases}
     | timefields({})
   else
     ([$R[] | select(.[0] == "S") | {k: .[1], rel: (.[2] // ""), mt: ((.[3] // "0") | tonumber? // 0)}
@@ -911,8 +895,7 @@ _JQ_COLD="${_JQ_DEFS}"'
                 | {story_key: .key, type: "status_mismatch",
                    detail: ("Story file says \(.status), sprint yaml says \(._ys | cap(50))" | cap(200))} ],
        readiness: {sprint_review: $all_dr, sprint_close: $all_done},
-       user_aliases: $aliases,
-       waiting_agent_threshold_seconds: $thr}
+       user_aliases: $aliases}
     | timefields([$stories[] | {key: .key, value: ._mt}] | from_entries)
   end
 '
@@ -1447,15 +1430,14 @@ _snapshot_build() {
     ledger_rec="$(SNAP_KEYS="${ok_keys[*]}" _ledger_records "$LEDGER_FILE")"
   fi
 
-  # --- Config: aliases + threshold ---
-  local cfg_rec="" cfg_out="" have_alias=0 thr_raw=""
+  # --- Config: aliases ---
+  local cfg_rec="" cfg_out="" have_alias=0
   local -a cfg_arr=()
   if [ "${meta_ok[2]}" = "1" ]; then cfg_rec="$(_read_config_records "$CONFIG_FILE")"; fi
   if [ -n "$cfg_rec" ]; then
     while IFS="$_US" read -r t1 t2; do
       case "$t1" in
         L) have_alias=1; cfg_arr+=("L${_US}${t2}") ;;
-        H) thr_raw="$t2" ;;
       esac
     done <<< "$cfg_rec"
   fi
@@ -1466,7 +1448,6 @@ _snapshot_build() {
     cfg_arr=("L${_US}user" "L${_US}${gname}")
   fi
   printf -v cfg_out '%s\n' "${cfg_arr[@]}"
-  local thr; thr="$(_validate_threshold "$thr_raw")"
 
   # --- Action-items registry (canonical state file first, then the resolver) ---
   local ai_rec="" ai_path="" ai_mt="" ai_readable=1
@@ -1506,7 +1487,6 @@ _snapshot_build() {
     [ -z "$story_rec" ]  || printf '%s\n' "$story_rec"
     [ -z "$ledger_rec" ] || printf '%s\n' "$ledger_rec"
     printf '%s' "$cfg_out"
-    printf 'H%s%s\n' "$_US" "$thr"
     printf 'M%sai_mt%s%s\n' "$_US" "$_US" "${ai_mt:-0}"
     [ -z "$ai_rec" ]     || printf '%s\n' "$ai_rec"
   } | jq -n -R -c "$_JQ_COLD" --args "${_ALLOWED_COMMANDS[@]}" > "$cache_tmp" || [ ! -s "$cache_tmp" ]; then

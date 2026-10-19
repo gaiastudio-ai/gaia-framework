@@ -4,9 +4,9 @@
 # reconciler skip behaviour, and config-show extract for the sprint_status_mod
 # config section.
 #
-# Negative scenarios (unknown key, empty-string alias, negative threshold) run
-# UNCONDITIONALLY — no skip guard. Each asserts exit 1 AND output is not
-# "PASS (DEGRADED)" so a missing schema engine is a hard failure.
+# Negative scenarios (unknown key, empty-string alias) run UNCONDITIONALLY — no
+# skip guard. Each asserts exit 1 AND output is not "PASS (DEGRADED)" so a
+# missing schema engine is a hard failure.
 
 bats_require_minimum_version 1.5.0
 
@@ -143,8 +143,7 @@ _get_hydration_array() {
   cfg="$(_write_config 'sprint_status_mod:
   user_aliases:
     - alice
-    - bob
-  waiting_agent_threshold_seconds: 60')"
+    - bob')"
   _assert_validator_passes "$cfg"
 }
 
@@ -156,6 +155,15 @@ _get_hydration_array() {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
   user_aliases: []
   unknown_key: true')" "sprint_status_mod"
+}
+
+@test "deprecated waiting_agent_threshold_seconds is tolerated by schema" {
+  local cfg
+  cfg="$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+  waiting_agent_threshold_seconds: 300')"
+  _assert_validator_passes "$cfg"
 }
 
 # ---------------------------------------------------------------------------
@@ -282,53 +290,7 @@ _get_hydration_array() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 5: threshold of 0 accepted
-# ---------------------------------------------------------------------------
-
-@test "waiting_agent_threshold_seconds of 0 is accepted" {
-  _assert_schema_declares
-
-  local cfg
-  cfg="$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 0')"
-  _assert_validator_passes "$cfg"
-}
-
-# ---------------------------------------------------------------------------
-# Scenario 6: negative threshold rejected
-# ---------------------------------------------------------------------------
-
-@test "negative waiting_agent_threshold_seconds is rejected" {
-  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: -1')" "waiting_agent_threshold_seconds"
-}
-
-# ---------------------------------------------------------------------------
-# Scenario 6b: threshold upper bound is one hour (3600 seconds)
-# ---------------------------------------------------------------------------
-
-@test "waiting_agent_threshold_seconds of 3600 (upper bound) is accepted" {
-  _assert_schema_declares
-
-  _assert_validator_passes "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 3600')"
-}
-
-@test "waiting_agent_threshold_seconds of 3601 is rejected" {
-  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 3601')" "waiting_agent_threshold_seconds"
-}
-
-@test "lower bound 0 is still accepted alongside the upper bound" {
-  _assert_schema_declares
-  [ "$(jq '.properties.sprint_status_mod.properties.waiting_agent_threshold_seconds.maximum' "$SCHEMA")" = "3600" ]
-
-  _assert_validator_passes "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 0')"
-}
-
-# ---------------------------------------------------------------------------
-# Scenario 7: config-show extract displays section byte-verbatim
+# Scenario 5: config-show extract displays section byte-verbatim
 # ---------------------------------------------------------------------------
 
 @test "config-yaml-editor extract returns sprint_status_mod byte-verbatim" {
@@ -346,7 +308,6 @@ sprint_status_mod:
   user_aliases:
     - "Alice B"
     - bob
-  waiting_agent_threshold_seconds: 90
 YAML
 
   # extract emits the header line followed by the body, preserving comments,
@@ -358,7 +319,6 @@ sprint_status_mod:
   user_aliases:
     - "Alice B"
     - bob
-  waiting_agent_threshold_seconds: 90
 EOF
 )"
 
@@ -395,20 +355,9 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Type-constraint rejection tests — guards against the threshold accepting
-# fractional numbers or strings, aliases accepting non-array or non-string
-# types, and the section accepting bare scalars.
+# Type-constraint rejection tests — guards against aliases accepting
+# non-array or non-string types, and the section accepting bare scalars.
 # ---------------------------------------------------------------------------
-
-@test "fractional threshold is rejected (type integer, not number)" {
-  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 1.5')" "waiting_agent_threshold_seconds"
-}
-
-@test "string threshold is rejected" {
-  _assert_validator_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: "120"')" "waiting_agent_threshold_seconds"
-}
 
 @test "scalar string user_aliases is rejected (must be array)" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod:
@@ -423,16 +372,6 @@ EOF
 
 @test "plain string for the whole section is rejected" {
   _assert_validator_rejects "$(_write_config 'sprint_status_mod: some-string')" "sprint_status_mod"
-}
-
-# ---------------------------------------------------------------------------
-# Schema default assertion — pins the built-in threshold to the documented value.
-# ---------------------------------------------------------------------------
-
-@test "schema default for waiting_agent_threshold_seconds is 120" {
-  local val
-  val="$(jq '.properties.sprint_status_mod.properties.waiting_agent_threshold_seconds.default' "$SCHEMA")"
-  [ "$val" = "120" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -469,29 +408,18 @@ _degraded_rejects() {
 @test "degraded path accepts valid sprint_status_mod sections" {
   _degraded_passes "$(_write_config 'sprint_status_mod:
   user_aliases:
-    - alice
-  waiting_agent_threshold_seconds: 3600')"
-  _degraded_passes "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 0')"
+    - alice')"
   _degraded_passes "$(_write_config 'sprint_status_mod:')"
   _degraded_passes "$(_write_config 'sprint_status_mod: {}')"
   _degraded_passes "$(_write_config 'sprint_status_mod:
   user_aliases: []')"
 }
 
-@test "degraded path rejects a threshold outside 0 to 3600" {
-  _degraded_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: 3601')" ".waiting_agent_threshold_seconds — must be between 0 and 3600"
-  _degraded_rejects "$(_write_config 'sprint_status_mod:
-  waiting_agent_threshold_seconds: -1')" ".waiting_agent_threshold_seconds — must be between 0 and 3600"
-}
-
-@test "degraded path rejects a threshold that is not an integer" {
-  local v
-  for v in 1.5 '"120"' 'null' 'true' '[1]'; do
-    _degraded_rejects "$(_write_config "sprint_status_mod:
-  waiting_agent_threshold_seconds: $v")" ".waiting_agent_threshold_seconds — must be an integer"
-  done
+@test "degraded path tolerates deprecated waiting_agent_threshold_seconds" {
+  _degraded_passes "$(_write_config 'sprint_status_mod:
+  user_aliases:
+    - alice
+  waiting_agent_threshold_seconds: 300')"
 }
 
 @test "degraded path rejects bad user_aliases values" {
