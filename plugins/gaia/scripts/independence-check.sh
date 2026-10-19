@@ -749,67 +749,76 @@ _ic_run_rules_cd() {
     _ic_die "missing file: $missing_key"
   fi
 
-  # Batch parse ALL story files in a single shell script invocation.
-  # Avoids per-story awk process spawns. Uses a delimiter-wrapped
-  # concatenation of all story files with key markers.
+  # Batch parse ALL story files in one awk invocation. The awk program
+  # reads parse_input first (to learn key-to-file mapping), then reads
+  # each story file in sequence using getline, avoiding per-file cat/awk
+  # subprocess spawns entirely.
   local all_parsed="$tmpdir/all_parsed.tsv"
   local pr_prefix="${_IC_PROJECT_ROOT%/}/"
-  local concat_input="$tmpdir/concat_stories.txt"
-  : > "$concat_input"
-  while IFS=$'\t' read -r skey sprint_id story_file; do
-    [ -n "$skey" ] || continue
-    [ -f "$story_file" ] || _ic_die "missing file: $skey"
-    printf '###STORY_MARKER###\t%s\n' "$skey"
-    cat "$story_file"
-  done < "$parse_input" > "$concat_input"
 
-  awk -F'\t' '
-    /^###STORY_MARKER###\t/ {
-      # Emit previous story META line if any.
-      if (cur_key != "") printf "%s\tMETA\t%d\t%d\n", cur_key, has_ts, has_cs
-      cur_key = $2; in_fm = 0; started = 0; f = 0; has_ts = 0; has_cs = 0
-      next
-    }
-    /^---[[:space:]]*$/ {
-      if (!started) { started = 1; in_fm = 1; next }
-      else { in_fm = 0; next }
-    }
-    !in_fm { next }
-    /^predicted_touch_set:/ {
-      has_ts = 1; f = 1
-      line = $0; sub(/^predicted_touch_set:[[:space:]]*/, "", line)
-      if (match(line, /^\[/)) {
-        sub(/^\[/, "", line); sub(/\][[:space:]]*$/, "", line)
-        n = split(line, items, /[[:space:]]*,[[:space:]]*/)
-        for (i = 1; i <= n; i++) {
-          v = items[i]; gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
-          if (v != "") printf "%s\tTS\t%s\n", cur_key, v
+  awk -F'\t' -v parse_input_f="$parse_input" '
+    BEGIN {
+      # Read the parse_input file to get key -> story_file mapping.
+      while ((getline line < parse_input_f) > 0) {
+        n = split(line, parts, "\t")
+        if (n >= 3) {
+          nfiles++
+          file_key[nfiles] = parts[1]
+          file_path[nfiles] = parts[3]
         }
       }
-      next
-    }
-    /^predicted_config_sections:/ {
-      has_cs = 1; f = 2
-      line = $0; sub(/^predicted_config_sections:[[:space:]]*/, "", line)
-      if (match(line, /^\[/)) {
-        sub(/^\[/, "", line); sub(/\][[:space:]]*$/, "", line)
-        n = split(line, items, /[[:space:]]*,[[:space:]]*/)
-        for (i = 1; i <= n; i++) {
-          v = items[i]; gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
-          if (v != "") printf "%s\tCS\t%s\n", cur_key, v
+      close(parse_input_f)
+
+      # Process each story file.
+      for (fi = 1; fi <= nfiles; fi++) {
+        cur_key = file_key[fi]
+        fp = file_path[fi]
+        in_fm = 0; started = 0; f = 0; has_ts = 0; has_cs = 0
+        while ((getline fline < fp) > 0) {
+          if (fline ~ /^---[[:space:]]*$/) {
+            if (!started) { started = 1; in_fm = 1; continue }
+            else { in_fm = 0; continue }
+          }
+          if (!in_fm) continue
+          if (fline ~ /^predicted_touch_set:/) {
+            has_ts = 1; f = 1
+            sub(/^predicted_touch_set:[[:space:]]*/, "", fline)
+            if (match(fline, /^\[/)) {
+              sub(/^\[/, "", fline); sub(/\][[:space:]]*$/, "", fline)
+              nn = split(fline, items, /[[:space:]]*,[[:space:]]*/)
+              for (ii = 1; ii <= nn; ii++) {
+                v = items[ii]; gsub(/^["'"'"'"'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'"'"'"'[:space:]]+$/, "", v)
+                if (v != "") printf "%s\tTS\t%s\n", cur_key, v
+              }
+            }
+            continue
+          }
+          if (fline ~ /^predicted_config_sections:/) {
+            has_cs = 1; f = 2
+            sub(/^predicted_config_sections:[[:space:]]*/, "", fline)
+            if (match(fline, /^\[/)) {
+              sub(/^\[/, "", fline); sub(/\][[:space:]]*$/, "", fline)
+              nn = split(fline, items, /[[:space:]]*,[[:space:]]*/)
+              for (ii = 1; ii <= nn; ii++) {
+                v = items[ii]; gsub(/^["'"'"'"'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'"'"'"'[:space:]]+$/, "", v)
+                if (v != "") printf "%s\tCS\t%s\n", cur_key, v
+              }
+            }
+            continue
+          }
+          if (f > 0 && fline ~ /^[[:space:]]*-[[:space:]]/) {
+            v = fline; sub(/^[[:space:]]*-[[:space:]]*/, "", v)
+            gsub(/^["'"'"'"'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'"'"'"'[:space:]]+$/, "", v)
+            if (v != "") printf "%s\t%s\t%s\n", cur_key, (f == 1 ? "TS" : "CS"), v
+            continue
+          }
+          if (f > 0 && fline ~ /^[^[:space:]-]/) f = 0
         }
+        close(fp)
+        printf "%s\tMETA\t%d\t%d\n", cur_key, has_ts, has_cs
       }
-      next
     }
-    f > 0 && /^[[:space:]]*-[[:space:]]/ {
-      v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v)
-      gsub(/^["'"'"'"'"'"'[:space:]]+|["'"'"'"'"'"'[:space:]]+$/, "", v)
-      if (v != "") printf "%s\t%s\t%s\n", cur_key, (f == 1 ? "TS" : "CS"), v
-      next
-    }
-    f > 0 && /^[^[:space:]-]/ { f = 0 }
-    END { if (cur_key != "") printf "%s\tMETA\t%d\t%d\n", cur_key, has_ts, has_cs }
-  ' "$concat_input" > "$all_parsed"
+  ' /dev/null > "$all_parsed"
 
   # Process ALL parsed data in a single awk pass: check field presence,
   # classify entries, write per-story type files, config section files,
@@ -963,9 +972,7 @@ _ic_run_rules_cd() {
   fi
 
   # ---- Phase 3: Build per-story resolved path sets ----
-  # For literals: write directly (realpath only for existing files).
-  # For globs: write expanded paths that match the pattern.
-  # Optimized: minimal per-file syscalls.
+  # Batched: single realpath call for all literal paths, awk for classification.
   local resolved_dir="$tmpdir/resolved_paths"
   mkdir -p "$resolved_dir"
   local realpath_map="$tmpdir/realpath_map.tsv"
@@ -977,55 +984,140 @@ _ic_run_rules_cd() {
   local _ic_rpr
   _ic_rpr="$(realpath "${_IC_PROJECT_ROOT}" 2>/dev/null)" || _ic_rpr="${_IC_PROJECT_ROOT}"
 
+  # Collect all literal paths from all stories in a single awk pass.
+  local all_literals="$tmpdir/all_literals.tsv"
+  awk -F'\t' '
+    NR == FNR { sid[$1] = $2; next }
+    FILENAME != ARGV[1] {
+      # Reading type files. Get the story key from the filename.
+      fname = FILENAME
+      sub(/.*\//, "", fname)     # strip directory
+      sub(/_type\.txt$/, "", fname) # strip suffix
+      if ($2 == "L") printf "%s\t%s\t%s\n", $1, fname, sid[fname]
+    }
+  ' "$tmpdir/ts_meta.tsv" "$ts_dir"/*_type.txt > "$all_literals" 2>/dev/null || : > "$all_literals"
+
+  # Build list of existing files for batch realpath.
+  local existing_files="$tmpdir/existing_files.txt"
+  local _pr_noslash="${_IC_PROJECT_ROOT%/}"
+  awk -F'\t' -v pr="$_pr_noslash" '
+    {
+      fp = pr "/" $1
+      # Use getline to test file existence via system().
+      # Faster: just emit all paths; realpath will fail on non-existing ones.
+      print fp "\t" $1
+    }
+  ' "$all_literals" > "$tmpdir/all_fps.tsv"
+  # Filter to existing files only (single test pass via shell test -e).
+  : > "$existing_files"
+  while IFS=$'\t' read -r fp norm; do
+    [ -e "$fp" ] && printf '%s\t%s\n' "$fp" "$norm"
+  done < "$tmpdir/all_fps.tsv" > "$existing_files"
+
+  if [ -s "$existing_files" ]; then
+    # Single realpath invocation for all files. realpath accepts multiple
+    # arguments and outputs one resolved path per line in argument order.
+    local _rp_args_f="$tmpdir/rp_args.txt"
+    awk -F'\t' '{ print $1 }' "$existing_files" > "$_rp_args_f"
+    local _rp_norms_f="$tmpdir/rp_norms.txt"
+    awk -F'\t' '{ print $2 }' "$existing_files" > "$_rp_norms_f"
+    # xargs batches the arguments to avoid ARG_MAX. -d '\n' ensures paths
+    # with spaces are handled correctly (GNU xargs; macOS xargs uses -0).
+    if xargs -0 realpath < /dev/null >/dev/null 2>&1; then
+      tr '\n' '\0' < "$_rp_args_f" | xargs -0 realpath 2>/dev/null > "$tmpdir/rp_resolved.txt" || true
+    else
+      xargs realpath < "$_rp_args_f" 2>/dev/null > "$tmpdir/rp_resolved.txt" || true
+    fi
+    paste "$_rp_norms_f" "$tmpdir/rp_resolved.txt" > "$tmpdir/realpath_paired.tsv" 2>/dev/null || : > "$tmpdir/realpath_paired.tsv"
+  else
+    : > "$tmpdir/realpath_paired.tsv"
+  fi
+
+  # Build resolved paths using awk on the paired data.
+  # Also build per-sprint consolidated paths for Phase 4 (avoids per-story
+  # cat loops later).
+  local sprint_paths_dir="$tmpdir/sprint_paths"
+  local sprint_types_dir="$tmpdir/sprint_types"
+  mkdir -p "$sprint_paths_dir" "$sprint_types_dir"
+
+  awk -F'\t' -v rpr="$_ic_rpr" -v rdir="$resolved_dir" -v rmapf="$realpath_map" \
+              -v spdir="$sprint_paths_dir" '
+    # Load realpath pairs: original<TAB>resolved
+    NR == FNR {
+      rp[$1] = $2
+      next
+    }
+    # all_literals: norm<TAB>skey<TAB>sid
+    {
+      norm = $1; skey = $2; sid = $3
+      outf = rdir "/" skey ".txt"
+      spf = spdir "/" sid ".txt"
+      if (norm in rp) {
+        resolved = rp[norm]
+        if (index(resolved, rpr "/") == 1) {
+          rel = substr(resolved, length(rpr) + 2)
+          print rel >> outf
+          print rel >> spf
+          if (rel != norm) printf "%s\t%s\t%s\n", norm, rel, skey >> rmapf
+        } else if (resolved == rpr) {
+          print "." >> outf
+          print "." >> spf
+        } else {
+          printf "WARN\t%s\t%s\t%s\n", norm, sid, skey >> (rdir "/_warnings.txt")
+        }
+      } else {
+        print norm >> outf
+        print norm >> spf
+      }
+    }
+  ' "$tmpdir/realpath_paired.tsv" "$all_literals"
+
+  # Build per-sprint type files by reading meta + type files in awk.
+  awk -F'\t' -v tsdir="$ts_dir" -v stdir="$sprint_types_dir" '
+    { sid[$1] = $2 }
+    END {
+      for (key in sid) {
+        tf = tsdir "/" key "_type.txt"
+        sf = stdir "/" sid[key] ".txt"
+        while ((getline line < tf) > 0) print line >> sf
+        close(tf)
+      }
+      # Close all output files.
+      for (key in sid) close(stdir "/" sid[key] ".txt")
+    }
+  ' "$tmpdir/ts_meta.tsv"
+
+  # Read any warnings.
+  if [ -f "$resolved_dir/_warnings.txt" ]; then
+    while IFS=$'\t' read -r wtype wnorm wsid wskey; do
+      cd_warnings="${cd_warnings}WARN out-of-root path excluded: ${wnorm} (${wsid})
+"
+    done < "$resolved_dir/_warnings.txt"
+    rm -f "$resolved_dir/_warnings.txt"
+  fi
+
+  # Handle glob entries: match expanded paths per-pattern per-story.
+  # This remains a bash loop but only iterates over stories with globs.
   while IFS=$'\t' read -r skey sprint_id has_lit has_glb; do
     [ -n "$skey" ] || continue
-    local out_f="$resolved_dir/${skey}.txt"
+    [ "$has_glb" -ne 0 ] || { printf '%s\t0\n' "$skey" >> "$tmpdir/glob_match.tsv"; continue; }
     local type_f="$ts_dir/${skey}_type.txt"
-    : > "$out_f"
+    local out_f="$resolved_dir/${skey}.txt"
     local glob_matched_any=0
-
-    while IFS=$'\t' read -r norm etype; do
-      [ -n "$norm" ] || continue
-      if [ "$etype" = "L" ]; then
-        # Literal: check existence and realpath in one shot.
-        local full_path="${_IC_PROJECT_ROOT%/}/${norm}"
-        if [ -e "$full_path" ]; then
-          local rpath
-          rpath="$(realpath "$full_path" 2>/dev/null)" || rpath="$full_path"
-          case "$rpath" in
-            "${_ic_rpr}"/*)
-              local rel_rpath="${rpath#"${_ic_rpr}"/}"
-              printf '%s\n' "$rel_rpath" >> "$out_f"
-              [ "$rel_rpath" != "$norm" ] && \
-                printf '%s\t%s\t%s\n' "$norm" "$rel_rpath" "$skey" >> "$realpath_map"
-              ;;
-            "${_ic_rpr}")
-              printf '%s\n' "." >> "$out_f" ;;
-            *)
-              cd_warnings="${cd_warnings}WARN out-of-root path excluded: ${norm} (${sprint_id})
-" ;;
-          esac
-        else
-          printf '%s\n' "$norm" >> "$out_f"
-        fi
-      else
-        # Glob: for each expanded path, check if it matches this pattern.
-        # Use grep where the glob is a simple suffix pattern.
-        if [ -s "$expanded_file" ]; then
-          local mc=0
-          while IFS= read -r epath; do
-            [ -n "$epath" ] || continue
-            # shellcheck disable=SC2254
-            case "$epath" in $norm) printf '%s\n' "$epath" >> "$out_f"; mc=$((mc+1)) ;; esac
-          done < "$expanded_file"
-          [ "$mc" -gt 0 ] && glob_matched_any=1
-        fi
-      fi
-    done < "$type_f"
-
+    if [ -s "$expanded_file" ]; then
+      while IFS=$'\t' read -r norm etype; do
+        [ "$etype" = "G" ] || continue
+        [ -n "$norm" ] || continue
+        while IFS= read -r epath; do
+          [ -n "$epath" ] || continue
+          # shellcheck disable=SC2254
+          case "$epath" in $norm) printf '%s\n' "$epath" >> "$out_f"; glob_matched_any=1 ;; esac
+        done < "$expanded_file"
+      done < "$type_f"
+    fi
     printf '%s\t%d\n' "$skey" "$glob_matched_any" >> "$tmpdir/glob_match.tsv"
 
-    if [ "$has_lit" -eq 0 ] && [ "$has_glb" -ne 0 ] && [ "$glob_matched_any" -eq 0 ]; then
+    if [ "$has_lit" -eq 0 ] && [ "$glob_matched_any" -eq 0 ]; then
       local sf
       sf="$(awk -F'\t' -v k="$skey" '$1 == k { print $2; exit }' "$resolved_f")"
       local diag="FAIL indeterminate: all entries zero-match globs: ${sprint_id} ${sf}"
@@ -1041,6 +1133,25 @@ _ic_run_rules_cd() {
   fi
 
   # ---- Phase 4: Per-active-sprint rules (c)/(d) evaluation ----
+  # Pre-build per-sprint consolidated data in a single pass to minimize
+  # subprocess spawns during the comparison loop.
+  local _ic_config_path=".gaia/config/project-config.yaml"
+
+  # Use pre-built per-sprint files from Phase 3.
+  # Pre-build candidate keys list once.
+  local cand_keys_f="$tmpdir/cand_keys.txt"
+  awk -F'\t' -v s="$candidate" '$2 == s { print $1 }' "$membership_f" > "$cand_keys_f"
+
+  # Filter config path once for candidate sprint.
+  local cand_paths_filtered="$tmpdir/cand_paths_f.txt"
+  local cand_types_filtered="$tmpdir/cand_types_f.txt"
+  local _cand_sp="$sprint_paths_dir/${candidate}.txt"
+  local _cand_st="$sprint_types_dir/${candidate}.txt"
+  [ -f "$_cand_sp" ] || : > "$_cand_sp"
+  [ -f "$_cand_st" ] || : > "$_cand_st"
+  /usr/bin/grep -Fxv "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
+  /usr/bin/grep -Fv "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
+
   local cd_overall_rc=0
   local active_id
 
@@ -1049,43 +1160,24 @@ _ic_run_rules_cd() {
     local rule_c_fail=0 rule_d_fail=0
     local rule_c_diag="" rule_d_diag=""
 
-    # Collect candidate story keys and active story keys.
-    local cand_keys_f="$tmpdir/cand_keys_${active_id}.txt"
+    # Use pre-built per-sprint files; filter config path.
     local act_keys_f="$tmpdir/act_keys_${active_id}.txt"
-    awk -F'\t' -v s="$candidate" '$2 == s { print $1 }' "$membership_f" > "$cand_keys_f"
     awk -F'\t' -v s="$active_id" '$2 == s { print $1 }' "$membership_f" > "$act_keys_f"
 
-    # ---- Rule (c): Touch-set overlap (sprint-level optimized) ----
-    # Collect all paths per sprint, then compare at the sprint level
-    # to avoid O(stories^2) per-pair comparisons.
-    local _ic_config_path=".gaia/config/project-config.yaml"
+    local _act_sp="$sprint_paths_dir/${active_id}.txt"
+    local _act_st="$sprint_types_dir/${active_id}.txt"
+    [ -f "$_act_sp" ] || : > "$_act_sp"
+    [ -f "$_act_st" ] || : > "$_act_st"
 
-    # Candidate sprint: all resolved paths (excluding config).
-    local cand_all_paths="$tmpdir/cand_paths_${active_id}.txt"
-    local act_all_paths="$tmpdir/act_paths_${active_id}.txt"
-    local cand_all_types="$tmpdir/cand_types_${active_id}.txt"
-    local act_all_types="$tmpdir/act_types_${active_id}.txt"
-    : > "$cand_all_paths"
-    : > "$act_all_paths"
-    : > "$cand_all_types"
-    : > "$act_all_types"
+    local act_paths_filtered="$tmpdir/act_paths_f_${active_id}.txt"
+    local act_types_filtered="$tmpdir/act_types_f_${active_id}.txt"
+    /usr/bin/grep -Fxv "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
+    /usr/bin/grep -Fv "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
 
-    local ck ak
-    while IFS= read -r ck; do
-      [ -n "$ck" ] || continue
-      [ -f "$resolved_dir/${ck}.txt" ] && \
-        /usr/bin/grep -Fxv "$_ic_config_path" "$resolved_dir/${ck}.txt" >> "$cand_all_paths" 2>/dev/null || true
-      [ -f "$ts_dir/${ck}_type.txt" ] && \
-        /usr/bin/grep -Fv "$_ic_config_path" "$ts_dir/${ck}_type.txt" >> "$cand_all_types" 2>/dev/null || true
-    done < "$cand_keys_f"
-
-    while IFS= read -r ak; do
-      [ -n "$ak" ] || continue
-      [ -f "$resolved_dir/${ak}.txt" ] && \
-        /usr/bin/grep -Fxv "$_ic_config_path" "$resolved_dir/${ak}.txt" >> "$act_all_paths" 2>/dev/null || true
-      [ -f "$ts_dir/${ak}_type.txt" ] && \
-        /usr/bin/grep -Fv "$_ic_config_path" "$ts_dir/${ak}_type.txt" >> "$act_all_types" 2>/dev/null || true
-    done < "$act_keys_f"
+    local cand_all_paths="$cand_paths_filtered"
+    local cand_all_types="$cand_types_filtered"
+    local act_all_paths="$act_paths_filtered"
+    local act_all_types="$act_types_filtered"
 
     # 1. Direct path overlap (resolved paths).
     local overlap_path=""
