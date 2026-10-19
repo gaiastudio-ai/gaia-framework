@@ -124,13 +124,27 @@ jobs:
           # Move github.base_ref into an env var so that a crafted branch name
           # cannot inject shell commands via the expression interpolation.
           PR_BASE_REF: ${{ github.base_ref }}
-          # Cap the number of diff-selected files to prevent timeout on large
-          # diffs such as staging-to-main promotion PRs.  A promotion diff
-          # selects nearly the entire suite; without a cap the 5-minute timeout
-          # cancels the job and poisons the overall workflow conclusion.
-          FAST_FEEDBACK_MAX_FILES: '200'
+          # Cap the number of diff-selected files so the job finishes within
+          # its 5-minute timeout.  Measured per-file cost: ~3.9 s/file mean,
+          # ~107 s worst case (from CI run 39215662213, 798 files).  Budget
+          # after setup is ~289 s.  50 files x 3.9 s = ~195 s average, well
+          # within budget; the promotion-PR skip below handles the extreme
+          # case where the diff selects hundreds of files.
+          FAST_FEEDBACK_MAX_FILES: '50'
         run: |
           set -euo pipefail
+
+          # Skip entirely on promotion PRs (base = release branch).
+          # A promotion diff selects nearly the entire suite; the full sharded
+          # run already covers it.  Without a skip the 5-minute timeout would
+          # cancel the job and poison the overall workflow conclusion.
+          if [ "${PR_BASE_REF}" = "main" ]; then
+            echo "Promotion PR (base=main) — skipping fast feedback; full suite covers this diff."
+            echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
+            echo "Skipped: promotion PR targeting **main**." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           selected=$(.github/scripts/diff-select-tests.sh "origin/${PR_BASE_REF}" || true)
           if [ -z "$selected" ]; then
             echo "No diff-selected tests to run."
@@ -140,8 +154,8 @@ jobs:
           fi
           count=$(echo "$selected" | wc -l | tr -d ' ')
 
-          # Cap selection to avoid timeout on very large diffs (e.g. promotion PRs).
-          max="${FAST_FEEDBACK_MAX_FILES:-200}"
+          # Cap selection to avoid timeout on very large feature-branch diffs.
+          max="${FAST_FEEDBACK_MAX_FILES:-50}"
           if [ "$count" -gt "$max" ]; then
             dropped=$((count - max))
             selected=$(echo "$selected" | head -n "$max")

@@ -47,7 +47,11 @@ YAML
 # Extended gh shim that handles:
 #   gh run list --branch <b>  -> GH_FAKE_BRANCH_RUNS_JSON (or GH_FAKE_JSON)
 #   gh run list --commit <c>  -> GH_FAKE_COMMIT_RUNS_JSON
-#   gh pr  list ...           -> GH_FAKE_PR_JSON
+#   gh pr  list --base main   -> GH_FAKE_PR_MAIN_JSON (or GH_FAKE_PR_JSON)
+#   gh pr  list --base staging-> GH_FAKE_PR_STAGING_JSON (or GH_FAKE_PR_JSON)
+#
+# When GH_SHIM_FAIL_PR=1, the pr-list subcommand exits non-zero.
+# When GH_SHIM_FAIL_RUN=1, the run-list subcommand exits non-zero.
 _install_gh_shim() {
   local shim_dir="$TEST_TMP/bin"
   mkdir -p "$shim_dir"
@@ -55,6 +59,7 @@ _install_gh_shim() {
 #!/usr/bin/env bash
 case "$1 $2" in
   "run list")
+    [ "${GH_SHIM_FAIL_RUN:-0}" = "1" ] && { echo "gh-shim: network error" >&2; exit 1; }
     has_commit=0
     for a in "$@"; do
       [ "$a" = "--commit" ] && has_commit=1
@@ -66,7 +71,19 @@ case "$1 $2" in
     fi
     ;;
   "pr list")
-    printf '%s' "${GH_FAKE_PR_JSON:-[]}"
+    [ "${GH_SHIM_FAIL_PR:-0}" = "1" ] && { echo "gh-shim: network error" >&2; exit 1; }
+    # Distinguish --base main from --base staging.
+    base_branch=""
+    next_is_base=0
+    for a in "$@"; do
+      if [ "$next_is_base" = "1" ]; then base_branch="$a"; next_is_base=0; fi
+      [ "$a" = "--base" ] && next_is_base=1
+    done
+    case "$base_branch" in
+      main)    printf '%s' "${GH_FAKE_PR_MAIN_JSON:-${GH_FAKE_PR_JSON:-[]}}" ;;
+      staging) printf '%s' "${GH_FAKE_PR_STAGING_JSON:-${GH_FAKE_PR_JSON:-[]}}" ;;
+      *)       printf '%s' "${GH_FAKE_PR_JSON:-[]}" ;;
+    esac
     ;;
   *)
     echo "gh-shim: unhandled args: $*" >&2
@@ -113,8 +130,8 @@ GITSHIM
   _install_gh_shim
   _install_git_shim "aaa111bbb222ccc333ddd444eee555fff666777a"
 
-  # The merged PR maps the release SHA to the promotion PR head commit.
-  export GH_FAKE_PR_JSON='[{"headRefOid":"pr-head-1234567890","mergeCommit":{"oid":"aaa111bbb222ccc333ddd444eee555fff666777a"}}]'
+  # The merged PR on main maps the release SHA to the promotion PR head commit.
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"pr-head-1234567890","mergeCommit":{"oid":"aaa111bbb222ccc333ddd444eee555fff666777a"}}]'
   # Commit-based query returns green checks for the promotion PR head.
   export GH_FAKE_COMMIT_RUNS_JSON='[
     {"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"pr-head-1234567890"},
@@ -139,7 +156,7 @@ GITSHIM
   _install_gh_shim
   _install_git_shim "release-sha-00112233"
 
-  export GH_FAKE_PR_JSON='[{"headRefOid":"prh-9999","mergeCommit":{"oid":"release-sha-00112233"}}]'
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"prh-9999","mergeCommit":{"oid":"release-sha-00112233"}}]'
   export GH_FAKE_COMMIT_RUNS_JSON='[
     {"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"prh-9999"}
   ]'
@@ -160,7 +177,7 @@ GITSHIM
   _install_gh_shim
   _install_git_shim "rel-sha-cancel-test"
 
-  export GH_FAKE_PR_JSON='[{"headRefOid":"prh-cancel","mergeCommit":{"oid":"rel-sha-cancel-test"}}]'
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"prh-cancel","mergeCommit":{"oid":"rel-sha-cancel-test"}}]'
   export GH_FAKE_COMMIT_RUNS_JSON='[
     {"name":"plugin-ci","status":"completed","conclusion":"cancelled","headSha":"prh-cancel"},
     {"name":"selective-tests","status":"completed","conclusion":"success","headSha":"prh-cancel"}
@@ -179,7 +196,7 @@ GITSHIM
   _install_gh_shim
   _install_git_shim "rel-sha-fail-test"
 
-  export GH_FAKE_PR_JSON='[{"headRefOid":"prh-fail","mergeCommit":{"oid":"rel-sha-fail-test"}}]'
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"prh-fail","mergeCommit":{"oid":"rel-sha-fail-test"}}]'
   export GH_FAKE_COMMIT_RUNS_JSON='[
     {"name":"plugin-ci","status":"completed","conclusion":"failure","headSha":"prh-fail"}
   ]'
@@ -197,7 +214,7 @@ GITSHIM
   _install_git_shim "rel-sha-missing-test"
 
   # Only plugin-ci present; selective-tests is missing entirely.
-  export GH_FAKE_PR_JSON='[{"headRefOid":"prh-miss","mergeCommit":{"oid":"rel-sha-missing-test"}}]'
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"prh-miss","mergeCommit":{"oid":"rel-sha-missing-test"}}]'
   export GH_FAKE_COMMIT_RUNS_JSON='[
     {"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"prh-miss"}
   ]'
@@ -210,44 +227,78 @@ GITSHIM
 }
 
 # ---------------------------------------------------------------------------
-# Fallback: when no merged PR is found, gate uses branch-based query
+# Fail-closed: no matching PR for the release SHA
 # ---------------------------------------------------------------------------
 
-@test "gate falls back to branch query when no merged PR is found" {
+@test "no merged PR matches the release SHA — gate FAILED with actionable message" {
   _write_config_with_release_chain "plugin-ci"
   _write_plugin_json 1.0.0
   _install_gh_shim
-  # No git shim — rev-parse fails, no release SHA, no PR lookup.
-  # Falls through to gh run list --branch (uses FAKE_BRANCH_RUNS_JSON).
+  _install_git_shim "orphan-sha-no-pr"
 
-  export GH_FAKE_PR_JSON='[]'
-  export GH_FAKE_BRANCH_RUNS_JSON='[
-    {"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"branch-sha-abc"}
-  ]'
-
-  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
-  [ "$status" -eq 0 ]
-  grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
-}
-
-@test "gate fails closed when no runs found via any query path" {
-  _write_config_with_release_chain "plugin-ci"
-  _write_plugin_json 1.0.0
-  _install_gh_shim
-
-  # Both PR and branch queries return empty.
-  export GH_FAKE_PR_JSON='[]'
-  export GH_FAKE_BRANCH_RUNS_JSON='[]'
-  export GH_FAKE_COMMIT_RUNS_JSON='[]'
+  # PR list returns PRs, but none match the release SHA.
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"unrelated-pr","mergeCommit":{"oid":"different-sha"}}]'
 
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
   [ "$status" -eq 1 ]
   grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
-  grep -q 'missing' <<<"$output"
+  grep -q 'no merged PR found' <<<"$output"
+  grep -q 'orphan-sha-no-pr' <<<"$output"
+}
+
+@test "multiple merged PRs match the release SHA — gate FAILED as ambiguous" {
+  _write_config_with_release_chain "plugin-ci"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  _install_git_shim "multi-match-sha"
+
+  # Two PRs share the same merge commit (shouldn't happen, but guard anyway).
+  export GH_FAKE_PR_MAIN_JSON='[
+    {"headRefOid":"pr-a","mergeCommit":{"oid":"multi-match-sha"}},
+    {"headRefOid":"pr-b","mergeCommit":{"oid":"multi-match-sha"}}
+  ]'
+
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
+  [ "$status" -eq 1 ]
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
+  grep -q 'ambiguous' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
-# Backward compat: single-entry chain (staging only) still works
+# Fail-closed: gh CLI errors (network failures, auth issues)
+# ---------------------------------------------------------------------------
+
+@test "gh pr list failure causes gate FAILED, not silent empty" {
+  _write_config_with_release_chain "plugin-ci"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  _install_git_shim "sha-for-gh-fail-test"
+
+  export GH_SHIM_FAIL_PR=1
+
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
+  [ "$status" -eq 1 ]
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
+  grep -q 'gh pr list failed' <<<"$output"
+}
+
+@test "gh run list failure causes gate FAILED, not silent empty" {
+  _write_config_with_release_chain "plugin-ci"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  _install_git_shim "sha-for-run-fail-test"
+
+  export GH_FAKE_PR_MAIN_JSON='[{"headRefOid":"prh-good","mergeCommit":{"oid":"sha-for-run-fail-test"}}]'
+  export GH_SHIM_FAIL_RUN=1
+
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
+  [ "$status" -eq 1 ]
+  grep -q 'step 1/5 (pre-publish-gate): FAILED' <<<"$output"
+  grep -q 'gh run list' <<<"$output"
+}
+
+# ---------------------------------------------------------------------------
+# Legacy fallback: no git, no release SHA -> branch query (single-entry chain)
 # ---------------------------------------------------------------------------
 
 @test "single-entry promotion chain still works via branch query" {
@@ -271,6 +322,21 @@ YAML
   export GH_FAKE_JSON='[{"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"abc123"}]'
 
   run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version 1.0.0
+  [ "$status" -eq 0 ]
+  grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
+}
+
+@test "no git available and no release SHA falls through to branch query" {
+  _write_config_with_release_chain "plugin-ci"
+  _write_plugin_json 1.0.0
+  _install_gh_shim
+  # No git shim — rev-parse fails, _release_sha is empty, branch query runs.
+
+  export GH_FAKE_BRANCH_RUNS_JSON='[
+    {"name":"plugin-ci","status":"completed","conclusion":"success","headSha":"branch-sha"}
+  ]'
+
+  run env CLAUDE_PROJECT_ROOT="$PROJECT_ROOT" PATH="$PATH" bash "$ORCH" --version v1.0.0
   [ "$status" -eq 0 ]
   grep -q 'step 1/5 (pre-publish-gate): PASSED' <<<"$output"
 }

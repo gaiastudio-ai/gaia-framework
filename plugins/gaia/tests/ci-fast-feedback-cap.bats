@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# ci-fast-feedback-cap.bats — structural tests for the fast-feedback file-count
-# cap in plugin-ci.yml.  Ensures a future refactor cannot silently remove the
-# guard that prevents timeout-cancellation on large diffs (promotion PRs).
+# ci-fast-feedback-cap.bats — structural tests for the fast-feedback skip and
+# file-count cap in plugin-ci.yml.  Ensures a future refactor cannot silently
+# remove the guard that prevents timeout-cancellation on large diffs.
 
 load 'test_helper.bash'
 
@@ -15,16 +15,24 @@ setup() {
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
-# Structural: the bats-fast-feedback job carries a file-count cap or a
-# skip condition for promotion PRs (base branch = release target).
+# Structural: the bats-fast-feedback job skips promotion PRs and caps the
+# file count for large feature-branch diffs.
 # ---------------------------------------------------------------------------
 
-@test "plugin-ci.yml bats-fast-feedback step declares FAST_FEEDBACK_MAX_FILES env var" {
+@test "plugin-ci.yml bats-fast-feedback skips when base branch is the release target" {
+  [ -f "$WORKFLOW" ]
+  # The skip must test PR_BASE_REF against the release branch name and
+  # exit 0 with a summary message.  Assert the conditional and the summary.
+  grep -q 'PR_BASE_REF.*main\|main.*PR_BASE_REF' "$WORKFLOW"
+  grep -q 'Skipped.*promotion' "$WORKFLOW"
+}
+
+@test "plugin-ci.yml bats-fast-feedback declares FAST_FEEDBACK_MAX_FILES env var" {
   [ -f "$WORKFLOW" ]
   grep -q 'FAST_FEEDBACK_MAX_FILES' "$WORKFLOW"
 }
 
-@test "plugin-ci.yml bats-fast-feedback step contains file-count cap logic" {
+@test "plugin-ci.yml bats-fast-feedback contains file-count cap logic with head truncation" {
   [ -f "$WORKFLOW" ]
   # The cap logic compares the selected count against the maximum and
   # truncates with head.  Assert both the comparison and the truncation.
@@ -32,21 +40,22 @@ teardown() { common_teardown; }
   grep -q 'head -n' "$WORKFLOW"
 }
 
-@test "plugin-ci.yml bats-fast-feedback step logs dropped file count on cap" {
+@test "plugin-ci.yml bats-fast-feedback emits a ::warning:: line when the cap triggers" {
   [ -f "$WORKFLOW" ]
-  # When the cap triggers, the step must log how many files were dropped
-  # so the operator knows the fast-feedback result is partial.
-  grep -q 'dropped' "$WORKFLOW"
+  # When the cap triggers, the step must emit a GitHub Actions warning
+  # annotation with the cap details.  A bare 'dropped' variable assignment
+  # alone is insufficient — assert the warning line itself.
+  grep -q '::warning::.*capped' "$WORKFLOW"
 }
 
-@test "plugin-ci.yml FAST_FEEDBACK_MAX_FILES is a positive integer" {
+@test "plugin-ci.yml FAST_FEEDBACK_MAX_FILES is at most 50" {
   [ -f "$WORKFLOW" ]
-  # Extract the value and verify it is a bare positive integer (no quotes
-  # around the number itself are required, but the YAML scalar might be
-  # quoted as a string).
+  # 50 files x ~2.25 s/file = ~113 s, fitting the 5-minute timeout.
+  # Values above 50 risk timeout on the single-threaded fast-feedback runner.
   local val
   val=$(grep 'FAST_FEEDBACK_MAX_FILES' "$WORKFLOW" \
     | head -1 | sed -E "s/.*FAST_FEEDBACK_MAX_FILES:[[:space:]]*['\"]?([0-9]+)['\"]?.*/\1/")
   [ -n "$val" ]
   [ "$val" -gt 0 ]
+  [ "$val" -le 50 ]
 }
