@@ -808,3 +808,5 @@
 4	worktree-git-push.bats	1
 4	worktree-lifecycle.bats	25
 3	concurrent-sprint-arg.bats	20
+1	ci-fast-feedback-cap.bats
+1	publish-gate-release-commit.bats

@@ -90,6 +90,7 @@ core	bridge-toggle-step-5-summary.bats
 core	build-manifest-cards.bats
 core	changelog-retirement.bats
 core	check-status-discipline.bats
+core	ci-fast-feedback-cap.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
 core	class-b-mixed-state-triage.bats
@@ -865,6 +866,7 @@ skills	pr-body.bats
 skills	pr-create-title-prefix-guard.bats
 skills	pr-create.bats
 skills	promotion-chain-guard.bats
+skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
 skills	skills/gaia-doctor-stray-snapshots.bats
 skills	sprint-review-track-b-failed-routing.bats
