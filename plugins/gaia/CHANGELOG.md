@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Fixed
+
+- (statusline) write context-window snapshot at the session's project root only, preventing stray `.gaia/memory/` trees under subdirectories; run `/gaia-statusline-refresh` after upgrading so the installed runtime picks up the fix
+
+### Added
+
+- (doctor) detect stray context-window snapshot files and print removal commands
+
 ## [1.222.0] — 2026-10-18
 
 ### Added

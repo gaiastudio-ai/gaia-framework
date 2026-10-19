@@ -214,6 +214,9 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
 
         <h3>Rate-limit display shows ".../.." for one or both windows</h3>
         <p>The runtime hides missing windows by design — Pro/Max accounts only see the rate-limit JSON after their first API response in the session. Wait for a few interactions; the field will populate.</p>
+
+        <h3>Stray <code>.gaia/memory/</code> directories in subdirectories</h3>
+        <p>An older statusline wrote the context-window snapshot under whatever directory the session's CWD happened to be, creating stray <code>.gaia/memory/.context-window-snapshot.json</code> files across the project tree. This was fixed: the snapshot now anchors to the session's project root. Run <code>/gaia-statusline-refresh</code> after upgrading so the installed runtime picks up the fix. To find existing strays, run <code>/gaia-doctor</code> &mdash; it reports each stray path with a removal command but never deletes anything itself.</p>
       </section>
 
       <section id="design">

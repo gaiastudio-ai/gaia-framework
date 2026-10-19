@@ -424,7 +424,16 @@ main() {
   if [ "$JSON_OUT" = "true" ]; then
     local stacks_json
     stacks_json="$(printf '%s\n' "${stacks[@]}" | jq -R . | jq -s .)"
-    _render_json "$stacks_json" "${applicable[@]}"
+    local tools_json_out
+    tools_json_out="$(_render_json "$stacks_json" "${applicable[@]}")"
+    # Merge stray-snapshot scan results into the JSON output.
+    local stray_script="${SKILL_DIR}/scripts/check-stray-snapshots.sh"
+    if [ -f "$stray_script" ]; then
+      local stray_json
+      stray_json="$(bash "$stray_script" --json --project-root "$PROJECT_ROOT_ARG" 2>/dev/null || echo '{}')"
+      tools_json_out="$(printf '%s\n%s' "$tools_json_out" "$stray_json" | jq -s '.[0] * .[1]')"
+    fi
+    printf '%s\n' "$tools_json_out"
     return 0
   fi
 
@@ -450,6 +459,13 @@ main() {
   echo ""
   echo "Result: ${n}/${m} applicable tools available. CVE + SBOM + dead-code will fall back to LLM heuristics. Run gaia-doctor --install to fix, or proceed."
   echo "Achievable scan tier: TIER ${tier} (${reason})"
+
+  # Stray-snapshot scan (read-only project-tree probe).
+  local stray_script="${SKILL_DIR}/scripts/check-stray-snapshots.sh"
+  if [ -f "$stray_script" ]; then
+    echo ""
+    bash "$stray_script" --project-root "$PROJECT_ROOT_ARG" 2>/dev/null || true
+  fi
 }
 
 main

@@ -134,3 +134,183 @@ _stdin_with_usage() {
   [ "$has_tokens" = "false" ] \
     || { echo "tokens_snapshot present with no file and no --tokens" >&2; echo "$line" >&2; false; }
 }
+
+# ---------- Scenario G: PROJECT_ROOT branch (MEMORY_PATH unset) ---------------
+# Exercises: _CALLER_MEMORY_PATH empty -> PROJECT_ROOT non-empty -> snapshot at
+# PROJECT_ROOT/.gaia/memory/. Seed via the real statusline writer.
+
+@test "G: emitter resolves snapshot via PROJECT_ROOT when MEMORY_PATH is unset" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # Produce the snapshot via the real statusline writer.
+  local subdir="$TEST_TMP/sub/deep"
+  mkdir -p "$subdir"
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":7777,"output_tokens":3333,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$subdir" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot at project root" >&2; false; }
+  # Emitter: MEMORY_PATH unset, only PROJECT_ROOT set. CWD is a directory
+  # with no .gaia/ so the walk-up cannot find the root on its own — only the
+  # explicit PROJECT_ROOT branch succeeds.
+  local cwd_iso="$TEST_TMP/isolated-cwd"
+  mkdir -p "$cwd_iso"
+  unset MEMORY_PATH
+  unset CLAUDE_PROJECT_ROOT
+  export PROJECT_ROOT="$TEST_TMP"
+  export GAIA_NO_PROJECT_WALKUP=1
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  run bash -c "cd '$cwd_iso' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 7777' >/dev/null \
+    || { echo "emitter did not read snapshot via PROJECT_ROOT" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario H: CLAUDE_PROJECT_ROOT branch (PROJECT_ROOT also unset) --
+# Exercises: _CALLER_MEMORY_PATH empty -> PROJECT_ROOT empty ->
+# CLAUDE_PROJECT_ROOT non-empty. Seed via the real statusline writer.
+
+@test "H: emitter resolves snapshot via CLAUDE_PROJECT_ROOT when PROJECT_ROOT is unset" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # Produce the snapshot via the real statusline writer.
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":4444,"output_tokens":1111,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$TEST_TMP" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot" >&2; false; }
+  # Emitter: MEMORY_PATH unset, PROJECT_ROOT unset, only CLAUDE_PROJECT_ROOT.
+  # CWD is isolated (no .gaia/ above it) so the walk-up cannot succeed — only
+  # CLAUDE_PROJECT_ROOT resolves. Use BATS_TEST_TMPDIR as the isolated CWD
+  # (parent of TEST_TMP, no .gaia/ at that level or above).
+  # Also set PROJECT_PATH to a decoy worktree. If the emitter wrongly
+  # prefers PROJECT_PATH over CLAUDE_PROJECT_ROOT, it reads the decoy
+  # instead of the real root.
+  local decoy_wt="$TEST_TMP/decoy-worktree"
+  mkdir -p "$decoy_wt/.gaia/memory"
+  printf '{"input_tokens":9999,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}' \
+    > "$decoy_wt/.gaia/memory/.context-window-snapshot.json"
+  unset MEMORY_PATH
+  unset PROJECT_ROOT
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$decoy_wt"
+  export GAIA_NO_PROJECT_WALKUP=1
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  run bash -c "cd '$BATS_TEST_TMPDIR' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  # Must read the real root snapshot (4444), not the decoy (9999).
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 4444' >/dev/null \
+    || { echo "emitter did not read snapshot via CLAUDE_PROJECT_ROOT" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario I: config-anchored walk-up (all explicit vars unset) -----
+# Exercises: _CALLER_MEMORY_PATH empty -> PROJECT_ROOT empty ->
+# CLAUDE_PROJECT_ROOT empty -> gaia-paths.sh walk-up from CWD.
+
+@test "I: emitter resolves snapshot via config-anchored walk-up from subdirectory" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # Seed the root snapshot via the real statusline writer.
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":6000,"output_tokens":2000,"cache_creation_input_tokens":0,"cache_read_input_tokens":500},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$TEST_TMP" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot" >&2; false; }
+  # Create a config so the walk-up finds the root.
+  mkdir -p "$TEST_TMP/.gaia/config"
+  touch "$TEST_TMP/.gaia/config/project-config.yaml"
+  # Subdirectory to cd into.
+  local subdir="$TEST_TMP/src/deep"
+  mkdir -p "$subdir"
+  # Emitter: all explicit vars unset, CWD in subdirectory.
+  unset MEMORY_PATH
+  unset PROJECT_ROOT
+  unset CLAUDE_PROJECT_ROOT
+  unset PROJECT_PATH
+  unset CLAUDE_SKILL_DIR
+  unset _GAIA_PATHS_LOADED
+  unset GAIA_NO_PROJECT_WALKUP
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  run bash -c "cd '$subdir' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 6000' >/dev/null \
+    || { echo "emitter did not read snapshot via walk-up from subdirectory" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario J: walk-up from nested config-less sub-repo --------------
+# The walk-up must skip a bare .gaia/ (no project-config.yaml) and find the
+# config-bearing root above it.
+
+@test "J: emitter walk-up skips config-less nested sub-repo and finds root" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # Seed the root snapshot via the real statusline writer.
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":9000,"output_tokens":3000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$TEST_TMP" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot" >&2; false; }
+  # Root has a config.
+  mkdir -p "$TEST_TMP/.gaia/config"
+  touch "$TEST_TMP/.gaia/config/project-config.yaml"
+  # Nested sub-repo has bare .gaia/ but no config.
+  local nested="$TEST_TMP/nested-repo"
+  mkdir -p "$nested/.gaia/memory"
+  # All explicit vars unset, CWD inside the nested sub-repo.
+  unset MEMORY_PATH
+  unset PROJECT_ROOT
+  unset CLAUDE_PROJECT_ROOT
+  unset PROJECT_PATH
+  unset CLAUDE_SKILL_DIR
+  unset _GAIA_PATHS_LOADED
+  unset GAIA_NO_PROJECT_WALKUP
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  run bash -c "cd '$nested' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 9000' >/dev/null \
+    || { echo "emitter walk-up did not skip config-less nested sub-repo" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario K: MEMORY_PATH save/restore across exec boundary ---------
+# The emitter must restore (or unset) MEMORY_PATH before exec'ing
+# lifecycle-event.sh, so that script does not mkdir a stray .gaia/memory
+# under whatever CWD it sees when CLAUDE_SKILL_DIR is set.
+
+@test "K: emitter with CLAUDE_SKILL_DIR does not leak MEMORY_PATH to lifecycle-event" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  # Seed the root snapshot via the real statusline writer.
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":1234,"output_tokens":567,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$TEST_TMP" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot" >&2; false; }
+  # Emitter: MEMORY_PATH unset, PROJECT_ROOT set, CLAUDE_SKILL_DIR set.
+  # CWD isolated, walk-up disabled — only PROJECT_ROOT resolves.
+  local cwd_iso="$TEST_TMP/isolated-cwd"
+  mkdir -p "$cwd_iso"
+  unset MEMORY_PATH
+  export CLAUDE_SKILL_DIR="$TEST_TMP/some-skill"
+  mkdir -p "$CLAUDE_SKILL_DIR"
+  export PROJECT_ROOT="$TEST_TMP"
+  unset CLAUDE_PROJECT_ROOT
+  export GAIA_NO_PROJECT_WALKUP=1
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  run bash -c "cd '$cwd_iso' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  [ "$status" -eq 0 ]
+  # CLAUDE_SKILL_DIR must NOT get a stray .gaia/memory.
+  [ ! -d "$CLAUDE_SKILL_DIR/.gaia" ] \
+    || { echo "stray .gaia/ created under CLAUDE_SKILL_DIR" >&2; false; }
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 1234' >/dev/null \
+    || { echo "emitter did not read snapshot with CLAUDE_SKILL_DIR set" >&2; echo "$line" >&2; false; }
+}

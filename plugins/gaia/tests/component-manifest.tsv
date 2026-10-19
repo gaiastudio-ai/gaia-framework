@@ -631,6 +631,7 @@ scripts-core	statusline/statusline-context-bar.bats
 scripts-core	statusline/statusline-git-dirty.bats
 scripts-core	statusline/statusline-rate-limits.bats
 scripts-core	statusline/statusline-rich-default-and-walkup.bats
+scripts-core	statusline/statusline-snapshot-root.bats
 scripts-core	statusline/statusline-sprint-closed-suppress.bats
 scripts-core	statusline/statusline-stale-fence.bats
 scripts-core	statusline/statusline-toggle.bats
@@ -865,6 +866,7 @@ skills	pr-create-title-prefix-guard.bats
 skills	pr-create.bats
 skills	promotion-chain-guard.bats
 skills	release-strategy.bats
+skills	skills/gaia-doctor-stray-snapshots.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
