@@ -339,3 +339,77 @@ touch_set_warn_double_star() {
       ;;
   esac
 }
+
+# --- config sections prewrite check ---
+
+# config_sections_prewrite_check <sections_string>
+#   Validate a list of top-level project-config.yaml key names.
+#   Input: newline-separated key names, or a single string with
+#   comma-separated names. Each key is validated against
+#   ^[A-Za-z_][A-Za-z0-9_]*$.
+#   Returns 0 if all valid, 1 if any invalid (diagnostic on stderr).
+config_sections_prewrite_check() {
+  local input="$1"
+  local rc=0 key
+
+  # Split on commas and/or newlines.
+  local old_ifs="$IFS"
+  IFS=$',\n'
+  # shellcheck disable=SC2086
+  set -- $input
+  IFS="$old_ifs"
+
+  for key in "$@"; do
+    # Trim whitespace.
+    key="$(printf '%s' "$key" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [ -n "$key" ] || continue
+    if ! printf '%s' "$key" | /usr/bin/grep -qE '^[A-Za-z_][A-Za-z0-9_]*$'; then
+      printf 'config_sections: invalid key name: %s\n' "$key" >&2
+      rc=1
+    fi
+  done
+  return "$rc"
+}
+
+# config_sections_write <story_file> <sections_list>
+#   Write predicted_config_sections to a story file via yq strenv/--arg.
+#   sections_list is a newline-separated list of key names.
+config_sections_write() {
+  local story_file="$1" sections_list="$2"
+
+  # Validate first.
+  config_sections_prewrite_check "$sections_list" || return 1
+
+  # Build a JSON array from the validated keys.
+  local json_array
+  json_array="$(printf '%s\n' "$sections_list" | awk '
+    /^[[:space:]]*$/ { next }
+    {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+      if ($0 == "") next
+      gsub(/\\/, "\\\\", $0)
+      gsub(/"/, "\\\"", $0)
+      items[++n] = $0
+    }
+    END {
+      printf "["
+      for (i = 1; i <= n; i++) {
+        if (i > 1) printf ", "
+        printf "\"%s\"", items[i]
+      }
+      printf "]\n"
+    }
+  ')"
+
+  local cs_field="predicted_config_sections"
+  local yq_rc=0
+  CS_FIELD="$cs_field" CS_VAL="$json_array" \
+    yq --front-matter=process -i \
+      '.[strenv(CS_FIELD)] = (strenv(CS_VAL) | from_yaml)' \
+      "$story_file" || yq_rc=$?
+
+  if [ "$yq_rc" -ne 0 ]; then
+    printf 'config_sections_write: yq write failed (exit %d)\n' "$yq_rc" >&2
+    return 1
+  fi
+}

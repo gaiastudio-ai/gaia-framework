@@ -86,6 +86,8 @@ create_sprint() {
 
 # Create a story file with frontmatter.
 # Usage: create_story <key> <epic> [depends_on_csv] [blocks_csv]
+# Includes predicted_touch_set: [] so rules (c)/(d) pass (these tests
+# exercise rules (a)/(b) only; an empty touch-set has no overlap).
 create_story() {
   local key="$1" epic="$2" deps="${3:-}" blocks="${4:-}"
   local epic_slug
@@ -104,6 +106,7 @@ create_story() {
       printf 'blocks: [%s]\n' "$(printf '%s' "$blocks" | sed 's/[^,]*/"&"/g')"
     fi
     printf 'status: in-progress\n'
+    printf 'predicted_touch_set: []\n'
     printf -- '---\n'
     printf '# Story: %s\n' "$key"
   } > "$f"
@@ -348,10 +351,11 @@ BROKEN
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900,sprint-901,sprint-902
   [ "$status" -eq 1 ]
   # Should have 3 comparisons total: one FAIL (vs sprint-901), two PASS.
-  local pass_count fail_count
-  pass_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'PASS rules' || printf '0')"
+  # Each passing comparison produces PASS lines for both (a),(b) and (c),(d).
+  local pass_ab_count fail_count
+  pass_ab_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'PASS rules (a),(b):' || printf '0')"
   fail_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'FAIL rule' || printf '0')"
-  [ "$pass_count" -eq 2 ]
+  [ "$pass_ab_count" -eq 2 ]
   [ "$fail_count" -ge 1 ]
   # Verify all three comparisons appear.
   [[ "$output" == *"sprint-900"* ]]
