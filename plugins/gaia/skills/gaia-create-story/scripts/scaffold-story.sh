@@ -307,6 +307,11 @@ esac
 # flow array shape verbatim.
 pts_v="$(extract_value_raw predicted_touch_set)"
 
+# predicted_config_sections: optional field populated by --config-section on
+# generate-frontmatter.sh. The template carries {predicted_config_sections}
+# on its own line. When supplied, emit the field; when absent, drop the line.
+pcs_v="$(extract_value_raw predicted_config_sections)"
+
 # ---------- Read template ----------
 
 template_text="$(cat "$template")"
@@ -364,7 +369,8 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
   -v blocks_v="$blocks_v" \
   -v traces_to_v="$traces_to_v" \
   -v mverify_v="$mverify_v" \
-  -v pts_v="$(printf '%s' "$pts_v" | sed 's/\\/\\\\/g')" '
+  -v pts_v="$(printf '%s' "$pts_v" | sed 's/\\/\\\\/g')" \
+  -v pcs_v="$(printf '%s' "$pcs_v" | sed 's/\\/\\\\/g')" '
   # esc_repl — make a string safe as a gsub() replacement argument.
   # In POSIX awk, `&` in the replacement is interpreted as the matched text,
   # and `\` is the escape char. Without escaping, any user-supplied value
@@ -483,6 +489,13 @@ scaffold="$(printf '%s\n' "$template_text" | awk \
       if (line ~ /^\{predicted_touch_set\}$/) {
         if (pts_v != "") {
           print "predicted_touch_set: " pts_v
+        }
+        next
+      }
+      # predicted_config_sections: same pattern as predicted_touch_set.
+      if (line ~ /^\{predicted_config_sections\}$/) {
+        if (pcs_v != "") {
+          print "predicted_config_sections: " pcs_v
         }
         next
       }
