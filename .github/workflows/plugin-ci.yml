@@ -18,6 +18,7 @@ on:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
       - '.github/bats-shard-assignments.tsv'
+      - '.github/bats-file-timing.tsv'
       - '.github/scripts/**'
       - 'profiling/**'
       - 'scripts/audit-v2-migration.sh'
@@ -124,17 +125,16 @@ jobs:
           # Move github.base_ref into an env var so that a crafted branch name
           # cannot inject shell commands via the expression interpolation.
           PR_BASE_REF: ${{ github.base_ref }}
-          # Cap the number of diff-selected files so the job finishes within
-          # its 5-minute timeout.  Measured per-file cost: ~3.9 s/file mean,
-          # ~107 s worst case (from CI run 39215662213, 798 files).  Budget
-          # after setup is ~289 s.  50 files x 3.9 s = ~195 s average, well
-          # within budget; the promotion-PR skip below handles the extreme
-          # case where the diff selects hundreds of files.
-          FAST_FEEDBACK_MAX_FILES: '50'
+          # Time budget for fast-feedback file selection (seconds).  The job
+          # timeout is 5 minutes; after CI setup/checkout overhead ~289 s
+          # remain.  240 s leaves margin for variance.  Files are selected by
+          # ascending measured cost until the cumulative total would exceed
+          # this budget.
+          FAST_FEEDBACK_BUDGET_SECONDS: '240'
         run: |
           set -euo pipefail
 
-          # Skip entirely on promotion PRs (base = release branch).
+          # ── Promotion-PR skip (unchanged) ──────────────────────────────
           # A promotion diff selects nearly the entire suite; the full sharded
           # run already covers it.  Without a skip the 5-minute timeout would
           # cancel the job and poison the overall workflow conclusion.
@@ -145,6 +145,7 @@ jobs:
             exit 0
           fi
 
+          # ── Diff-select candidates ─────────────────────────────────────
           selected=$(.github/scripts/diff-select-tests.sh "origin/${PR_BASE_REF}" || true)
           if [ -z "$selected" ]; then
             echo "No diff-selected tests to run."
@@ -152,26 +153,43 @@ jobs:
             echo "No test files matched the changed files." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          count=$(echo "$selected" | wc -l | tr -d ' ')
 
-          # Cap selection to avoid timeout on very large feature-branch diffs.
-          max="${FAST_FEEDBACK_MAX_FILES:-50}"
-          if [ "$count" -gt "$max" ]; then
-            dropped=$((count - max))
-            selected=$(echo "$selected" | head -n "$max")
-            echo "::warning::Fast-feedback selection capped: $count files selected, running first $max, dropped $dropped"
+          # ── Cost-based selection ───────────────────────────────────────
+          # Use the committed timing baseline to select only the cheapest
+          # files that fit within the time budget.  The helper script reads
+          # candidates from stdin, looks up per-file cost from the baseline,
+          # and prints the selected files to stdout.  When the baseline is
+          # missing or no files fit the budget, the helper exits 0 with no
+          # stdout -- the full shard jobs still provide coverage.
+          budget="${FAST_FEEDBACK_BUDGET_SECONDS:-240}"
+          selection_log="$(mktemp)"
+          included=$(echo "$selected" \
+            | .github/scripts/cost-select-tests.sh .github/bats-file-timing.tsv "$budget" \
+              2>"$selection_log") || true
+
+          # Print the selection summary from stderr.
+          if [ -s "$selection_log" ]; then
+            while IFS= read -r line; do
+              echo "::notice::$line"
+            done < "$selection_log"
+          fi
+          rm -f "$selection_log"
+
+          if [ -z "$included" ]; then
+            # Either baseline missing, zero-fit, or no candidates survived.
             echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
-            echo "Selection capped: **$count** files selected, running first **$max**, dropped **$dropped**." >> "$GITHUB_STEP_SUMMARY"
-            count="$max"
+            echo "Skipped: cost selection returned no files; full shard jobs provide coverage." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
-          echo "Running $count diff-selected test file(s):"
-          echo "$selected"
+          count=$(echo "$included" | wc -l | tr -d ' ')
+          echo "Running ${count} cost-selected test file(s):"
+          echo "$included"
           echo ""
           # shellcheck disable=SC2086
-          bats --filter-tags '!hardware-dependent' $selected
+          bats --filter-tags '!hardware-dependent' $included
           echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
-          echo "Ran **$count** diff-selected test file(s) -- all passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran **${count}** cost-selected test file(s) -- all passed." >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Sharded bats suite: 4 balanced shards run in parallel on separate runners.
