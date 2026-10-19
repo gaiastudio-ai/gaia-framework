@@ -90,6 +90,7 @@ core	bridge-toggle-step-5-summary.bats
 core	build-manifest-cards.bats
 core	changelog-retirement.bats
 core	check-status-discipline.bats
+core	checkpoint.bats
 core	ci-fast-feedback-cap.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
@@ -480,7 +481,6 @@ scripts-core	check-fork-stripped.bats
 scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats
 scripts-core	check-story-layout-sync.bats
-scripts-core	checkpoint.bats
 scripts-core	ci-config-slice.bats
 scripts-core	cluster-1/platforms-device-targets.bats
 scripts-core	cluster-1/project-kind.bats

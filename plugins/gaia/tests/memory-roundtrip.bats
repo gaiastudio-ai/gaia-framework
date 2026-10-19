@@ -27,6 +27,9 @@ setup() {
   LOADER="$SCRIPTS_DIR/memory-loader.sh"
   export MEMORY_PATH="$TEST_TMP/_memory"
   mkdir -p "$MEMORY_PATH"
+  # Clear the parallel-execution flag so fallback-path tests are not blocked
+  # by the parallel gate inside acquire_lock.
+  unset GAIA_PARALLEL_EXECUTION
 }
 teardown() { common_teardown; }
 
@@ -335,7 +338,7 @@ EOF
   # without flock on disk.
   local stub="$TEST_TMP/no-flock-bin"
   mkdir -p "$stub"
-  for tool in bash sh cat cp mv mkdir mktemp rm rmdir date printf head wc awk sed grep sleep kill stat touch dirname basename python3 chmod tr cut sort uniq tee tail env true false test [; do
+  for tool in bash sh cat cp mv mkdir mktemp rm rmdir date printf head wc awk sed grep sleep kill stat touch dirname basename python3 chmod tr cut sort uniq tee tail env true false test [ ln readlink find id; do
     if command -v "$tool" >/dev/null 2>&1; then
       ln -sf "$(command -v "$tool")" "$stub/$tool" 2>/dev/null || true
     fi

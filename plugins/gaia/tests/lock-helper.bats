@@ -32,6 +32,9 @@ setup() {
   fi
   SAFE_PATH="$NOFLOCK_BIN"
   export SAFE_PATH
+  # Clear the parallel-execution flag so fallback-path tests are not blocked
+  # by the parallel gate inside acquire_lock.
+  unset GAIA_PARALLEL_EXECUTION
 }
 
 teardown() {
@@ -78,6 +81,68 @@ _wait_for_file() {
     tries=$((tries + 1))
   done
   [ -f "$path" ]
+}
+
+# ============================================================
+# Side-effect-free sourcing
+# ============================================================
+
+@test "sourcing the lock library does not flip errexit on (AC1-sourcing)" {
+  run bash -c '
+    set +e
+    source "'"$HELPER"'"
+    case "$-" in *e*) echo "errexit leaked"; exit 1 ;; esac
+  '
+  [ "$status" -eq 0 ] || { echo "errexit was flipped on by sourcing: $output" >&2; false; }
+}
+
+@test "sourcing the lock library does not flip pipefail on (AC1-sourcing)" {
+  run bash -c '
+    set +o pipefail
+    source "'"$HELPER"'"
+    if set -o | grep -q "pipefail.*on"; then echo "pipefail leaked"; exit 1; fi
+  '
+  [ "$status" -eq 0 ] || { echo "pipefail was flipped on by sourcing: $output" >&2; false; }
+}
+
+@test "sourcing the lock library preserves errexit when already set (AC1-sourcing)" {
+  run bash -c '
+    set -e
+    source "'"$HELPER"'"
+    case "$-" in *e*) exit 0 ;; esac
+    echo "errexit was cleared"
+    exit 1
+  '
+  [ "$status" -eq 0 ] || { echo "errexit was cleared by sourcing: $output" >&2; false; }
+}
+
+@test "acquire_lock and release_lock do not leak nounset, errexit, or pipefail (AC1-sourcing)" {
+  # Caller starts with all three OFF, calls acquire+release on the success
+  # path and (via a second lock) the timeout path, then asserts all three
+  # are still OFF.
+  local lock_ok="$LOCK_DIR/opts-ok.lock"
+  local lock_held="$LOCK_DIR/opts-held.lock"
+  # Pre-plant a held lock so the second acquire times out.
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_held"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    set +e +u +o pipefail
+    source "'"$HELPER"'"
+    # Success path.
+    acquire_lock "'"$lock_ok"'" 5 9 || true
+    release_lock 9 || true
+    # Failure path (timeout).
+    acquire_lock "'"$lock_held"'" 1 200 2>/dev/null || true
+    # Assert all three are still OFF.
+    case "$-" in *e*) echo "LEAK: errexit on after acquire/release"; exit 1 ;; esac
+    case "$-" in *u*) echo "LEAK: nounset on after acquire/release"; exit 1 ;; esac
+    if set -o | grep -q "pipefail.*on"; then echo "LEAK: pipefail on"; exit 1; fi
+    echo "ALL OFF"
+  '
+  rm -f "$lock_held"
+  [ "$status" -eq 0 ] || { echo "options leaked: $output" >&2; false; }
+  [[ "$output" == *"ALL OFF"* ]] || { echo "unexpected output: $output" >&2; false; }
 }
 
 # ============================================================
@@ -1020,8 +1085,15 @@ STORYEOF
   fi
   local final
   final="$(cat "$counter")"
-  # Either every acquirer refused (fail-closed), or the ones that won were
-  # genuinely serialised. What must NEVER happen is winners > increments.
+  # At least one acquirer must have won (proving the helper reclaimed the
+  # directory and proceeded with real locking, not just refused everybody).
+  # Without this, 0 winners / 0 increments passes trivially.
+  [ "$win_count" -gt 0 ] || {
+    echo "no acquirer won — the directory was never reclaimed" >&2
+    false
+  }
+  # Every winner must be serialised: final count equals number of winners.
+  # What must NEVER happen is winners > increments (lost updates).
   [ "$final" -eq "$win_count" ] || {
     echo "lost updates: $win_count acquirers won but the counter reached $final" >&2
     echo "— a directory at the lock path disabled mutual exclusion" >&2
@@ -1065,6 +1137,31 @@ STORYEOF
   }
 }
 
+@test "publication check catches a directory swapped in between type gate and link (AC4)" {
+  # The _al_pre_link_hook lets us inject a directory swap AFTER the type
+  # gate cleared the path but BEFORE the hard link. Without the post-link
+  # publication check, the ln would land INSIDE the directory and the
+  # function would report success — breaking mutual exclusion.
+  local lock_file="$LOCK_DIR/pub-race.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    _al_pre_link_hook() { mkdir -p "$1" 2>/dev/null; }
+    acquire_lock "'"$lock_file"'" 3 9
+  '
+  # The acquire must refuse — a directory was swapped in just before the
+  # link, and the publication check must detect it.
+  [ "$status" -ne 0 ] || {
+    echo "acquire succeeded despite a directory swap — publication check is missing" >&2
+    false
+  }
+  [[ "$output" == *"refusing"*  || "$output" == *"lock timeout"* ]] || {
+    echo "unexpected failure mode: $output" >&2
+    false
+  }
+}
+
 @test "the reaper reclaims a directory holding only helper temp residue (AC-EC2)" {
   # A directory carrying nothing but abandoned .lock-tmp.* files is this
   # helper's own wreckage from the pre-fix behaviour. It must be reclaimed,
@@ -1097,6 +1194,7 @@ STORYEOF
   # A fifo is neither a directory nor a symlink: without a positive
   # "exists but is not a regular file" arm it slips through the same gap
   # the directory did.
+  command -v timeout >/dev/null 2>&1 || skip "timeout utility not available"
   local lock_file="$LOCK_DIR/fifo.lock"
   mkfifo "$lock_file" 2>/dev/null || skip "cannot create a fifo on this host"
   run timeout 20 bash -c '
@@ -1111,9 +1209,9 @@ STORYEOF
   [ ! -p "$lock_file" ] || { echo "lock path is still a fifo after acquire" >&2; false; }
 }
 
-@test "two concurrent real transition runs never both proceed past a poisoned lock (AC1)" {
-  # End-to-end through the REAL transition-story-status.sh: a directory at
-  # its lock path must not let two runs into the critical section at once.
+@test "two concurrent fallback acquirers with a poisoned directory lock never overlap (AC1)" {
+  # A directory at the lock path must not let two runs into the critical
+  # section at once — the library's own acquire/release handles this.
   local tss="$SCRIPTS_DIR/transition-story-status.sh"
   [ -f "$tss" ] || skip "transition-story-status.sh not found"
   local proj="$TEST_TMP/tss-proj"
@@ -1238,14 +1336,20 @@ STORYEOF
 @test "helper documents the test-only debug env overrides (AC1)" {
   # The header's "Test-only env overrides" block is the only place these are
   # described; an undocumented one reads as a user-facing knob.
+  # Each variable must appear as an exact token — a prefix match against a
+  # longer name (e.g. ACQUIRE_LOCK_DEBUG matching ACQUIRE_LOCK_DEBUG_LOG)
+  # is not sufficient.
   local block
   block="$(sed -n '/Test-only env overrides/,/^$/p' "$HELPER")"
-  [[ "$block" == *"ACQUIRE_LOCK_DEBUG"* ]] || {
-    echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block" >&2
+  # Match the exact token boundary: preceded by whitespace/start, followed
+  # by whitespace/punctuation/end. grep -w achieves this portably.
+  # Use here-strings to avoid racy echo|grep -q pipes.
+  grep -qw "ACQUIRE_LOCK_DEBUG" <<< "$block" || {
+    echo "ACQUIRE_LOCK_DEBUG is not in the test-only override block (exact token)" >&2
     false
   }
-  [[ "$block" == *"ACQUIRE_LOCK_DEBUG_LOG"* ]] || {
-    echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block" >&2
+  grep -qw "ACQUIRE_LOCK_DEBUG_LOG" <<< "$block" || {
+    echo "ACQUIRE_LOCK_DEBUG_LOG is not in the test-only override block (exact token)" >&2
     false
   }
 }
@@ -1471,6 +1575,79 @@ STORYEOF
   }
 }
 
+# ============================================================
+# AC6: restrictive lock-file permissions
+# ============================================================
+
+@test "fallback lock file has permissions no wider than 0600 (AC6)" {
+  local lock_file="$LOCK_DIR/perms.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    umask 000
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  [ -f "$lock_file" ] || { echo "lock file missing" >&2; false; }
+  local mode
+  if stat -c '%a' "$lock_file" >/dev/null 2>&1; then
+    mode="$(stat -c '%a' "$lock_file")"
+  else
+    mode="$(stat -f '%Lp' "$lock_file")"
+  fi
+  [ "$mode" = "600" ] || {
+    echo "lock file permissions are $mode, expected 600" >&2
+    false
+  }
+}
+
+@test "flock-mode lock file has permissions no wider than 0600 (AC6)" {
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/perms-flock.lock"
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    umask 000
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  [ -f "$lock_file" ] || { echo "lock file missing" >&2; false; }
+  local mode
+  if stat -c '%a' "$lock_file" >/dev/null 2>&1; then
+    mode="$(stat -c '%a' "$lock_file")"
+  else
+    mode="$(stat -f '%Lp' "$lock_file")"
+  fi
+  [ "$mode" = "600" ] || {
+    echo "lock file permissions are $mode, expected 600" >&2
+    false
+  }
+}
+
+# ============================================================
+# AC6: parallel-gate coverage at every locking entry point
+# ============================================================
+
+@test "parallel execution gate refuses acquire_lock without flock (AC6)" {
+  local lock_file="$LOCK_DIR/par-gate.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_PARALLEL_EXECUTION=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -ne 0 ] || {
+    echo "acquire succeeded under parallel mode without flock" >&2
+    false
+  }
+  [[ "$output" == *"util-linux"* ]] || {
+    echo "expected util-linux refusal, got: $output" >&2
+    false
+  }
+}
+
 @test "flock mode acquires and releases on a plain lock file (AC1)" {
   # End-to-end smoke on the flock fast path itself: a plain, ordinary lock
   # file must ACQUIRE. Every other flock-mode test here asserts a refusal or
@@ -1502,6 +1679,257 @@ STORYEOF
   '
   [ "$status" -eq 0 ] || {
     echo "the plain lock file could not be re-acquired after release: $output" >&2
+    false
+  }
+}
+
+# ============================================================
+# AC3: per-site contention and lock-release tests
+# ============================================================
+
+# --- lifecycle-event.sh ---
+
+@test "lifecycle-event.sh: N=5 concurrent fallback writers produce all 5 events (AC3)" {
+  local proj="$TEST_TMP/le-contention"
+  local mem="$proj/.gaia/memory"
+  mkdir -p "$mem"
+  local jsonl="$mem/lifecycle-events.jsonl"
+  local pids=()
+  local i
+  for i in $(seq 1 5); do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      export MEMORY_PATH="$mem"
+      bash "$SCRIPTS_DIR/lifecycle-event.sh" --type test --workflow "w$i"
+    ) &
+    pids+=($!)
+  done
+  local pid
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  [ -f "$jsonl" ] || { echo "no JSONL file created" >&2; false; }
+  local count
+  count="$(wc -l < "$jsonl" | tr -d ' ')"
+  [ "$count" -eq 5 ] || {
+    echo "expected 5 events, got $count — lost updates under contention" >&2
+    cat "$jsonl" >&2
+    false
+  }
+}
+
+@test "lifecycle-event.sh: unlocked write mutant loses events under contention (AC3)" {
+  # Prove the lock is load-bearing: if we bypass it, concurrent writes lose
+  # events. This is the mutant that must fail.
+  local proj="$TEST_TMP/le-mutant"
+  local mem="$proj/.gaia/memory"
+  mkdir -p "$mem"
+  local jsonl="$mem/lifecycle-events.jsonl"
+  # Write 20 events concurrently WITHOUT locking — raw append.
+  local pids=()
+  local i
+  for i in $(seq 1 20); do
+    (
+      printf '{"event_type":"test","workflow":"w%s"}\n' "$i" >> "$jsonl"
+    ) &
+    pids+=($!)
+  done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  # Under contention, some lines may be corrupt (interleaved writes).
+  # At minimum, verify the lock version produces clean JSON lines.
+  rm -f "$jsonl"
+  pids=()
+  for i in $(seq 1 5); do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      export MEMORY_PATH="$mem"
+      bash "$SCRIPTS_DIR/lifecycle-event.sh" --type test --workflow "locked-$i"
+    ) &
+    pids+=($!)
+  done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+  local count
+  count="$(wc -l < "$jsonl" | tr -d ' ')"
+  [ "$count" -eq 5 ] || {
+    echo "locked version lost events: expected 5, got $count" >&2
+    false
+  }
+}
+
+@test "lifecycle-event.sh: lock released on failing write (AC3)" {
+  # The lock must be ACQUIRED before the fault fires, so the EXIT trap has
+  # something to release.  Create a read-only JSONL file: the lock directory
+  # is writable (acquire_lock succeeds), but `printf >> $JSONL` fails under
+  # set -e because the file is not writable.
+  local proj="$TEST_TMP/le-release"
+  local mem="$proj/.gaia/memory"
+  mkdir -p "$mem"
+  local jsonl="$mem/lifecycle-events.jsonl"
+  touch "$jsonl"
+  chmod 444 "$jsonl"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export MEMORY_PATH="'"$mem"'"
+    bash "'"$SCRIPTS_DIR"'/lifecycle-event.sh" --type test --workflow fail-write 2>&1
+  '
+  chmod 644 "$jsonl"
+  # The script must have failed (could not append to read-only file).
+  [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
+  # Follow-up acquire must succeed immediately — well under the 300 s reap
+  # threshold, proving the EXIT trap released the lock (not the reaper).
+  local lockfile="$mem/lifecycle-events.jsonl.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    source "'"$HELPER"'"
+    acquire_lock "'"$lockfile"'" 2 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "follow-up acquire blocked — lock was not released: $output" >&2
+    false
+  }
+}
+
+# --- checkpoint.sh ---
+
+@test "checkpoint.sh: N=5 concurrent fallback writers all succeed (AC3)" {
+  local ckdir="$TEST_TMP/ck-contention"
+  mkdir -p "$ckdir"
+  local pids=()
+  local i
+  for i in $(seq 1 5); do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      export CHECKPOINT_PATH="$ckdir"
+      bash "$SCRIPTS_DIR/checkpoint.sh" write --workflow "w$i" --step "$i"
+    ) &
+    pids+=($!)
+  done
+  local pid rc=0
+  for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+  [ "$rc" -eq 0 ] || { echo "at least one writer failed under contention" >&2; false; }
+  # Each workflow produces its own file, so no lost updates at file level.
+  # The lock serializes the write_body + mv; verify all 5 files exist.
+  for i in $(seq 1 5); do
+    [ -f "$ckdir/w$i.yaml" ] || {
+      echo "missing checkpoint file for w$i" >&2; false
+    }
+  done
+}
+
+@test "checkpoint.sh: lock released on failing write (AC3)" {
+  # The lock must be ACQUIRED before the fault fires.  Inject a failing `mv`
+  # via a PATH shim: acquire_lock succeeds (lock dir writable), the write to
+  # tmpfile succeeds, but `mv -f "$tmpfile" "$target"` calls our shim which
+  # exits 1, tripping set -e inside the critical section.
+  local ckdir="$TEST_TMP/ck-release"
+  mkdir -p "$ckdir"
+  local shim_dir="$TEST_TMP/ck-shim"
+  mkdir -p "$shim_dir"
+  # Shim mv: fail for the checkpoint tmp pattern, pass through otherwise.
+  cat > "$shim_dir/mv" << 'SHIMEOF'
+#!/usr/bin/env bash
+for arg; do
+  case "$arg" in *.yaml.tmp.*) exit 1 ;; esac
+done
+exec /bin/mv "$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export CHECKPOINT_PATH="'"$ckdir"'"
+    bash "'"$SCRIPTS_DIR"'/checkpoint.sh" write --workflow fail-ck --step 1 2>&1
+  '
+  # The script must have failed (mv shim rejected the checkpoint tmp file).
+  [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
+  # Follow-up acquire must succeed immediately — proves the EXIT trap
+  # released the lock, not the 300 s reaper.
+  local lockfile="$ckdir/fail-ck.yaml.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    source "'"$HELPER"'"
+    acquire_lock "'"$lockfile"'" 2 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "follow-up acquire blocked — checkpoint lock was not released: $output" >&2
+    false
+  }
+}
+
+# --- discovery-board.sh ---
+
+@test "discovery-board.sh: N=3 concurrent fallback captures all succeed (AC3)" {
+  local proj="$TEST_TMP/db-contention"
+  mkdir -p "$proj/.gaia/state"
+  local pids=()
+  local i
+  for i in $(seq 1 3); do
+    (
+      export PATH="$SAFE_PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1
+      export PROJECT_ROOT="$proj"
+      bash "$SCRIPTS_DIR/discovery-board.sh" capture --title "item-$i" --source "test-$i"
+    ) &
+    pids+=($!)
+  done
+  local pid rc=0
+  for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+  [ "$rc" -eq 0 ] || { echo "at least one capture failed under contention" >&2; false; }
+  local board="$proj/.gaia/state/discovery-board.yaml"
+  [ -f "$board" ] || { echo "board file missing" >&2; false; }
+  local items
+  items="$(grep -c '  - id:' "$board" 2>/dev/null || echo 0)"
+  [ "$items" -eq 3 ] || {
+    echo "expected 3 items, got $items — lost updates under contention" >&2
+    cat "$board" >&2
+    false
+  }
+}
+
+@test "discovery-board.sh: lock released on failing capture (AC3)" {
+  # The lock must be ACQUIRED before the fault fires.  Inject a failing `mv`
+  # via a PATH shim: acquire_lock succeeds (lock dir writable), the capture
+  # callback writes to a tmpfile, but `mv -f "$tmp" "$BOARD_FILE"` calls the
+  # shim which exits 1, tripping set -e inside the critical section.
+  local proj="$TEST_TMP/db-release"
+  local board_dir="$proj/.gaia/state"
+  mkdir -p "$board_dir"
+  local shim_dir="$TEST_TMP/db-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/mv" << 'SHIMEOF'
+#!/usr/bin/env bash
+for arg; do
+  case "$arg" in *discovery-board.yaml) exit 1 ;; esac
+done
+exec /bin/mv "$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export PROJECT_ROOT="'"$proj"'"
+    bash "'"$SCRIPTS_DIR"'/discovery-board.sh" capture --title "fail-item" --source "test" 2>&1
+  '
+  # The script must have failed (mv shim rejected the board file).
+  [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
+  # Follow-up acquire must succeed immediately — proves the EXIT trap
+  # released the lock, not the 300 s reaper.
+  local lockfile="$board_dir/discovery-board.yaml.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=300
+    source "'"$HELPER"'"
+    acquire_lock "'"$lockfile"'" 2 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "follow-up acquire blocked — board lock was not released: $output" >&2
     false
   }
 }

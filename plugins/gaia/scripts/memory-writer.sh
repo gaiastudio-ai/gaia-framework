@@ -32,6 +32,12 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+_MW_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the shared lock library for concurrency serialization.
+# shellcheck disable=SC1091
+. "$_MW_SCRIPT_DIR/lib/acquire-lock.sh"
+
 # Canonical state-tree root.
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
@@ -257,64 +263,13 @@ esac
 lock_path="${sidecar_dir}/.$(basename "$target_file").lock"
 
 # --- Locking ----------------------------------------------------------------
-# Acquire advisory lock. Use flock when available; otherwise fall back to
-# mkdir-based spin. Both paths respect --lock-timeout (integer seconds).
-acquire_lock_flock() {
-  exec 9>"$lock_path" 2>/dev/null || return 1
-  # shellcheck disable=SC2086
-  if flock -w "$lock_timeout" 9 2>/dev/null; then
-    return 0
-  fi
-  return 1
-}
-
-acquire_lock_mkdir() {
-  local deadline=$(( $(date +%s) + lock_timeout ))
-  while :; do
-    if mkdir "$lock_path" 2>/dev/null; then
-      # Record holder pid for debugging / stale detection.
-      printf '%d\n' "$$" > "$lock_path/pid" 2>/dev/null || true
-      return 0
-    fi
-    # Stale-lock detection: if the holder pid no longer exists, reclaim.
-    if [[ -f "$lock_path/pid" ]]; then
-      local holder
-      holder="$(cat "$lock_path/pid" 2>/dev/null || echo '')"
-      if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
-        rm -rf "$lock_path" 2>/dev/null || true
-        continue
-      fi
-    fi
-    [[ $(date +%s) -ge $deadline ]] && return 1
-    sleep 0.2
-  done
-}
-
-# shellcheck disable=SC2329  # invoked indirectly via `trap ... EXIT`
-release_lock() {
-  if [[ "${lock_mode:-}" == "flock" ]]; then
-    exec 9>&- 2>/dev/null || true
-    rm -f "$lock_path" 2>/dev/null || true
-  elif [[ "${lock_mode:-}" == "mkdir" ]]; then
-    rm -rf "$lock_path" 2>/dev/null || true
-  fi
-}
-trap 'release_lock; _cleanup_tmps' EXIT
-
-lock_mode=""
-if command -v flock >/dev/null 2>&1; then
-  if acquire_lock_flock; then
-    lock_mode="flock"
-  else
-    die "$EX_TEMPFAIL" "lock held on $target_file, timeout after ${lock_timeout}s"
-  fi
-else
-  if acquire_lock_mkdir; then
-    lock_mode="mkdir"
-  else
-    die "$EX_TEMPFAIL" "lock held on $target_file, timeout after ${lock_timeout}s"
-  fi
+# Serialise concurrent writers via the shared lock library.
+if ! acquire_lock "$lock_path" "$lock_timeout" 9; then
+  die "$EX_TEMPFAIL" "lock held on $target_file, timeout after ${lock_timeout}s"
 fi
+# shellcheck disable=SC2329  # invoked indirectly via `trap ... EXIT`
+_mw_release_lock() { release_lock 9 2>/dev/null || true; }
+trap '_mw_release_lock; _cleanup_tmps' EXIT
 
 # --- Timestamp helper -------------------------------------------------------
 now_iso8601() {
