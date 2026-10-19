@@ -694,7 +694,7 @@ _locate_story_file() {
   # `${key}-`.
   local matches=()
   local m base
-  for m in "${raw_matches[@]}"; do
+  for m in ${raw_matches[@]+"${raw_matches[@]}"}; do
     case "$m" in
       */stories/*)
         # Legacy nested — keep as-is.
