@@ -55,9 +55,11 @@ write_transcript() {
 
 # assert_gitignored <pattern>
 #   HALT (non-zero exit) if the given pattern is not ignored by git.
-#   Inside a git repo, uses `git check-ignore` to honour wildcards,
-#   directory entries, and double-star patterns. Outside a repo, falls
-#   back to a `grep -F` literal match against the nearest `.gitignore`.
+#   Inside a git repo, uses `git check-ignore` anchored to PROJECT_ROOT
+#   so the project-root .gitignore is authoritative regardless of CWD.
+#   Outside a repo, falls back to a line-by-line .gitignore processor
+#   that handles covering directories, negation rules, and treats all
+#   patterns literally (no regex or glob expansion).
 #   Canonical HALT message format applied.
 assert_gitignored() {
   local pattern="$1"
@@ -65,34 +67,60 @@ assert_gitignored() {
     printf 'assert_gitignored: usage: assert_gitignored <pattern>\n' >&2
     return 2
   fi
-  # When inside a git repo, use git check-ignore which honours wildcards,
-  # directory entries, and double-star patterns — not just literal matches.
-  # Fall back to grep -F against the nearest .gitignore outside a repo.
-  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+
+  # Anchor git operations to PROJECT_ROOT (falls back to CWD via ".").
+  local _git_dir="${PROJECT_ROOT:-.}"
+
+  if git -C "$_git_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # git check-ignore needs a concrete path, not a prefix — append a dummy
     # filename so the pattern resolves as a file under the ignored directory.
-    if git check-ignore -q "${pattern}probe" 2>/dev/null; then
+    if git -C "$_git_dir" check-ignore -q "${pattern}probe" 2>/dev/null; then
       return 0
     fi
     printf 'HALT: %s* must be in .gitignore\n' "$pattern" >&2
     return 1
   fi
 
-  # Non-git fallback: find nearest .gitignore by walking up from CWD.
-  local cwd gitignore
-  cwd="$(pwd)"
-  while [ "$cwd" != "/" ]; do
-    if [ -f "$cwd/.gitignore" ]; then
-      gitignore="$cwd/.gitignore"
+  # Non-git fallback: find nearest .gitignore starting from PROJECT_ROOT
+  # (or CWD when PROJECT_ROOT is unset).
+  local search_dir gitignore
+  search_dir="${PROJECT_ROOT:-$(pwd)}"
+  while [ "$search_dir" != "/" ]; do
+    if [ -f "$search_dir/.gitignore" ]; then
+      gitignore="$search_dir/.gitignore"
       break
     fi
-    cwd="$(dirname "$cwd")"
+    search_dir="$(dirname "$search_dir")"
   done
   if [ -z "${gitignore:-}" ]; then
     printf 'HALT: %s* must be in .gitignore — no .gitignore found\n' "$pattern" >&2
     return 1
   fi
-  if grep -Fq "$pattern" "$gitignore"; then
+
+  # Process .gitignore rules in file order (last match wins).  Handles:
+  #   - covering directories (rule is an ancestor path of the check path)
+  #   - negation rules (! prefix un-ignores a previously matched path)
+  #   - literal matching only (no regex/glob — all comparisons are fixed-string)
+  local ignored=false line negate rule check
+  check="${pattern%/}"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in '#'*|'') continue ;; esac
+    negate=false
+    case "$line" in '!'*) negate=true; line="${line#!}" ;; esac
+    rule="${line%/}"
+    # Exact match or covering directory (rule is an ancestor of check).
+    if [ "$check" = "$rule" ]; then
+      if "$negate"; then ignored=false; else ignored=true; fi
+    elif [ "${check#"${rule}/"}" != "$check" ]; then
+      if "$negate"; then ignored=false; else ignored=true; fi
+    # Substring containment (legacy compatibility): check is a fixed
+    # substring of rule.  Uses parameter expansion instead of grep to
+    # avoid per-line subprocess overhead.
+    elif [ "${rule#*"$check"}" != "$rule" ]; then
+      if "$negate"; then ignored=false; else ignored=true; fi
+    fi
+  done < "$gitignore"
+  if "$ignored"; then
     return 0
   fi
   printf 'HALT: %s* must be in .gitignore\n' "$pattern" >&2
