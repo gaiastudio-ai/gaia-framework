@@ -12,6 +12,7 @@
 # Refs: FR-RAR-2, AF-2026-04-28-7, NFR-RAR-1
 # Schema source: V1 V1 reference schema lines 80-135 (immutable).
 
+bats_require_minimum_version 1.5.0
 load 'test_helper.bash'
 
 # ---------- Paths ----------
@@ -77,7 +78,7 @@ seed_all_passed() {
 @test "happy path: all 6 PASSED writes V1-schema summary, stdout = abs path" {
   seed_all_passed
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
 
   # stdout is exactly one line — the absolute path
@@ -131,7 +132,7 @@ security-review=No CVEs detected.
 test-automate=4 new tests added.
 SYN
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY" --synopsis-file "$synopsis"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" --synopsis-file "$synopsis"
   [ "$status" -eq 0 ]
 
   local out_path="$output"
@@ -154,13 +155,13 @@ SYN
 @test "determinism: re-run with unchanged gate state is byte-identical" {
   seed_all_passed
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
   local first="$TEST_TMP/first-summary.md"
   cp "$output" "$first"
 
   # Re-run; gate state unchanged.
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
   local second="$output"
 
@@ -178,19 +179,19 @@ SYN
   local pre_size
   pre_size=$(wc -c < "$out_default" | tr -d ' ')
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
 
-  ! grep -q 'PRE-EXISTING GARBAGE' "$out_default"
+  ! grep -q 'PRE-EXISTING GARBAGE' "$out_default" || false
   grep -q "^story_key: ${STORY_KEY}\$" "$out_default"
 }
 
 # ---------- AC4: Story not found → exit 1 (TC-RAR-04) ----------
 
 @test "missing story: exit 1 with stderr 'story not found'" {
-  run "$SUMMARY_GEN" --story "NONEXISTENT-S99"
+  run --separate-stderr "$SUMMARY_GEN" --story "NONEXISTENT-S99"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"story not found"* ]]
+  [[ "$stderr" == *"story not found"* ]]
 }
 
 # ---------- AC5: Zero-row gate table → exit 2 (ECI-667) ----------
@@ -214,9 +215,9 @@ status: review
 > Story moves to done only when ALL reviews show PASSED.
 STORY
 
-  run "$SUMMARY_GEN" --story "E58-S2-EMPTYGATE"
+  run --separate-stderr "$SUMMARY_GEN" --story "E58-S2-EMPTYGATE"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"empty"* ]] || [[ "$output" == *"missing"* ]] || [[ "$output" == *"row"* ]]
+  [[ "$stderr" == *"empty"* ]] || [[ "$stderr" == *"missing"* ]] || [[ "$stderr" == *"row"* ]]
 }
 
 # ---------- AC-EC1: Malformed gate row → exit 2 ----------
@@ -226,9 +227,9 @@ STORY
   sed -i.bak 's/| Code Review | UNVERIFIED | — |/| Code Review UNVERIFIED — |/' "$STORY_FILE"
   rm -f "${STORY_FILE}.bak"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"malformed"* ]] || [[ "$output" == *"missing"* ]] || [[ "$output" == *"empty"* ]]
+  [[ "$stderr" == *"malformed"* ]] || [[ "$stderr" == *"missing"* ]] || [[ "$stderr" == *"empty"* ]]
 }
 
 # ---------- AC-EC2: Duplicate synopsis keys → last-wins + warning ----------
@@ -242,19 +243,18 @@ code-review=First take.
 code-review=Second take wins.
 SYN
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY" --synopsis-file "$synopsis"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" --synopsis-file "$synopsis"
   [ "$status" -eq 0 ]
 
-  # Warning lives on stderr (merged into $output by bats); the actual file
-  # path is the LAST line of stdout (script contract).
-  local out_path
-  out_path="$(printf '%s\n' "$output" | tail -1)"
+  # With --separate-stderr, $output is pure stdout (the path) and $stderr
+  # holds diagnostics (mirror line, duplicate warnings).
+  local out_path="$output"
   [ -f "$out_path" ]
   grep -q '^\*\*Synopsis:\*\* Second take wins\.$' "$out_path"
-  ! grep -q '^\*\*Synopsis:\*\* First take\.$' "$out_path"
+  ! grep -q '^\*\*Synopsis:\*\* First take\.$' "$out_path" || false
 
   # Warning text surfaces somewhere in the combined output.
-  [[ "$output" == *"duplicate"* ]] || [[ "$output" == *"warning"* ]]
+  [[ "$stderr" == *"duplicate"* ]] || [[ "$stderr" == *"warning"* ]]
 }
 
 # ---------- AC-EC3: Concurrent invocation → atomic write ----------
@@ -284,12 +284,12 @@ SYN
 @test "LC_ALL drift: caller LC_ALL=fr_FR.UTF-8 produces identical output to LC_ALL=C" {
   seed_all_passed
 
-  LC_ALL=C run "$SUMMARY_GEN" --story "$STORY_KEY"
+  LC_ALL=C run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
   local first="$TEST_TMP/locale-c.md"
   cp "$output" "$first"
 
-  LC_ALL=fr_FR.UTF-8 run "$SUMMARY_GEN" --story "$STORY_KEY"
+  LC_ALL=fr_FR.UTF-8 run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
 
   cmp "$first" "$output"
@@ -304,12 +304,12 @@ SYN
   mkdir -p "$readonly_dir"
   chmod 0500 "$readonly_dir"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY" --output "$readonly_dir/x.md"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" --output "$readonly_dir/x.md"
   # Restore so teardown can rm.
   chmod 0700 "$readonly_dir"
 
   [ "$status" -eq 2 ]
-  [[ "$output" == *"write failure"* ]]
+  [[ "$stderr" == *"write failure"* ]] || false
   # No partial file.
   [ ! -e "$readonly_dir/x.md" ]
 }
@@ -322,7 +322,7 @@ SYN
   # Pin the story file mtime to a known timestamp.
   touch -t 202604010000.00 "$STORY_FILE"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
 
   local out_path="$output"
@@ -339,7 +339,7 @@ SYN
   seed_gate "Test Review" PASSED
   seed_gate "Performance Review" PASSED
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
   grep -q '^overall_status: INCOMPLETE$' "$output"
   grep -q '^\*\*Overall Status:\*\* INCOMPLETE$' "$output"
@@ -353,7 +353,7 @@ SYN
   seed_gate "Test Review" PASSED
   seed_gate "Performance Review" PASSED
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
   grep -q '^overall_status: FAILED$' "$output"
 }
@@ -365,7 +365,7 @@ SYN
 
   local custom="$TEST_TMP/custom-summary.md"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY" --output "$custom"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" --output "$custom"
   [ "$status" -eq 0 ]
   [ "$output" = "$custom" ]
   [ -f "$custom" ]
@@ -381,20 +381,17 @@ SYN
   # Pin mtime for determinism — must match the golden capture timestamp.
   TZ=UTC touch -t 202601011200.00 "$STORY_FILE"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
-  # stdout may include stderr (mirror line); the last line is the path.
-  local out_path
-  out_path="$(printf '%s\n' "$output" | tail -1)"
+  local out_path="$output"
   [ -f "$out_path" ]
   local first="$TEST_TMP/summary-first.md"
   cp "$out_path" "$first"
 
   # Re-run — must be byte-identical (existing determinism contract).
-  run "$SUMMARY_GEN" --story "$STORY_KEY"
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
-  local out_path2
-  out_path2="$(printf '%s\n' "$output" | tail -1)"
+  local out_path2="$output"
   cmp "$first" "$out_path2"
 
   # Strip run-specific absolute paths and compare against committed golden.
@@ -422,12 +419,11 @@ SYN
   local sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   local rver="sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" \
     --run-id "$rid" --commit-sha "$sha" --requirement-version "$rver"
   [ "$status" -eq 0 ]
 
-  local out_path
-  out_path="$(printf '%s\n' "$output" | tail -1)"
+  local out_path="$output"
   [ -f "$out_path" ]
   grep -q "^run_id: ${rid}\$" "$out_path"
   grep -q "^commit_sha: ${sha}\$" "$out_path"
@@ -438,31 +434,31 @@ SYN
   seed_all_passed
 
   # Invalid run-id pattern — must reject the VALUE, not the flag itself.
-  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" \
     --run-id "not-a-valid-round-id" \
     --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
-  local out="$output"
+  local out="$stderr"
   # Must not be "unknown flag" — that means the flag is not implemented yet.
   [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
   grep -qi "invalid\|pattern\|run.id\|format" <<<"$out"
 
   # Invalid commit-sha.
-  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" \
     --run-id "round-20261016T120000Z-12345" \
     --commit-sha "not-hex" \
     --requirement-version "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   [ "$status" -eq 2 ]
-  out="$output"
+  out="$stderr"
   [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
 
   # Invalid requirement-version.
-  run "$SUMMARY_GEN" --story "$STORY_KEY" \
+  run --separate-stderr "$SUMMARY_GEN" --story "$STORY_KEY" \
     --run-id "round-20261016T120000Z-12345" \
     --commit-sha "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     --requirement-version "not-a-sha256"
   [ "$status" -eq 2 ]
-  out="$output"
+  out="$stderr"
   [[ "$out" != *"unknown flag"* && "$out" != *"Unknown flag"* && "$out" != *"UNKNOWN FLAG"* ]] || false
 }
