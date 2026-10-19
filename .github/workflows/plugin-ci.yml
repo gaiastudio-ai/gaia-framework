@@ -124,6 +124,11 @@ jobs:
           # Move github.base_ref into an env var so that a crafted branch name
           # cannot inject shell commands via the expression interpolation.
           PR_BASE_REF: ${{ github.base_ref }}
+          # Cap the number of diff-selected files to prevent timeout on large
+          # diffs such as staging-to-main promotion PRs.  A promotion diff
+          # selects nearly the entire suite; without a cap the 5-minute timeout
+          # cancels the job and poisons the overall workflow conclusion.
+          FAST_FEEDBACK_MAX_FILES: '200'
         run: |
           set -euo pipefail
           selected=$(.github/scripts/diff-select-tests.sh "origin/${PR_BASE_REF}" || true)
@@ -134,6 +139,18 @@ jobs:
             exit 0
           fi
           count=$(echo "$selected" | wc -l | tr -d ' ')
+
+          # Cap selection to avoid timeout on very large diffs (e.g. promotion PRs).
+          max="${FAST_FEEDBACK_MAX_FILES:-200}"
+          if [ "$count" -gt "$max" ]; then
+            dropped=$((count - max))
+            selected=$(echo "$selected" | head -n "$max")
+            echo "::warning::Fast-feedback selection capped: $count files selected, running first $max, dropped $dropped"
+            echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
+            echo "Selection capped: **$count** files selected, running first **$max**, dropped **$dropped**." >> "$GITHUB_STEP_SUMMARY"
+            count="$max"
+          fi
+
           echo "Running $count diff-selected test file(s):"
           echo "$selected"
           echo ""

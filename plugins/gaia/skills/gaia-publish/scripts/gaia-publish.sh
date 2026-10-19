@@ -121,6 +121,17 @@ if yq eval '.ci_cd.promotion_chain' "$PROJECT_CONFIG" 2>/dev/null | grep -q '^- 
   fi
 fi
 
+# When --version is supplied the publish gate must evaluate CI for the
+# RELEASED code on the release branch (last promotion-chain entry), not the
+# staging HEAD whose newest run may be a cancelled promotion-PR trigger.
+if [ -n "$VERSION" ] && yq eval '.ci_cd.promotion_chain' "$PROJECT_CONFIG" 2>/dev/null | grep -q '^- '; then
+  _rel_branch=$(yq eval '.ci_cd.promotion_chain[-1].branch // ""' "$PROJECT_CONFIG" 2>/dev/null)
+  if [ -n "$_rel_branch" ]; then
+    SRC_BRANCH="$_rel_branch"
+    REQ_CI_CHECKS=$(yq eval '.ci_cd.promotion_chain[-1].ci_checks[]' "$PROJECT_CONFIG" 2>/dev/null)
+  fi
+fi
+
 # ---------- Per-step state tracking ----------
 
 STEP1_STATUS="PENDING"; STEP1_DETAIL=""
@@ -197,13 +208,50 @@ _step1_pre_publish_gate() {
     return
   fi
 
-  # Single gh invocation; reuse the JSON for all required-check probes.
-  GH_RUNS_JSON=$(gh run list --branch "$SRC_BRANCH" --limit 50 \
-    --json status,conclusion,name,headSha 2>/dev/null || echo "[]")
+  # --- Resolve CI runs for the release commit ---
+  # When --version is supplied, PR-triggered workflow runs are associated with
+  # the PR source-branch head, not the merge commit on the release branch.
+  # Trace from the release commit back to the promotion PR and query its runs.
+  local _release_sha="" _query_sha=""
+  if [ -n "$VERSION" ]; then
+    local _tag_ref="v${VERSION#v}"
+    _release_sha=$(git -C "$PROJECT_ROOT" rev-parse "${_tag_ref}^{commit}" 2>/dev/null || true)
+    [ -z "$_release_sha" ] && \
+      _release_sha=$(git -C "$PROJECT_ROOT" rev-parse "origin/$SRC_BRANCH" 2>/dev/null || true)
 
-  # HEAD SHA from the first entry (the most-recent run on the branch).
+    if [ -n "$_release_sha" ]; then
+      # Find the merged PR whose merge commit matches the release SHA.
+      local _merged_prs _pr_head=""
+      _merged_prs=$(gh pr list --base "$SRC_BRANCH" --state merged --limit 10 \
+        --json headRefOid,mergeCommit 2>/dev/null || echo "[]")
+      # Try exact match by merge-commit OID first.
+      _pr_head=$(printf '%s' "$_merged_prs" | jq -r --arg sha "$_release_sha" \
+        '[.[] | select(.mergeCommit.oid == $sha)] | first | .headRefOid // empty' 2>/dev/null || true)
+      # Fall back to the most-recently merged PR.
+      [ -z "$_pr_head" ] && \
+        _pr_head=$(printf '%s' "$_merged_prs" | jq -r '.[0].headRefOid // empty' 2>/dev/null || true)
+      _query_sha="$_pr_head"
+    fi
+  fi
+
+  # Build the run-list JSON: by commit when the promotion PR was found,
+  # otherwise fall back to the branch query (legacy / single-entry chains).
+  if [ -n "$_query_sha" ]; then
+    GH_RUNS_JSON=$(gh run list --commit "$_query_sha" --limit 50 \
+      --json status,conclusion,name,headSha 2>/dev/null || echo "[]")
+  else
+    GH_RUNS_JSON=$(gh run list --branch "$SRC_BRANCH" --limit 50 \
+      --json status,conclusion,name,headSha 2>/dev/null || echo "[]")
+  fi
+
+  # HEAD SHA: prefer the release commit for the detail line so the operator
+  # sees the released commit, not the PR source-branch head.
   local head_sha
-  head_sha=$(printf '%s' "$GH_RUNS_JSON" | jq -r '.[0].headSha // "unknown"' 2>/dev/null)
+  if [ -n "$_release_sha" ]; then
+    head_sha="$_release_sha"
+  else
+    head_sha=$(printf '%s' "$GH_RUNS_JSON" | jq -r '.[0].headSha // "unknown"' 2>/dev/null)
+  fi
 
   # Iterate required checks; collect failures.
   local failed_checks=""
