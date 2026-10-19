@@ -756,12 +756,18 @@ _with_lock() {
   local callback="$1"
   shift
 
+  # Release the lock on any exit path (set -e, signal) so a failing write
+  # does not leave it held until the 60 s stale-lock reaper fires. The
+  # pre-migration flock path ran in a subshell; the fallback path had an
+  # explicit EXIT/INT/TERM trap. Both are preserved via this trap chain.
+  trap 'release_lock 9 2>/dev/null; _cleanup_tmps' EXIT INT TERM
   if ! acquire_lock "$BOARD_LOCK" 5 9; then
     die "lock timeout acquiring $BOARD_LOCK"
   fi
   "$callback" "$@"
   local _wl_rc=$?
   release_lock 9
+  trap '_cleanup_tmps' EXIT INT TERM
   return "$_wl_rc"
 }
 

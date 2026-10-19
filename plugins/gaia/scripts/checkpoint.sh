@@ -251,6 +251,13 @@ cmd_write() {
   local tmpfile="$target.tmp.$$"
 
   # Serialise concurrent writers via the shared lock library.
+  # Release the lock on any exit path (normal, set -e, signal) so a failing
+  # write does not leave it held until the 60 s stale-lock reaper fires.
+  # The pre-migration flock path ran in a subshell whose fd was auto-closed
+  # on exit; this trap preserves that guarantee.
+  # shellcheck disable=SC2329
+  _ck_release_lock() { release_lock 9 2>/dev/null || true; }
+  trap '_ck_release_lock' EXIT
   if ! acquire_lock "$lockfile" 5 9; then
     die 1 "lock timeout acquiring $lockfile"
   fi

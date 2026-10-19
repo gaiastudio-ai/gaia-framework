@@ -142,14 +142,15 @@ export ACQUIRE_LOCK_EXIT_IDENTITY=5
 # --- Internal: shell-option save/restore (Bash 3.2 compatible) ---
 #
 # Each public function calls _al_save_opts on entry and _al_restore_opts on
-# every return path, so the library never leaks errexit or pipefail into the
-# sourcing shell.  The _al_saved_* variables are per-call (single-threaded
-# bash), not per-nesting-level, which is safe because the only public entry
-# points (acquire_lock, release_lock, require_flock_for_parallel, and the
-# two predicates) never call each other.
+# every return path, so the library never leaks errexit, nounset or pipefail
+# into the sourcing shell.  The _al_saved_* variables are per-call
+# (single-threaded bash), not per-nesting-level, which is safe because the
+# only public entry points (acquire_lock, release_lock,
+# require_flock_for_parallel, and the two predicates) never call each other.
 
 _al_save_opts() {
-  _al_saved_errexit=0; case "$-" in *e*) _al_saved_errexit=1 ;; esac
+  _al_saved_errexit=0;  case "$-" in *e*) _al_saved_errexit=1  ;; esac
+  _al_saved_nounset=0;  case "$-" in *u*) _al_saved_nounset=1  ;; esac
   _al_saved_pipefail=0
   if set -o | grep -q 'pipefail.*on' 2>/dev/null; then _al_saved_pipefail=1; fi
   set -euo pipefail
@@ -157,6 +158,7 @@ _al_save_opts() {
 
 _al_restore_opts() {
   [ "$_al_saved_errexit" = "1" ]  || set +e
+  [ "$_al_saved_nounset" = "1" ]  || set +u
   [ "$_al_saved_pipefail" = "1" ] || set +o pipefail
 }
 

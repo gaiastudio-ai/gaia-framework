@@ -274,10 +274,21 @@ line=$(jq -nc \
    + (if $data  != null then {data: $data}         else {} end)')
 
 # ---------- Atomic append under lock ----------
+#
+# Timeout budget: flock path waits 1 s (the happy path is sub-millisecond);
+# the fallback path needs a longer budget because its ln(2) spin-loop sleeps
+# between retries. 5 s matches the pre-migration wait budget (50 retries *
+# 0.1 s). The helper's own backoff governs actual retry timing.
 
 lockfile="${JSONL}.lock"
 
-if ! acquire_lock "$lockfile" 1 9; then
+# Release the lock on any exit path (normal, set -e, signal) so a failing
+# write does not leave it held until the 60 s stale-lock reaper fires.
+# shellcheck disable=SC2329
+_le_release_lock() { release_lock 9 2>/dev/null || true; }
+trap '_le_release_lock' EXIT
+
+if ! acquire_lock "$lockfile" 5 9; then
   die "lock timeout acquiring $lockfile"
 fi
 # Single printf write(2) inside the lock — atomic for lines under PIPE_BUF.
