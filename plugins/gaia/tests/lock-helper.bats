@@ -1777,7 +1777,7 @@ STORYEOF
   if [ -f "$lockfile" ]; then
     local content
     content="$(cat "$lockfile" 2>/dev/null || true)"
-    if echo "$content" | grep -qE '^[0-9]+ [0-9]+$'; then
+    if grep -qE '^[0-9]+ [0-9]+$' <<< "$content"; then
       echo "lock file still carries a PID after failed write — EXIT trap did not fire: $content" >&2
       false
     fi
