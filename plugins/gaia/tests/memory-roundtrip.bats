@@ -27,6 +27,9 @@ setup() {
   LOADER="$SCRIPTS_DIR/memory-loader.sh"
   export MEMORY_PATH="$TEST_TMP/_memory"
   mkdir -p "$MEMORY_PATH"
+  # Clear the parallel-execution flag so fallback-path tests are not blocked
+  # by the parallel gate inside acquire_lock.
+  unset GAIA_PARALLEL_EXECUTION
 }
 teardown() { common_teardown; }
 

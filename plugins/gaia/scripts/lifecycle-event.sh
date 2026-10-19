@@ -275,10 +275,10 @@ line=$(jq -nc \
 
 # ---------- Atomic append under lock ----------
 #
-# Timeout budget: flock path waits 1 s (the happy path is sub-millisecond);
-# the fallback path needs a longer budget because its ln(2) spin-loop sleeps
-# between retries. 5 s matches the pre-migration wait budget (50 retries *
-# 0.1 s). The helper's own backoff governs actual retry timing.
+# Timeout budget: 5 s for both backends.  The happy path is sub-millisecond;
+# the fallback path needs the full budget because its ln(2) spin-loop sleeps
+# between retries.  5 s matches the pre-migration fallback wait (50 retries *
+# 0.1 s).  The helper's own backoff governs actual retry timing.
 
 lockfile="${JSONL}.lock"
 

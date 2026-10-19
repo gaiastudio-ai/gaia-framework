@@ -1757,32 +1757,28 @@ STORYEOF
 }
 
 @test "lifecycle-event.sh: lock released on failing write (AC3)" {
+  # The lock must be ACQUIRED before the fault fires, so the EXIT trap has
+  # something to release.  Create a read-only JSONL file: the lock directory
+  # is writable (acquire_lock succeeds), but `printf >> $JSONL` fails under
+  # set -e because the file is not writable.
   local proj="$TEST_TMP/le-release"
   local mem="$proj/.gaia/memory"
   mkdir -p "$mem"
-  # Make the JSONL directory read-only so the append fails under set -e.
-  local jsonl_dir="$mem"
-  chmod 555 "$jsonl_dir"
+  local jsonl="$mem/lifecycle-events.jsonl"
+  touch "$jsonl"
+  chmod 444 "$jsonl"
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export MEMORY_PATH="'"$mem"'"
     bash "'"$SCRIPTS_DIR"'/lifecycle-event.sh" --type test --workflow fail-write 2>&1
   '
-  chmod 755 "$jsonl_dir"
-  # The script should have failed (could not write).
+  chmod 644 "$jsonl"
+  # The script must have failed (could not append to read-only file).
   [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
-  # The lock file must not contain a held PID (the EXIT trap released it).
+  # Follow-up acquire must succeed immediately — well under the 300 s reap
+  # threshold, proving the EXIT trap released the lock (not the reaper).
   local lockfile="$mem/lifecycle-events.jsonl.lock"
-  if [ -f "$lockfile" ]; then
-    local content
-    content="$(cat "$lockfile" 2>/dev/null || true)"
-    if grep -qE '^[0-9]+ [0-9]+$' <<< "$content"; then
-      echo "lock file still carries a PID after failed write — EXIT trap did not fire: $content" >&2
-      false
-    fi
-  fi
-  # Follow-up acquire must succeed quickly (not blocked by stale lock).
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
@@ -1825,19 +1821,33 @@ STORYEOF
 }
 
 @test "checkpoint.sh: lock released on failing write (AC3)" {
+  # The lock must be ACQUIRED before the fault fires.  Inject a failing `mv`
+  # via a PATH shim: acquire_lock succeeds (lock dir writable), the write to
+  # tmpfile succeeds, but `mv -f "$tmpfile" "$target"` calls our shim which
+  # exits 1, tripping set -e inside the critical section.
   local ckdir="$TEST_TMP/ck-release"
   mkdir -p "$ckdir"
-  # First, acquire successfully to create the lock file.
+  local shim_dir="$TEST_TMP/ck-shim"
+  mkdir -p "$shim_dir"
+  # Shim mv: fail for the checkpoint tmp pattern, pass through otherwise.
+  cat > "$shim_dir/mv" << 'SHIMEOF'
+#!/usr/bin/env bash
+for arg; do
+  case "$arg" in *.yaml.tmp.*) exit 1 ;; esac
+done
+exec /bin/mv "$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
   run bash -c '
-    export PATH="'"$SAFE_PATH"'"
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export CHECKPOINT_PATH="'"$ckdir"'"
-    # Write to a read-only directory to trigger failure after lock acquire.
-    chmod 555 "'"$ckdir"'"
     bash "'"$SCRIPTS_DIR"'/checkpoint.sh" write --workflow fail-ck --step 1 2>&1
   '
-  chmod 755 "$ckdir"
-  # Follow-up acquire must succeed quickly.
+  # The script must have failed (mv shim rejected the checkpoint tmp file).
+  [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
+  # Follow-up acquire must succeed immediately — proves the EXIT trap
+  # released the lock, not the 300 s reaper.
   local lockfile="$ckdir/fail-ck.yaml.lock"
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
@@ -1883,19 +1893,33 @@ STORYEOF
 }
 
 @test "discovery-board.sh: lock released on failing capture (AC3)" {
+  # The lock must be ACQUIRED before the fault fires.  Inject a failing `mv`
+  # via a PATH shim: acquire_lock succeeds (lock dir writable), the capture
+  # callback writes to a tmpfile, but `mv -f "$tmp" "$BOARD_FILE"` calls the
+  # shim which exits 1, tripping set -e inside the critical section.
   local proj="$TEST_TMP/db-release"
-  mkdir -p "$proj/.gaia/state"
-  # Make state dir read-only to force a write failure after lock acquire.
   local board_dir="$proj/.gaia/state"
-  chmod 555 "$board_dir"
+  mkdir -p "$board_dir"
+  local shim_dir="$TEST_TMP/db-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/mv" << 'SHIMEOF'
+#!/usr/bin/env bash
+for arg; do
+  case "$arg" in *discovery-board.yaml) exit 1 ;; esac
+done
+exec /bin/mv "$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
   run bash -c '
-    export PATH="'"$SAFE_PATH"'"
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export PROJECT_ROOT="'"$proj"'"
     bash "'"$SCRIPTS_DIR"'/discovery-board.sh" capture --title "fail-item" --source "test" 2>&1
   '
-  chmod 755 "$board_dir"
-  # Follow-up acquire must succeed quickly.
+  # The script must have failed (mv shim rejected the board file).
+  [ "$status" -ne 0 ] || { echo "expected failure but exit 0" >&2; false; }
+  # Follow-up acquire must succeed immediately — proves the EXIT trap
+  # released the lock, not the 300 s reaper.
   local lockfile="$board_dir/discovery-board.yaml.lock"
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
