@@ -55,8 +55,10 @@ If the script exits non-zero, display the error output and inform the user:
 After the dashboard renders successfully, invoke `sprint-state.sh reconcile` to detect and auto-correct drift between authoritative story-file frontmatter and the derivative `sprint-status.yaml` cache.
 
 ```bash
-PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" reconcile
+PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" reconcile --sprint-id "${sprint_id}"
 ```
+
+When `--sprint` was not provided, pass the session-bound sprint id (read from the binding file or the active sprint). When no sprint is identifiable, omit `--sprint-id` — reconcile defaults to the single-sprint file.
 
 Invocation order rationale: reconcile runs AFTER the dashboard so the user always sees the current (possibly drifted) view first, then receives an auditable summary of any corrections applied. This ordering makes drift visible rather than silently masked.
 
