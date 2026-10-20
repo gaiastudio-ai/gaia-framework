@@ -18,7 +18,6 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 ### Changed
 
 - back-merge main into staging after v1.222.1
-- back-merge main into staging after v1.222.1
 - back-merge main into staging after v1.222.0
 
 ### Fixed
