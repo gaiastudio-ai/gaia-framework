@@ -102,7 +102,7 @@ teardown() { common_teardown; }
   rm -f "$tmpbl"
 
   local count
-  count=$(echo "$result" | wc -l | tr -d ' ')
+  count=$(wc -l <<< "$result" | tr -d ' ')
   [ "$count" -eq 3 ]
 }
 
@@ -121,9 +121,9 @@ teardown() { common_teardown; }
   rm -f "$tmpbl"
 
   # cheap (5) + medium (15) = 20 <= 25, but expensive (200) would be 220 > 25
-  echo "$result" | grep -q 'cheap.bats'
-  echo "$result" | grep -q 'medium.bats'
-  ! echo "$result" | grep -q 'expensive.bats'
+  grep -q 'cheap.bats' <<< "$result"
+  grep -q 'medium.bats' <<< "$result"
+  ! grep -q 'expensive.bats' <<< "$result"
 }
 
 @test "cost-select: unknown files get fallback estimate (median, floor 4s)" {
@@ -144,7 +144,7 @@ teardown() { common_teardown; }
   log=$(cat "$stderr_out")
   rm -f "$tmpbl" "$stderr_out"
 
-  echo "$log" | grep -q 'FALLBACK: 6s'
+  grep -q 'FALLBACK: 6s' <<< "$log"
 }
 
 @test "cost-select: fallback has a floor of 4s when median is lower" {
@@ -165,14 +165,14 @@ teardown() { common_teardown; }
   log=$(cat "$stderr_out")
   rm -f "$tmpbl" "$stderr_out"
 
-  echo "$log" | grep -q 'FALLBACK: 4s'
+  grep -q 'FALLBACK: 4s' <<< "$log"
 }
 
 @test "cost-select: missing baseline exits 0 with notice" {
   [ -x "$COST_SELECT" ]
   local result stderr_out
   stderr_out="$(mktemp)"
-  result=$(echo "test.bats" | bash "$COST_SELECT" "/nonexistent/baseline.tsv" 240 2>"$stderr_out")
+  result=$(printf 'test.bats\n' | bash "$COST_SELECT" "/nonexistent/baseline.tsv" 240 2>"$stderr_out")
   local rc=$?
   local log
   log=$(cat "$stderr_out")
@@ -180,7 +180,7 @@ teardown() { common_teardown; }
 
   [ "$rc" -eq 0 ]
   [ -z "$result" ]
-  echo "$log" | grep -q 'timing baseline unavailable'
+  grep -q 'timing baseline unavailable' <<< "$log"
 }
 
 @test "cost-select: zero-fit exits 0 with notice" {
@@ -192,7 +192,7 @@ teardown() { common_teardown; }
 
   local result stderr_out
   stderr_out="$(mktemp)"
-  result=$(echo "plugins/gaia/tests/huge.bats" \
+  result=$(printf 'plugins/gaia/tests/huge.bats\n' \
     | bash "$COST_SELECT" "$tmpbl" 240 2>"$stderr_out")
   local rc=$?
   local log
@@ -201,7 +201,7 @@ teardown() { common_teardown; }
 
   [ "$rc" -eq 0 ]
   [ -z "$result" ]
-  echo "$log" | grep -q 'no files fit'
+  grep -q 'no files fit' <<< "$log"
 }
 
 @test "cost-select: file exactly at budget is included" {
@@ -212,11 +212,11 @@ teardown() { common_teardown; }
   printf 'exact.bats\t240\n' >> "$tmpbl"
 
   local result
-  result=$(echo "plugins/gaia/tests/exact.bats" \
+  result=$(printf 'plugins/gaia/tests/exact.bats\n' \
     | bash "$COST_SELECT" "$tmpbl" 240 2>/dev/null)
   rm -f "$tmpbl"
 
-  echo "$result" | grep -q 'exact.bats'
+  grep -q 'exact.bats' <<< "$result"
 }
 
 @test "cost-select: empty candidates produce no output" {
@@ -226,7 +226,7 @@ teardown() { common_teardown; }
   printf 'file\twall_seconds\n' > "$tmpbl"
 
   local result
-  result=$(echo "" | bash "$COST_SELECT" "$tmpbl" 240 2>/dev/null)
+  result=$(printf '' | bash "$COST_SELECT" "$tmpbl" 240 2>/dev/null)
   rm -f "$tmpbl"
 
   [ -z "$result" ]
@@ -249,9 +249,9 @@ teardown() { common_teardown; }
   log=$(cat "$stderr_out")
   rm -f "$tmpbl" "$stderr_out"
 
-  echo "$log" | grep -q 'SELECTED:'
-  echo "$log" | grep -q 'DROPPED:'
-  echo "$log" | grep -q 'FALLBACK:'
+  grep -q 'SELECTED:' <<< "$log"
+  grep -q 'DROPPED:' <<< "$log"
+  grep -q 'FALLBACK:' <<< "$log"
 }
 
 @test "cost-select: empty baseline (header only) assigns fallback to all candidates" {
@@ -272,9 +272,9 @@ teardown() { common_teardown; }
 
   # Both files should be included (2 * 4s = 8s < 100s).
   local count
-  count=$(echo "$result" | grep -c '.bats')
+  count=$(grep -c '.bats' <<< "$result")
   [ "$count" -eq 2 ]
-  echo "$log" | grep -q 'FALLBACK: 4s'
+  grep -q 'FALLBACK: 4s' <<< "$log"
 }
 
 # ---------------------------------------------------------------------------
@@ -288,5 +288,5 @@ teardown() { common_teardown; }
 @test "refresh-bats-file-timing.sh prints usage on missing argument" {
   local output
   output=$(bash "$REFRESH_SCRIPT" 2>&1 || true)
-  echo "$output" | grep -qi 'usage'
+  grep -qi 'usage' <<< "$output"
 }
