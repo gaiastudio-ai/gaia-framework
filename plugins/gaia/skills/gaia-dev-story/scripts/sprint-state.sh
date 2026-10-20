@@ -1360,6 +1360,24 @@ do_transition_locked() {
     die "sprint-status.yaml is missing or empty: $SPRINT_STATUS_YAML"
   fi
 
+  # --- Closing-marker check ---
+  # In concurrent mode, refuse story-level transitions while a sprint close
+  # is in progress. The closing marker was written by the close writer in
+  # Phase A while L4 was held.
+  if _is_concurrent_mode; then
+    local _trans_state_dir
+    _trans_state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+    local _trans_sprint_id
+    _trans_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null || true)"
+    if [ -n "$_trans_sprint_id" ]; then
+      local _trans_marker
+      _trans_marker="$(_closing_marker_path "$_trans_state_dir" "$_trans_sprint_id")"
+      if [ -f "$_trans_marker" ]; then
+        die "sprint close in progress -- injection refused"
+      fi
+    fi
+  fi
+
   # Locate the story file now that we hold the lock.
   locate_story_file "$story_key"
 
