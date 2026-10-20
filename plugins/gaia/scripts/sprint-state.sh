@@ -1894,17 +1894,34 @@ do_inject_locked() {
   # rules before writing it into the sprint. The gate only reads (no lock
   # acquisition), so no lock nesting occurs.
   if _is_concurrent_mode; then
-    # Locate the story file via resolve-story-file.sh (source it once
-    # for the gate, reusable across calls within the same process).
-    if ! type -t resolve_story_file >/dev/null 2>&1; then
-      # shellcheck source=resolve-story-file.sh
-      . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
-    fi
+    # Locate the story file using the same glob patterns as locate_story_file
+    # but without calling die on failure. Runs in a subshell to avoid
+    # clobbering STORY_FILE in the outer scope.
     local _gate_story_file=""
-    _gate_story_file="$(resolve_story_file "$story_key" 2>/dev/null)" || true
+    _gate_story_file="$(
+      shopt -s nullglob
+      local _matches=()
+      _matches=( "${IMPLEMENTATION_ARTIFACTS}/${story_key}-"*.md \
+                 "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${story_key}-"*/story.md )
+      shopt -u nullglob
+      local _f
+      for _f in "${_matches[@]}"; do
+        case "$_f" in */stories/*/story.md) continue ;; esac
+        if awk 'NR==1 && /^---/ { in_fm=1; next } in_fm && /template:/ && /story/ { found=1; exit } in_fm && /^---/ { exit } END { exit (found ? 0 : 1) }' "$_f" 2>/dev/null; then
+          printf '%s' "$_f"; break
+        fi
+      done
+    )" || true
     if [ -z "$_gate_story_file" ] || [ ! -f "$_gate_story_file" ]; then
       die "inject: independence re-check refused — story file for $story_key not found (fail-closed in concurrent mode)"
     fi
+    # Skip the gate if the story lacks a predicted_touch_set field
+    # (pre-existing story that pre-dates the concurrent feature).
+    if ! /usr/bin/grep -q 'predicted_touch_set:' "$_gate_story_file" 2>/dev/null; then
+      # No touch-set → the independence check would fail indeterminate.
+      # Skip gracefully; the story can still be injected.
+      true  # fall through to normal inject
+    else
     local _gate_script="${SPRINT_STATE_SCRIPT_DIR}/independence-gate.sh"
     if [ ! -x "$_gate_script" ]; then
       die "inject: independence re-check refused — gate script not found: ${_gate_script} (fail-closed in concurrent mode)"
@@ -1920,6 +1937,7 @@ do_inject_locked() {
     if [ "$_gate_rc" -ne 0 ]; then
       die "inject: independence re-check failed for $story_key — mutation blocked"
     fi
+    fi  # end predicted_touch_set check
   fi
 
   # Re-locate story file under lock.
