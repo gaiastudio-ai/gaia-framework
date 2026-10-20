@@ -4222,9 +4222,15 @@ _cmd_close_concurrent() {
   local rollover_keys_csv="$4" pre_close_status="$5"
   local resume_mode="$6" state_dir="$7"
 
+  # Validate sprint id format.
+  _validate_sprint_id "$sprint_id" || die "close: invalid sprint id: $sprint_id"
+
   local per_sprint_yaml
   per_sprint_yaml="$(_sprint_file_path "$state_dir" "$sprint_id")"
   [ -f "$per_sprint_yaml" ] || die "close: per-sprint state file not found: $per_sprint_yaml"
+
+  # Validate the sprint id matches the file contents.
+  _assert_sprint_id_matches "close" "--sprint" "$sprint_id" "$per_sprint_yaml" 2
 
   local marker_file
   marker_file="$(_closing_marker_path "$state_dir" "$sprint_id")"

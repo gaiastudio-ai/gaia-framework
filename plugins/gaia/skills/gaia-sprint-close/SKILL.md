@@ -149,8 +149,6 @@ The sprint-review sentinel proves that `/gaia-sprint-review` ran and produced a 
 
 The `--force` flag is at the close.sh (skill) level, distinct from the `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL` env var at the `sprint-state.sh` level. Both are audited bypasses; they operate at different layers.
 
-The `--force` flag is at the close.sh (skill) level, distinct from the `GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL` env var at the `sprint-state.sh` level. Both are audited bypasses; they operate at different layers.
-
 ### Step 4 — Status write via close writer
 
 `close.sh` delegates the status write entirely to `sprint-state.sh close`, which handles both single-sprint and concurrent modes atomically. `close.sh` takes no lock and performs no direct state-file writes. When `sprint-state.sh` is missing or not executable, `close.sh` fails loudly with a non-zero exit and writes nothing.

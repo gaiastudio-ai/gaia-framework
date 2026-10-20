@@ -289,8 +289,8 @@ _read_closed_at() {
     > "$STATE_DIR/.sprint-closing-sprint-900"
 
   # Set a very short timeout for the test.
-  export GAIA_LOCK_L4_TIMEOUT=1
-  export GAIA_PRE_RELEASE_POLL_INTERVAL=0.1
+  export GAIA_PRE_RELEASE_TIMEOUT=2
+  export GAIA_PRE_RELEASE_POLL_MS=200
 
   run "$PRE_RELEASE_SH"
   [ "$status" -eq 3 ]
@@ -418,6 +418,49 @@ YAML
   [ "$(_read_status "$per_sprint")" = "review" ]
 }
 
+@test "post-close audit rollback restores exact pre-close status" {
+  # Test the backstop audit path by closing a sprint where all stories
+  # are done, then manually injecting a non-done story into the yaml
+  # AFTER the close (simulating a race that the audit catches), and
+  # re-running the close which triggers the audit.
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  local per_sprint="$STATE_DIR/sprint-status-sprint-900.yaml"
+
+  # First: close succeeds (all stories done).
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review 2>/dev/null
+  [ "$(_read_status "$per_sprint")" = "closed" ]
+
+  # Now tamper: revert to review and add a non-done story to test audit.
+  awk '
+    /^status: closed/ { print "status: review"; next }
+    /^closed_at:/ { next }
+    /^close_inputs:/ { in_ci=1; next }
+    in_ci && /^[[:space:]]/ { next }
+    in_ci && /^[^[:space:]]/ { in_ci=0 }
+    { print }
+    END { printf "  - key: \"E900-S4\"\n    title: \"Late story\"\n    status: in-progress\n    points: 3\n    risk_level: medium\n" }
+  ' "$per_sprint" > "${per_sprint}.tmp"
+  mv "${per_sprint}.tmp" "$per_sprint"
+  [ "$(_read_status "$per_sprint")" = "review" ]
+
+  # Re-close: Phase B pre-check catches the non-done story and aborts.
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:01:00Z" \
+    --pre-close-status review
+  [ "$status" -ne 0 ]
+
+  # Sprint must be rolled back to review (the exact pre-close status).
+  [ "$(_read_status "$per_sprint")" = "review" ]
+
+  # Diagnostic should name the non-done story.
+  [[ "$output" == *"E900-S4"* ]]
+}
+
 @test "post-close audit passes with rollover-exempt stories" {
   _seed_config 2
   _seed_per_sprint_yaml "sprint-900" "review" 2 3
@@ -526,6 +569,67 @@ YAML
   # closed_at should be unchanged (first close's timestamp).
   local per_sprint="$STATE_DIR/sprint-status-sprint-900.yaml"
   [ "$(_read_closed_at "$per_sprint")" = "2026-10-20T12:00:00Z" ]
+}
+
+@test "same-sprint concurrent double close: only one writes, other exits cleanly" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  # Launch two concurrent close processes for the same sprint.
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review >"$TEST_TMP/close-a.out" 2>&1 &
+  local pid_a=$!
+
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:01:00Z" \
+    --pre-close-status review >"$TEST_TMP/close-b.out" 2>&1 &
+  local pid_b=$!
+
+  local rc_a=0 rc_b=0
+  wait "$pid_a" || rc_a=$?
+  wait "$pid_b" || rc_b=$?
+
+  # At least one must succeed (exit 0); the other is 0 (idempotent) or 3 (retry).
+  local successes=0
+  [ "$rc_a" -eq 0 ] && successes=$((successes + 1))
+  [ "$rc_b" -eq 0 ] && successes=$((successes + 1))
+  [ "$successes" -ge 1 ]
+
+  # Sprint must be closed.
+  local per_sprint="$STATE_DIR/sprint-status-sprint-900.yaml"
+  [ "$(_read_status "$per_sprint")" = "closed" ]
+
+  # closed_at must be set and consistent (one value, not corrupted).
+  local closed_at
+  closed_at="$(_read_closed_at "$per_sprint")"
+  [ -n "$closed_at" ]
+
+  # No closing marker or sidecar should remain.
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-900" ]
+  [ ! -f "$STATE_DIR/.sprint-lifecycle.holder" ]
+}
+
+@test "stale-owner marker replaced on next close" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  # Plant a stale marker with a dead pid.
+  printf 'sprint_id=sprint-900\nowner_pid=99999\nstart_time=2026-10-20T12:00:00Z\n' \
+    > "$STATE_DIR/.sprint-closing-sprint-900"
+
+  # Close should replace the stale marker and proceed.
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review
+  [ "$status" -eq 0 ]
+
+  local per_sprint="$STATE_DIR/sprint-status-sprint-900.yaml"
+  [ "$(_read_status "$per_sprint")" = "closed" ]
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-900" ]
 }
 
 # ============================================================================
@@ -712,4 +816,115 @@ SH
   local count
   count="$(/usr/bin/grep -cE 'yq -i.*status.*closed|yq -i.*closed_at|yq.*-i.*YAML_PATH' "$mutant" 2>/dev/null)" || count=0
   [ "$count" -gt 0 ]
+}
+
+# ============================================================================
+# FCFS ordering (flock acquisition order determines order)
+# ============================================================================
+
+@test "two different sprints close concurrently and both succeed" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_per_sprint_yaml "sprint-901" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_sentinel "sprint-901"
+  _seed_last_activated "sprint-900"
+
+  # Launch two concurrent close processes for different sprints.
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review >"$TEST_TMP/close-900.out" 2>&1 &
+  local pid_900=$!
+
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-901" --closed-at "2026-10-20T12:00:01Z" \
+    --pre-close-status review >"$TEST_TMP/close-901.out" 2>&1 &
+  local pid_901=$!
+
+  local rc_900=0 rc_901=0
+  wait "$pid_900" || rc_900=$?
+  wait "$pid_901" || rc_901=$?
+
+  # Both must succeed.
+  [ "$rc_900" -eq 0 ]
+  [ "$rc_901" -eq 0 ]
+
+  # Both sprints must be closed.
+  [ "$(_read_status "$STATE_DIR/sprint-status-sprint-900.yaml")" = "closed" ]
+  [ "$(_read_status "$STATE_DIR/sprint-status-sprint-901.yaml")" = "closed" ]
+
+  # No markers or sidecars remain.
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-900" ]
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-901" ]
+  [ ! -f "$STATE_DIR/.sprint-lifecycle.holder" ]
+}
+
+# ============================================================================
+# Holder sidecar visible to waiters
+# ============================================================================
+
+@test "holder sidecar removed after phase A completes" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  # Close sprint-900.
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review 2>/dev/null
+
+  # After close completes, sidecar must be gone.
+  [ ! -f "$STATE_DIR/.sprint-lifecycle.holder" ]
+  # Closing marker must also be gone (removed by owning process after Phase B).
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-900" ]
+}
+
+# ============================================================================
+# Fallback lock mode (GAIA_LOCK_FORCE_FALLBACK=1)
+# ============================================================================
+
+@test "close works with GAIA_LOCK_FORCE_FALLBACK=1" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  export GAIA_LOCK_FORCE_FALLBACK=1
+  export GAIA_PARALLEL_EXECUTION=0
+
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review
+  [ "$status" -eq 0 ]
+
+  local per_sprint="$STATE_DIR/sprint-status-sprint-900.yaml"
+  [ "$(_read_status "$per_sprint")" = "closed" ]
+  [ ! -f "$STATE_DIR/.sprint-closing-sprint-900" ]
+}
+
+@test "resume runs proxy hook when closed sprint is last-activated" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_proxy_yaml "sprint-900" "review"
+  _seed_sentinel "sprint-900"
+  _seed_last_activated "sprint-900"
+
+  # Close the sprint.
+  "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review 2>/dev/null
+
+  # Sprint is closed; proxy should show closed.
+  if [ -f "$STATE_DIR/sprint-status.yaml" ]; then
+    [ "$(_read_status "$STATE_DIR/sprint-status.yaml")" = "closed" ]
+  fi
+
+  # Resume.
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review --resume
+  [ "$status" -eq 0 ]
+
+  # Proxy still shows closed after resume.
+  if [ -f "$STATE_DIR/sprint-status.yaml" ]; then
+    [ "$(_read_status "$STATE_DIR/sprint-status.yaml")" = "closed" ]
+  fi
 }

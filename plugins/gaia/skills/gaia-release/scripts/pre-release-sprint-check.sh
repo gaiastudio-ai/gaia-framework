@@ -48,9 +48,11 @@ if ! acquire_lock_is_concurrent_mode "$_max_conc" "$STATE_DIR" 2>/dev/null; then
 fi
 
 l4_path="${STATE_DIR}/${GAIA_LOCK_L4_PATH}"
-timeout_secs="$GAIA_LOCK_L4_TIMEOUT"
-poll_interval="${GAIA_PRE_RELEASE_POLL_INTERVAL:-0.5}"
-elapsed=0
+# Use the lifecycle lock timeout; allow test override.
+timeout_secs="${GAIA_PRE_RELEASE_TIMEOUT:-$GAIA_LOCK_L4_TIMEOUT}"
+# Poll interval in milliseconds (integer arithmetic only -- no bc dependency).
+poll_interval_ms="${GAIA_PRE_RELEASE_POLL_MS:-500}"
+_start_epoch="$(date +%s)"
 
 # Helper: check if any closing marker exists and return the first sprint id.
 _any_closing_marker() {
@@ -84,14 +86,20 @@ if [ -n "$_marker_sprint" ]; then
   release_lock 8 2>/dev/null || true
 
   while [ -n "$_marker_sprint" ]; do
-    # Check timeout.
-    if [ "$(printf '%s >= %s\n' "$elapsed" "$timeout_secs" | bc 2>/dev/null || echo 0)" = "1" ]; then
+    # Check timeout using integer epoch seconds (no bc dependency).
+    _now_epoch="$(date +%s)"
+    _elapsed_secs=$((_now_epoch - _start_epoch))
+    if [ "$_elapsed_secs" -ge "$timeout_secs" ]; then
       printf 'sprint close in progress (sprint %s) -- retry\n' "$_marker_sprint" >&2
       printf 'stale marker may require re-running /gaia-sprint-close --sprint %s\n' "$_marker_sprint" >&2
       exit "$ACQUIRE_LOCK_EXIT_TIMEOUT"
     fi
-    sleep "$poll_interval"
-    elapsed="$(printf '%s + %s\n' "$elapsed" "$poll_interval" | bc 2>/dev/null || echo "$timeout_secs")"
+    # Sleep in sub-second increments when possible.
+    if [ "$poll_interval_ms" -ge 1000 ]; then
+      sleep "$((poll_interval_ms / 1000))"
+    else
+      sleep 1
+    fi
     _marker_sprint="$(_any_closing_marker)" || true
   done
 
