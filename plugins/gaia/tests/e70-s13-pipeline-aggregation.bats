@@ -9,6 +9,7 @@
 # and asserts the token-name invariant in the published schema + SKILL prose.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCHEMA="$REPO_ROOT/plugins/gaia/schemas/project-config.schema.json"
   YAML_DESC="$REPO_ROOT/plugins/gaia/config/project-config.schema.yaml"

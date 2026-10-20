@@ -51,6 +51,7 @@ _build_synthetic_ent_root() {
 # read-only after creation).  Uses BATS_FILE_TMPDIR which persists across
 # tests in the same file.
 setup_file() {
+  _litter_snapshot_before
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   export PLUGIN_ROOT
 

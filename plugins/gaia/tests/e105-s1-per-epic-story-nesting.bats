@@ -11,7 +11,9 @@
 # Maps to AC1-AC5, AC-INT1 and TS1-TS6, plus the Val C1 prefix-boundary regression.
 # Refs: ADR-127, ADR-119, ADR-070, FR-402, FR-553
 
+load 'test_helper.bash'
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RESOLVER="$REPO_ROOT/plugins/gaia/scripts/resolve-story-file.sh"
   VALIDATE="$REPO_ROOT/plugins/gaia/skills/gaia-create-story/scripts/validate-canonical-filename.sh"

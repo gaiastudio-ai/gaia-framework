@@ -43,6 +43,7 @@ _find_enclosing_project() {
 }
 
 setup_file() {
+  _litter_snapshot_before
   # Snapshot the real baseline state once per file, so teardown can
   # detect a leak without ever deleting or modifying the file.
   _ENCLOSING_PROJECT="$(_find_enclosing_project)"

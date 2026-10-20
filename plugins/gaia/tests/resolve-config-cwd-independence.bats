@@ -17,6 +17,7 @@
 # so the fixture path can be exercised.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   BATS_FILE="$REPO_ROOT/plugins/gaia/tests/resolve-config.bats"
   export LC_ALL=C

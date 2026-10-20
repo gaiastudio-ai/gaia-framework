@@ -22,6 +22,12 @@ load 'test_helper.bash'
 setup() {
   common_setup
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  # Pin root variables so sprint-state.sh resolves artefact paths under the
+  # test temp dir — prevents sprint-plan stubs from escaping into the real tree.
+  export PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$IMPLEMENTATION_ARTIFACTS"
 }
 
 teardown() { common_teardown; }

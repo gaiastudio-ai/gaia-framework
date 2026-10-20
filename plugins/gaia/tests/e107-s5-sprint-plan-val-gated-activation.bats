@@ -11,7 +11,9 @@
 # dev-story FRESH mode is tightened to `ready-for-dev → in-progress`, making the
 # activation chain single-path (no competing `backlog → in-progress`).
 
+load 'test_helper.bash'
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLAN_SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-sprint-plan/SKILL.md"
   DEV_SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-dev-story/SKILL.md"
