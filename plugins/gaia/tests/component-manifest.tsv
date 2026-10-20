@@ -783,6 +783,7 @@ scripts-sprint	sprint-state-yaml-quote-stripping.bats
 scripts-sprint	sprint-status-dashboard-auto-close-banner.bats
 scripts-sprint	sprint-status-dashboard-stranded-ready.bats
 scripts-sprint	story-state-path-resolution.bats
+scripts-sprint	test-hygiene-guard.bats
 scripts-sprint	transition-story-status-sweep.bats
 scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats

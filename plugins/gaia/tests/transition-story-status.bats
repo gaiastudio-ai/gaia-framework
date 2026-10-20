@@ -72,7 +72,9 @@
 # Usage:
 #   bats plugins/gaia/tests/transition-story-status.bats
 
+load 'test_helper.bash'
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPTS_DIR="$REPO_ROOT/plugins/gaia/scripts"
   TRANSITION="$SCRIPTS_DIR/transition-story-status.sh"
@@ -218,7 +220,7 @@ index_status() {
 
   run "$TRANSITION" "$STORY_KEY" --to backlog
   [ "$status" -eq 0 ]
-  grep -q "no-op" <<<"$output $stderr"
+  grep -q "no-op" <<<"$output ${stderr:-}"
 
   local after_sha; after_sha=$(shasum "$STORY_FILE" "$SPRINT_YAML" "$EPICS_MD" "$INDEX_YAML" | shasum)
   [ "$before_sha" = "$after_sha" ]
@@ -232,9 +234,9 @@ index_status() {
 
   run "$TRANSITION" "$STORY_KEY" --to backlog
   [ "$status" -ne 0 ]
-  grep -qiE "invalid|illegal|not allowed|transition" <<<"$output $stderr"
-  grep -q "done" <<<"$output $stderr"
-  grep -q "backlog" <<<"$output $stderr"
+  grep -qiE "invalid|illegal|not allowed|transition" <<<"$output ${stderr:-}"
+  grep -q "done" <<<"$output ${stderr:-}"
+  grep -q "backlog" <<<"$output ${stderr:-}"
 }
 
 # AC6 — preserves epics-and-stories.md ordering byte-stable except the target story's status line
@@ -316,7 +318,7 @@ index_status() {
 @test "AC: --from flag rejects when current status != expected" {
   run "$TRANSITION" "$STORY_KEY" --to validating --from ready-for-dev
   [ "$status" -ne 0 ]
-  grep -qiE "from|expected|mismatch" <<<"$output $stderr"
+  grep -qiE "from|expected|mismatch" <<<"$output ${stderr:-}"
 }
 
 # AC4 / TC-CSE-12 — Step 6 PASSED canonical ordering documented in SKILL.md
@@ -1024,7 +1026,7 @@ e59_s6_shard_status() {
   [ "$status" -eq 0 ]
   # F-14 (AF-2026-05-26-1): the per-epic-shard-absent log was reworded to a
   # non-alarming info note ("... has no optional per-epic shard ... not an error").
-  [[ "$output" == *"no optional per-epic shard"* ]] || [[ "$stderr" == *"no optional per-epic shard"* ]]
+  [[ "$output" == *"no optional per-epic shard"* ]] || [[ "${stderr:-}" == *"no optional per-epic shard"* ]]
   # Story file frontmatter still advances.
   grep -q '^status: ready-for-dev' "$file"
 }
@@ -1048,7 +1050,7 @@ e59_s6_shard_status() {
     STORY_STATUS_LOCK="$proj/_memory/.story-status.lock" \
     "$TRANSITION" "$key" --to ready-for-dev
   [ "$status" -ne 0 ]
-  [[ "$output" == *"multiple shards match"* ]] || [[ "$stderr" == *"multiple shards match"* ]]
+  [[ "$output" == *"multiple shards match"* ]] || [[ "${stderr:-}" == *"multiple shards match"* ]]
   # Rollback: story file frontmatter remains backlog.
   grep -q '^status: backlog' "$file"
   # Monolith remains backlog.
