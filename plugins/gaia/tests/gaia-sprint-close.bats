@@ -29,8 +29,8 @@ setup() {
   export SPRINT_STATUS_YAML="$YAML"
   # Force a stable close-date for predictable archive filenames in tests.
   export GAIA_SPRINT_CLOSE_DATE="2026-05-11"
-  # Disable sprint-state.sh routing — these tests exercise close.sh's own logic.
-  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  # Point at the real sprint-state.sh close writer.
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
   mkdir -p "$ART" "$MEMORY_PATH" "$CKPT_DIR"
 }
 teardown() { common_teardown; }

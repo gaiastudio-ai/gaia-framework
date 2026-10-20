@@ -161,6 +161,16 @@ The resolver reads `release.strategy` from config (defaulting to `manual` when a
 - **`manual`**: emits `strategy=manual`. Prompt the user for a bump specifier (`patch`, `minor`, `major`, or `X.Y.Z`).
 - **`calendar`**: emits `version=YYYY.MM.PATCH`. Pass that version string directly to version-bump.js as an explicit version.
 
+### Step 3b — Pre-release sprint check (concurrent mode)
+
+In concurrent mode, verify that no sprint close is in progress before proceeding with the release. Run:
+
+```
+!bash "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/pre-release-sprint-check.sh"
+```
+
+The script acquires the lifecycle lock, checks for in-progress close markers, and reports the ids of fully closed sprints on stdout. If a close is in progress, the script exits non-zero with a retry message; wait and re-run. In single-sprint mode the check is a no-op. Include the script's output (the closed sprint ids) in the release notes.
+
 ### Step 4 — Dry-run the bump
 
 Using the bump specifier from Step 3:

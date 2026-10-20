@@ -1360,6 +1360,24 @@ do_transition_locked() {
     die "sprint-status.yaml is missing or empty: $SPRINT_STATUS_YAML"
   fi
 
+  # --- Closing-marker check ---
+  # In concurrent mode, refuse story-level transitions while a sprint close
+  # is in progress. The closing marker was written by the close writer in
+  # Phase A while L4 was held.
+  if _is_concurrent_mode; then
+    local _trans_state_dir
+    _trans_state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+    local _trans_sprint_id
+    _trans_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null || true)"
+    if [ -n "$_trans_sprint_id" ]; then
+      local _trans_marker
+      _trans_marker="$(_closing_marker_path "$_trans_state_dir" "$_trans_sprint_id")"
+      if [ -f "$_trans_marker" ]; then
+        die "sprint close in progress -- injection refused"
+      fi
+    fi
+  fi
+
   # Locate the story file now that we hold the lock.
   locate_story_file "$story_key"
 
@@ -1851,6 +1869,24 @@ do_inject_locked() {
   if yaml_has_story_key "$SPRINT_STATUS_YAML" "$story_key"; then
     printf '%s: %s already injected — no-op\n' "$SCRIPT_NAME" "$story_key"
     return 0
+  fi
+
+  # --- Closing-marker check (runs before independence gate) ---
+  # In concurrent mode, refuse injection while a sprint close is in progress.
+  # The closing marker was written by the close writer in Phase A while L4
+  # was held; we check it here under L1 to prevent TOCTOU injection.
+  if _is_concurrent_mode; then
+    local _inject_state_dir
+    _inject_state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+    local _inject_sprint_id
+    _inject_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null || true)"
+    if [ -n "$_inject_sprint_id" ]; then
+      local _inject_marker
+      _inject_marker="$(_closing_marker_path "$_inject_state_dir" "$_inject_sprint_id")"
+      if [ -f "$_inject_marker" ]; then
+        die "sprint close in progress -- injection refused"
+      fi
+    fi
   fi
 
   # Re-locate story file under lock.
@@ -3964,6 +4000,576 @@ cmd_transition_sprint() {
   fi
 }
 
+# ---------- Close writer ----------
+#
+# cmd_close — close a sprint via the two-phase protocol (concurrent mode)
+# or the single-file atomic write (single-sprint mode).
+#
+# Arguments (passed from close.sh):
+#   --sprint <sprint_id>        target sprint
+#   --closed-at <iso>           timestamp for closed_at
+#   --force                     sentinel bypass flag
+#   --rollover-keys <csv>       comma-separated rollover keys (may be empty)
+#   --pre-close-status <state>  the sprint's status before close (review|active)
+#   --resume                    resume a closed-but-no-archive sprint
+#
+# Exit codes:
+#   0 — success (or already closed)
+#   1 — internal error
+#   2 — sprint-id mismatch or transition refusal
+#   3 — lifecycle lock timeout / close in progress
+#   4 — symlink detected (strict mode)
+#   5 — identity mismatch (strict mode)
+
+# Helper: check if a closing marker's owner pid is alive.
+_closing_marker_owner_alive() {
+  local marker_file="$1"
+  [ -f "$marker_file" ] || return 1
+  local owner_pid=""
+  owner_pid="$(awk -F= '/^owner_pid=/ { print $2 }' "$marker_file" 2>/dev/null)" || return 1
+  [ -n "$owner_pid" ] || return 1
+  kill -0 "$owner_pid" 2>/dev/null
+}
+
+# Helper: read the sprint id from a closing marker.
+_closing_marker_sprint_id() {
+  local marker_file="$1"
+  awk -F= '/^sprint_id=/ { print $2 }' "$marker_file" 2>/dev/null
+}
+
+# Helper: write a closing marker atomically.
+_write_closing_marker() {
+  local marker_file="$1" sprint_id="$2"
+  local tmp
+  tmp="$(mktemp "${marker_file}.XXXXXX")"
+  printf 'sprint_id=%s\nowner_pid=%d\nstart_time=%s\n' \
+    "$sprint_id" "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$tmp"
+  mv "$tmp" "$marker_file"
+}
+
+# Helper: closing marker path for a sprint.
+_closing_marker_path() {
+  local state_dir="$1" sprint_id="$2"
+  printf '%s/.sprint-closing-%s' "$state_dir" "$sprint_id"
+}
+
+# Helper: holder sidecar path.
+_holder_sidecar_path() {
+  local state_dir="$1"
+  printf '%s/.sprint-lifecycle.holder' "$state_dir"
+}
+
+# Helper: read stories from a yaml file and report non-done ones.
+# Outputs key=status for non-done stories, one per line.
+_close_non_done_stories() {
+  local yaml="$1"
+  awk '
+    /^stories:[[:space:]]*$/ { in_stories=1; next }
+    in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
+      sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "")
+      gsub(/"/, ""); gsub(/'\''/, "")
+      cur_key=$0
+      next
+    }
+    in_stories && /^[[:space:]]+status:[[:space:]]*/ {
+      sub(/^[[:space:]]+status:[[:space:]]*/, "")
+      gsub(/"/, ""); gsub(/'\''/, ""); gsub(/[[:space:]]+$/, "")
+      if ($0 != "done") printf "%s=%s\n", cur_key, $0
+      next
+    }
+    in_stories && /^[^[:space:]]/ { in_stories=0 }
+  ' "$yaml"
+}
+
+# Helper: emit a sprint_transitioned lifecycle event (same shape as
+# cmd_transition_sprint). Only called for review-to-closed with a sentinel.
+_close_emit_sprint_transitioned() {
+  local sprint_id="$1" from_status="$2"
+  local lifecycle_sh="${SPRINT_STATE_SCRIPT_DIR}/lifecycle-event.sh"
+  [ -x "$lifecycle_sh" ] || return 0
+  local data
+  data=$(printf '{"sprint_id":"%s","from":"%s","to":"closed"}' "$sprint_id" "$from_status")
+  "$lifecycle_sh" \
+    --type sprint_transitioned \
+    --workflow sprint-state \
+    --story "$sprint_id" \
+    --data "$data" >/dev/null 2>&1 || true
+}
+
+# The close writer entry point.
+cmd_close() {
+  local sprint_id="" closed_at="" force_bypass=0 rollover_keys_csv=""
+  local pre_close_status="" resume_mode=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sprint)     [ $# -ge 2 ] || die "close: --sprint requires a value"; sprint_id="$2"; shift 2 ;;
+      --sprint=*)   sprint_id="${1#--sprint=}"; shift ;;
+      --closed-at)  [ $# -ge 2 ] || die "close: --closed-at requires a value"; closed_at="$2"; shift 2 ;;
+      --closed-at=*) closed_at="${1#--closed-at=}"; shift ;;
+      --force)      force_bypass=1; shift ;;
+      --rollover-keys) [ $# -ge 2 ] || die "close: --rollover-keys requires a value"; rollover_keys_csv="$2"; shift 2 ;;
+      --rollover-keys=*) rollover_keys_csv="${1#--rollover-keys=}"; shift ;;
+      --pre-close-status) [ $# -ge 2 ] || die "close: --pre-close-status requires a value"; pre_close_status="$2"; shift 2 ;;
+      --pre-close-status=*) pre_close_status="${1#--pre-close-status=}"; shift ;;
+      --resume)     resume_mode=1; shift ;;
+      *) die "close: unknown flag: $1" ;;
+    esac
+  done
+  [ -n "$sprint_id" ] || die "close: --sprint is required"
+  [ -n "$closed_at" ] || die "close: --closed-at is required"
+
+  local state_dir
+  state_dir="$(dirname "$SPRINT_STATUS_YAML")"
+  local max_conc
+  max_conc="$(_read_max_concurrent_active)"
+
+  # Determine mode: concurrent or single-sprint.
+  local _close_rc=0
+  if acquire_lock_is_concurrent_mode "$max_conc" "$state_dir"; then
+    _cmd_close_concurrent "$sprint_id" "$closed_at" "$force_bypass" \
+      "$rollover_keys_csv" "$pre_close_status" "$resume_mode" "$state_dir" || _close_rc=$?
+  else
+    _cmd_close_single "$sprint_id" "$closed_at" "$force_bypass" \
+      "$rollover_keys_csv" "$pre_close_status" "$state_dir" || _close_rc=$?
+  fi
+  return "$_close_rc"
+}
+
+# Single-sprint close writer. Output- and state-byte-identical to today.
+_cmd_close_single() {
+  local sprint_id="$1" closed_at="$2" force_bypass="$3"
+  local rollover_keys_csv="$4" pre_close_status="$5" state_dir="$6"
+
+  local yaml="$SPRINT_STATUS_YAML"
+  [ -f "$yaml" ] || die "close: state file not found: $yaml"
+
+  # Already-closed short-circuit — exit 0 regardless of archive presence.
+  local current
+  current="$(_yaml_sprint_status "$yaml")"
+  if [ "$current" = "closed" ]; then
+    printf '%s: sprint %s already closed\n' "$SCRIPT_NAME" "$sprint_id"
+    return 0
+  fi
+
+  # Validate the sprint id matches.
+  _assert_sprint_id_matches "close" "--sprint" "$sprint_id" "$yaml" 2
+
+  # Lifecycle event (four edges per R52): same logic as the concurrent path.
+  local should_emit_event=0
+  if [ "$current" = "review" ]; then
+    if [ "$force_bypass" -eq 0 ]; then
+      should_emit_event=1
+    elif [ "${GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL:-0}" = "1" ]; then
+      should_emit_event=1
+    fi
+  fi
+
+  # Take L1 (per-sprint state lock) and write atomically.
+  (
+    if ! acquire_lock "$SPRINT_STATUS_LOCK" "$GAIA_LOCK_L1_TIMEOUT" 9; then
+      die "close: lock timeout acquiring $SPRINT_STATUS_LOCK"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
+
+    # Re-read status under lock.
+    local locked_status
+    locked_status="$(_yaml_sprint_status "$yaml")"
+    if [ "$locked_status" = "closed" ]; then
+      printf '%s: sprint %s already closed\n' "$SCRIPT_NAME" "$sprint_id"
+      return 0
+    fi
+
+    # Atomic status + closed_at write via mktemp + awk + mv.
+    local tmp
+    tmp=$(mktemp "${yaml}.tmp.XXXXXX" 2>/dev/null || mktemp -t sprint-close-yaml.XXXXXX)
+    _GAIA_TMP_PATHS+=("$tmp")
+    trap "rm -f '$tmp'" RETURN
+
+    awk -v closed_at="$closed_at" '
+      !done_status && /^status:[[:space:]]*/ {
+        print "status: closed"
+        done_status=1
+        next
+      }
+      /^closed_at:[[:space:]]*/ { next }
+      { print }
+      END {
+        if (!done_status) printf "status: closed\n"
+        printf "closed_at: \"%s\"\n", closed_at
+      }
+    ' "$yaml" > "$tmp"
+    mv "$tmp" "$yaml"
+    _GAIA_TMP_PATHS[${#_GAIA_TMP_PATHS[@]}-1]=""
+    trap - RETURN
+
+    # Post-close audit (same in both modes).
+    _close_post_audit "$yaml" "$sprint_id" "$pre_close_status" "$rollover_keys_csv"
+  ) || return $?
+
+  # Emit lifecycle event after lock release.
+  if [ "$should_emit_event" -eq 1 ]; then
+    _close_emit_sprint_transitioned "$sprint_id" "$current"
+  fi
+
+  printf '%s: sprint %s closed at %s\n' "$SCRIPT_NAME" "$sprint_id" "$closed_at"
+}
+
+# Concurrent close writer — two-phase protocol.
+_cmd_close_concurrent() {
+  local sprint_id="$1" closed_at="$2" force_bypass="$3"
+  local rollover_keys_csv="$4" pre_close_status="$5"
+  local resume_mode="$6" state_dir="$7"
+
+  # Validate sprint id format.
+  _validate_sprint_id "$sprint_id" || die "close: invalid sprint id: $sprint_id"
+
+  local per_sprint_yaml
+  per_sprint_yaml="$(_sprint_file_path "$state_dir" "$sprint_id")"
+  [ -f "$per_sprint_yaml" ] || die "close: per-sprint state file not found: $per_sprint_yaml"
+
+  # Validate the sprint id matches the file contents.
+  _assert_sprint_id_matches "close" "--sprint" "$sprint_id" "$per_sprint_yaml" 2
+
+  local marker_file
+  marker_file="$(_closing_marker_path "$state_dir" "$sprint_id")"
+  local sidecar_file
+  sidecar_file="$(_holder_sidecar_path "$state_dir")"
+  local l4_path="${state_dir}/${GAIA_LOCK_L4_PATH}"
+  local l1_path="${per_sprint_yaml}.lock"
+
+  # Resume path: sprint already closed but archive missing.
+  if [ "$resume_mode" -eq 1 ]; then
+    _cmd_close_resume "$sprint_id" "$per_sprint_yaml" "$marker_file" \
+      "$state_dir" "$l1_path"
+    return $?
+  fi
+
+  # Already-closed check (before locking).
+  local current
+  current="$(_yaml_sprint_status "$per_sprint_yaml")"
+  if [ "$current" = "closed" ]; then
+    printf '%s: sprint %s already closed\n' "$SCRIPT_NAME" "$sprint_id"
+    return 0
+  fi
+
+  # Lifecycle event decision (four edges per R52):
+  # 1. review-to-closed with sentinel => emit (close.sh verified it)
+  # 2. review-to-closed with bypass env => emit
+  # 3. --force without sentinel and bypass unset => no event
+  # 4. active-to-closed => no event
+  # close.sh's --force flag means sentinel was missing; emit only if
+  # the bypass env is also set.
+  local should_emit_event=0
+  if [ "$current" = "review" ]; then
+    if [ "$force_bypass" -eq 0 ]; then
+      # Sentinel was present (close.sh verified it in Step 3a).
+      should_emit_event=1
+    elif [ "${GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL:-0}" = "1" ]; then
+      # --force with bypass env set (edge 2).
+      should_emit_event=1
+    fi
+    # --force with bypass unset (edge 3): no event.
+  fi
+
+  # --- Phase A: acquire L4, write closing marker and holder sidecar ---
+  local phase_a_rc=0
+  (
+    printf '%s: waiting for lifecycle lock\n' "$SCRIPT_NAME" >&2
+    local _lock_rc=0
+    acquire_lock "$l4_path" "$GAIA_LOCK_L4_TIMEOUT" 8 --strict || _lock_rc=$?
+    if [ "$_lock_rc" -ne 0 ]; then
+      # Read holder sidecar or marker for the diagnostic.
+      local _blocking_id="another sprint"
+      if [ -f "$sidecar_file" ]; then
+        _blocking_id="$(cat "$sidecar_file" 2>/dev/null | tr -d '\n')" || _blocking_id="another sprint"
+      else
+        # Try closing markers.
+        local _m
+        for _m in "${state_dir}"/.sprint-closing-*; do
+          [ -f "$_m" ] || continue
+          _blocking_id="$(_closing_marker_sprint_id "$_m")" || _blocking_id="another sprint"
+          break
+        done
+      fi
+      [ -n "$_blocking_id" ] || _blocking_id="another sprint"
+      printf 'sprint close in progress (sprint %s) -- retry\n' "$_blocking_id" >&2
+      exit "$_lock_rc"
+    fi
+    printf '%s: acquired lifecycle lock\n' "$SCRIPT_NAME" >&2
+    trap 'rm -f "$sidecar_file" 2>/dev/null; release_lock 8 2>/dev/null || true' EXIT
+    trap 'rm -f "$sidecar_file" 2>/dev/null; release_lock 8 2>/dev/null || true; exit 130' INT
+    trap 'rm -f "$sidecar_file" 2>/dev/null; release_lock 8 2>/dev/null || true; exit 143' TERM
+
+    # Check for existing closing marker for the same sprint.
+    if [ -f "$marker_file" ]; then
+      if _closing_marker_owner_alive "$marker_file"; then
+        # Live-owner marker — another close is in flight.
+        printf 'sprint close in progress (sprint %s) -- retry\n' "$sprint_id" >&2
+        exit "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+      fi
+      # Dead-owner (stale) marker — replace it.
+    fi
+
+    # Write holder sidecar (visible to waiters while L4 is held).
+    printf '%s' "$sprint_id" > "$sidecar_file"
+
+    # Write closing marker.
+    _write_closing_marker "$marker_file" "$sprint_id"
+
+    # Test-only pause seam: when set, touch the named file as a ready
+    # signal and wait for the file to be removed (poll). Inert when unset.
+    if [ -n "${_GAIA_CLOSE_PAUSE_PHASE_A:-}" ]; then
+      touch "$_GAIA_CLOSE_PAUSE_PHASE_A"
+      while [ -f "$_GAIA_CLOSE_PAUSE_PHASE_A" ]; do sleep 1; done
+    fi
+
+    # Remove holder sidecar before releasing L4.
+    rm -f "$sidecar_file"
+  ) || phase_a_rc=$?
+
+  if [ "$phase_a_rc" -ne 0 ]; then
+    return "$phase_a_rc"
+  fi
+
+  # --- Phase B: acquire L1, write status + closed_at ---
+  local phase_b_rc=0
+  (
+    if ! acquire_lock "$l1_path" "$GAIA_LOCK_L1_TIMEOUT" 9; then
+      die "close: lock timeout acquiring per-sprint lock $l1_path"
+    fi
+    trap 'release_lock 9 2>/dev/null || true' EXIT
+    trap 'release_lock 9 2>/dev/null || true; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
+
+    # Re-read status under L1.
+    local locked_status
+    locked_status="$(_yaml_sprint_status "$per_sprint_yaml")"
+    if [ "$locked_status" = "closed" ]; then
+      printf '%s: sprint %s already closed\n' "$SCRIPT_NAME" "$sprint_id"
+      return 0
+    fi
+
+    # Re-run all-done check with rollover exemption.
+    local non_done
+    non_done="$(_close_non_done_stories "$per_sprint_yaml")"
+    if [ -n "$non_done" ]; then
+      # Filter out rollover keys.
+      local filtered=""
+      local line
+      while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        local k="${line%%=*}"
+        local is_rollover=0
+        if [ -n "$rollover_keys_csv" ]; then
+          local rk
+          IFS=',' read -r -a _rk_arr <<< "$rollover_keys_csv"
+          for rk in "${_rk_arr[@]}"; do
+            if [ "$k" = "$rk" ]; then
+              is_rollover=1
+              break
+            fi
+          done
+        fi
+        if [ "$is_rollover" -eq 0 ]; then
+          filtered="${filtered}${filtered:+$'\n'}${line}"
+        fi
+      done <<< "$non_done"
+
+      if [ -n "$filtered" ]; then
+        printf '%s: close aborted — non-done stories found after marker: %s\n' \
+          "$SCRIPT_NAME" "$filtered" >&2
+        return 1
+      fi
+    fi
+
+    # Atomic write: status + closed_at + close inputs.
+    local tmp
+    tmp=$(mktemp "${per_sprint_yaml}.tmp.XXXXXX" 2>/dev/null || mktemp -t sprint-close-yaml.XXXXXX)
+    _GAIA_TMP_PATHS+=("$tmp")
+    trap "rm -f '$tmp'" RETURN
+
+    awk -v closed_at="$closed_at" -v force_bypass="$force_bypass" \
+        -v rollover_keys="$rollover_keys_csv" '
+      !done_status && /^status:[[:space:]]*/ {
+        print "status: closed"
+        done_status=1
+        next
+      }
+      /^closed_at:[[:space:]]*/ { next }
+      /^close_inputs:/ { in_ci=1; next }
+      in_ci && /^[[:space:]]/ { next }
+      in_ci && /^[^[:space:]]/ { in_ci=0 }
+      { print }
+      END {
+        printf "closed_at: \"%s\"\n", closed_at
+        printf "close_inputs:\n"
+        printf "  force_bypass: %s\n", force_bypass
+        printf "  rollover_keys: \"%s\"\n", rollover_keys
+        printf "  closed_at: \"%s\"\n", closed_at
+      }
+    ' "$per_sprint_yaml" > "$tmp"
+    mv "$tmp" "$per_sprint_yaml"
+    _GAIA_TMP_PATHS[${#_GAIA_TMP_PATHS[@]}-1]=""
+    trap - RETURN
+
+    # Test-only pause seam: when set, touch the named file as a ready
+    # signal and wait for the file to be removed (poll). Inert when unset.
+    if [ -n "${_GAIA_CLOSE_PAUSE_PHASE_B:-}" ]; then
+      touch "$_GAIA_CLOSE_PAUSE_PHASE_B"
+      while [ -f "$_GAIA_CLOSE_PAUSE_PHASE_B" ]; do sleep 1; done
+    fi
+
+    # Test-only injection seam: when set, source the named script after the
+    # status write but before the audit. Used to inject a non-done story so
+    # the post-close audit exercises its rollback path. Inert when unset.
+    if [ -n "${_GAIA_CLOSE_INJECT_AFTER_WRITE:-}" ] && [ -f "${_GAIA_CLOSE_INJECT_AFTER_WRITE}" ]; then
+      bash "${_GAIA_CLOSE_INJECT_AFTER_WRITE}" "$per_sprint_yaml"
+    fi
+
+    # Post-close audit.
+    _close_post_audit "$per_sprint_yaml" "$sprint_id" "$pre_close_status" "$rollover_keys_csv"
+  ) || phase_b_rc=$?
+
+  # Remove closing marker (owning process only).
+  rm -f "$marker_file"
+
+  if [ "$phase_b_rc" -ne 0 ]; then
+    return "$phase_b_rc"
+  fi
+
+  # Emit lifecycle event after both L4 and L1 are released.
+  if [ "$should_emit_event" -eq 1 ]; then
+    _close_emit_sprint_transitioned "$sprint_id" "$current"
+  fi
+
+  # Proxy post-write hook: update proxy when the closed sprint is last-activated.
+  local last_activated=""
+  last_activated="$(_read_last_activated "$state_dir")"
+  if [ -n "$last_activated" ] && [ "$last_activated" = "$sprint_id" ]; then
+    _update_compatibility_proxy "$state_dir" "$sprint_id" "$per_sprint_yaml"
+  fi
+
+  # Snapshot refresh: remove per-sprint cache.
+  _close_run_snapshot "$sprint_id"
+
+  printf '%s: sprint %s closed at %s\n' "$SCRIPT_NAME" "$sprint_id" "$closed_at"
+}
+
+# Resume path for concurrent mode: sprint is closed but archive is missing.
+_cmd_close_resume() {
+  local sprint_id="$1" per_sprint_yaml="$2" marker_file="$3"
+  local state_dir="$4" l1_path="$5"
+
+  # Verify sprint is actually closed.
+  local current
+  current="$(_yaml_sprint_status "$per_sprint_yaml")"
+  if [ "$current" != "closed" ]; then
+    die "close: resume requested but sprint $sprint_id has status $current, not closed"
+  fi
+
+  # Check that no live-owner marker exists for this sprint.
+  if [ -f "$marker_file" ] && _closing_marker_owner_alive "$marker_file"; then
+    printf 'sprint close in progress (sprint %s) -- retry\n' "$sprint_id" >&2
+    return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+  fi
+
+  # Clean up stale marker left by a killed close (dead-owner).
+  if [ -f "$marker_file" ] && ! _closing_marker_owner_alive "$marker_file"; then
+    rm -f "$marker_file"
+  fi
+
+  # Read recorded close inputs from the per-sprint state.
+  local recorded_closed_at="" recorded_force="" recorded_rollover=""
+  recorded_closed_at="$(awk '/^  closed_at:/ { sub(/^  closed_at:[[:space:]]*/, ""); gsub(/"/, ""); print }' "$per_sprint_yaml" 2>/dev/null)" || true
+  recorded_force="$(awk '/^  force_bypass:/ { sub(/^  force_bypass:[[:space:]]*/, ""); print }' "$per_sprint_yaml" 2>/dev/null)" || true
+  recorded_rollover="$(awk '/^  rollover_keys:/ { sub(/^  rollover_keys:[[:space:]]*/, ""); gsub(/"/, ""); print }' "$per_sprint_yaml" 2>/dev/null)" || true
+
+  # Use recorded values (no sentinel or all-done re-check on resume).
+  printf '%s: resuming close for sprint %s (closed_at=%s)\n' \
+    "$SCRIPT_NAME" "$sprint_id" "${recorded_closed_at:-$closed_at}" >&2
+
+  # Proxy post-write hook when last-activated.
+  local last_activated=""
+  last_activated="$(_read_last_activated "$state_dir")"
+  if [ -n "$last_activated" ] && [ "$last_activated" = "$sprint_id" ]; then
+    _update_compatibility_proxy "$state_dir" "$sprint_id" "$per_sprint_yaml"
+  fi
+
+  # Snapshot refresh.
+  _close_run_snapshot "$sprint_id"
+
+  printf '%s: sprint %s resume complete\n' "$SCRIPT_NAME" "$sprint_id"
+}
+
+# Post-close audit: verify all stories are done (with rollover exemption).
+# If a non-exempt non-done story is found, roll back the sprint to its
+# pre-close status.
+_close_post_audit() {
+  local yaml="$1" sprint_id="$2" pre_close_status="$3" rollover_keys_csv="$4"
+
+  local non_done
+  non_done="$(_close_non_done_stories "$yaml")"
+  [ -n "$non_done" ] || return 0
+
+  # Filter out rollover-exempt stories.
+  local filtered=""
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    local k="${line%%=*}"
+    local is_rollover=0
+    if [ -n "$rollover_keys_csv" ]; then
+      local rk
+      IFS=',' read -r -a _rk_arr <<< "$rollover_keys_csv"
+      for rk in "${_rk_arr[@]}"; do
+        if [ "$k" = "$rk" ]; then
+          is_rollover=1
+          break
+        fi
+      done
+    fi
+    if [ "$is_rollover" -eq 0 ]; then
+      filtered="${filtered}${filtered:+$'\n'}${line}"
+    fi
+  done <<< "$non_done"
+
+  [ -n "$filtered" ] || return 0
+
+  # Rollback: restore pre-close status.
+  local rollback_status="${pre_close_status:-active}"
+  local tmp
+  tmp=$(mktemp "${yaml}.tmp.XXXXXX" 2>/dev/null || mktemp -t sprint-rollback-yaml.XXXXXX)
+  awk -v new_status="$rollback_status" '
+    !done_status && /^status:[[:space:]]*/ {
+      print "status: " new_status
+      done_status=1
+      next
+    }
+    /^closed_at:[[:space:]]*/ { next }
+    /^close_inputs:/ { in_ci=1; next }
+    in_ci && /^[[:space:]]/ { next }
+    in_ci && /^[^[:space:]]/ { in_ci=0 }
+    { print }
+  ' "$yaml" > "$tmp"
+  mv "$tmp" "$yaml"
+
+  printf '%s: post-close audit failed — non-done stories: %s; rolled back to %s\n' \
+    "$SCRIPT_NAME" "$filtered" "$rollback_status" >&2
+  return 1
+}
+
+# Run the snapshot refresh for a closed sprint.
+_close_run_snapshot() {
+  local sprint_id="$1"
+  local snapshot_sh=""
+  snapshot_sh="${SPRINT_STATE_SCRIPT_DIR}/sprint-progress-snapshot.sh"
+  if [ -x "$snapshot_sh" ]; then
+    "$snapshot_sh" --sprint "$sprint_id" >/dev/null 2>&1 || true
+  fi
+}
+
 # cmd_set_review_justification — write review_justification: block from
 # a yaml payload file.
 cmd_set_review_justification() {
@@ -4171,7 +4777,7 @@ main() {
       usage
       exit 0
       ;;
-    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint|set-phase|resolve-file)
+    init|advance|transition|inject|get|validate|reconcile|lint-dependencies|record-escalation-override|detect-auto-close|rollover|get-goals|set-goals|update-goals|set-review-justification|set-shape|set-story-sprint|set-phase|resolve-file|close)
       ;;
     *)
       printf '%s: error: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -4196,6 +4802,9 @@ main() {
   # would abort with an unbound-variable crash instead of the intended usage
   # diagnostic.
   local phase_arg="" _GAIA_PHASE_FLAG_SEEN=0 _GAIA_SPRINT_FLAG_LABEL=""
+  # Close-specific flags.
+  local _GAIA_CLOSE_CLOSED_AT="" _GAIA_CLOSE_FORCE=0 _GAIA_CLOSE_ROLLOVER_KEYS=""
+  local _GAIA_CLOSE_PRE_STATUS="" _GAIA_CLOSE_RESUME=0
   # Optional init-only fields.
   local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
@@ -4311,6 +4920,25 @@ main() {
         # instead of the bare "unknown flag" rejection. total_points is
         # accumulated from the injected story's frontmatter `points:` field.
         die "--points is not a valid flag for inject. total_points is accumulated from the injected story's frontmatter points: field. See --help for the inject contract." ;;
+      --closed-at)
+        [ $# -ge 2 ] || die "--closed-at requires a value"
+        _GAIA_CLOSE_CLOSED_AT="$2"; shift 2 ;;
+      --closed-at=*)
+        _GAIA_CLOSE_CLOSED_AT="${1#--closed-at=}"; shift ;;
+      --force)
+        _GAIA_CLOSE_FORCE=1; shift ;;
+      --rollover-keys)
+        [ $# -ge 2 ] || die "--rollover-keys requires a value"
+        _GAIA_CLOSE_ROLLOVER_KEYS="$2"; shift 2 ;;
+      --rollover-keys=*)
+        _GAIA_CLOSE_ROLLOVER_KEYS="${1#--rollover-keys=}"; shift ;;
+      --pre-close-status)
+        [ $# -ge 2 ] || die "--pre-close-status requires a value"
+        _GAIA_CLOSE_PRE_STATUS="$2"; shift 2 ;;
+      --pre-close-status=*)
+        _GAIA_CLOSE_PRE_STATUS="${1#--pre-close-status=}"; shift ;;
+      --resume)
+        _GAIA_CLOSE_RESUME=1; shift ;;
       *)
         die "unknown flag: $1" ;;
     esac
@@ -4610,6 +5238,18 @@ main() {
         _rf_path="$SPRINT_STATUS_YAML"
       fi
       printf '%s\n' "$_rf_path"
+      ;;
+    close)
+      # close uses its own arg parser; pass remaining args collected
+      # by the main arg loop via the close-specific variables.
+      [ -n "$reconcile_sprint_id" ] || die "close requires --sprint-id <id>"
+      [ -n "${_GAIA_CLOSE_CLOSED_AT:-}" ] || die "close requires --closed-at <iso>"
+      local -a _close_args=(--sprint "$reconcile_sprint_id" --closed-at "$_GAIA_CLOSE_CLOSED_AT")
+      [ "${_GAIA_CLOSE_FORCE:-0}" = "1" ] && _close_args+=(--force)
+      [ -n "${_GAIA_CLOSE_ROLLOVER_KEYS:-}" ] && _close_args+=(--rollover-keys "$_GAIA_CLOSE_ROLLOVER_KEYS")
+      [ -n "${_GAIA_CLOSE_PRE_STATUS:-}" ] && _close_args+=(--pre-close-status "$_GAIA_CLOSE_PRE_STATUS")
+      [ "${_GAIA_CLOSE_RESUME:-0}" = "1" ] && _close_args+=(--resume)
+      cmd_close "${_close_args[@]}"
       ;;
   esac
   )

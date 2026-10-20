@@ -114,6 +114,7 @@ core	concurrent-sprint-config.bats
 core	concurrent-sprint-glossary.bats
 core	concurrent-sprint-independence-cd.bats
 core	concurrent-sprint-ledger.bats
+core	concurrent-sprint-lifecycle.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-merge.bats
 core	concurrent-sprint-perf.bats
@@ -256,7 +257,6 @@ core	gaia-reconcile-v2.bats
 core	gaia-release.bats
 core	gaia-resume.bats
 core	gaia-retro-auto-file-flag.bats
-core	gaia-sprint-close.bats
 core	gaia-sprint-plan.bats
 core	gaia-sprint-review-mode-a-anti-pattern.bats
 core	gaia-sprint-review-orchestration.bats
@@ -360,8 +360,6 @@ core	skill-rename-preflight.bats
 core	skills/gaia-statusline-skill-md.bats
 core	skills/selective-tests-by-component-docs.bats
 core	skills/test-no-bare-name-persona-spawn.bats
-core	sprint-close-env-isolation-guard.bats
-core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
 core	sprint-progress-snapshot-hook.bats
@@ -767,10 +765,13 @@ scripts-sprint	cluster-9/check-status-discipline.bats
 scripts-sprint	e106-s5-retire-capacity-points.bats
 scripts-sprint	e107-chain-integration.bats
 scripts-sprint	e107-s5-sprint-plan-val-gated-activation.bats
+scripts-sprint	gaia-sprint-close.bats
 scripts-sprint	issue-1403-title-quote-escaping.bats
 scripts-sprint	phase-persistence.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
+scripts-sprint	sprint-close-env-isolation-guard.bats
+scripts-sprint	sprint-close-sentinel-unconditional.bats
 scripts-sprint	sprint-progress-audit.bats
 scripts-sprint	sprint-state-advance.bats
 scripts-sprint	sprint-state-detect-auto-close.bats
