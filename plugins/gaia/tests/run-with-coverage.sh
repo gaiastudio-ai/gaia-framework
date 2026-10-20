@@ -182,9 +182,9 @@ for s in "$SCRIPTS_DIR"/*.sh; do
       # (b) init-project.sh internals — scaffolding helpers exercised via init-project.bats
       gaia_agent_display_name|gaia_agents_with_tier|gaia_file_is_header_only) covered+=("$f"); continue ;;
       gaia_header_for|gaia_sidecar_for|gaia_write_sidecar_file) covered+=("$f"); continue ;;
-      # (b) memory-writer.sh internals — locking/atomic/timestamp/write helpers
-      acquire_lock_flock|acquire_lock_mkdir|atomic_replace|now_iso8601) covered+=("$f"); continue ;;
-      release_lock|resolve_sidecar_rel|write_decision|write_ground_truth) covered+=("$f"); continue ;;
+      # (b) memory-writer.sh internals — atomic/timestamp/write helpers
+      atomic_replace|now_iso8601) covered+=("$f"); continue ;;
+      resolve_sidecar_rel|write_decision|write_ground_truth) covered+=("$f"); continue ;;
       # (b) migrate-config-split.sh internals — yq expression/plan helpers
       build_del_expr|build_pick_expr|classify_key|plan_split) covered+=("$f"); continue ;;
       # (b) resolve-config.sh internals — merge/parse helpers

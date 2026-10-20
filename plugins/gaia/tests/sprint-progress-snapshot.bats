@@ -241,7 +241,6 @@ write_ledger_row() {
   jq -e '.readiness | has("sprint_review")' "$CACHE"
   jq -e '.readiness | has("sprint_close")' "$CACHE"
   jq -e 'has("user_aliases")' "$CACHE"
-  jq -e 'has("waiting_agent_threshold_seconds")' "$CACHE"
   # No agent_activity key
   jq -e 'has("agent_activity") | not' "$CACHE"
 
@@ -251,8 +250,6 @@ write_ledger_row() {
   jq -e '.stories[0].gates.total == 6' "$CACHE"
   jq -e '.stories[0].manual_test | has("required", "verdict")' "$CACHE"
 
-  # waiting_agent_threshold_seconds defaults to 120
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
 }
 
 @test "sprint totals correctly computed from fixture stories" {
@@ -1229,7 +1226,7 @@ write_raw_story() {
 
 # top_keys — the sorted top-level key set of the cache.
 top_keys() { jq -c 'keys' "$CACHE"; }
-EXPECTED_TOP_KEYS='["action_needed","active_phase","by_status","day","drift","generated_at","phases","readiness","schema_version","sprint","stories","totals","unphased_stories","user_aliases","waiting_agent_threshold_seconds"]'
+EXPECTED_TOP_KEYS='["action_needed","active_phase","by_status","day","drift","generated_at","phases","readiness","schema_version","sprint","stories","totals","unphased_stories","user_aliases"]'
 
 @test "invalid-input matrix: task text with separators, globs, quotes, CR, tab and control bytes stays valid JSON" {
   write_sprint_yaml active "2026-10-01" "2026-10-14" "E900-S1:in-progress:5"
@@ -1625,12 +1622,13 @@ YAML
   backdate_tree
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "120" ]
+  # Default aliases when no config exists.
+  [ "$(jq '.user_aliases | length' "$CACHE")" = "0" ] || [ "$(jq '.user_aliases[0]' "$CACHE")" = '"user"' ]
   expect_warm_next
-  printf 'sprint_status_mod:\n  waiting_agent_threshold_seconds: 45\n' > "$PROJECT_ROOT/.gaia/config/project-config.yaml"
+  printf 'sprint_status_mod:\n  user_aliases:\n    - "custom-alias"\n' > "$PROJECT_ROOT/.gaia/config/project-config.yaml"
   run "$SCRIPT"
   [ "$status" -eq 0 ]
-  [ "$(jq '.waiting_agent_threshold_seconds' "$CACHE")" = "45" ]
+  [ "$(jq -r '.user_aliases[0]' "$CACHE")" = "custom-alias" ]
 }
 
 @test "a different sprint-status path is detected and rebuilt" {

@@ -337,12 +337,26 @@ rm -f "$AC_FILE"
 TOUCH_FLAGS=""
 # ... orchestrator sets TOUCH_FLAGS based on the confirmation flow ...
 
+# 3c. Config section declaration — when the story's touch-set includes
+#     `.gaia/config/project-config.yaml`, ask the author which top-level
+#     keys the story plans to modify (e.g. `sprint`, `stacks`,
+#     `test_execution`). Pass each key as `--config-section <key>` to
+#     generate-frontmatter.sh. This populates the optional
+#     `predicted_config_sections` frontmatter field, which the concurrent-
+#     sprint independence check uses for per-key overlap granularity.
+#     When the field is absent, two sprints both touching project-config.yaml
+#     conservatively overlap; when both stories declare it, only matching
+#     top-level keys overlap.
+CONFIG_SECTION_FLAGS=""
+# ... orchestrator sets CONFIG_SECTION_FLAGS when touch-set includes
+#     .gaia/config/project-config.yaml ...
+
 FRONTMATTER_YAML=$(!${CLAUDE_PLUGIN_ROOT}/skills/gaia-create-story/scripts/generate-frontmatter.sh \
   --story-key "<story_key>" \
   --epics-file "$(!scripts/resolve-config.sh planning_artifacts)/epics-and-stories.md" \
   --project-config "${PROJECT_ROOT:-$(pwd)}/.gaia/config/project-config.yaml" \
   [--origin <s>] [--origin-ref <s>] \
-  $TOUCH_FLAGS)
+  $TOUCH_FLAGS $CONFIG_SECTION_FLAGS)
 # Pass `--project-config` as an absolute path. The relative
 # form (`.gaia/config/project-config.yaml`) fails when the caller's
 # CWD is not the project root (e.g., orchestrator dispatched from inside a

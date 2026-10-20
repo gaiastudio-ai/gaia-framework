@@ -81,10 +81,7 @@ describe('agent-to-story mapping', () => {
     var cache = deepCopy(WRITER_CACHE)
     var result = computeAgentActivity({
       agents: [makeAgent({ id: 'a1', description: 'E900-S4: implement feature', status: 'running' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(cache),
-      waitingMap: new Map()
+      storyKeys: storyKeysFromCache(cache)
     })
     expect(result.activityByStory.has('E900-S4')).toBe(true)
     var entry = result.activityByStory.get('E900-S4')!
@@ -97,10 +94,7 @@ describe('agent-to-story mapping', () => {
   test('key not in storyKeys goes to unlinked', () => {
     var result = computeAgentActivity({
       agents: [makeAgent({ id: 'a1', description: 'E999-S99: phantom task', status: 'running' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(['E900-S1']),
-      waitingMap: new Map()
+      storyKeys: new Set(['E900-S1'])
     })
     expect(result.activityByStory.has('E999-S99')).toBe(false)
     expect(result.unlinkedActivity.items.length).toBe(1)
@@ -110,10 +104,7 @@ describe('agent-to-story mapping', () => {
   test('no-key agent goes to unlinked', () => {
     var result = computeAgentActivity({
       agents: [makeAgent({ id: 'a1', description: 'run tests', status: 'running' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(['E900-S1']),
-      waitingMap: new Map()
+      storyKeys: new Set(['E900-S1'])
     })
     expect(result.activityByStory.size).toBe(0)
     expect(result.unlinkedActivity.items.length).toBe(1)
@@ -125,10 +116,7 @@ describe('agent-to-story mapping', () => {
         makeAgent({ id: 'a1', description: 'E900-S3: dev', status: 'running' }),
         makeAgent({ id: 'a2', description: 'E900-S3: review', status: 'running' })
       ],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: new Map()
+      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
     })
     var entry = result.activityByStory.get('E900-S3')!
     expect(entry.items.length).toBe(2)
@@ -142,10 +130,7 @@ describe('agent-to-story mapping', () => {
     for (var st of excluded) {
       var result = computeAgentActivity({
         agents: [makeAgent({ id: 'a1', description: 'E900-S1: task', status: st })],
-        nowMs: 200000,
-        threshold: 120,
-        storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-        waitingMap: new Map()
+        storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
       })
       expect(result.activityByStory.size).toBe(0)
       expect(result.unlinkedActivity.items.length).toBe(0)
@@ -155,23 +140,16 @@ describe('agent-to-story mapping', () => {
   test('empty agent list produces empty output', () => {
     var result = computeAgentActivity({
       agents: [],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: new Map()
+      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
     })
     expect(result.activityByStory.size).toBe(0)
     expect(result.unlinkedActivity.items.length).toBe(0)
-    expect(result.ruleBItems.length).toBe(0)
   })
 
   test('ANSI escapes in description: key null, sanitised label', () => {
     var result = computeAgentActivity({
       agents: [makeAgent({ id: 'a1', description: '\x1b[31mE900-S1:\x1b[0m task', status: 'running' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: new Map()
+      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
     })
     // Key extraction on raw fails (escapes precede key).
     expect(result.activityByStory.has('E900-S1')).toBe(false)
@@ -180,16 +158,14 @@ describe('agent-to-story mapping', () => {
     expect(result.unlinkedActivity.items[0].label).not.toContain('\x1b')
   })
 
-  test('disappeared agent is removed from waitingMap', () => {
-    var waitMap = new Map([['gone-1', 100000]])
-    computeAgentActivity({
-      agents: [],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(),
-      waitingMap: waitMap
+  test('waiting agent appears as activity (not filtered)', () => {
+    var result = computeAgentActivity({
+      agents: [makeAgent({ id: 'w1', description: 'E900-S3: task', status: 'waiting' })],
+      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
     })
-    expect(waitMap.has('gone-1')).toBe(false)
+    expect(result.activityByStory.has('E900-S3')).toBe(true)
+    var entry = result.activityByStory.get('E900-S3')!
+    expect(entry.items[0].status).toBe('waiting')
   })
 })
 
@@ -203,10 +179,7 @@ describe('overflow capping', () => {
     }
     var result = computeAgentActivity({
       agents: agents,
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: new Map()
+      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE))
     })
     var entry = result.activityByStory.get('E900-S3')!
     expect(entry.items.length).toBe(5)
@@ -220,170 +193,10 @@ describe('overflow capping', () => {
     }
     var result = computeAgentActivity({
       agents: agents,
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(),
-      waitingMap: new Map()
+      storyKeys: new Set()
     })
     expect(result.unlinkedActivity.items.length).toBe(5)
     expect(result.unlinkedActivity.overflow).toBe(2)
-  })
-
-  test('ruleBItems has no overflow cap', () => {
-    var agents = []
-    var waitMap = new Map<string, number>()
-    for (var i = 0; i < 10; i++) {
-      var aid = 'w' + i
-      agents.push(makeAgent({ id: aid, description: 'task ' + i, status: 'waiting' }))
-      waitMap.set(aid, 100000) // 100 s ago
-    }
-    var result = computeAgentActivity({
-      agents: agents,
-      nowMs: 200000,
-      threshold: 0,
-      storyKeys: new Set(),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(10)
-  })
-})
-
-// -- rule (b) agent waiting --
-
-describe('rule (b) waiting-on-user detection', () => {
-  test('waiting agent above threshold produces rule-b item', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('wait-1', 50000) // first seen 150 s ago
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'E900-S3: implement', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(1)
-    var item = result.ruleBItems[0]
-    expect(item.rule).toBe('b')
-    expect(item.type).toBe('agent_waiting')
-    expect(item.story_keys).toEqual(['E900-S3'])
-    expect(item.command).toBeNull()
-    expect(item.source).toBe('agent-list')
-    expect(typeof item.message).toBe('string')
-    expect(typeof item.since).toBe('string')
-    // since is YYYY-MM-DD
-    expect(item.since).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-  })
-
-  test('rule-b item shape matches cache action_needed shape', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('wait-1', 50000)
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'E900-S3: task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    var item = result.ruleBItems[0]
-    var requiredFields = ['rule', 'type', 'story_keys', 'message', 'command', 'since', 'source']
-    for (var f of requiredFields) {
-      expect(item).toHaveProperty(f)
-    }
-  })
-
-  test('waiting agent with running child is filtered out', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('parent-1', 50000)
-    var result = computeAgentActivity({
-      agents: [
-        makeAgent({ id: 'parent-1', description: 'E900-S3: task', status: 'waiting' }),
-        makeAgent({ id: 'child-1', description: 'subtask', status: 'running', parentId: 'parent-1' })
-      ],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(0)
-  })
-
-  test('waiting below threshold is filtered out', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('wait-1', 140000) // first seen 60 s ago
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'E900-S3: task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(0)
-  })
-
-  test('custom threshold 300s: agent waiting 200s is filtered', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('wait-1', 0) // first seen 200 s ago
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'E900-S3: task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 300,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(0)
-  })
-
-  test('threshold 0 promotes on first sighting', () => {
-    var waitMap = new Map<string, number>()
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'E900-S3: task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 0,
-      storyKeys: storyKeysFromCache(deepCopy(WRITER_CACHE)),
-      waitingMap: waitMap
-    })
-    // waitingMap entry is created at nowMs; wait_seconds = 0; 0 >= 0 is true.
-    expect(result.ruleBItems.length).toBe(1)
-  })
-
-  test('unlinked waiting agent produces rule-b with empty story_keys', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('wait-1', 50000)
-    var result = computeAgentActivity({
-      agents: [makeAgent({ id: 'wait-1', description: 'some task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(),
-      waitingMap: waitMap
-    })
-    expect(result.ruleBItems.length).toBe(1)
-    expect(result.ruleBItems[0].story_keys).toEqual([])
-  })
-
-  test('newly appeared waiting agent gets recorded in waitingMap', () => {
-    var waitMap = new Map<string, number>()
-    computeAgentActivity({
-      agents: [makeAgent({ id: 'new-1', description: 'task', status: 'waiting' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(),
-      waitingMap: waitMap
-    })
-    expect(waitMap.has('new-1')).toBe(true)
-    expect(waitMap.get('new-1')).toBe(200000)
-  })
-
-  test('agent leaving waiting is removed from waitingMap', () => {
-    var waitMap = new Map<string, number>()
-    waitMap.set('was-waiting', 100000)
-    computeAgentActivity({
-      agents: [makeAgent({ id: 'was-waiting', description: 'task', status: 'running' })],
-      nowMs: 200000,
-      threshold: 120,
-      storyKeys: new Set(),
-      waitingMap: waitMap
-    })
-    expect(waitMap.has('was-waiting')).toBe(false)
   })
 })
 
@@ -505,16 +318,12 @@ describe('agent data cleared after a failed list', () => {
     return w
   }
 
-  test('throw after agents clears sub-line and rule-b from the rendered pane and band', async ($, on) => {
-    // Use threshold 0 so a waiting agent immediately produces a rule-b item.
-    var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
-    var w = worldDynamic(on, { cache: cache })
+  test('throw after agents clears sub-line from the rendered pane', async ($, on) => {
+    var w = worldDynamic(on)
 
-    // Tick 1: agents present (running + waiting).
+    // Tick 1: agents present (running).
     w.agentState.agents = [
-      { id: 'a1', description: 'E900-S3: build ui', type: 'agent', status: 'running' },
-      { id: 'w1', description: 'E900-S4: waiting for user', type: 'agent', status: 'waiting' }
+      { id: 'a1', description: 'E900-S3: build ui', type: 'agent', status: 'running' }
     ]
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
@@ -527,47 +336,24 @@ describe('agent data cleared after a failed list', () => {
     })
     var subLine = await pane1.find({ text: /build ui/ })
     expect(subLine).toBeDefined()
-    // Verify rule-b entry present in banner.
-    var ruleBLine = await pane1.find({ text: /waiting for user/ })
-    expect(ruleBLine).toBeDefined()
     await pane1.unmount()
-
-    // Verify band shows action needed.
-    var band1 = await $.ui.mount({
-      plugin: 'gaia', surface: 'terminal', component: 'AbovePrompt', props: {}
-    })
-    var bandAction = await band1.find({ text: /ACTION NEEDED/ })
-    expect(bandAction).toBeDefined()
-    await band1.unmount()
 
     // Tick 2: list throws.
     w.agentState.throws = true
     await w.clock.advance(30000)
 
-    // Sub-line and rule-b gone.
+    // Sub-line gone.
     var pane2 = await $.ui.mount({
       plugin: 'gaia', surface: 'terminal', component: 'Pane',
       requestId: 'sprint-status', props: { bodyColumns: 40 }
     })
     var subLineAfter = await pane2.find({ text: /build ui/ })
     expect(subLineAfter).toBeUndefined()
-    var ruleBAfter = await pane2.find({ text: /waiting for user/ })
-    expect(ruleBAfter).toBeUndefined()
     await pane2.unmount()
-
-    // Band no longer shows action needed (no cache actions + no rule-b).
-    var band2 = await $.ui.mount({
-      plugin: 'gaia', surface: 'terminal', component: 'AbovePrompt', props: {}
-    })
-    var bandAfter = await band2.find({ text: /ACTION NEEDED/ })
-    expect(bandAfter).toBeUndefined()
-    await band2.unmount()
   })
 
   test('successful tick after throw restores agent data', async ($, on) => {
-    var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
-    var w = worldDynamic(on, { cache: cache })
+    var w = worldDynamic(on)
 
     // Tick 1: throw.
     w.agentState.throws = true
@@ -602,9 +388,9 @@ describe('agent data cleared after a failed list', () => {
   })
 })
 
-// -- rule-b rendered in pane banner and band --
+// -- activity rendered in pane --
 
-describe('rule-b items reach the rendered pane and band', () => {
+describe('activity rendered in pane', () => {
   function worldWithAgents(on: any, agents: any[], opts: {
     now?: number; cache?: any
   } = {}) {
@@ -669,51 +455,15 @@ describe('rule-b items reach the rendered pane and band', () => {
     await pane.unmount()
   })
 
-  test('waiting agent past threshold shows in pane banner and band', async ($, on) => {
+  test('banner order: cache rules a, c, d sorted correctly', async ($, on) => {
     var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
-    var agents = [
-      { id: 'w1', description: 'E900-S3: waiting on review', type: 'agent', status: 'waiting' }
-    ]
-    var w = worldWithAgents(on, agents, { cache: cache })
-    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
-    await w.clock.settle()
-    await w.clock.advance(30000)
-
-    // Pane banner shows the waiting message.
-    var pane = await $.ui.mount({
-      plugin: 'gaia', surface: 'terminal', component: 'Pane',
-      requestId: 'sprint-status', props: { bodyColumns: 40 }
-    })
-    var bannerItem = await pane.find({ text: /waiting on review/ })
-    expect(bannerItem).toBeDefined()
-    var bannerHead = await pane.find({ text: /ACTION NEEDED/ })
-    expect(bannerHead).toBeDefined()
-    await pane.unmount()
-
-    // Band shows action needed.
-    var band = await $.ui.mount({
-      plugin: 'gaia', surface: 'terminal', component: 'AbovePrompt', props: {}
-    })
-    var bandAction = await band.find({ text: /ACTION NEEDED/ })
-    expect(bandAction).toBeDefined()
-    await band.unmount()
-  })
-
-  test('banner order: cache rule a, then rule b, then c, then d', async ($, on) => {
-    var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
-    // Inject cache action_needed items with rules d, a, c (out of sorted
-    // order) to exercise the sort.
+    // Inject cache action_needed items out of sorted order to exercise the sort.
     cache.action_needed = [
       { rule: 'd', type: 'overdue', story_keys: [], message: 'rule-d-msg', command: null, since: '2026-10-14', source: 'cache' },
       { rule: 'a', type: 'stale_review', story_keys: ['E900-S3'], message: 'rule-a-msg', command: 'run review', since: '2026-10-12', source: 'cache' },
       { rule: 'c', type: 'blocker', story_keys: ['E900-S5'], message: 'rule-c-msg', command: null, since: '2026-10-13', source: 'cache' }
     ]
-    var agents = [
-      { id: 'w1', description: 'E900-S3: rule-b-msg', type: 'agent', status: 'waiting' }
-    ]
-    var w = worldWithAgents(on, agents, { cache: cache })
+    var w = worldWithAgents(on, [], { cache: cache })
     await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
     await w.clock.settle()
     await w.clock.advance(30000)
@@ -724,7 +474,7 @@ describe('rule-b items reach the rendered pane and band', () => {
     })
     // Probe: collect all leaf Text elements matching any rule message and
     // check whether findAll returns them in render (document) order.
-    var allRuleTexts = await pane.findAll({ text: /rule-[abcd]-msg/ })
+    var allRuleTexts = await pane.findAll({ text: /rule-[acd]-msg/ })
     // Filter to leaf Text nodes only.
     var leaves = allRuleTexts.filter((el: any) => el.type === 'Text')
     // Extract the text content from each leaf.
@@ -734,24 +484,20 @@ describe('rule-b items reach the rendered pane and band', () => {
     })
     // Find the index of the first leaf containing each rule message.
     var posA = leafTexts.findIndex((t: string) => t.includes('rule-a-msg'))
-    var posB = leafTexts.findIndex((t: string) => t.includes('rule-b-msg'))
     var posC = leafTexts.findIndex((t: string) => t.includes('rule-c-msg'))
     var posD = leafTexts.findIndex((t: string) => t.includes('rule-d-msg'))
-    // All four must be found.
+    // All three must be found.
     expect(posA).toBeGreaterThanOrEqual(0)
-    expect(posB).toBeGreaterThanOrEqual(0)
     expect(posC).toBeGreaterThanOrEqual(0)
     expect(posD).toBeGreaterThanOrEqual(0)
-    // Assert sorted render order: a < b < c < d.
-    expect(posA).toBeLessThan(posB)
-    expect(posB).toBeLessThan(posC)
+    // Assert sorted render order: a < c < d.
+    expect(posA).toBeLessThan(posC)
     expect(posC).toBeLessThan(posD)
     await pane.unmount()
   })
 
-  test('unlinked waiting agent renders activity row', async ($, on) => {
+  test('unlinked agent renders activity row', async ($, on) => {
     var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
     var agents = [
       { id: 'u1', description: 'some unlinked task', type: 'agent', status: 'running' }
     ]
@@ -806,29 +552,6 @@ describe('rule-b items reach the rendered pane and band', () => {
     })
     var overflow = await pane.find({ text: /\+3 more/ })
     expect(overflow).toBeDefined()
-    await pane.unmount()
-  })
-
-  test('rule-b item has its own since field', async ($, on) => {
-    var cache = deepCopy(WRITER_CACHE)
-    cache.waiting_agent_threshold_seconds = 0
-    // No cache actions — rule-b is the only action item.
-    cache.action_needed = []
-    var agents = [
-      { id: 'w1', description: 'E900-S3: stalled deployment', type: 'agent', status: 'waiting' }
-    ]
-    var w = worldWithAgents(on, agents, { cache: cache })
-    await $.session.start({ cwd: GAIA_ROOT, surface: 'terminal', isInteractive: true })
-    await w.clock.settle()
-    await w.clock.advance(30000)
-
-    var pane = await $.ui.mount({
-      plugin: 'gaia', surface: 'terminal', component: 'Pane',
-      requestId: 'sprint-status', props: { bodyColumns: 40 }
-    })
-    // The banner renders 'since YYYY-MM-DD' for each rule-b item.
-    var sinceLine = await pane.find({ text: /since \d{4}-\d{2}-\d{2}/ })
-    expect(sinceLine).toBeDefined()
     await pane.unmount()
   })
 })

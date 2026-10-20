@@ -163,8 +163,10 @@ YAML
   # resolver with a stub that emits only an unrelated key and invoke via a
   # copy of checkpoint.sh so SCRIPT_DIR points at the stub directory.
   local stubdir="$TEST_TMP/stub-scripts"
-  mkdir -p "$stubdir"
+  mkdir -p "$stubdir/lib"
   cp "$SCRIPT" "$stubdir/checkpoint.sh"
+  # checkpoint.sh sources lib/acquire-lock.sh at startup.
+  cp "$SCRIPTS_DIR/lib/acquire-lock.sh" "$stubdir/lib/acquire-lock.sh"
   cat >"$stubdir/resolve-config.sh" <<'RESOLVER'
 #!/usr/bin/env bash
 printf "project_root='/nope'\n"

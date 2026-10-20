@@ -51,6 +51,10 @@ export LC_ALL
 SCRIPT_NAME="lifecycle-event.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source the shared lock library for concurrency serialization.
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/acquire-lock.sh"
+
 # ---------- Helpers ----------
 
 die() {
@@ -270,37 +274,25 @@ line=$(jq -nc \
    + (if $data  != null then {data: $data}         else {} end)')
 
 # ---------- Atomic append under lock ----------
+#
+# Timeout budget: 5 s for both backends.  The happy path is sub-millisecond;
+# the fallback path needs the full budget because its ln(2) spin-loop sleeps
+# between retries.  5 s matches the pre-migration fallback wait (50 retries *
+# 0.1 s).  The helper's own backoff governs actual retry timing.
 
 lockfile="${JSONL}.lock"
-flock_bin=$(command -v flock || true)
 
-append_line() {
-  # Single printf write(2) inside the lock — atomic for lines under PIPE_BUF.
-  printf '%s\n' "$line" >> "$JSONL"
-}
+# Release the lock on any exit path (normal, set -e, signal) so a failing
+# write does not leave it held until the 60 s stale-lock reaper fires.
+# shellcheck disable=SC2329
+_le_release_lock() { release_lock 9 2>/dev/null || true; }
+trap '_le_release_lock' EXIT
 
-if [ -n "$flock_bin" ]; then
-  (
-    exec 9>"$lockfile"
-    if ! "$flock_bin" -x -w 1 9; then
-      die "flock timeout acquiring $lockfile"
-    fi
-    append_line
-  )
-else
-  # mv-based spin-loop fallback (same pattern as checkpoint.sh).
-  # `set -C` + `: > file` is an atomic exclusive-create on POSIX filesystems.
-  tries=0
-  while ! ( set -C; : > "$lockfile" ) 2>/dev/null; do
-    tries=$((tries + 1))
-    [ "$tries" -ge 50 ] && die "lock timeout acquiring $lockfile"
-    sleep 0.1 2>/dev/null || sleep 1
-  done
-  # shellcheck disable=SC2064
-  trap "rm -f '$lockfile'" EXIT
-  append_line
-  rm -f "$lockfile"
-  trap - EXIT
+if ! acquire_lock "$lockfile" 5 9; then
+  die "lock timeout acquiring $lockfile"
 fi
+# Single printf write(2) inside the lock — atomic for lines under PIPE_BUF.
+printf '%s\n' "$line" >> "$JSONL"
+release_lock 9
 
 exit 0

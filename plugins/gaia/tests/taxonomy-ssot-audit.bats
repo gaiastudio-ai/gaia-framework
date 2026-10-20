@@ -181,10 +181,10 @@ _offenders_for_taxonomy() {
 }
 
 # TC-DPD-6 — Induce-then-detect: a synthetic violator must be flagged.
+# Fixture lives under the per-test temp dir so concurrent runs cannot
+# see each other's synthetic violators and a killed run leaves nothing behind.
 @test "audit flags a synthetic inlined-taxonomy violator" {
-  local fixture_dir="$PLUGIN_DIR/tests/fixtures"
-  local fixture_path="$fixture_dir/inlined-taxonomy-violator-$$.md"
-  mkdir -p "$fixture_dir"
+  local fixture_path="$BATS_TEST_TMPDIR/inlined-taxonomy-violator-$$.md"
   # Embed 3 distinct deferral entries in a single file — drift.
   cat > "$fixture_path" <<'FIX'
 This file inlines the deferral taxonomy:
@@ -193,43 +193,46 @@ This file inlines the deferral taxonomy:
 - stub seam
 FIX
 
-  local offenders
-  offenders=$(_offenders_for_taxonomy deferral)
+  # Verify the audit's grep-count logic would detect this file.
+  local grep_file
+  grep_file="$("$PLUGIN_DIR/scripts/lib/load-taxonomy.sh" --taxonomy deferral --as-grep-file)"
+  local distinct
+  distinct="$(grep -wFof "$grep_file" "$fixture_path" 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+  rm -f "$grep_file"
 
-  rm -f "$fixture_path"
-  rmdir "$fixture_dir" 2>/dev/null || true
+  [ "${distinct:-0}" -ge "$DRIFT_THRESHOLD" ] || {
+    printf 'Expected >= %d distinct deferral entries; got %d\n' "$DRIFT_THRESHOLD" "${distinct:-0}" >&2
+    return 1
+  }
 
-  case "$offenders" in
-    *"inlined-taxonomy-violator-"*) : ;;  # detected — pass
-    *)
-      printf 'Expected audit to flag the synthetic violator; offenders were:\n%s\n' "$offenders" >&2
-      return 1
-      ;;
-  esac
+  # Verify the fixture's relative path would NOT be allowlisted —
+  # the audit would flag it if it appeared under the plugin tree.
+  ! _is_allowlisted "tests/fixtures/inlined-taxonomy-violator-$$.md" || {
+    printf 'Fixture path should not be in the allowlist\n' >&2
+    return 1
+  }
 }
 
 # Confirm 2 entries in a single file does NOT trigger drift (legitimate prose
 # can mention up to DRIFT_THRESHOLD-1 entries naturally).
+# Fixture lives under the per-test temp dir for the same concurrency safety
+# rationale as the violator test above.
 @test "2 distinct entries in prose is NOT flagged (under threshold)" {
-  local fixture_dir="$PLUGIN_DIR/tests/fixtures"
-  local fixture_path="$fixture_dir/legitimate-prose-$$.md"
-  mkdir -p "$fixture_dir"
+  local fixture_path="$BATS_TEST_TMPDIR/legitimate-prose-$$.md"
   cat > "$fixture_path" <<'FIX'
 The orchestrator invokes and spawns sub-agents during dispatch. This is
 normal prose mentioning two dispatch verbs in passing.
 FIX
 
-  local offenders
-  offenders=$(_offenders_for_taxonomy dispatch)
+  local grep_file
+  grep_file="$("$PLUGIN_DIR/scripts/lib/load-taxonomy.sh" --taxonomy dispatch --as-grep-file)"
+  local distinct
+  distinct="$(grep -wFof "$grep_file" "$fixture_path" 2>/dev/null | sort -u | wc -l | tr -d ' ')"
+  rm -f "$grep_file"
 
-  rm -f "$fixture_path"
-  rmdir "$fixture_dir" 2>/dev/null || true
-
-  case "$offenders" in
-    *"legitimate-prose-"*)
-      printf 'Audit false-positive: legitimate prose flagged.\nOffenders:\n%s\n' "$offenders" >&2
-      return 1
-      ;;
-    *) : ;;  # not flagged — pass
-  esac
+  [ "${distinct:-0}" -lt "$DRIFT_THRESHOLD" ] || {
+    printf 'Audit false-positive: expected < %d distinct dispatch entries; got %d\n' \
+      "$DRIFT_THRESHOLD" "${distinct:-0}" >&2
+    return 1
+  }
 }

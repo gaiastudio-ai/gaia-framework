@@ -262,16 +262,6 @@ _check_links() {
     fail "user_aliases not documented in configuration section"
 }
 
-@test "sprint-status-mod.html configuration section documents waiting threshold default 120" {
-  local section
-  section="$(sed -n '/id="configuration"/,/<\/section>/p' "$DOC_DIR/sprint-status-mod.html")"
-  [ -n "$section" ] || fail "configuration section not found"
-  grep -q 'waiting_agent_threshold_seconds' <<< "$section" ||
-    fail "waiting_agent_threshold_seconds not documented in configuration section"
-  grep -q '120' <<< "$section" ||
-    fail "default value 120 not documented in configuration section"
-}
-
 # ---------------------------------------------------------------------------
 # Pace label guard — doc page must use the labels the code renders
 # ---------------------------------------------------------------------------

@@ -117,20 +117,19 @@ STUB
 }
 
 # ============================================================================
-# Sub-item (c): direct-yq fallback contract
+# Sub-item (c): close writer delegation contract
 # ============================================================================
 
-# -- Behavior pin: when sprint-state.sh refuses for a non-sentinel reason,
-#    close.sh falls back to direct yq and produces a valid close. --
+# -- Behavior pin: when sprint-state.sh (close writer) returns non-zero,
+#    close.sh fails loudly with non-zero exit and writes nothing. --
 
-@test "direct-yq fallback fires when sprint-state.sh refuses non-sentinel transition (AC1)" {
-  # Create a stub sprint-state.sh that exits non-zero with benign stderr
-  # (no sentinel-refusal substring).
+@test "close.sh fails loudly when sprint-state.sh close writer returns non-zero" {
+  # Create a stub sprint-state.sh that exits non-zero.
   local stub_dir="$TEST_TMP/stubs"
   mkdir -p "$stub_dir"
   cat > "$stub_dir/sprint-state.sh" <<'STUB'
 #!/usr/bin/env bash
-echo "transition refused: active to closed is not a legal edge" >&2
+echo "close writer error: internal failure" >&2
 exit 1
 STUB
   chmod +x "$stub_dir/sprint-state.sh"
@@ -141,16 +140,18 @@ STUB
   _seed_sentinel "sprint-80"
 
   run "$CLOSE_SH"
-  [ "$status" -eq 0 ]
-  [ "$(_yaml_status)" = "closed" ]
-  # closed_at must be set.
-  grep -q '^closed_at:' "$YAML"
-  # Lifecycle event must still be emitted by close.sh itself.
-  [ -f "$LIFECYCLE" ]
-  grep -q '"event_type":"sprint_closed"' "$LIFECYCLE"
+  [ "$status" -ne 0 ]
+  # Status must stay unchanged — close.sh must not write anything.
+  [ "$(_yaml_status)" = "active" ]
+  # No archive should have been written.
+  if [ -d "$ARCHIVE" ]; then
+    local archive_count
+    archive_count="$(find "$ARCHIVE" -type f | wc -l | tr -d ' ')"
+    [ "$archive_count" -eq 0 ]
+  fi
 }
 
-@test "direct-yq fallback fires when sprint-state.sh is absent (AC1)" {
+@test "close.sh fails loudly when sprint-state.sh is absent" {
   # Point at a non-existent path.
   export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
 
@@ -159,29 +160,30 @@ STUB
   _seed_sentinel "sprint-80"
 
   run "$CLOSE_SH"
-  [ "$status" -eq 0 ]
-  [ "$(_yaml_status)" = "closed" ]
-  grep -q '^closed_at:' "$YAML"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-state.sh not found"* ]] || [[ "$output" == *"not executable"* ]]
+  # Status must stay unchanged.
+  [ "$(_yaml_status)" = "active" ]
 }
 
-# -- Documentation pin: SKILL.md documents the fallback conditions. --
+# -- Documentation pin: SKILL.md documents the close writer delegation. --
 
-@test "SKILL.md documents the direct-yq fallback contract (AC1)" {
+@test "SKILL.md documents the close writer delegation contract" {
   [ -f "$SPRINT_CLOSE_SKILL" ]
-  # The SKILL.md must explain when the fallback fires.
-  grep -qE 'fallback|direct.*yq|active.*closed' "$SPRINT_CLOSE_SKILL"
-  # The SKILL.md must mention the sentinel gate passes before the fallback.
-  grep -qE 'sentinel.*gate.*pass|sentinel.*already|sentinel.*before' "$SPRINT_CLOSE_SKILL"
+  # The SKILL.md must document that close.sh delegates to sprint-state.sh.
+  grep -qE 'sprint-state\.sh.*close|close.*writer|delegat' "$SPRINT_CLOSE_SKILL"
+  # The SKILL.md must state that close.sh fails when the writer is absent.
+  grep -qE 'fail.*loudly|absent.*fail|missing.*fail|not.*executable' "$SPRINT_CLOSE_SKILL"
 }
 
-# -- Code-comment pin: close.sh documents the fallback rationale inline. --
+# -- Code-comment pin: close.sh documents the delegation contract inline. --
 
-@test "close.sh documents the fallback rationale in code comments (AC1)" {
+@test "close.sh documents the close writer delegation in code comments" {
   [ -f "$CLOSE_SH" ]
-  # The fallback section must explain the sentinel gate precondition.
-  grep -qE 'sentinel.*gate.*already|sentinel.*already.*ran|sentinel.*passed' "$CLOSE_SH"
-  # The fallback section must name the specific case (active->closed not legal).
-  grep -qE 'active.*closed.*not.*legal|not.*legal.*edge' "$CLOSE_SH"
+  # close.sh must document that all state writes are delegated.
+  grep -qE 'delegat|close.*writer|sprint-state\.sh' "$CLOSE_SH"
+  # close.sh must state it takes no lock and performs no direct yq writes.
+  grep -qE 'no.*lock|no.*direct.*yq|no.*yq.*write' "$CLOSE_SH"
 }
 
 # ============================================================================
@@ -191,13 +193,13 @@ STUB
 # -- Behavior pin: close.sh emits sprint_closed. --
 
 @test "close.sh emits sprint_closed event (AC2)" {
-  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
 
-  _seed_yaml "sprint-80" "active" 3 3
+  _seed_yaml "sprint-80" "review" 3 3
   _seed_retro "sprint-80"
   _seed_sentinel "sprint-80"
 
-  run "$CLOSE_SH"
+  run "$CLOSE_SH" --force
   [ "$status" -eq 0 ]
   [ -f "$LIFECYCLE" ]
   grep -q '"event_type":"sprint_closed"' "$LIFECYCLE"
@@ -220,14 +222,14 @@ STUB
 # -- Behavior pin: both events fire in a full ceremony. --
 
 @test "close ceremony emits both sprint_closed and workflow_complete (AC2)" {
-  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
 
-  _seed_yaml "sprint-80" "active" 3 3
+  _seed_yaml "sprint-80" "review" 3 3
   _seed_retro "sprint-80"
   _seed_sentinel "sprint-80"
 
   # Run close.sh (emits sprint_closed).
-  run "$CLOSE_SH"
+  run "$CLOSE_SH" --force
   [ "$status" -eq 0 ]
 
   # Run finalize.sh via the harness (emits workflow_complete).
@@ -313,7 +315,7 @@ STUB
 
   run "$CLOSE_SH"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"transition failed"* ]]
+  [[ "$output" == *"close writer failed"* ]] || [[ "$output" == *"transition failed"* ]]
   # Must NOT contain the mismatch phrase
   local mismatch_count
   mismatch_count="$(printf '%s\n' "$output" | grep -c 'does not match' || true)"
@@ -390,12 +392,14 @@ STUB
   #    WITHOUT sprint-state.sh — only lifecycle-event.sh (close.sh line 25-26).
   local iso_root="$TEST_TMP/isolated-root"
   local iso_skill="$iso_root/skills/gaia-sprint-close/scripts"
-  mkdir -p "$iso_skill" "$iso_root/scripts"
+  mkdir -p "$iso_skill" "$iso_root/scripts/lib"
   cp "$real_skill_scripts/close.sh" "$iso_skill/close.sh"
   chmod +x "$iso_skill/close.sh"
   # close.sh line 25: PLUGIN_SCRIPTS_DIR = dirname/$SCRIPT_DIR/../../../scripts
   cp "$real_scripts/lifecycle-event.sh" "$iso_root/scripts/"
   chmod +x "$iso_root/scripts/lifecycle-event.sh"
+  # lifecycle-event.sh sources the shared lock library from its lib/ sibling.
+  cp "$real_scripts/lib/acquire-lock.sh" "$iso_root/scripts/lib/"
 
   # 2. Build a separate custom plugin root WITH the full scripts tree.
   local plugin_root="$TEST_TMP/custom-plugin-root"

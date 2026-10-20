@@ -5,6 +5,8 @@
 # descriptive sprint IDs (e.g., sprint-test-1, sprint-fixture-a) while
 # still rejecting path-traversal sequences per the T-37 mitigation.
 
+load 'test_helper.bash'
+
 setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/write-val-sentinel.sh"
   TMPDIR_TEST="$(mktemp -d)"

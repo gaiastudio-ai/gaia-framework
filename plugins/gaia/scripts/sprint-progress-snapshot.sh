@@ -73,6 +73,11 @@ _LOCK_SUFFIX=".lock"
 _ALLOWED_COMMANDS=("/gaia-test-manual" "/gaia-sprint-close" "/gaia-action-items")
 _US=$'\037'   # record field separator (ASCII unit separator)
 
+# Per-sprint cache pattern: .sprint-progress-cache-{sprint_id}.json
+# Per-sprint mtime sidecar: .sprint-progress-mtimes-{sprint_id}
+_LAST_ACTIVATED_NAME=".last-activated-sprint"
+_SPRINT_ID_RE='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -194,6 +199,208 @@ _validate_threshold() {
     [ -z "$v" ] || _warn "invalid threshold value '${v:0:20}', using default 120"
     printf '120'
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Concurrent mode helpers
+# ---------------------------------------------------------------------------
+
+# _snap_validate_sprint_id ID — validate format and return 0 when valid.
+_snap_validate_sprint_id() {
+  local id="$1"
+  [ -n "$id" ] || return 1
+  [[ $id =~ $_SPRINT_ID_RE ]] || return 1
+  return 0
+}
+
+# _snap_read_max_concurrent STATE_DIR — read max_concurrent_active from config.
+# Returns the integer (default 1).
+_snap_read_max_concurrent() {
+  local cfg="${CONFIG_FILE:-}"
+  local val=""
+  if [ -n "$cfg" ] && [ -f "$cfg" ]; then
+    if /usr/bin/grep -q 'max_concurrent_active' "$cfg" 2>/dev/null; then
+      if command -v yq >/dev/null 2>&1; then
+        val="$(yq '.sprint.max_concurrent_active' "$cfg" 2>/dev/null)" || val=""
+      fi
+    fi
+  fi
+  case "$val" in ''|null|*[!0-9]*) val="1" ;; esac
+  printf '%s' "$val"
+}
+
+# _snap_per_sprint_files_exist STATE_DIR — true when per-sprint state files exist.
+_snap_per_sprint_files_exist() {
+  local sd="$1"
+  [ -d "$sd" ] || return 1
+  local found=""
+  found="$(find "$sd" -maxdepth 1 -name 'sprint-status-*.yaml' ! -name '*.lock' ! -name '*.result' 2>/dev/null | head -1)" || found=""
+  [ -n "$found" ]
+}
+
+# _snap_is_concurrent_mode — true when concurrent sprints are active.
+_snap_is_concurrent_mode() {
+  local max
+  max="$(_snap_read_max_concurrent)"
+  if [ "$max" -gt 1 ] 2>/dev/null; then return 0; fi
+  _snap_per_sprint_files_exist "$STATE_DIR"
+}
+
+# _snap_non_closed_sprint_ids STATE_DIR — list non-closed sprint IDs (one per line).
+_snap_non_closed_sprint_ids() {
+  local sd="$1"
+  [ -d "$sd" ] || return 0
+  local f sid status
+  for f in "$sd"/sprint-status-*.yaml; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in *.lock|*.result) continue ;; esac
+    sid="${f##*/sprint-status-}"
+    sid="${sid%.yaml}"
+    _snap_validate_sprint_id "$sid" || continue
+    status="$(yq '.status // ""' "$f" 2>/dev/null)" || status=""
+    case "$status" in active|review|correction) printf '%s\n' "$sid" ;; esac
+  done
+  # Also check the single-file yaml for the case where only it exists.
+  if [ -f "$YAML_FILE" ]; then
+    local single_id single_status
+    single_id="$(yq '.sprint_id // ""' "$YAML_FILE" 2>/dev/null)" || single_id=""
+    single_status="$(yq '.status // ""' "$YAML_FILE" 2>/dev/null)" || single_status=""
+    if [ -n "$single_id" ]; then
+      case "$single_status" in
+        active|review|correction)
+          # Only emit if not already listed from a per-sprint file.
+          if [ ! -f "${sd}/sprint-status-${single_id}.yaml" ]; then
+            printf '%s\n' "$single_id"
+          fi
+          ;;
+      esac
+    fi
+  fi
+}
+
+# _snap_sprint_status STATE_DIR SPRINT_ID — print the sprint's status string.
+_snap_sprint_status() {
+  local sd="$1" sid="$2"
+  local per_file="${sd}/sprint-status-${sid}.yaml"
+  if [ -f "$per_file" ]; then
+    yq '.status // ""' "$per_file" 2>/dev/null || printf ''
+    return 0
+  fi
+  # Fallback: check single-file yaml.
+  if [ -f "$YAML_FILE" ]; then
+    local yaml_sid
+    yaml_sid="$(yq '.sprint_id // ""' "$YAML_FILE" 2>/dev/null)" || yaml_sid=""
+    if [ "$yaml_sid" = "$sid" ]; then
+      yq '.status // ""' "$YAML_FILE" 2>/dev/null || printf ''
+      return 0
+    fi
+  fi
+  # Check archive.
+  local arch_dir="${RESOLVED_ROOT}/.gaia/artifacts/implementation-artifacts/sprint-archive"
+  if [ -d "$arch_dir" ]; then
+    local arch_match=""
+    arch_match="$(find "$arch_dir" -maxdepth 1 -name "${sid}-closed-*.yaml" 2>/dev/null | head -1)" || arch_match=""
+    if [ -n "$arch_match" ]; then
+      printf 'closed'
+      return 0
+    fi
+  fi
+  printf ''
+}
+
+# _snap_read_last_activated STATE_DIR — print the last-activated sprint ID.
+_snap_read_last_activated() {
+  local sd="$1"
+  local p="${sd}/${_LAST_ACTIVATED_NAME}"
+  [ -f "$p" ] || return 0
+  local val=""
+  val="$(cat "$p" 2>/dev/null | tr -d '\n')" || return 0
+  if [ -z "$val" ] || ! _snap_validate_sprint_id "$val"; then
+    return 0
+  fi
+  printf '%s' "$val"
+}
+
+# _snap_per_sprint_cache_path STATE_DIR SPRINT_ID — print per-sprint cache path.
+_snap_per_sprint_cache_path() {
+  printf '%s/.sprint-progress-cache-%s.json' "$1" "$2"
+}
+
+# _snap_per_sprint_sidecar_path STATE_DIR SPRINT_ID — print per-sprint sidecar.
+_snap_per_sprint_sidecar_path() {
+  printf '%s/.sprint-progress-mtimes-%s' "$1" "$2"
+}
+
+# _snap_per_sprint_parsed_path STATE_DIR SPRINT_ID — print per-sprint parsed.
+_snap_per_sprint_parsed_path() {
+  printf '%s/.sprint-progress-parsed-%s' "$1" "$2"
+}
+
+# _snap_mirror_proxy STATE_DIR SPRINT_ID — atomically mirror a per-sprint
+# cache to the compatibility proxy, but only if SPRINT_ID is still the
+# last-activated sprint at the moment of rename (race guard).
+_snap_mirror_proxy() {
+  local sd="$1" sid="$2"
+  local per_cache
+  per_cache="$(_snap_per_sprint_cache_path "$sd" "$sid")"
+  local proxy="${sd}/${_CACHE_NAME}"
+  [ -f "$per_cache" ] || return 0
+  # Re-read last-activated right before the rename: if it changed, skip.
+  local current_last
+  current_last="$(_snap_read_last_activated "$sd")"
+  if [ "$current_last" != "$sid" ]; then
+    return 0
+  fi
+  local tmp
+  _new_tmp "$proxy" || return 0
+  tmp="$_TMP"
+  cp "$per_cache" "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 0; }
+  if ! _replace_ok "$proxy"; then
+    rm -f "$tmp" 2>/dev/null; return 0
+  fi
+  mv -f "$tmp" "$proxy"
+}
+
+# _snap_remove_per_sprint_cache STATE_DIR SPRINT_ID — remove a closed sprint's
+# per-sprint cache file (cleanup on close).
+_snap_remove_per_sprint_cache() {
+  local sd="$1" sid="$2"
+  local per_cache
+  per_cache="$(_snap_per_sprint_cache_path "$sd" "$sid")"
+  if [ -f "$per_cache" ]; then
+    rm -f "$per_cache" 2>/dev/null || true
+    _warn "removed stale per-sprint cache for closed sprint $sid"
+  fi
+  # Also remove sidecar and parsed if present.
+  local per_sidecar per_parsed
+  per_sidecar="$(_snap_per_sprint_sidecar_path "$sd" "$sid")"
+  per_parsed="$(_snap_per_sprint_parsed_path "$sd" "$sid")"
+  rm -f "$per_sidecar" "$per_parsed" 2>/dev/null || true
+}
+
+# _snap_run_for_sprint STATE_DIR SPRINT_ID — run a snapshot build for a
+# specific sprint. Sets up the per-sprint file paths and invokes the build.
+_snap_run_for_sprint() {
+  local sd="$1" sid="$2"
+  local per_sprint_file="${sd}/sprint-status-${sid}.yaml"
+  if [ ! -f "$per_sprint_file" ]; then
+    # Try the single-file yaml if the sprint is in there.
+    local yaml_sid=""
+    yaml_sid="$(yq '.sprint_id // ""' "$YAML_FILE" 2>/dev/null)" || yaml_sid=""
+    if [ "$yaml_sid" = "$sid" ]; then
+      per_sprint_file="$YAML_FILE"
+    else
+      _warn "no state file for sprint $sid, skipping"
+      return 0
+    fi
+  fi
+  # Override per-sprint file paths for the build.
+  CACHE_FILE="$(_snap_per_sprint_cache_path "$sd" "$sid")"
+  SIDECAR_FILE="$(_snap_per_sprint_sidecar_path "$sd" "$sid")"
+  PARSED_FILE="$(_snap_per_sprint_parsed_path "$sd" "$sid")"
+  LOCK_FILE="${CACHE_FILE}${_LOCK_SUFFIX}"
+  YAML_FILE="$per_sprint_file"
+  export SPRINT_STATUS_YAML="$per_sprint_file"
 }
 
 # The command allowlist has ONE implementation: the jq `allow` function in
@@ -598,7 +805,7 @@ _read_sprint_yaml() {
   ' "$yaml_file"
 }
 
-# _read_config_records FILE — L (alias) and H (threshold) records.
+# _read_config_records FILE — L (alias) records.
 _read_config_records() {
   local config_file="$1"
   [ -f "$config_file" ] || return 0
@@ -608,7 +815,6 @@ _read_config_records() {
     in_mod && /user_aliases:/ { in_aliases=1; next }
     in_aliases && /^[[:space:]]+- / { val=$0; sub(/^[[:space:]]+-[[:space:]]*/, "", val); gsub(/["'\'']/, "", val); gsub(/[\037\r\n]/, "", val); print "L\037" val; next }
     in_aliases && /^[[:space:]]/ && !/^[[:space:]]+- / { in_aliases=0 }
-    in_mod && /waiting_agent_threshold_seconds:/ { t=$0; sub(/.*waiting_agent_threshold_seconds:[[:space:]]*/, "", t); gsub(/"/, "", t); gsub(/[\037\r]/, "", t); sub(/[[:space:]]+$/, "", t); if (t!="" && t!="null") print "H\037" t }
   ' "$config_file" 2>/dev/null || true
 }
 
@@ -804,7 +1010,6 @@ _JQ_COLD="${_JQ_DEFS}"'
       status: ($r[3] // "" | clean | cap(50) | if . == "NOT STARTED" then "UNVERIFIED" else . end)}])) as $G
 | (reduce ($R[] | select(.[0] == "V")) as $r ({}; .[$r[1]] = ($r[2] // "" | clean | cap(50)))) as $V
 | ([$R[] | select(.[0] == "L") | (.[1] // "") | strip | cap(100) | select(. != "")] | .[0:20]) as $aliases
-| ([$R[] | select(.[0] == "H") | (.[1] // "") | tonumber? ] | (.[0] // 120)) as $thr
 | ([$R[] | select(.[0] == "A") | .[1]] | .[0]
     | if . == null then [] else (try fromjson catch []) end
     | if type == "array" then . else [] end) as $AI
@@ -815,7 +1020,7 @@ _JQ_COLD="${_JQ_DEFS}"'
      by_status: {}, day: {current: 0, total: null, pace: null}, active_phase: null,
      phases: [], unphased_stories: [], stories: [], action_needed: [], drift: [],
      readiness: {sprint_review: false, sprint_close: false},
-     user_aliases: $aliases, waiting_agent_threshold_seconds: $thr}
+     user_aliases: $aliases}
     | timefields({})
   else
     ([$R[] | select(.[0] == "S") | {k: .[1], rel: (.[2] // ""), mt: ((.[3] // "0") | tonumber? // 0)}
@@ -911,8 +1116,7 @@ _JQ_COLD="${_JQ_DEFS}"'
                 | {story_key: .key, type: "status_mismatch",
                    detail: ("Story file says \(.status), sprint yaml says \(._ys | cap(50))" | cap(200))} ],
        readiness: {sprint_review: $all_dr, sprint_close: $all_done},
-       user_aliases: $aliases,
-       waiting_agent_threshold_seconds: $thr}
+       user_aliases: $aliases}
     | timefields([$stories[] | {key: .key, value: ._mt}] | from_entries)
   end
 '
@@ -1447,15 +1651,14 @@ _snapshot_build() {
     ledger_rec="$(SNAP_KEYS="${ok_keys[*]}" _ledger_records "$LEDGER_FILE")"
   fi
 
-  # --- Config: aliases + threshold ---
-  local cfg_rec="" cfg_out="" have_alias=0 thr_raw=""
+  # --- Config: aliases ---
+  local cfg_rec="" cfg_out="" have_alias=0
   local -a cfg_arr=()
   if [ "${meta_ok[2]}" = "1" ]; then cfg_rec="$(_read_config_records "$CONFIG_FILE")"; fi
   if [ -n "$cfg_rec" ]; then
     while IFS="$_US" read -r t1 t2; do
       case "$t1" in
         L) have_alias=1; cfg_arr+=("L${_US}${t2}") ;;
-        H) thr_raw="$t2" ;;
       esac
     done <<< "$cfg_rec"
   fi
@@ -1466,7 +1669,6 @@ _snapshot_build() {
     cfg_arr=("L${_US}user" "L${_US}${gname}")
   fi
   printf -v cfg_out '%s\n' "${cfg_arr[@]}"
-  local thr; thr="$(_validate_threshold "$thr_raw")"
 
   # --- Action-items registry (canonical state file first, then the resolver) ---
   local ai_rec="" ai_path="" ai_mt="" ai_readable=1
@@ -1506,7 +1708,6 @@ _snapshot_build() {
     [ -z "$story_rec" ]  || printf '%s\n' "$story_rec"
     [ -z "$ledger_rec" ] || printf '%s\n' "$ledger_rec"
     printf '%s' "$cfg_out"
-    printf 'H%s%s\n' "$_US" "$thr"
     printf 'M%sai_mt%s%s\n' "$_US" "$_US" "${ai_mt:-0}"
     [ -z "$ai_rec" ]     || printf '%s\n' "$ai_rec"
   } | jq -n -R -c "$_JQ_COLD" --args "${_ALLOWED_COMMANDS[@]}" > "$cache_tmp" || [ ! -s "$cache_tmp" ]; then
@@ -1557,6 +1758,15 @@ _wait_next_second() {
 # ---------------------------------------------------------------------------
 
 _snapshot_main() {
+  # --- Argument parsing ---
+  local _snap_sprint_arg=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sprint) shift; _snap_sprint_arg="${1:-}"; shift || true ;;
+      *) shift ;;
+    esac
+  done
+
   GIVEN_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$PWD}}"
   while [ "${#GIVEN_ROOT}" -gt 1 ] && [ "${GIVEN_ROOT%/}" != "$GIVEN_ROOT" ]; do GIVEN_ROOT="${GIVEN_ROOT%/}"; done
   RESOLVED_ROOT="$(cd "$GIVEN_ROOT" 2>/dev/null && pwd -P)" || {
@@ -1609,6 +1819,17 @@ _snapshot_main() {
   fi
   [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR" 2>/dev/null || true
 
+  # --- Concurrent mode routing ---
+  if _snap_is_concurrent_mode; then
+    _snapshot_concurrent "$_snap_sprint_arg"
+  else
+    _snapshot_single
+  fi
+  exit 0
+}
+
+# _snapshot_single — original single-sprint snapshot (unchanged behaviour).
+_snapshot_single() {
   trap '_release_snapshot_lock' EXIT
   trap '_release_snapshot_lock; exit 143' TERM
   trap '_release_snapshot_lock; exit 130' INT
@@ -1617,8 +1838,6 @@ _snapshot_main() {
   while :; do
     if ! _try_snapshot_lock "$LOCK_FILE"; then
       [ "$_SNAPSHOT_LOCK_REFUSED" = "0" ] || exit 0
-      # Ask the holder to rebuild after it releases, then retry once in case
-      # it released between our attempt and the marker.
       _mark_dirty "$dirty"
       if [ "$pass" -gt 0 ] || ! _try_snapshot_lock "$LOCK_FILE"; then
         _warn "lock not taken (${_SNAPSHOT_LOCK_REASON:-held by another process}), skipping"; exit 0
@@ -1626,10 +1845,6 @@ _snapshot_main() {
     fi
     pass=$((pass + 1))
     _clear_dirty "$dirty"
-    # A marker that cannot be removed (for example a directory with a file in
-    # it) would ask for a rebuild on every pass of every run.  It gets one
-    # warning and this one build; a writer that keeps leaving a fresh marker
-    # still gets at most five builds per run.
     stuck=0
     if _is_dirty "$dirty"; then
       stuck=1; _warn "re-run marker cannot be removed, building once: $dirty"
@@ -1640,7 +1855,152 @@ _snapshot_main() {
     _is_dirty "$dirty" || break
     [ "$pass" -lt 5 ] || break
   done
-  exit 0
+}
+
+# _snapshot_concurrent SPRINT_ARG — orchestrate per-sprint cache writes.
+# Resolves the target sprint(s) via --sprint, session binding, or enumeration.
+_snapshot_concurrent() {
+  local sprint_arg="${1:-}"
+  local binding_exit=1
+  local -a target_sprints=()
+
+  # Save original single-sprint file paths for later restoration.
+  local _orig_cache="$CACHE_FILE" _orig_sidecar="$SIDECAR_FILE"
+  local _orig_parsed="$PARSED_FILE" _orig_lock="$LOCK_FILE"
+  local _orig_yaml="$YAML_FILE"
+
+  # Priority 1: explicit --sprint argument.
+  if [ -n "$sprint_arg" ]; then
+    # Format validation (security).
+    if ! _snap_validate_sprint_id "$sprint_arg"; then
+      _warn "invalid sprint ID format: $sprint_arg"
+      return 0
+    fi
+    # Existence check.
+    local status=""
+    status="$(_snap_sprint_status "$STATE_DIR" "$sprint_arg")"
+    if [ -z "$status" ]; then
+      _warn "sprint not found: $sprint_arg"
+      return 0
+    fi
+    # Closed sprint: cleanup path (remove stale cache, no write).
+    if [ "$status" = "closed" ]; then
+      _snap_remove_per_sprint_cache "$STATE_DIR" "$sprint_arg"
+      return 0
+    fi
+    target_sprints=("$sprint_arg")
+  else
+    # Priority 2: session binding via the session-binding CLI.
+    local session_id=""
+    session_id="${GAIA_SESSION_ID:-}"
+    if [ -n "$session_id" ]; then
+      local binding_sh="${_SELF_DIR}/lib/session-binding.sh"
+      if [ -x "$binding_sh" ]; then
+        local bound_id=""
+        set +e
+        bound_id="$("$binding_sh" read --session-id "$session_id" --project-root "$RESOLVED_ROOT" 2>/dev/null)"
+        binding_exit=$?
+        set -e
+        case "$binding_exit" in
+          0)
+            # Bound sprint: validate and use it.
+            if _snap_validate_sprint_id "$bound_id"; then
+              target_sprints=("$bound_id")
+            fi
+            ;;
+          2)
+            # Bound sprint closed: cleanup, no cache write.
+            if [ -n "$bound_id" ] && _snap_validate_sprint_id "$bound_id"; then
+              _snap_remove_per_sprint_cache "$STATE_DIR" "$bound_id"
+            fi
+            return 0
+            ;;
+          3)
+            # Invalid binding: warn on stderr, fall through to unbound targeting.
+            _warn "invalid session binding, falling back to unbound targeting"
+            ;;
+          *)
+            # exit 1 or other: unbound, fall through.
+            ;;
+        esac
+      fi
+    fi
+
+    # Priority 3: unbound targeting — enumerate non-closed sprints.
+    if [ "${#target_sprints[@]}" -eq 0 ]; then
+      local nc_ids=""
+      nc_ids="$(_snap_non_closed_sprint_ids "$STATE_DIR")"
+      local nc_count=0 nc_line
+      local -a nc_arr=()
+      if [ -n "$nc_ids" ]; then
+        while IFS= read -r nc_line; do
+          [ -n "$nc_line" ] || continue
+          nc_arr+=("$nc_line")
+          nc_count=$((nc_count + 1))
+        done <<< "$nc_ids"
+      fi
+      if [ "$nc_count" -eq 0 ]; then
+        # No non-closed sprints: single-file path.
+        _snapshot_single
+        return 0
+      elif [ "$nc_count" -eq 1 ]; then
+        # Exactly one non-closed sprint, unbound: single-file path only.
+        _snapshot_single
+        return 0
+      else
+        # Multiple non-closed sprints: refresh all.
+        target_sprints=("${nc_arr[@]}")
+      fi
+    fi
+  fi
+
+  # Run a snapshot for each target sprint.
+  local last_activated=""
+  last_activated="$(_snap_read_last_activated "$STATE_DIR")"
+
+  local sid
+  for sid in "${target_sprints[@]}"; do
+    # Restore original paths then override for this sprint.
+    CACHE_FILE="$_orig_cache"
+    SIDECAR_FILE="$_orig_sidecar"
+    PARSED_FILE="$_orig_parsed"
+    LOCK_FILE="$_orig_lock"
+    YAML_FILE="$_orig_yaml"
+
+    _snap_run_for_sprint "$STATE_DIR" "$sid"
+
+    trap '_release_snapshot_lock' EXIT
+    trap '_release_snapshot_lock; exit 143' TERM
+    trap '_release_snapshot_lock; exit 130' INT
+
+    local dirty="${LOCK_FILE}.dirty" pass=0 stuck
+    while :; do
+      if ! _try_snapshot_lock "$LOCK_FILE"; then
+        [ "$_SNAPSHOT_LOCK_REFUSED" = "0" ] || break
+        _mark_dirty "$dirty"
+        if [ "$pass" -gt 0 ] || ! _try_snapshot_lock "$LOCK_FILE"; then
+          _warn "lock not taken for sprint $sid, skipping"
+          break
+        fi
+      fi
+      pass=$((pass + 1))
+      _clear_dirty "$dirty"
+      stuck=0
+      if _is_dirty "$dirty"; then
+        stuck=1; _warn "re-run marker cannot be removed, building once: $dirty"
+      fi
+      _snapshot_build
+      _release_snapshot_lock
+      [ "$stuck" = "0" ] || break
+      _is_dirty "$dirty" || break
+      [ "$pass" -lt 5 ] || break
+    done
+
+    # Mirror the compatibility proxy when this sprint is the last-activated.
+    if [ -n "$last_activated" ] && [ "$sid" = "$last_activated" ]; then
+      _snap_mirror_proxy "$STATE_DIR" "$sid"
+    fi
+  done
 }
 
 # Main guard — allow sourcing for testability

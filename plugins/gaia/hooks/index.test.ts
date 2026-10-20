@@ -34,8 +34,7 @@ const ACTIVE_CACHE = {
   action_needed: [],
   drift: [],
   readiness: { sprint_review: false, sprint_close: false },
-  user_aliases: [],
-  waiting_agent_threshold_seconds: 900
+  user_aliases: []
 }
 
 const CLOSED_CACHE = { ...ACTIVE_CACHE, sprint: { ...ACTIVE_CACHE.sprint, status: 'closed' } }

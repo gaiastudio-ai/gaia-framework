@@ -36,8 +36,7 @@ export const ACTIVE_CACHE = JSON.stringify({
   by_status: {}, day: { current: 1, total: 14, pace: 'on-pace' }, active_phase: 1, phases: [], unphased_stories: [],
   stories: [{ key: 'E900-S1', status: 'in-progress', points: 5, title: 'Story', slug: 's', phase: 1, blocked_by: null,
     gates: { passed: 0, total: 6, rows: [] }, tasks: { done: 0, total: 0, items: [] } }],
-  action_needed: [], drift: [], readiness: { sprint_review: false, sprint_close: false }, user_aliases: [],
-  waiting_agent_threshold_seconds: 900
+  action_needed: [], drift: [], readiness: { sprint_review: false, sprint_close: false }, user_aliases: []
 });
 
 export const OK_RUN = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false };

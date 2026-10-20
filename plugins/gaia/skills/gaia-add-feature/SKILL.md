@@ -691,6 +691,8 @@ If the orchestrator passed `--step-8-mode <inline-dispatch|deferred-seed-brief>`
   - **inline-dispatch:** instruct the add-stories delegate to apply the surface-aware manual-test offer (the create-story authoring step sets `manual_verification: true` and fills the `## Manual Test` section for a user-facing story).
   - **deferred-seed-brief:** record the manual-test note in the seed brief (one line naming the surface(s) and what a manual run should exercise) so the follow-up `/gaia-create-story` carries the offer through. A `patch` classification introduces no new surface and is not annotated.
 
+  **Independence re-check gate (concurrent sprints only).** When cascading a story into an active sprint's epic and other sprints are active, run `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh <story_file> --candidate <sprint_id>` after creating the story file but before injecting it. On failure, block the creation and surface the diagnostic.
+
 - If classification is `patch`: skip this step.
 
 ### Step 8a -- Intake-time dispatch-verb enforcement

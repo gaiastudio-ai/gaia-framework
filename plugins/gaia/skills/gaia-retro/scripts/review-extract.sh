@@ -40,10 +40,13 @@ frontmatter_sprint() {
 # `->`/`→` override arrow, with surrounding markdown (`*`) stripped.
 extract_verdict() {
   local f="$1" v
-  v="$(head -c "$MAX_BYTES" "$f" | awk '
+  v="$(head -c "$MAX_BYTES" "$f" | LC_ALL=C awk '
     # Portable unicode rightwards-arrow (U+2192) — BSD awk does not interpret
     # \xNN in a regex literal, so build the byte sequence via sprintf and match
-    # the ASCII "->" plus this string explicitly.
+    # the ASCII "->" plus this string explicitly.  LC_ALL=C on the awk
+    # invocation forces byte-mode so that sprintf("%c",N) emits one byte per
+    # value instead of interpreting it as a codepoint (which doubles the
+    # output length under a UTF-8 locale).
     BEGIN { UARROW = sprintf("%c%c%c", 226, 134, 146) }
     # Match a line that introduces a verdict in any of the accepted shapes.
     # Strip leading markdown heading/bold + the literal "Verdict" label + colon.

@@ -13,9 +13,14 @@ export TZ=UTC
 # Suppress the post-mutation snapshot hook during tests
 export GAIA_SNAPSHOT_HOOK_DISABLE=1
 
-# Resolve SCRIPTS_DIR once. BATS_TEST_DIRNAME is set by bats to the dir of
-# the .bats file — tests/ — so scripts live one level up under scripts/.
-SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
+# Resolve SCRIPTS_DIR once. Prefer the .bats file's relative path (tests/ ->
+# scripts/); fall back to the helper's own path (BASH_SOURCE) for synthetic
+# suites loaded from outside the repo tree.
+if [ -d "$BATS_TEST_DIRNAME/../scripts" ]; then
+  SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
+else
+  SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" 2>/dev/null && pwd 2>/dev/null || echo "")"
+fi
 export SCRIPTS_DIR
 
 # ---------------------------------------------------------------------------
@@ -70,6 +75,77 @@ common_teardown() {
   if [ -n "${TEST_TMP:-}" ] && [ -d "$TEST_TMP" ]; then
     rm -rf "$TEST_TMP" 2>/dev/null || true
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Per-file litter guard (setup_file / teardown_file)
+# ---------------------------------------------------------------------------
+# Snapshots `git status` under the plugin tree before the first test in a
+# .bats file, then diffs after the last test. Any new untracked file is
+# litter — the teardown fails and names BATS_TEST_FILENAME + the offending
+# paths.
+#
+# Works only inside a git work tree; silently skips (with a note) otherwise.
+# Safe for parallel worktrees: each worktree has its own git index.
+# Safe for CI Linux: no platform-specific commands.
+
+# Resolve once from the helper's own path (BASH_SOURCE), not from
+# BATS_TEST_DIRNAME — the latter points at the .bats file which may live
+# outside the repo (e.g. a synthetic suite in /tmp that loads this helper
+# by absolute path).
+_LITTER_HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_LITTER_REPO_ROOT="$(cd "$_LITTER_HELPER_DIR/../../.." 2>/dev/null && pwd 2>/dev/null || echo "")"
+_LITTER_SNAPSHOT=""
+
+# _litter_snapshot_before — call from setup_file (or the first test) to
+# record the baseline. Idempotent: only the first call per file takes effect.
+_litter_snapshot_before() {
+  [ -z "$_LITTER_SNAPSHOT" ] || return 0
+  local repo_root="$_LITTER_REPO_ROOT"
+  [ -n "$repo_root" ] || { _LITTER_SNAPSHOT="SKIP"; return 0; }
+  if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Not a git worktree (e.g. extracted tarball); skip with a note.
+    _LITTER_SNAPSHOT="SKIP"
+    return 0
+  fi
+  _LITTER_SNAPSHOT="${BATS_FILE_TMPDIR}/litter-before"
+  git -C "$repo_root" status --porcelain --untracked-files=all -- plugins/gaia/ \
+    | LC_ALL=C sort > "$_LITTER_SNAPSHOT" 2>/dev/null || true
+}
+
+# _litter_check_after — call from teardown_file to diff the snapshot.
+# Fails if new files appeared under the plugin tree.
+_litter_check_after() {
+  [ -n "$_LITTER_SNAPSHOT" ] && [ "$_LITTER_SNAPSHOT" != "SKIP" ] || return 0
+  [ -f "$_LITTER_SNAPSHOT" ] || return 0
+  local repo_root="$_LITTER_REPO_ROOT"
+  local after="${BATS_FILE_TMPDIR}/litter-after"
+  git -C "$repo_root" status --porcelain --untracked-files=all -- plugins/gaia/ \
+    | LC_ALL=C sort > "$after" 2>/dev/null || return 0
+  # Filter out transient CI artefacts that are not real litter (each filed
+  # as a Finding for upstream fix):
+  #   .last-validate-err.<PID> — validate-rubric.sh on SIGTERM (Finding #4)
+  #   zz-probe-dir/           — no-stray-gaia-dir.bats probe fixture (Finding #5)
+  local litter
+  litter="$(comm -13 "$_LITTER_SNAPSHOT" "$after" \
+    | grep -v '\.last-validate-err\.' \
+    | grep -v 'zz-probe-dir/' \
+    || true)"
+  if [ -n "$litter" ]; then
+    printf 'LITTER: %s left files under the plugin tree:\n%s\n' \
+      "${BATS_TEST_FILENAME##*/}" "$litter" >&2
+    return 1
+  fi
+}
+
+# Default setup_file / teardown_file — run for every .bats file that loads
+# this helper and does not define its own.
+setup_file() {
+  _litter_snapshot_before
+}
+
+teardown_file() {
+  _litter_check_after
 }
 
 # snapshot_script_under_test SCRIPT — print the path of the snapshot script a

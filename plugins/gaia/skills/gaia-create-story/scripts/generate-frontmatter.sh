@@ -88,6 +88,10 @@ Usage: generate-frontmatter.sh \
   --project-root <path>      Project root for touch-set root containment.
                              Resolution: flag > CLAUDE_PROJECT_ROOT/PROJECT_ROOT
                              env > walk up to first dir containing .gaia/.
+  --config-section <key>     Repeatable. Add a top-level project-config.yaml
+                             key to predicted_config_sections. Each key is
+                             validated against ^[A-Za-z_][A-Za-z0-9_]*$.
+                             Populate when the story touches config.
 
 Output (stdout): YAML frontmatter block delimited by `---` lines, in the
 canonical 15-field order matching story-template.md.
@@ -113,6 +117,7 @@ manual_verification="false"
 touch_paths=()
 touch_empty=0
 gen_project_root=""
+config_sections=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -141,6 +146,9 @@ while [ $# -gt 0 ]; do
     --project-root)
       [ $# -ge 2 ] || die_usage "--project-root requires a value"
       gen_project_root="$2"; shift 2 ;;
+    --config-section)
+      [ $# -ge 2 ] || die_usage "--config-section requires a value"
+      config_sections+=("$2"); shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -366,6 +374,18 @@ depends_on_yaml="$(_extract_array_aliased "Depends on" "depends_on")"
 blocks_yaml="$(_extract_array_aliased "Blocks" "blocks")"
 traces_to_yaml="$(_extract_array_aliased "Traces to" "traces_to")"
 
+# Auto-populate traces_to from origin_ref when it references a GitHub issue
+# and the extracted value is empty. This ensures the close-on-done hook fires
+# for stories created from GitHub issues without requiring the epics-and-stories
+# bullet to repeat the reference.
+if [ "$traces_to_yaml" = "[]" ] && [ "$origin_ref_set" -eq 1 ]; then
+  _issue_num=""
+  _issue_num="$(printf '%s' "$origin_ref" | sed -n 's/.*GitHub #\([0-9][0-9]*\).*/\1/p')"
+  if [ -n "$_issue_num" ]; then
+    traces_to_yaml="[\"GitHub #${_issue_num}\"]"
+  fi
+fi
+
 # ---------- Validate required fields ----------
 
 [ -n "$title" ]    || die_input "missing field 'title' for story $story_key"
@@ -484,6 +504,33 @@ fi
 # When neither --touch-path nor --touch-empty is supplied, touch_set_line
 # stays empty and the field is omitted from frontmatter (absent = default).
 
+# ---------- Config sections processing ----------
+
+config_sections_line=""
+if [ "${#config_sections[@]}" -gt 0 ]; then
+  # Source the sanitizer for validation (may already be loaded by touch-set).
+  # shellcheck source=../../../scripts/lib/touch-set-sanitizer.sh
+  . "${SCRIPT_DIR}/../../../scripts/lib/touch-set-sanitizer.sh"
+
+  # Validate each key.
+  for _cs in "${config_sections[@]}"; do
+    config_sections_prewrite_check "$_cs" || \
+      die_input "config-section validation failed for: $_cs"
+  done
+
+  # Build the flow array.
+  _cs_tmp="$(mktemp "${TMPDIR:-/tmp}/cs-gen.XXXXXX")"
+  trap 'rm -f "$_cs_tmp"' EXIT
+  for _cs in "${config_sections[@]}"; do
+    printf '%s\n' "$_cs" >> "$_cs_tmp"
+  done
+  _cs_flow="$(touch_set_build_flow_array "$_cs_tmp")"
+  rm -f "$_cs_tmp"
+  trap - EXIT
+  _cs_fn="predicted_config_sections"
+  config_sections_line="${_cs_fn}: ${_cs_flow}"
+fi
+
 # ---------- Buffer + emit YAML frontmatter ----------
 #
 # Field order matches story-template.md (template/version/used_by header,
@@ -508,6 +555,7 @@ delivered: false
 deferred_implementation: false
 manual_verification: $manual_verification
 ${touch_set_line}
+${config_sections_line}
 origin: $origin_yaml
 origin_ref: $origin_ref_yaml
 depends_on: $depends_on_yaml

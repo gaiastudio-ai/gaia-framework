@@ -2928,6 +2928,7 @@ _need_chain_fixtures() {
 }
 
 setup_file() {
+  _litter_snapshot_before
   export REAL_YQ REAL_PERL
   REAL_YQ="$(command -v yq)"
   REAL_PERL="$(command -v perl)"

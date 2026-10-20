@@ -86,7 +86,7 @@ _seed_sentinel() {
   export PROJECT_PATH="$TEST_TMP/decoy"
   export MEMORY_PATH="$TEST_TMP/.gaia/memory"
   export GAIA_SPRINT_CLOSE_DATE="2026-06-24"
-  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
 
   # Seed a minimal project fixture under TEST_TMP (where PROJECT_ROOT points).
   local art="$TEST_TMP/.gaia/artifacts/implementation-artifacts"

@@ -27,11 +27,22 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ## Steps
 
+### Step 0 --- Resolve Sprint Argument
+
+When the user passes `--sprint <sprint-id>`, resolve it via the shared sprint-argument resolver:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+SPRINT_ID="$(resolve_sprint_arg --command correct-course "$@")"
+```
+
+Without `--sprint`, the resolver defaults to the bound sprint or the single active sprint. Use the resolved `$SPRINT_ID` to read the per-sprint state file in Step 1.
+
 ### Step 1 --- Load Sprint Context
 
 Read the current sprint context:
 
-1. Read `${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-status.yaml` to understand current sprint state.
+1. Read the sprint state file for the resolved `$SPRINT_ID` (per-sprint file `sprint-status-${SPRINT_ID}.yaml` or the single-file `sprint-status.yaml`) to understand current sprint state.
 2. Read `${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/planning-artifacts/epics-and-stories.md` to identify stories not yet in any sprint (candidates for injection).
 3. Scan prior retrospective files for recurring patterns. Check the canonical nested location first (`${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective/retrospective-*.md`), then the legacy flat location (`${CLAUDE_PROJECT_ROOT}/.gaia/artifacts/implementation-artifacts/retrospective-*.md`). If a match is found, note it: "This issue was flagged in a prior retro for {sprint_id}: {finding}. Previous recommendation: {recommendation}."
 
@@ -100,6 +111,8 @@ For stories **removed** from the sprint (moved back to backlog):
 ```bash
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" transition --story {story_key} --to backlog
 ```
+
+**Independence re-check gate (concurrent sprints only).** Before calling `inject` or editing a story's `depends_on`, `blocks`, or `predicted_touch_set`, when concurrent sprints are active, run `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh` to verify the mutation does not violate independence rules. For inject, pass the story file and `--candidate <sprint_id>`. For dependency or scope-change story-file edits, use the staged-edit entry point: `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh edit --story <file> --set <field>=<value>`. The edit mode writes a temp copy, runs the check, and applies on pass; on failure the story file is byte-unchanged.
 
 For stories **injected** into the sprint that **already have a story file** (the story file's `frontmatter.sprint_id` MUST match the active sprint):
 ```bash

@@ -14,6 +14,7 @@
 #    for --field" and Step 1 HALTed.
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RESOLVER="$REPO_ROOT/plugins/gaia/scripts/resolve-config.sh"
   TOGGLE_SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-bridge-toggle/SKILL.md"

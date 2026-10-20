@@ -90,6 +90,8 @@ core	bridge-toggle-step-5-summary.bats
 core	build-manifest-cards.bats
 core	changelog-retirement.bats
 core	check-status-discipline.bats
+core	checkpoint.bats
+core	ci-fast-feedback-cap.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
 core	class-b-mixed-state-triage.bats
@@ -104,14 +106,23 @@ core	component-manifest-drift-guard.bats
 core	component-manifest-subdirectory-reach.bats
 core	component-stack-resolution.bats
 core	component-test-partition.bats
+core	concurrent-sprint-arg.bats
 core	concurrent-sprint-binding.bats
 core	concurrent-sprint-catch-all.bats
+core	concurrent-sprint-compat.bats
 core	concurrent-sprint-config.bats
+core	concurrent-sprint-drift.bats
 core	concurrent-sprint-glossary.bats
+core	concurrent-sprint-independence-cd.bats
 core	concurrent-sprint-ledger.bats
+core	concurrent-sprint-lifecycle.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-merge.bats
+core	concurrent-sprint-perf.bats
+core	concurrent-sprint-recheck.bats
 core	concurrent-sprint-state.bats
+core	concurrent-sprint-surfaces.bats
+core	concurrent-sprint-sweep.bats
 core	concurrent-sprint-touch-set.bats
 core	config-brownfield-flag-coverage.bats
 core	config-phase-schema.bats
@@ -248,7 +259,6 @@ core	gaia-reconcile-v2.bats
 core	gaia-release.bats
 core	gaia-resume.bats
 core	gaia-retro-auto-file-flag.bats
-core	gaia-sprint-close.bats
 core	gaia-sprint-plan.bats
 core	gaia-sprint-review-mode-a-anti-pattern.bats
 core	gaia-sprint-review-orchestration.bats
@@ -352,8 +362,6 @@ core	skill-rename-preflight.bats
 core	skills/gaia-statusline-skill-md.bats
 core	skills/selective-tests-by-component-docs.bats
 core	skills/test-no-bare-name-persona-spawn.bats
-core	sprint-close-env-isolation-guard.bats
-core	sprint-close-sentinel-unconditional.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
 core	sprint-progress-snapshot-hook.bats
@@ -478,7 +486,6 @@ scripts-core	check-fork-stripped.bats
 scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats
 scripts-core	check-story-layout-sync.bats
-scripts-core	checkpoint.bats
 scripts-core	ci-config-slice.bats
 scripts-core	cluster-1/platforms-device-targets.bats
 scripts-core	cluster-1/project-kind.bats
@@ -630,6 +637,7 @@ scripts-core	statusline/statusline-context-bar.bats
 scripts-core	statusline/statusline-git-dirty.bats
 scripts-core	statusline/statusline-rate-limits.bats
 scripts-core	statusline/statusline-rich-default-and-walkup.bats
+scripts-core	statusline/statusline-snapshot-root.bats
 scripts-core	statusline/statusline-sprint-closed-suppress.bats
 scripts-core	statusline/statusline-stale-fence.bats
 scripts-core	statusline/statusline-toggle.bats
@@ -759,10 +767,13 @@ scripts-sprint	cluster-9/check-status-discipline.bats
 scripts-sprint	e106-s5-retire-capacity-points.bats
 scripts-sprint	e107-chain-integration.bats
 scripts-sprint	e107-s5-sprint-plan-val-gated-activation.bats
+scripts-sprint	gaia-sprint-close.bats
 scripts-sprint	issue-1403-title-quote-escaping.bats
 scripts-sprint	phase-persistence.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
+scripts-sprint	sprint-close-env-isolation-guard.bats
+scripts-sprint	sprint-close-sentinel-unconditional.bats
 scripts-sprint	sprint-progress-audit.bats
 scripts-sprint	sprint-state-advance.bats
 scripts-sprint	sprint-state-detect-auto-close.bats
@@ -777,6 +788,7 @@ scripts-sprint	sprint-state-yaml-quote-stripping.bats
 scripts-sprint	sprint-status-dashboard-auto-close-banner.bats
 scripts-sprint	sprint-status-dashboard-stranded-ready.bats
 scripts-sprint	story-state-path-resolution.bats
+scripts-sprint	test-hygiene-guard.bats
 scripts-sprint	transition-story-status-sweep.bats
 scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats
@@ -863,7 +875,9 @@ skills	pr-body.bats
 skills	pr-create-title-prefix-guard.bats
 skills	pr-create.bats
 skills	promotion-chain-guard.bats
+skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
+skills	skills/gaia-doctor-stray-snapshots.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats

@@ -21,7 +21,7 @@
 # sprint-progress-snapshot.sh).
 #
 # Invocation:
-#   sprint-status-dashboard.sh [--help]
+#   sprint-status-dashboard.sh [--help] [--sprint <sprint-id>]
 #
 # Environment:
 #   PROJECT_PATH             Root of the project (defaults to ".")
@@ -46,12 +46,32 @@ export LC_ALL
 
 SCRIPT_NAME="sprint-status-dashboard.sh"
 
+# ---------- Argument parsing ----------
+_DASH_SPRINT_ARG=""
+_DASH_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sprint)
+      shift
+      _DASH_SPRINT_ARG="${1:-}"
+      if [[ -z "$_DASH_SPRINT_ARG" ]]; then
+        printf '%s: error: --sprint requires a non-empty value\n' "$SCRIPT_NAME" >&2
+        exit 1
+      fi
+      shift ;;
+    *)
+      _DASH_ARGS+=("$1")
+      shift ;;
+  esac
+done
+set -- "${_DASH_ARGS[@]+"${_DASH_ARGS[@]}"}"
+
 # ---------- Help ----------
 if [[ "${1:-}" == "--help" ]]; then
   cat <<'USAGE'
 sprint-status-dashboard.sh — render sprint status dashboard
 
-Usage: sprint-status-dashboard.sh [--help]
+Usage: sprint-status-dashboard.sh [--help] [--sprint <sprint-id>]
 
 Data source (cache-first):
   Reads .gaia/state/.sprint-progress-cache.json when available. When the
@@ -108,6 +128,40 @@ if [[ -z "$YAML_PATH" ]]; then
       YAML_PATH="$GAIA_STATE_YAML"
     fi
   fi
+fi
+
+# ---------- Per-sprint file override (--sprint) ----------
+if [[ -n "$_DASH_SPRINT_ARG" ]]; then
+  _SPRINT_STATE_DIR="$PROJECT_ROOT/.gaia/state"
+  _PER_SPRINT_FILE="${_SPRINT_STATE_DIR}/sprint-status-${_DASH_SPRINT_ARG}.yaml"
+  _ARCHIVE_DIR="$PROJECT_ROOT/.gaia/artifacts/implementation-artifacts/sprint-archive"
+  if [[ -f "$_PER_SPRINT_FILE" ]]; then
+    YAML_PATH="$_PER_SPRINT_FILE"
+  elif [[ -d "$_ARCHIVE_DIR" ]]; then
+    # Check archive for closed sprints (historical review)
+    _ARCHIVE_MATCH="$(find "$_ARCHIVE_DIR" -maxdepth 1 -name "${_DASH_SPRINT_ARG}-closed-*.yaml" 2>/dev/null | head -1)" || _ARCHIVE_MATCH=""
+    if [[ -n "$_ARCHIVE_MATCH" ]]; then
+      YAML_PATH="$_ARCHIVE_MATCH"
+    else
+      printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+      exit 1
+    fi
+  else
+    # Check single-file layout
+    if [[ -f "$YAML_PATH" ]]; then
+      _SINGLE_SID="$(yq '.sprint_id // ""' "$YAML_PATH" 2>/dev/null)" || _SINGLE_SID=""
+      if [[ "$_SINGLE_SID" != "$_DASH_SPRINT_ARG" ]]; then
+        printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+        exit 1
+      fi
+    else
+      printf '%s: error: sprint not found: %s\n' "$SCRIPT_NAME" "$_DASH_SPRINT_ARG" >&2
+      exit 1
+    fi
+  fi
+  # Override SPRINT_STATUS_YAML so fallback path also uses the per-sprint file
+  SPRINT_STATUS_YAML="$YAML_PATH"
+  export SPRINT_STATUS_YAML
 fi
 
 # Implementation-artifacts directory — used for story-file lookups.
@@ -785,6 +839,48 @@ _render_fallback_dashboard() {
 # MAIN — route to cache or fallback path
 # ==========================================================================
 
+# ---------- Multi-sprint overview renderer (concurrent mode) ----------
+# Renders a table of all non-closed sprints from per-sprint cache files.
+_render_multi_sprint_overview() {
+  local sd="$1" bound_id="${2:-}"
+  printf '\n'
+  printf '  All Active Sprints\n'
+  printf '=%.0s' {1..72}; printf '\n'
+  printf '  %-20s %12s %12s %10s %8s %10s\n' \
+    "Sprint" "Stories" "Points" "Progress" "Pace" "Phase"
+  printf '  %-20s %12s %12s %10s %8s %10s\n' \
+    "------" "-------" "------" "--------" "----" "-----"
+  local _mo_f _mo_sid _mo_marker _mo_pct _mo_done _mo_total _mo_dp _mo_tp _mo_pace _mo_phase _mo_status
+  for _mo_f in "$sd"/.sprint-progress-cache-*.json; do
+    [ -f "$_mo_f" ] || continue
+    _mo_sid="${_mo_f##*/}"
+    _mo_sid="${_mo_sid#.sprint-progress-cache-}"
+    _mo_sid="${_mo_sid%.json}"
+    # Skip caches whose recorded status is closed.
+    _mo_status="$(jq -r '.sprint.status // ""' "$_mo_f" 2>/dev/null)" || _mo_status=""
+    [[ "$_mo_status" = "closed" ]] && continue
+    _mo_pct="$(jq -r '.totals.progress_pct // 0' "$_mo_f" 2>/dev/null)" || _mo_pct="0"
+    _mo_done="$(jq -r '.totals.done_stories // 0' "$_mo_f" 2>/dev/null)" || _mo_done="0"
+    _mo_total="$(jq -r '.totals.total_stories // 0' "$_mo_f" 2>/dev/null)" || _mo_total="0"
+    _mo_dp="$(jq -r '.totals.done_points // 0' "$_mo_f" 2>/dev/null)" || _mo_dp="0"
+    _mo_tp="$(jq -r '.totals.total_points // 0' "$_mo_f" 2>/dev/null)" || _mo_tp="0"
+    _mo_pace="$(jq -r '.sprint.pace // "—"' "$_mo_f" 2>/dev/null)" || _mo_pace="—"
+    _mo_phase="$(jq -r '.sprint.active_phase // "—"' "$_mo_f" 2>/dev/null)" || _mo_phase="—"
+    _mo_marker=""
+    if [[ -n "$bound_id" ]] && [[ "$_mo_sid" = "$bound_id" ]]; then
+      _mo_marker=" *"
+    fi
+    printf '  %-20s %5s/%-5s %5s/%-5s %8s%% %8s %10s\n' \
+      "${_mo_sid}${_mo_marker}" "$_mo_done" "$_mo_total" "$_mo_dp" "$_mo_tp" \
+      "${_mo_pct%%.*}" "$_mo_pace" "$_mo_phase"
+  done
+  printf '=%.0s' {1..72}; printf '\n'
+  if [[ -n "$bound_id" ]]; then
+    printf '  * = bound sprint for this session\n'
+  fi
+  printf '\n'
+}
+
 # When SPRINT_STATUS_YAML is set without SPRINT_CACHE_JSON, force fallback.
 if [[ -n "${SPRINT_STATUS_YAML:-}" ]] && [[ -z "${SPRINT_CACHE_JSON:-}" ]]; then
   log "notice: SPRINT_STATUS_YAML set without cache override, showing basic dashboard"
@@ -799,8 +895,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# Derive cache path
+# Derive cache path. In concurrent mode with --sprint, prefer the per-sprint
+# cache file over the compatibility proxy.
 CACHE_FILE="${SPRINT_CACHE_JSON:-${PROJECT_ROOT}/.gaia/state/.sprint-progress-cache.json}"
+if [[ -z "${SPRINT_CACHE_JSON:-}" ]] && [[ -n "$_DASH_SPRINT_ARG" ]]; then
+  _PER_SPRINT_CACHE="${PROJECT_ROOT}/.gaia/state/.sprint-progress-cache-${_DASH_SPRINT_ARG}.json"
+  if [[ -f "$_PER_SPRINT_CACHE" ]]; then
+    CACHE_FILE="$_PER_SPRINT_CACHE"
+  fi
+fi
 
 # Shared validity check: non-empty, valid JSON, top-level object with
 # the expected shape (sprint and stories keys). Returns 0 when valid.
@@ -877,6 +980,30 @@ if ! _cache_is_valid "$CACHE_FILE"; then
   log "notice: cache unavailable after rebuild, showing basic dashboard"
   _render_fallback_dashboard
   exit 0
+fi
+
+# --- Multi-sprint overview: no --sprint in concurrent mode ---
+_DASH_STATE_DIR="${PROJECT_ROOT}/.gaia/state"
+if [[ -z "$_DASH_SPRINT_ARG" ]] && [[ -d "$_DASH_STATE_DIR" ]]; then
+  _DASH_NC_COUNT=0
+  for _df in "$_DASH_STATE_DIR"/.sprint-progress-cache-*.json; do
+    [ -f "$_df" ] || continue
+    # Skip caches whose recorded status is closed.
+    _df_st="$(jq -r '.sprint.status // ""' "$_df" 2>/dev/null)" || _df_st=""
+    [[ "$_df_st" = "closed" ]] && continue
+    _DASH_NC_COUNT=$((_DASH_NC_COUNT + 1))
+  done
+  if [[ "$_DASH_NC_COUNT" -gt 1 ]]; then
+    # Resolve the bound sprint for highlight.
+    _DASH_BOUND=""
+    _DASH_BINDING_SH="${SCRIPT_DIR}/lib/session-binding.sh"
+    _DASH_SESSION_ID="${GAIA_SESSION_ID:-}"
+    if [[ -n "$_DASH_SESSION_ID" ]] && [[ -x "$_DASH_BINDING_SH" ]]; then
+      _DASH_BOUND="$("$_DASH_BINDING_SH" read --session-id "$_DASH_SESSION_ID" --project-root "$PROJECT_ROOT" 2>/dev/null)" || _DASH_BOUND=""
+    fi
+    _render_multi_sprint_overview "$_DASH_STATE_DIR" "$_DASH_BOUND"
+    exit 0
+  fi
 fi
 
 _render_cache_dashboard "$CACHE_FILE"

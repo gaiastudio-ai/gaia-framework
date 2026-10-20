@@ -18,6 +18,7 @@ on:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
       - '.github/bats-shard-assignments.tsv'
+      - '.github/bats-file-timing.tsv'
       - '.github/scripts/**'
       - 'profiling/**'
       - 'scripts/audit-v2-migration.sh'
@@ -121,23 +122,74 @@ jobs:
       - name: Select and run diff-focused tests
         env:
           BATS_FILTER_TAGS: '!hardware-dependent'
+          # Move github.base_ref into an env var so that a crafted branch name
+          # cannot inject shell commands via the expression interpolation.
+          PR_BASE_REF: ${{ github.base_ref }}
+          # Time budget for fast-feedback file selection (seconds).  The job
+          # timeout is 5 minutes; after CI setup/checkout overhead ~289 s
+          # remain.  240 s leaves margin for variance.  Files are selected by
+          # ascending measured cost until the cumulative total would exceed
+          # this budget.
+          FAST_FEEDBACK_BUDGET_SECONDS: '240'
         run: |
           set -euo pipefail
-          selected=$(.github/scripts/diff-select-tests.sh "origin/${{ github.base_ref }}" || true)
+
+          # ── Promotion-PR skip (unchanged) ──────────────────────────────
+          # A promotion diff selects nearly the entire suite; the full sharded
+          # run already covers it.  Without a skip the 5-minute timeout would
+          # cancel the job and poison the overall workflow conclusion.
+          if [ "${PR_BASE_REF}" = "main" ]; then
+            echo "Promotion PR (base=main) — skipping fast feedback; full suite covers this diff."
+            echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
+            echo "Skipped: promotion PR targeting **main**." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # ── Diff-select candidates ─────────────────────────────────────
+          selected=$(.github/scripts/diff-select-tests.sh "origin/${PR_BASE_REF}" || true)
           if [ -z "$selected" ]; then
             echo "No diff-selected tests to run."
             echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
             echo "No test files matched the changed files." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          count=$(echo "$selected" | wc -l | tr -d ' ')
-          echo "Running $count diff-selected test file(s):"
-          echo "$selected"
+
+          # ── Cost-based selection ───────────────────────────────────────
+          # Use the committed timing baseline to select only the cheapest
+          # files that fit within the time budget.  The helper script reads
+          # candidates from stdin, looks up per-file cost from the baseline,
+          # and prints the selected files to stdout.  When the baseline is
+          # missing or no files fit the budget, the helper exits 0 with no
+          # stdout -- the full shard jobs still provide coverage.
+          budget="${FAST_FEEDBACK_BUDGET_SECONDS:-240}"
+          selection_log="$(mktemp)"
+          included=$(echo "$selected" \
+            | .github/scripts/cost-select-tests.sh .github/bats-file-timing.tsv "$budget" \
+              2>"$selection_log") || true
+
+          # Print the selection summary from stderr.
+          if [ -s "$selection_log" ]; then
+            while IFS= read -r line; do
+              echo "::notice::$line"
+            done < "$selection_log"
+          fi
+          rm -f "$selection_log"
+
+          if [ -z "$included" ]; then
+            # Either baseline missing, zero-fit, or no candidates survived.
+            echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
+            echo "Skipped: cost selection returned no files; full shard jobs provide coverage." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          count=$(echo "$included" | wc -l | tr -d ' ')
+          echo "Running ${count} cost-selected test file(s):"
+          echo "$included"
           echo ""
           # shellcheck disable=SC2086
-          bats --filter-tags '!hardware-dependent' $selected
+          bats --filter-tags '!hardware-dependent' $included
           echo "## Fast feedback" >> "$GITHUB_STEP_SUMMARY"
-          echo "Ran **$count** diff-selected test file(s) -- all passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ran **${count}** cost-selected test file(s) -- all passed." >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # Sharded bats suite: 4 balanced shards run in parallel on separate runners.
@@ -214,8 +266,14 @@ jobs:
 
           # Run with --jobs and --no-parallelize-within-files like the old
           # monolithic job.  GNU parallel must be present (installed above).
+          # The JUnit reporter runs alongside the default formatter and
+          # records per-file wall-clock timing in report.xml, which is
+          # parsed below into the per-file profiling TSV that
+          # rebalance-shards.sh --timing consumes.
+          mkdir -p profiling/junit
           bats --jobs "$BATS_JOBS" --no-parallelize-within-files \
             --filter-tags '!hardware-dependent' \
+            --report-formatter junit -o profiling/junit \
             "${FILES[@]}"
 
           end_epoch=$(date +%s)
@@ -224,13 +282,31 @@ jobs:
           echo "## Shard $SHARD" >> "$GITHUB_STEP_SUMMARY"
           echo "Ran **${#FILES[@]}** files in **${wall}s** wall-clock." >> "$GITHUB_STEP_SUMMARY"
 
-          # Record timing for the profiling artifact.
+          # Record per-shard aggregate timing.
           mkdir -p profiling
           printf 'shard\tfiles\twall_seconds\n' > "profiling/shard-${SHARD}-timing.tsv"
           printf '%s\t%d\t%d\n' "$SHARD" "${#FILES[@]}" "$wall" >> "profiling/shard-${SHARD}-timing.tsv"
+
+          # Extract per-file timing from the JUnit XML for rebalance-shards.sh.
+          # Each <testsuite name="foo.bats" tests="N" time="T.TT"> gives the
+          # file name, test count, and wall-clock seconds (fractional, rounded
+          # up to the nearest integer so no file weighs zero).
+          printf 'file\ttests\twall_seconds\n' > "profiling/shard-${SHARD}-per-file-timing.tsv"
+          python3 -I -c "
+          import sys, xml.etree.ElementTree as ET, math
+          tree = ET.parse(sys.argv[1])
+          out = open(sys.argv[2], 'a')
+          for ts in tree.iter('testsuite'):
+              name = ts.get('name', '')
+              if not name.endswith('.bats'): continue
+              tests = int(ts.get('tests', 0))
+              secs = float(ts.get('time', 0))
+              out.write(f'{name}\t{tests}\t{max(math.ceil(secs), 1)}\n')
+          out.close()
+          " profiling/junit/report.xml "profiling/shard-${SHARD}-per-file-timing.tsv"
       - name: Upload shard timing
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: shard-${{ matrix.shard }}-timing
           path: profiling/
@@ -274,7 +350,7 @@ jobs:
           npm ci --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund
           echo "$RUNNER_TEMP/claude-cli/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Download all shard timing artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e  # v4.2.1
         with:
           pattern: shard-*-timing
           path: profiling/
@@ -564,7 +640,7 @@ jobs:
           cat /tmp/cluster-4-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload e2e report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-4-e2e-report
           path: /tmp/cluster-4-report.md
@@ -591,7 +667,7 @@ jobs:
           cat /tmp/cluster-5-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload parity report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-5-parity-report
           path: /tmp/cluster-5-report.md
@@ -620,7 +696,7 @@ jobs:
           cat /tmp/cluster-6-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload e2e report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-6-e2e-report
           path: /tmp/cluster-6-report.md
@@ -647,7 +723,7 @@ jobs:
           cat /tmp/cluster-7-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload chain report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-7-chain-report
           path: /tmp/cluster-7-report.md
@@ -674,7 +750,7 @@ jobs:
           cat /tmp/cluster-8-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload sprint-cycle report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-8-sprint-cycle-report
           path: /tmp/cluster-8-report.md
@@ -701,7 +777,7 @@ jobs:
           cat /tmp/cluster-9-report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload cluster-9 report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: cluster-9-run-all-reviews-report
           path: /tmp/cluster-9-report.md
@@ -793,7 +869,7 @@ jobs:
             --out "$AUDIT_CSV"
       - name: Upload audit CSV artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: audit-v2-migration-csv
           path: /tmp/audit-fixture/audit-result.csv

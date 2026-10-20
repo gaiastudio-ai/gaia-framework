@@ -10,7 +10,6 @@ var NO_SPRINT = 'No active sprint'
 
 // -- module-level state (reset on reload) --
 var caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
-var agentWaitingMap = new Map() // agentId -> firstSeenWaitingAt (epoch ms)
 var cachedData = null
 var cacheState = 'init' // 'init' | 'absent' | 'error' | 'loaded'
 var cacheMtimeMs = 0
@@ -24,8 +23,7 @@ var selectedStoryKey = null
 var envNoColor = false
 var envAscii = false
 
-// -- exports for the agent-activity story to populate --
-export var ruleBItems = []
+// -- exports for the agent-activity module to populate --
 export var activityByStory = new Map()
 export var unlinkedActivity = { items: [], overflow: 0 }
 
@@ -106,9 +104,104 @@ async function findGaiaRoot($) {
   return null
 }
 
+// -- concurrent sprint state --
+var concurrentPlusN = 0       // count of other non-closed sprints
+var concurrentBoundId = null   // bound sprint ID (null = unbound)
+var concurrentClosedLabel = false  // true when the bound sprint is closed
+
 async function readCache($, root) {
   try {
+    // In concurrent mode, prefer the per-sprint cache for the bound sprint.
     var cachePath = joinPath(root, '.gaia', 'state', '.sprint-progress-cache.json')
+    var stateDir = joinPath(root, '.gaia', 'state')
+
+    // Reset concurrent state.
+    concurrentPlusN = 0
+    concurrentBoundId = null
+    concurrentClosedLabel = false
+
+    // Check for per-sprint cache files (concurrent mode indicator).
+    var hasPerSprint = false
+    try {
+      var dirEntries = await $.fs.list(stateDir)
+      for (var i = 0; i < dirEntries.length; i++) {
+        var entry = dirEntries[i]
+        var name = typeof entry === 'string' ? entry : (entry.name || '')
+        if (/^\.sprint-progress-cache-[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(name)) {
+          hasPerSprint = true
+          break
+        }
+      }
+    } catch (_) { /* fs.list may not be available */ }
+
+    if (hasPerSprint) {
+      // Resolve bound sprint by reading the binding file directly (no
+      // subprocess -- the static audit allows only the snapshot script
+      // in process.run).  The binding file lives at
+      // .gaia/state/sessions/{session_id}/bound_sprint_id.
+      try {
+        var sessionId = null
+        try { sessionId = await $.env.get('GAIA_SESSION_ID') } catch (_) { sessionId = null }
+        if (!sessionId) {
+          try { sessionId = await $.session.id() } catch (_) { sessionId = null }
+        }
+
+        if (sessionId && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId)) {
+          var bindingPath = joinPath(stateDir, 'sessions', sessionId, 'bound_sprint_id')
+          var boundId = null
+          try {
+            boundId = (await $.fs.read(bindingPath)).trim()
+          } catch (_) { boundId = null }
+
+          if (boundId && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(boundId)) {
+            // Check sprint status from per-sprint cache.
+            var perCacheName = '.sprint-progress-cache-' + boundId + '.json'
+            var perCache = stateDir + '/' + perCacheName
+            var boundStatus = null
+            try {
+              var pcRaw = await $.fs.read(perCache)
+              var pcObj = JSON.parse(pcRaw)
+              boundStatus = pcObj && pcObj.sprint ? pcObj.sprint.status : null
+            } catch (_) { /* per-sprint cache missing */ }
+
+            if (boundStatus === 'closed') {
+              // Bound sprint closed: render read-only labelled closed, no +N.
+              concurrentBoundId = boundId
+              concurrentClosedLabel = true
+            } else if (boundStatus) {
+              // Bound sprint active/review/correction.
+              concurrentBoundId = boundId
+              try {
+                await $.fs.stat(perCache)
+                cachePath = perCache
+              } catch (_) { /* use proxy */ }
+
+              // Count other non-closed per-sprint caches for +N.
+              try {
+                var entries = await $.fs.list(stateDir)
+                for (var j = 0; j < entries.length; j++) {
+                  var ename = typeof entries[j] === 'string' ? entries[j] : (entries[j].name || '')
+                  var em = ename.match(/^\.sprint-progress-cache-([A-Za-z0-9][A-Za-z0-9._-]*)\.json$/)
+                  if (!em) continue
+                  if (em[1] === boundId) continue
+                  try {
+                    var eRaw = await $.fs.read(stateDir + '/' + ename)
+                    var eData = JSON.parse(eRaw)
+                    if (eData && eData.sprint && eData.sprint.status === 'closed') continue
+                  } catch (_) { continue }
+                  concurrentPlusN++
+                }
+              } catch (_) { /* count failed */ }
+            }
+            // else: no per-sprint cache, use proxy (unbound-like).
+          }
+          // else: no valid binding, single-sprint rendering.
+        }
+      } catch (err) {
+        log($, 'binding resolution failed: ' + errText(err))
+      }
+    }
+
     var stat
     try {
       stat = await $.fs.stat(cachePath)
@@ -247,7 +340,6 @@ async function refreshAgentActivity($) {
     caps.agent = true
   } catch (_) {
     caps.agent = false
-    ruleBItems = []
     activityByStory = new Map()
     unlinkedActivity = { items: [], overflow: 0 }
     return
@@ -261,22 +353,11 @@ async function refreshAgentActivity($) {
     }
   }
 
-  var threshold = 120
-  if (cachedData && cachedData.waiting_agent_threshold_seconds != null) {
-    threshold = cachedData.waiting_agent_threshold_seconds
-  }
-
-  var now = await nowMs($)
-
   var result = computeAgentActivity({
     agents: agents,
-    nowMs: now,
-    threshold: threshold,
-    storyKeys: storyKeys,
-    waitingMap: agentWaitingMap
+    storyKeys: storyKeys
   })
 
-  ruleBItems = result.ruleBItems
   activityByStory = result.activityByStory
   unlinkedActivity = result.unlinkedActivity
 }
@@ -338,7 +419,7 @@ function sortByPhase(stories) {
 }
 
 function mergedActionList(data) {
-  var actions = (data.action_needed || []).concat(ruleBItems)
+  var actions = (data.action_needed || []).slice()
   actions.sort(function (a, b) { return (a.rule || '').localeCompare(b.rule || '') })
   return actions
 }
@@ -402,10 +483,14 @@ function renderHeader(c, data) {
   var sprint = data.sprint
   var id = sanitize(sprint.id || '', TITLE_MAX)
   var goal = sanitize(sprint.goal || '', GOAL_MAX)
+  // Append +N indicator in concurrent mode.
+  var plusNSuffix = concurrentPlusN > 0 ? '  +' + concurrentPlusN : ''
+  var liveLabel = concurrentClosedLabel ? 'closed' : '● live'
+  var liveColor = concurrentClosedLabel ? dimColor() : greenColor()
   return h(c.Box, { flexDirection: 'column' },
     h(c.Box, { flexDirection: 'row' },
-      h(c.Text, { bold: true }, 'SPRINT  ' + id + '  '),
-      h(c.Text, { color: greenColor() }, '● live')
+      h(c.Text, { bold: true }, 'SPRINT  ' + id + plusNSuffix + '  '),
+      h(c.Text, { color: liveColor }, liveLabel)
     ),
     goal ? h(c.Text, { wrap: 'wrap' }, goal) : null
   )
@@ -878,8 +963,6 @@ export function register(on) {
     stopTimer(timerHandle)
     timerHandle = null
     caps = { command: false, clock: false, process: false, agent: false, gaiaRoot: null }
-    agentWaitingMap = new Map()
-    ruleBItems = []
     activityByStory = new Map()
     unlinkedActivity = { items: [], overflow: 0 }
     cachedData = null
@@ -1088,11 +1171,13 @@ export function register(on) {
       if (stories[i].status === 'blocked') blocked++
     }
     var id = data.sprint.id || ''
+    // Append +N indicator in concurrent mode.
+    var plusNText = concurrentPlusN > 0 ? ' +' + concurrentPlusN : ''
     return h(c.Box, { flexDirection: 'row' },
       other,
       h(c.Button, { hotkey: '9', plain: true, onPress: function () { toggle($, true) } }, '9'),
       h(c.Text, { wrap: 'truncate-end' },
-        ' 9: ' + id + ' · ' + donePts + '/' + totalPts + ' pts · ' +
+        ' 9: ' + id + plusNText + ' · ' + donePts + '/' + totalPts + ' pts · ' +
         done + '/' + total + ' done · ' + blocked + ' blocked')
     )
   })

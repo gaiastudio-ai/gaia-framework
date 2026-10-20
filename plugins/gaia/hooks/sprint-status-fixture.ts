@@ -112,8 +112,7 @@ export const WRITER_CACHE = {
   action_needed: [] as any[],
   drift: [] as any[],
   readiness: { sprint_review: false, sprint_close: false },
-  user_aliases: ['user'],
-  waiting_agent_threshold_seconds: 120
+  user_aliases: ['user']
 }
 
 export const GAIA_ROOT = '/project'

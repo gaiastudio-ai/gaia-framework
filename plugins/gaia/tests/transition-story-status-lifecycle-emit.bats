@@ -16,7 +16,9 @@
 # Usage:
 #   bats plugins/gaia/tests/transition-story-status-lifecycle-emit.bats
 
+load 'test_helper.bash'
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
   # Derive REPO_ROOT from the test dir so a repo/checkout rename can't break us.
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

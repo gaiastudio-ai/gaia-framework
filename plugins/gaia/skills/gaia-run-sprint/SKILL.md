@@ -38,11 +38,14 @@ turn can actually drive a dev-agent through a story (spawning and messaging a
 teammate is a live tool call, not something a background script can do on
 its own). So this skill loops, one real turn at a time:
 
-1. **Bind and plan once**, at the start of the run:
+1. **Resolve sprint argument and bind**, at the start of the run:
    ```bash
+   # Resolve the --sprint argument. The resolver enforces that --sprint
+   # must match the bound sprint (or be absent); a different ID is refused.
+   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
+   RESOLVED_SPRINT="$(resolve_sprint_arg --command run-sprint "$@")"
    # Bind the session to a sprint (concurrent mode only).
    # In single-sprint mode this is a no-op.
-   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
    BOUND_SPRINT=""
    BOUND_SPRINT="$(bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-run-sprint/scripts/bind.sh" "$@")" || true
    # Resolve the sprint state file path.

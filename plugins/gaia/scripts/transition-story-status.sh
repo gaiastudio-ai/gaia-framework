@@ -745,39 +745,32 @@ rewrite_frontmatter() {
   trap - RETURN
 }
 
-# Update the sprint-status.yaml status entry by delegating to sprint-state.sh,
-# which already serialises yaml writes under its own flock + rewrites the body
-# Status line. We pass the env vars through; sprint-state.sh reads its own
-# layout from PROJECT_PATH / IMPLEMENTATION_ARTIFACTS / SPRINT_STATUS_YAML.
-#
-# We bypass sprint-state.sh's adjacency table because our own state-machine
-# is a superset and we have already validated the edge. Doing two checks would
-# reject perfectly-legal recovery transitions like `validating -> backlog`.
-#
-# Strategy: skip sprint-state.sh when (a) it is not present, or (b) its
-# adjacency table would reject our edge — in both cases write the yaml entry
-# directly using a small awk pass that mirrors sprint-state.sh's writer.
+# Sync the sprint-status.yaml entry by delegating to sprint-state.sh
+# reconcile. The story file has already been rewritten (rewrite_frontmatter
+# runs first), so reconcile reads the authoritative status from there and
+# updates the yaml surface, routing all mutations through the single
+# sanctioned writer.
+# Reconcile handles per-sprint file resolution internally via --sprint-id,
+# so this function works identically in single-sprint and concurrent mode.
 update_sprint_status_yaml() {
   local key="$1" new_status="$2"
 
-  # Route sprint-status.yaml resolution through the shared resolver so the
-  # canonical .gaia/state/ home is rung 1 and the legacy
-  # .gaia/artifacts/implementation-artifacts/ home is a read-compat fallback.
-  # The previous default (${IMPLEMENTATION_ARTIFACTS}/sprint-status.yaml)
-  # never matched what sprint-state.sh writes on a fresh project — every
-  # transition WARNED "sprint-status.yaml is missing" and the yaml surface was
-  # silently NOT updated, requiring a manual `sprint-state.sh reconcile` to fix.
+  # Read the story's sprint binding to determine which sprint file to target.
+  local _sid=""
+  if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
+    _sid="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
+  fi
+
+  # Resolve the yaml path for the missing-file guard (preserves the
+  # pre-sweep graceful-degradation contract: transitions succeed even
+  # when sprint-status.yaml is absent, with appropriate diagnostics).
   local yaml="${SPRINT_STATUS_YAML:-}"
   if [ -z "$yaml" ]; then
     local _resolver="$LIB_DIR/resolve-artifact-path.sh"
     if [ -x "$_resolver" ]; then
       yaml="$("$_resolver" sprint_status --project-root "${PROJECT_ROOT}" --existing-only 2>/dev/null || true)"
-      # No existing rung — fall back to the canonical default (the resolver's
-      # rung-1 path) so the not-found / backlog-skip diagnostics below name the
-      # canonical location, not a legacy one.
       [ -z "$yaml" ] && yaml="$("$_resolver" sprint_status --project-root "${PROJECT_ROOT}" 2>/dev/null)"
     fi
-    # Last-resort defaults if the resolver is unavailable.
     [ -z "$yaml" ] && yaml="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
     if [ ! -e "$yaml" ] && [ -e "${PROJECT_PATH}/sprint-status.yaml" ]; then
       yaml="${PROJECT_PATH}/sprint-status.yaml"
@@ -785,17 +778,9 @@ update_sprint_status_yaml() {
   fi
 
   if [ ! -s "$yaml" ]; then
-    # The four-surface atomic transition degrades to three surfaces when
-    # sprint-status.yaml is absent. That is LEGITIMATE for a
-    # backlog story (sprint_id: null) in a fresh/no-sprint project — stay quiet.
-    # But if the story HAS a sprint_id set, the missing yaml is real drift: the
-    # story believes it belongs to a sprint whose status file is gone. Surface
-    # that as a WARNING (stderr) rather than a silent skip, mirroring the
-    # backlog-vs-drift discrimination already applied to the no-entry path below.
-    local _sid=""
-    if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
-      _sid="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
-    fi
+    # Graceful degradation: transition succeeds on three surfaces when
+    # sprint-status.yaml is absent. Backlog stories stay quiet; stories
+    # with a sprint binding emit a drift warning.
     case "$_sid" in
       ""|null|"~")
         log "sprint-status.yaml not found at '$yaml' — skipping yaml update (story is backlog: sprint_id unset)"
@@ -807,78 +792,51 @@ update_sprint_status_yaml() {
     return 0
   fi
 
-  # Direct in-place rewrite (the outer flock already serialises us against
-  # other transition-story-status.sh invocations; sprint-state.sh's own lock
-  # would only matter for non-transition writers).
-  local tmp
-  tmp=$(mktemp "${yaml}.tmp.XXXXXX")
-  # Register tmp for script-level EXIT/INT/TERM cleanup.
-  local _tmp_idx
-  _GAIA_TMP_PATHS+=("$tmp")
-  _tmp_idx=$((${#_GAIA_TMP_PATHS[@]} - 1))
-  # shellcheck disable=SC2064
-  trap "rm -f '$tmp'" RETURN
-
-  awk -v target="$key" -v new_status="$new_status" '
-    BEGIN { in_entry = 0; rewrote = 0 }
-    {
-      raw = $0
-      line = $0
-      sub(/\r$/, "", line)
-    }
-    line ~ /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
-      k = line
-      sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
-      gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", k)
-      in_entry = (k == target) ? 1 : 0
-      print raw
-      next
-    }
-    in_entry && line ~ /^[^[:space:]]/ { in_entry = 0 }
-    in_entry && !rewrote && line ~ /^[[:space:]]+status:[[:space:]]*/ {
-      match(raw, /^[[:space:]]+/)
-      indent = substr(raw, RSTART, RLENGTH)
-      crlf = ""
-      if (raw ~ /\r$/) crlf = "\r"
-      printf "%sstatus: \"%s\"%s\n", indent, new_status, crlf
-      rewrote = 1
-      next
-    }
-    { print raw }
-    END {
-      if (!rewrote) exit 2
-    }
-  ' "$yaml" > "$tmp" || {
-    local rc=$?
-    rm -f "$tmp"
-    trap - RETURN
-    if [ $rc -eq 2 ]; then
-      # Suppress the skip log when the story is legitimately in the backlog
-      # (sprint_id: null in story frontmatter). Real drift (sprint_id SET but
-      # no entry in sprint-status.yaml) still warns as before.
-      local _sprint_id=""
-      if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
-        _sprint_id="$(read_frontmatter_field "$STORY_FILE" sprint_id)"
-      fi
-      case "$_sprint_id" in
-        ""|null|"~") : ;;
-        *) log "story '$key' not present in sprint-status.yaml — skipping yaml update" ;;
-      esac
+  # Backlog stories (sprint_id unset/null) have no yaml entry — skip.
+  case "$_sid" in
+    ""|null|"~")
       return 0
-    fi
-    err "awk rewrite of '$yaml' failed (rc=$rc)"
+      ;;
+  esac
+
+  # Locate sprint-state.sh (sibling script in the same directory).
+  local _sprint_state_sh="$SCRIPT_DIR/sprint-state.sh"
+  if [ ! -x "$_sprint_state_sh" ]; then
+    err "WARNING: sprint-state.sh not found at '$_sprint_state_sh' — yaml surface NOT updated"
+    return 0
+  fi
+
+  # Check if the story exists in the yaml before calling reconcile.
+  # Reconcile only syncs existing entries — it cannot add new ones.
+  # If the story is absent, preserve the old "not present" diagnostic.
+  if ! awk -v target="$key" '
+    /^[[:space:]]*-[[:space:]]*key:/ {
+      k = $0; sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
+      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", k)
+      if (k == target) { found = 1; exit }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$yaml"; then
+    log "story '$key' not present in sprint-status.yaml — skipping yaml update"
+    return 0
+  fi
+
+  # Delegate to reconcile. It reads the story file (already updated by
+  # rewrite_frontmatter), detects the divergence, and writes the yaml
+  # entry through the single sanctioned writer. The --sprint-id flag
+  # triggers per-sprint file resolution in concurrent mode.
+  local _reconcile_out=""
+  _reconcile_out="$(GAIA_SKIP_ORPHAN_SWEEP=1 \
+    GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$_sprint_state_sh" reconcile --sprint-id "$_sid" 2>&1)" || {
+    log "reconcile: $_reconcile_out"
+    err "sprint-state.sh reconcile failed for sprint '$_sid'"
     exit 1
   }
-
-  if ! mv -f "$tmp" "$yaml"; then
-    rm -f "$tmp"
-    trap - RETURN
-    err "failed to mv tempfile over '$yaml'"
-    exit 1
+  # Surface reconcile output through the transition log.
+  if [ -n "$_reconcile_out" ]; then
+    while IFS= read -r _line; do log "reconcile: $_line"; done <<< "$_reconcile_out"
   fi
-  # mv succeeded — clear the slot.
-  _GAIA_TMP_PATHS[$_tmp_idx]=""
-  trap - RETURN
 }
 
 # Update or insert the `- **Status:** <state>` line inside the story's block in
@@ -1975,21 +1933,42 @@ fi
 # path can rebase cleanly around this block.
 
 # _parse_traces_to — extract GitHub issue numbers from the traces_to
-# frontmatter field. Handles flow-style YAML lists: `["GitHub #1", "GitHub #2"]`.
+# frontmatter field. Handles both flow-style (`["GitHub #1", "GitHub #2"]`)
+# and block-style YAML lists (indented `- "GitHub #N"` lines).
 # Outputs one issue number per line; empty output when the field is absent,
 # empty, or contains no GitHub references.
 _parse_traces_to() {
   local file="$1"
   awk '
-    BEGIN { in_fm = 0; seen = 0 }
+    BEGIN { in_fm = 0; seen = 0; in_block = 0 }
     /^---[[:space:]]*$/ {
       if (!in_fm && !seen) { in_fm = 1; seen = 1; next }
       if (in_fm) exit
     }
+    in_fm && in_block {
+      # Block-style continuation: indented lines starting with -
+      if (/^[[:space:]]+-/) {
+        v = $0
+        while (match(v, /GitHub #[0-9]+/)) {
+          s = substr(v, RSTART, RLENGTH)
+          sub(/^GitHub #/, "", s)
+          print s
+          v = substr(v, RSTART + RLENGTH)
+        }
+        next
+      }
+      # Non-indented line ends the block list
+      in_block = 0
+    }
     in_fm && /^traces_to:/ {
       v = $0
       sub(/^traces_to:[[:space:]]*/, "", v)
-      # Extract all GitHub #N references from the flow-style list
+      # Check if the remaining value is empty or whitespace-only (block style)
+      if (v ~ /^[[:space:]]*$/) {
+        in_block = 1
+        next
+      }
+      # Flow-style: extract all GitHub #N references from the inline value
       while (match(v, /GitHub #[0-9]+/)) {
         s = substr(v, RSTART, RLENGTH)
         sub(/^GitHub #/, "", s)
@@ -2045,13 +2024,84 @@ _gh_with_timeout() {
   return 124
 }
 
+# _resolve_gh_repo — derive owner/repo from the git remote so every gh call
+# targets the correct repository even when run from a fork or multi-remote
+# checkout. Prefers the 'upstream' remote (fork convention), then 'origin'.
+# Returns 0 with owner/repo on stdout, or 1 when resolution fails (the
+# caller falls back to gh's own remote-detection default).
+_resolve_gh_repo() {
+  local remote_url="" rname
+  for rname in upstream origin; do
+    remote_url="$(git -C "${PROJECT_PATH:-.}" config "remote.${rname}.url" 2>/dev/null || true)"
+    [ -n "$remote_url" ] && break
+  done
+  [ -n "$remote_url" ] || return 1
+
+  local owner_repo=""
+  case "$remote_url" in
+    *github.com:*)
+      owner_repo="${remote_url#*github.com:}"
+      owner_repo="${owner_repo%.git}" ;;
+    *github.com/*)
+      owner_repo="${remote_url#*github.com/}"
+      owner_repo="${owner_repo%.git}" ;;
+    *) return 1 ;;
+  esac
+  [ -n "$owner_repo" ] || return 1
+  printf '%s' "$owner_repo"
+}
+
+# _gh_issue — run a `gh issue` subcommand with optional --repo pinning.
+# Centralises the repo flag so each call site does not repeat the conditional.
+_gh_issue() {
+  local subcmd="$1"; shift
+  if [ -n "${_TRACED_GH_REPO:-}" ]; then
+    _gh_with_timeout issue "$subcmd" --repo "$_TRACED_GH_REPO" "$@"
+  else
+    _gh_with_timeout issue "$subcmd" "$@"
+  fi
+}
+
+# _gh_pr_list — run `gh pr list` with optional --repo pinning.
+_gh_pr_list() {
+  if [ -n "${_TRACED_GH_REPO:-}" ]; then
+    _gh_with_timeout pr list --repo "$_TRACED_GH_REPO" "$@"
+  else
+    _gh_with_timeout pr list "$@"
+  fi
+}
+
 # _find_merged_pr_number — resolve the merged PR number for a story key.
-# Returns the PR number on stdout, or empty string on failure.
+# Searches by branch name first (precise), then falls back to a structured
+# body reference written by merge.sh. Returns the PR number on stdout,
+# or empty string on failure.
 _find_merged_pr_number() {
   local story_key="$1"
-  local result
-  result="$(_gh_with_timeout pr list --state merged --search "$story_key" \
-    --json number --jq '.[0].number' 2>/dev/null)" || true
+  local result=""
+
+  # Try branch-based search first (more precise than free-text title match).
+  # for-each-ref returns local branches as-is (feat/KEY-slug) and remote
+  # branches with a remote prefix (origin/feat/KEY-slug). The sed strips only
+  # the remote prefix (first path component before feat/) leaving local refs
+  # untouched.
+  local branch_name=""
+  branch_name="$(git -C "${PROJECT_PATH:-.}" for-each-ref --format='%(refname:short)' \
+    "refs/heads/feat/${story_key}-*" "refs/remotes/*/feat/${story_key}-*" 2>/dev/null \
+    | sed 's|^[^/]*/feat/|feat/|' | head -1)" || true
+
+  if [ -n "$branch_name" ]; then
+    result="$(_gh_pr_list --state merged \
+      --head "$branch_name" \
+      --json number --jq '.[0].number' 2>/dev/null)" || true
+  fi
+
+  # Fallback: search in PR body for the structured reference merge.sh writes
+  if [ -z "$result" ] || [ "$result" = "null" ]; then
+    result="$(_gh_pr_list --state merged \
+      --search "\"Story: ${story_key}\" in:body" \
+      --json number --jq '.[0].number' 2>/dev/null)" || true
+  fi
+
   # Filter out non-numeric results (e.g. "null", empty)
   case "$result" in
     ''|null|*[!0-9]*) printf '' ;;
@@ -2106,6 +2156,8 @@ _find_other_tracers() {
 
 # _close_traced_issues — post-transition hook entry point.
 # Called after the done transition succeeds; never blocks the transition.
+# Resolves the target repository from git remotes and passes --repo to every
+# gh call so fork/multi-remote checkouts target the correct issue tracker.
 _close_traced_issues() {
   local story_key="$1" story_file="$2"
 
@@ -2119,6 +2171,12 @@ _close_traced_issues() {
     log "WARNING: gh CLI not available — skipping traced-issue closure for $story_key"
     return 0
   fi
+
+  # Resolve the target repository for --repo pinning. When resolution fails,
+  # _TRACED_GH_REPO stays empty and the _gh_issue / _gh_pr_list helpers fall
+  # back to gh's own remote-detection default (acceptable for single-remote).
+  _TRACED_GH_REPO=""
+  _TRACED_GH_REPO="$(_resolve_gh_repo 2>/dev/null)" || true
 
   # Resolve the story's merged PR number (best-effort)
   local pr_number
@@ -2137,9 +2195,10 @@ _close_traced_issues() {
     remaining="$(_find_other_tracers "$issue_num" "$story_key")"
     if [ -z "$remaining" ]; then
       # Fully addressed — close with comment.
+      # `--` separates options from the positional issue-number argument.
       # Capture the real exit code before `local` resets $?.
       local gh_rc=0
-      _gh_with_timeout issue close "$issue_num" --comment "Fixed by ${by_clause}" 2>/dev/null || gh_rc=$?
+      _gh_issue close --comment "Fixed by ${by_clause}" -- "$issue_num" 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out closing traced issue #${issue_num} for ${story_key}"
@@ -2149,10 +2208,11 @@ _close_traced_issues() {
       fi
     else
       # Partially addressed — comment naming what remains.
+      # Wrap each remaining key in backtick code spans for correct Markdown.
       local remaining_keys
-      remaining_keys="$(printf '%s' "$remaining" | tr '\n' ', ' | sed 's/,$//')"
+      remaining_keys="$(printf '%s' "$remaining" | sed 's/.*$/\`&\`/' | tr '\n' ',' | sed 's/,/, /g; s/, $//')"
       local gh_rc=0
-      _gh_with_timeout issue comment "$issue_num" --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." 2>/dev/null || gh_rc=$?
+      _gh_issue comment --body "Partially addressed by ${by_clause}. Remaining: ${remaining_keys}." -- "$issue_num" 2>/dev/null || gh_rc=$?
       if [ "$gh_rc" -ne 0 ]; then
         if [ "$gh_rc" -eq 124 ]; then
           log "WARNING: gh timed out commenting on traced issue #${issue_num} for ${story_key}"

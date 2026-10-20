@@ -124,12 +124,12 @@ EOF
 
 # ---------- AC8: error-path triggers trap cleanup ----------
 
-@test "memory-writer.sh: release_lock EXIT trap chains _cleanup_tmps (regression)" {
-  # The lock-acquire EXIT trap MUST chain through _cleanup_tmps so that on a
-  # clean EXIT, atomic-write tmps are still cleaned. A bare `trap release_lock
-  # EXIT` would override the script-level `trap _cleanup_tmps EXIT INT TERM`
+@test "memory-writer.sh: lock release EXIT trap chains _cleanup_tmps (regression)" {
+  # The lock-release EXIT trap MUST chain through _cleanup_tmps so that on a
+  # clean EXIT, atomic-write tmps are still cleaned. A bare lock-release trap
+  # would override the script-level `trap _cleanup_tmps EXIT INT TERM`
   # and silently leak tmps under set -e or signal-during-printf paths.
-  grep -E "trap[[:space:]]+'release_lock;[[:space:]]*_cleanup_tmps'[[:space:]]+EXIT" "$SCRIPT"
+  grep -E "trap[[:space:]]+'_mw_release_lock;[[:space:]]*_cleanup_tmps'[[:space:]]+EXIT" "$SCRIPT"
 }
 
 @test "memory-writer.sh: write-failure error path cleans tmp via trap (AC8)" {

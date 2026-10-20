@@ -34,6 +34,7 @@ PLUGIN_TREE="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 # test copies from these via cp -R instead of re-running the snapshot.
 # ---------------------------------------------------------------------------
 setup_file() {
+  _litter_snapshot_before
   if ! command -v jq >/dev/null 2>&1; then
     printf 'FATAL: jq is required for sprint-status-dashboard-cache.bats\n' >&2
     exit 1
@@ -252,6 +253,7 @@ MD
 }
 
 teardown_file() {
+  _litter_check_after
   # Restore write permission so bats can clean up BATS_FILE_TMPDIR.
   chmod -R u+w "$_SETUP_BASE" "$_SETUP_ALLDONE" 2>/dev/null || true
 

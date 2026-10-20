@@ -447,8 +447,236 @@ Exit codes:
 USAGE
 }
 
+# ---------------------------------------------------------------------------
+# _catch_all_write_inline_marker <epics_file> <epic_key> <value>
+#   Write/update the inline catch_all marker under the epic heading.
+#   Uses mktemp + mv for atomic writes.
+# ---------------------------------------------------------------------------
+_catch_all_write_inline_marker() {
+  local epics_file="$1" epic_key="$2" value="$3"
+  local epic_num="${epic_key#E}"
+  local new_marker="<!-- catch_all: ${value} -->"
+  local old_marker_true="<!-- catch_all: true -->"
+  local old_marker_false="<!-- catch_all: false -->"
+  local tmp_file
+  tmp_file="$(mktemp "${TMPDIR:-/tmp}/caf-inline.XXXXXX")"
+
+  awk -v ekey="$epic_key" -v enum="$epic_num" -v marker="$new_marker" \
+      -v old_t="$old_marker_true" -v old_f="$old_marker_false" '
+    BEGIN { looking=0; wrote=0 }
+    /^## / {
+      if (looking && !wrote) { print marker; wrote=1 }
+      looking=0
+      if (index($0, "E" enum " ") > 0 || \
+          ($0 ~ "Epic " enum ":") || \
+          ($0 ~ "Epic E" enum " ")) {
+        looking=1; wrote=0
+      }
+      print; next
+    }
+    looking && ($0 == old_t || $0 == old_f) {
+      print marker; wrote=1; looking=0; next
+    }
+    looking && /^[[:space:]]*$/ { print; next }
+    looking && !/^[[:space:]]*$/ {
+      if (!wrote) { print marker; wrote=1 }
+      looking=0; print; next
+    }
+    { print }
+    END { if (looking && !wrote) print marker }
+  ' "$epics_file" > "$tmp_file"
+
+  mv -f "$tmp_file" "$epics_file"
+}
+
+# ---------------------------------------------------------------------------
+# _catch_all_set_unset <mode> <epic_key> <epics_file> <shards_dir>
+#   mode = "set" (true) or "unset" (false).
+#   Runs independence re-check, writes the flag, appends audit trail.
+# ---------------------------------------------------------------------------
+_catch_all_set_unset() {
+  local mode="$1" epic_key="$2" epics_file="$3" shards_dir="${4:-}"
+  local new_val old_val
+  case "$mode" in
+    set)   new_val="true" ;;
+    unset) new_val="false" ;;
+    *) printf 'catch-all-flag.sh: invalid mode: %s\n' "$mode" >&2; return 2 ;;
+  esac
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local project_root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+  local gaia_dir=".gaia"
+  local state_dir="${project_root%/}/${gaia_dir}/state"
+  local audit_log="${state_dir}/catch-all-audit.log"
+  local audit_snapshot="${state_dir}/catch-all-audit.snapshot"
+  mkdir -p "$state_dir"
+
+  # Determine current value.
+  local current_val="false"
+  local current_set
+  current_set="$(catch_all_epics "$epics_file" "$shards_dir" 2>/dev/null)" || true
+  if printf '%s\n' "$current_set" | /usr/bin/grep -Fqx "$epic_key" 2>/dev/null; then
+    current_val="true"
+  fi
+
+  if [ "$current_val" = "$new_val" ]; then
+    printf 'catch-all-flag.sh: %s already has catch_all=%s\n' \
+      "$epic_key" "$new_val"
+    return 0
+  fi
+
+  # Run independence re-check as pre-mutation gate.
+  # Strategy: apply the flag change to the epics file, run the independence
+  # check against the post-change state, then revert if the check fails.
+  # This ensures rule (b) is evaluated with the new flag value.
+  local gate_result="pass"
+  local ic_script="${script_dir}/../independence-check.sh"
+
+  # Fail closed in concurrent mode: the independence check must be present.
+  if [ ! -x "$ic_script" ]; then
+    # Check if concurrent mode is active (per-sprint files exist).
+    local _caf_has_per_sprint=0
+    for f in "${state_dir}"/sprint-status-*.yaml; do
+      [ -f "$f" ] || continue
+      case "$f" in *.lock|*.result) continue ;; esac
+      _caf_has_per_sprint=1; break
+    done
+    if [ "$_caf_has_per_sprint" -eq 1 ]; then
+      printf 'catch-all-flag.sh: independence check not found — refusing change (fail-closed in concurrent mode)\n' >&2
+      return 1
+    fi
+  fi
+
+  if [ -x "$ic_script" ]; then
+    # Find the first active sprint (any one will do for the check).
+    local first_sprint=""
+    local f
+    for f in "${state_dir}"/sprint-status-*.yaml; do
+      [ -f "$f" ] || continue
+      case "$f" in *.lock|*.result) continue ;; esac
+      local st=""
+      st="$(awk '/^status:[[:space:]]*/ {
+          v=$0; sub(/^status:[[:space:]]*/, "", v)
+          gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
+          print v; exit
+        }' "$f" 2>/dev/null)" || continue
+      [ "$st" = "active" ] || continue
+      local sid=""
+      sid="$(awk '/^sprint_id:[[:space:]]*/ {
+          v=$0; sub(/^sprint_id:[[:space:]]*/, "", v)
+          gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
+          print v; exit
+        }' "$f" 2>/dev/null)" || continue
+      if [ -z "$first_sprint" ]; then
+        first_sprint="$sid"
+      fi
+    done
+
+    if [ -n "$first_sprint" ]; then
+      # Stage the edit in a temp copy, check against it, then atomically
+      # move into place on pass. The real file is never modified until the
+      # check succeeds — crash-safe.
+      local epics_staged
+      epics_staged="$(mktemp "${TMPDIR:-/tmp}/caf-staged.XXXXXX")"
+      cp "$epics_file" "$epics_staged"
+      _catch_all_write_inline_marker "$epics_staged" "$epic_key" "$new_val"
+
+      # Point the check at the staged file by temporarily swapping it in.
+      # Use a trap to restore the original on any failure/signal.
+      local _caf_orig="$epics_file"
+      mv -f "$epics_file" "${epics_file}.caf-orig"
+      cp "$epics_staged" "$epics_file"
+      # shellcheck disable=SC2064
+      trap "mv -f '${epics_file}.caf-orig' '$epics_file' 2>/dev/null; rm -f '$epics_staged'" EXIT
+
+      local check_rc=0
+      bash "$ic_script" --candidate "$first_sprint" 2>/dev/null || check_rc=$?
+
+      if [ "$check_rc" -ne 0 ]; then
+        gate_result="fail"
+        # Restore the original.
+        mv -f "${epics_file}.caf-orig" "$epics_file"
+      else
+        # Check passed — the staged file is already in place.
+        rm -f "${epics_file}.caf-orig" "$epics_staged"
+      fi
+      # Clear the crash-recovery trap.
+      trap - EXIT
+    fi
+  fi
+
+  # Record timestamp.
+  local timestamp
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Append audit trail entry.
+  printf '%s %s catch_all=%s->%s actor=catch-all-flag.sh result=%s\n' \
+    "$timestamp" "$epic_key" "$current_val" "$new_val" "$gate_result" \
+    >> "$audit_log"
+
+  if [ "$gate_result" = "fail" ]; then
+    printf 'catch-all-flag.sh: independence re-check failed — change blocked\n' >&2
+    return 1
+  fi
+
+  # Apply the flag change.
+  local epic_num="${epic_key#E}"
+  local shard_has_field=0
+
+  if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
+    local sf base base_lower snum
+    for sf in "$shards_dir"/*; do
+      [ -f "$sf" ] || continue
+      base="${sf##*/}"
+      base_lower="$(printf '%s' "$base" | LC_ALL=C tr 'A-Z' 'a-z')"
+      case "$base_lower" in
+        [0-9]*-e[0-9]*-*)
+          snum="${base_lower#*-e}"
+          snum="${snum%%-*}"
+          if [ "$snum" = "$epic_num" ]; then
+            if /usr/bin/grep -q 'catch_all:' "$sf" 2>/dev/null; then
+              shard_has_field=1
+              local tmp_shard
+              tmp_shard="$(mktemp "${TMPDIR:-/tmp}/caf-shard.XXXXXX")"
+              awk -v val="$new_val" '
+                BEGIN { in_fm=0; s=0; w=0 }
+                /^---[[:space:]]*$/ {
+                  if (!s) { s=1; in_fm=1 } else { if (!w) print "catch_all: " val; in_fm=0 }
+                  print; next
+                }
+                in_fm && /^catch_all:/ { print "catch_all: " val; w=1; next }
+                { print }
+              ' "$sf" > "$tmp_shard"
+              mv -f "$tmp_shard" "$sf"
+            fi
+            break
+          fi
+          ;;
+      esac
+    done
+  fi
+
+  if [ "$shard_has_field" -eq 0 ]; then
+    _catch_all_write_inline_marker "$epics_file" "$epic_key" "$new_val"
+  fi
+
+  # Rewrite the audit snapshot.
+  _CATCH_ALL_AUDIT_MODE=1 catch_all_epics "$epics_file" "$shards_dir" \
+    > "$audit_snapshot" 2>/dev/null || true
+
+  # Run --audit to show advisory.
+  _CATCH_ALL_AUDIT_MODE=1 catch_all_epics "$epics_file" "$shards_dir" \
+    >/dev/null 2>&1 || true
+
+  printf 'catch-all-flag.sh: %s catch_all=%s->%s applied\n' \
+    "$epic_key" "$current_val" "$new_val"
+  return 0
+}
+
 main() {
   local epics_file="" shards_dir="" audit=0
+  local set_epic="" unset_epic=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --epics-file)
@@ -466,6 +694,12 @@ main() {
       --audit)
         audit=1; shift
         ;;
+      --set)
+        set_epic="${2:-}"; shift 2 || { _catch_all_flag_usage >&2; return 2; }
+        ;;
+      --unset)
+        unset_epic="${2:-}"; shift 2 || { _catch_all_flag_usage >&2; return 2; }
+        ;;
       -h|--help)
         _catch_all_flag_usage
         return 0
@@ -482,6 +716,16 @@ main() {
     printf 'catch-all-flag.sh: --epics-file is required\n' >&2
     _catch_all_flag_usage >&2
     return 2
+  fi
+
+  # Set/unset mode.
+  if [ -n "$set_epic" ]; then
+    _catch_all_set_unset "set" "$set_epic" "$epics_file" "$shards_dir"
+    return $?
+  fi
+  if [ -n "$unset_epic" ]; then
+    _catch_all_set_unset "unset" "$unset_epic" "$epics_file" "$shards_dir"
+    return $?
   fi
 
   _CATCH_ALL_AUDIT_MODE="$audit" catch_all_epics "$epics_file" "$shards_dir"
