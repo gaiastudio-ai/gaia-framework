@@ -4130,7 +4130,7 @@ cmd_close() {
       "$rollover_keys_csv" "$pre_close_status" "$resume_mode" "$state_dir" || _close_rc=$?
   else
     _cmd_close_single "$sprint_id" "$closed_at" "$force_bypass" \
-      "$pre_close_status" "$state_dir" || _close_rc=$?
+      "$rollover_keys_csv" "$pre_close_status" "$state_dir" || _close_rc=$?
   fi
   return "$_close_rc"
 }
@@ -4138,7 +4138,7 @@ cmd_close() {
 # Single-sprint close writer. Output- and state-byte-identical to today.
 _cmd_close_single() {
   local sprint_id="$1" closed_at="$2" force_bypass="$3"
-  local pre_close_status="$4" state_dir="$5"
+  local rollover_keys_csv="$4" pre_close_status="$5" state_dir="$6"
 
   local yaml="$SPRINT_STATUS_YAML"
   [ -f "$yaml" ] || die "close: state file not found: $yaml"
@@ -4196,7 +4196,8 @@ _cmd_close_single() {
       /^closed_at:[[:space:]]*/ { next }
       { print }
       END {
-        if (!done_closed_at) printf "closed_at: \"%s\"\n", closed_at
+        if (!done_status) printf "status: closed\n"
+        printf "closed_at: \"%s\"\n", closed_at
       }
     ' "$yaml" > "$tmp"
     mv "$tmp" "$yaml"
@@ -4204,7 +4205,7 @@ _cmd_close_single() {
     trap - RETURN
 
     # Post-close audit (same in both modes).
-    _close_post_audit "$yaml" "$sprint_id" "$pre_close_status" ""
+    _close_post_audit "$yaml" "$sprint_id" "$pre_close_status" "$rollover_keys_csv"
   ) || return $?
 
   # Emit lifecycle event after lock release.
