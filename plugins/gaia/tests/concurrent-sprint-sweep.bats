@@ -40,6 +40,47 @@ enumerate_references() {
     | sed 's/:.*//' | sort -u
 }
 
+# Helper: build a temp mirror of scripts/ and skills/ using symlinks.
+# Fixtures are planted in the mirror; the real tree is never written.
+# Usage: build_temp_tree "$dest"
+build_temp_tree() {
+  local dest="$1"
+  mkdir -p "$dest/scripts" "$dest/skills"
+  # Symlink every real script.
+  local f
+  for f in "$BATS_TEST_SCRIPT_DIR/scripts"/*.sh; do
+    [ -f "$f" ] || continue
+    ln -s "$f" "$dest/scripts/$(basename "$f")"
+  done
+  # Symlink skill script dirs (one level deep).
+  local sd
+  for sd in "$BATS_TEST_SCRIPT_DIR/skills"/*/; do
+    [ -d "$sd" ] || continue
+    local skill_name
+    skill_name="$(basename "$sd")"
+    if [ -d "$sd/scripts" ]; then
+      mkdir -p "$dest/skills/${skill_name}/scripts"
+      for f in "$sd/scripts"/*.sh; do
+        [ -f "$f" ] || continue
+        ln -s "$f" "$dest/skills/${skill_name}/scripts/$(basename "$f")"
+      done
+    fi
+    # Symlink SKILL.md if present.
+    if [ -f "$sd/SKILL.md" ]; then
+      mkdir -p "$dest/skills/${skill_name}"
+      ln -s "$sd/SKILL.md" "$dest/skills/${skill_name}/SKILL.md"
+    fi
+    # Symlink helpers/*.md if present.
+    if [ -d "$sd/helpers" ]; then
+      mkdir -p "$dest/skills/${skill_name}/helpers"
+      for f in "$sd/helpers"/*.md; do
+        [ -f "$f" ] || continue
+        ln -s "$f" "$dest/skills/${skill_name}/helpers/$(basename "$f")"
+      done
+    fi
+  done
+}
+
 # ============================================================
 # AC1 + AC2: Matrix completeness — every reference is accounted for
 # ============================================================
@@ -259,26 +300,24 @@ enumerate_references() {
 @test "CI guard fails on unregistered script referencing state file" {
   [ -f "$MATRIX" ]
 
-  # Plant an unregistered script that reads the state file.
-  local mutant_dir="$BATS_TEST_SCRIPT_DIR/scripts"
-  local mutant="$mutant_dir/test-unregistered-sweep-guard.sh"
-  cat > "$mutant" <<'SH'
+  # Build a temp mirror and plant the unregistered script there.
+  local temp_tree="$TEST_DIR/guard-tree"
+  build_temp_tree "$temp_tree"
+  cat > "$temp_tree/scripts/test-unregistered-sweep-guard.sh" <<'SH'
 #!/usr/bin/env bash
 cat .gaia/state/sprint-status.yaml
 SH
-  chmod +x "$mutant"
 
   # Read the matrix allowlist.
   local allowlist
   allowlist="$(awk -F'\t' 'NR>1 {print $1}' "$MATRIX")"
 
-  # Enumerate all scripts under scripts/ and skills/*/scripts/ that reference
-  # sprint-status.yaml (excluding test files and fixtures).
+  # Enumerate files in the TEMP tree (follows symlinks to read real content).
   local unregistered=0 unregistered_files=""
   while IFS= read -r f; do
     [ -f "$f" ] || continue
     case "$f" in *.bats|*/fixtures/*|*/tests/*) continue ;; esac
-    local rel_path="${f#"$BATS_TEST_SCRIPT_DIR/"}"
+    local rel_path="${f#"$temp_tree/"}"
     rel_path="plugins/gaia/${rel_path}"
     if ! grep -qxF "$rel_path" <<< "$allowlist"; then
       if /usr/bin/grep -q 'sprint-status\.yaml' "$f" 2>/dev/null; then
@@ -286,15 +325,12 @@ SH
         unregistered_files="${unregistered_files}  ${rel_path}"$'\n'
       fi
     fi
-  done < <(find "$BATS_TEST_SCRIPT_DIR/scripts" "$BATS_TEST_SCRIPT_DIR/skills" \
-    -type f \( -name '*.sh' -o -name '*.md' \) 2>/dev/null | sort)
+  done < <(find "$temp_tree/scripts" "$temp_tree/skills" \
+    -type f -o -type l 2>/dev/null | sort)
 
   # The guard must catch the planted mutant.
   [ "$unregistered" -gt 0 ]
   [[ "$unregistered_files" == *"test-unregistered-sweep-guard.sh"* ]]
-
-  # Clean up.
-  rm -f "$mutant"
 }
 
 @test "CI guard passes when all references are in the matrix" {
@@ -343,13 +379,12 @@ SH
 @test "new skill script reading state file caught by CI guard" {
   [ -f "$MATRIX" ]
 
-  # Plant a new skill script that reads the state file.
-  # Build the skill path from variables so the script-refs lint does not
-  # flag the synthetic path as a stale reference.
+  # Plant a new skill script in a TEMP tree (never the real tree).
+  local temp_tree="$TEST_DIR/skill-guard-tree"
+  build_temp_tree "$temp_tree"
   local _skill_name="gaia-new-skill-sweep-test"
-  local skill_dir="$BATS_TEST_SCRIPT_DIR/skills/${_skill_name}/scripts"
-  mkdir -p "$skill_dir"
-  cat > "$skill_dir/setup.sh" <<'SH'
+  mkdir -p "$temp_tree/skills/${_skill_name}/scripts"
+  cat > "$temp_tree/skills/${_skill_name}/scripts/setup.sh" <<'SH'
 #!/usr/bin/env bash
 yaml_path=".gaia/state/sprint-status.yaml"
 yq '.sprint' "$yaml_path"
@@ -360,9 +395,6 @@ SH
 
   local rel="plugins/gaia/skills/${_skill_name}/scripts/setup.sh"
   ! grep -qxF "$rel" <<< "$allowlist"
-
-  # Clean up.
-  rm -rf "$BATS_TEST_SCRIPT_DIR/skills/${_skill_name}"
 }
 
 # ============================================================
@@ -406,11 +438,12 @@ SH
 @test "stale matrix caught when new scripts are added" {
   [ -f "$MATRIX" ]
 
-  # Plant three unregistered scripts.
+  # Plant three unregistered scripts in a TEMP tree (never the real tree).
+  local temp_tree="$TEST_DIR/stale-matrix-tree"
+  build_temp_tree "$temp_tree"
   local i
   for i in 1 2 3; do
-    local d="$BATS_TEST_SCRIPT_DIR/scripts"
-    cat > "$d/test-stale-matrix-${i}.sh" <<SH
+    cat > "$temp_tree/scripts/test-stale-matrix-${i}.sh" <<SH
 #!/usr/bin/env bash
 cat .gaia/state/sprint-status.yaml
 SH
@@ -428,9 +461,6 @@ SH
   done
 
   [ "$unregistered" -eq 3 ]
-
-  # Clean up.
-  rm -f "$BATS_TEST_SCRIPT_DIR/scripts/test-stale-matrix-"*.sh
 }
 
 # ============================================================
@@ -494,11 +524,15 @@ YAML
 # Tree hygiene: the suite must leave the real tree byte-identical
 # ============================================================
 
-@test "suite leaves no modified files in the plugin scripts tree" {
+@test "suite leaves no modified or untracked files in plugin scripts and skills" {
+  local repo_root
+  repo_root="$(git -C "$BATS_TEST_SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)" || repo_root=""
+  [ -n "$repo_root" ]
   local dirty
-  dirty="$(git -C "$BATS_TEST_SCRIPT_DIR" status --porcelain -- scripts/ 2>/dev/null)" || dirty=""
+  dirty="$(git -C "$repo_root" status --porcelain --untracked-files=all \
+    -- plugins/gaia/scripts/ plugins/gaia/skills/ 2>/dev/null)" || dirty=""
   if [ -n "$dirty" ]; then
-    printf 'Tree dirty after suite:\n%s\n' "$dirty" >&2
+    printf 'Tree dirty or has untracked files after suite:\n%s\n' "$dirty" >&2
     return 1
   fi
 }
