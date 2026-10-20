@@ -24,14 +24,12 @@ setup() {
   ! grep -rE 'yq[[:space:]]+(eval[[:space:]]+)?-i[^|]*sprint-status' "$CORRECT_COURSE_DIR/scripts" 2>/dev/null
 }
 
-@test ".3: gaia-sprint-close NEW review→closed path uses sprint-state.sh (legacy active→closed path documented exception)" {
-  # The existing close.sh (pre-E93-S5) uses `yq -i` for the active→closed direct edge.
-  # That pre-existing path is a documented exception (backward-compat per AC6).
-  # The NEW review→closed path added in E93-S5 MUST use sprint-state.sh.
-  # Verify the close.sh script references sprint-state.sh transition for the new path.
-  grep -qE "sprint-state\.sh[[:space:]]+transition.*review|transition.*review.*closed" "$SPRINT_CLOSE_DIR/scripts/close.sh" \
-    || grep -qE "sprint-state\.sh[[:space:]]+(transition-sprint|cmd_transition_sprint)" "$SPRINT_CLOSE_DIR/scripts/close.sh" \
-    || grep -qE "transition[[:space:]]+--sprint.*--to[[:space:]]+closed" "$SPRINT_CLOSE_DIR/SKILL.md"
+@test ".3: gaia-sprint-close delegates all state writes to sprint-state.sh close writer" {
+  # close.sh delegates all state-file writes to the sprint-state.sh close
+  # writer. Verify it references sprint-state.sh for the close path.
+  grep -qE "sprint-state\.sh.*close|SPRINT_STATE_SH.*close" "$SPRINT_CLOSE_DIR/scripts/close.sh" \
+    || grep -qE "sprint-state\.sh[[:space:]]+transition" "$SPRINT_CLOSE_DIR/scripts/close.sh" \
+    || grep -qE "close.*writer|delegat.*sprint-state" "$SPRINT_CLOSE_DIR/SKILL.md"
 }
 
 @test ".4: gaia-sprint-plan has no 'sed -i' against sprint-status.yaml" {
