@@ -699,14 +699,13 @@ SH
   # Create a per-sprint cache file.
   printf '{}' > "$STATE_DIR/.sprint-progress-cache-sprint-900.json"
 
-  # Create a stub snapshot script.
-  local snapshot_stub="$BATS_TEST_DIRNAME/../scripts/sprint-progress-snapshot.sh"
-  local snapshot_backup=""
-  if [ -f "$snapshot_stub" ]; then
-    snapshot_backup="$(mktemp)"
-    cp "$snapshot_stub" "$snapshot_backup"
-  fi
-  cat > "$snapshot_stub" <<'SH'
+  # Create a stub snapshot script in a TEMP directory (never modify the
+  # real script in the source tree -- other suites depend on it).
+  local stub_dir="$TEST_TMP/stub-scripts"
+  mkdir -p "$stub_dir"
+  # Copy the real scripts directory so sibling lookups work.
+  cp "$BATS_TEST_DIRNAME/../scripts/lifecycle-event.sh" "$stub_dir/" 2>/dev/null || true
+  cat > "$stub_dir/sprint-progress-snapshot.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 while [ $# -gt 0 ]; do
@@ -718,18 +717,16 @@ done
 state_dir="${PROJECT_ROOT:-.}/.gaia/state"
 rm -f "${state_dir}/.sprint-progress-cache-${sprint_id}.json"
 SH
-  chmod +x "$snapshot_stub"
+  chmod +x "$stub_dir/sprint-progress-snapshot.sh"
+
+  # Point the close writer at our stub directory.
+  export SPRINT_STATE_SCRIPT_DIR="$stub_dir"
 
   "$SPRINT_STATE_SH" close --sprint-id "sprint-900" --closed-at "2026-10-20T12:00:00Z" \
     --pre-close-status review 2>/dev/null
 
   # Cache should be removed.
   [ ! -f "$STATE_DIR/.sprint-progress-cache-sprint-900.json" ]
-
-  # Restore original snapshot script.
-  if [ -n "$snapshot_backup" ]; then
-    mv "$snapshot_backup" "$snapshot_stub"
-  fi
 }
 
 # ============================================================================
