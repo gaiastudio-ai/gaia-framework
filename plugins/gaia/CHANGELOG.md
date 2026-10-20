@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
 - (doctor) detect stray context-window snapshot files and print removal commands
 
+## [1.222.1] — 2026-10-19
+
+### Fixed
+
+- (review-summary-gen) separate stderr in tests and guard empty array on bash 3.2 (#2268)
+- (register-write) resolve 6 review findings in round lifecycle (#2252)
+- (register-write) harden round lifecycle against concurrency, reuse and fail-open gaps (#2248)
+
 ## [1.222.0] — 2026-10-18
 
 ### Added
