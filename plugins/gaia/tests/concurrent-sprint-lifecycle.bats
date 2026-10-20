@@ -5,6 +5,13 @@
 # two-phase close protocol, release pre-check, back-compat,
 # transitional state, recovery, marker-based injection refusal,
 # post-close audit, and internal ID scrub.
+#
+# Covers: cmd_close, _cmd_close_single, _cmd_close_concurrent,
+#   _cmd_close_resume, _close_post_audit, _close_non_done_stories,
+#   _close_emit_sprint_transitioned, _close_run_snapshot,
+#   _closing_marker_owner_alive, _closing_marker_sprint_id,
+#   _write_closing_marker, _closing_marker_path, _holder_sidecar_path
+#   (public-function coverage gate).
 
 load 'test_helper.bash'
 
