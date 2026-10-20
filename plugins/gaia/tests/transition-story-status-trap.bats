@@ -143,7 +143,9 @@ EOF
   local mktemp_count register_count
   mktemp_count=$(grep -cE 'mktemp[[:space:]]+"\$\{?(file|yaml)' "$TRANSITION" || true)
   register_count=$(grep -cE '_GAIA_TMP_PATHS\+=\(' "$TRANSITION" || true)
-  [ "$mktemp_count" -ge 4 ]
+  # 3 mktemp sites remain after the yaml surface moved to sprint-state.sh
+  # reconcile (no temp file needed for the reconcile path).
+  [ "$mktemp_count" -ge 3 ]
   [ "$register_count" -ge "$mktemp_count" ]
 }
 
