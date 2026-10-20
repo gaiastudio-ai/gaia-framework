@@ -36,6 +36,7 @@ SRC_COLORS="$SCRIPT_DIR/lib/statusline-colors.sh"
 SRC_PROJECT_KEY="$SCRIPT_DIR/lib/statusline-project-cache-key.sh"
 SRC_FETCHER="$SCRIPT_DIR/statusline-update-check.sh"
 SRC_DIRTY_FETCHER="$SCRIPT_DIR/statusline-git-dirty-check.sh"
+SRC_SESSION_BINDING="$SCRIPT_DIR/lib/session-binding.sh"
 
 for f in "$SRC_RUNTIME" "$SRC_GLYPHS" "$SRC_COLORS" "$SRC_PROJECT_KEY" "$SRC_FETCHER" "$SRC_DIRTY_FETCHER"; do
   if [ ! -r "$f" ]; then
@@ -54,6 +55,7 @@ DEST_COLORS="$DEST_LIB/statusline-colors.sh"
 DEST_PROJECT_KEY="$DEST_LIB/statusline-project-cache-key.sh"
 DEST_FETCHER="$DEST_BASE/statusline-update-check.sh"
 DEST_DIRTY_FETCHER="$DEST_BASE/statusline-git-dirty-check.sh"
+DEST_SESSION_BINDING="$DEST_LIB/session-binding.sh"
 
 mkdir -p "$DEST_BASE" "$DEST_LIB" "$DEST_CACHE"
 
@@ -73,6 +75,11 @@ _copy_if_different "$SRC_COLORS"  "$DEST_COLORS"
 _copy_if_different "$SRC_PROJECT_KEY" "$DEST_PROJECT_KEY"
 _copy_if_different "$SRC_FETCHER" "$DEST_FETCHER"
 _copy_if_different "$SRC_DIRTY_FETCHER" "$DEST_DIRTY_FETCHER"
+# Session-binding helper: required by the statusline for bound-sprint
+# resolution in concurrent mode.
+if [ -f "$SRC_SESSION_BINDING" ]; then
+  _copy_if_different "$SRC_SESSION_BINDING" "$DEST_SESSION_BINDING"
+fi
 
 # ---- settings.json atomic merge -------------------------------------------
 SETTINGS="$HOME/.claude/settings.json"

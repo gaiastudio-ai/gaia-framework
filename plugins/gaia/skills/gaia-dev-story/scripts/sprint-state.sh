@@ -4698,10 +4698,42 @@ main() {
         . "${_hook_lib_dir}/exec-with-timeout.sh"
       fi
       if command -v exec_with_timeout >/dev/null 2>&1; then
+        # In concurrent mode, pass the written sprint ID so the snapshot
+        # targets the correct per-sprint cache. The override --sprint takes
+        # precedence (the caller knows which sprint it wrote). For
+        # planned-to-active activation, the newly activated sprint ID is
+        # passed. Single-sprint mode keeps the original contract: existing
+        # PROJECT_ROOT/SPRINT_STATUS_YAML env, no --sprint argument.
+        local -a _hook_args=()
+        if _is_concurrent_mode; then
+          local _hook_sid=""
+          # Prefer the explicit --sprint override (reconcile_sprint_id)
+          # since that is the sprint the subcommand actually wrote.
+          if [ -n "${reconcile_sprint_id:-}" ]; then
+            _hook_sid="$reconcile_sprint_id"
+          else
+            # Resolve the written sprint from the yaml file.
+            local _hook_yaml=""
+            _hook_yaml="$(_resolve_active_yaml 2>/dev/null)" || true
+            if [ -n "$_hook_yaml" ] && [ -f "$_hook_yaml" ]; then
+              _hook_sid="$(read_yaml_sprint_id "$_hook_yaml" 2>/dev/null || true)"
+            fi
+          fi
+          if [ -n "$_hook_sid" ]; then
+            _hook_args=(--sprint "$_hook_sid")
+            # Export per-sprint state file path for downstream consumers.
+            local _hook_per_file=""
+            _hook_per_file="$(_sprint_file_path "$(dirname "$SPRINT_STATUS_YAML")" "$_hook_sid")"
+            if [ -f "$_hook_per_file" ]; then
+              export GAIA_SNAPSHOT_PER_SPRINT_FILE="$_hook_per_file"
+              export GAIA_SNAPSHOT_SPRINT_ID="$_hook_sid"
+            fi
+          fi
+        fi
         (
           export GAIA_SNAPSHOT_HOOK_ACTIVE=1
           export PROJECT_ROOT SPRINT_STATUS_YAML IMPLEMENTATION_ARTIFACTS
-          exec_with_timeout 10 "$_hook_script"
+          exec_with_timeout 10 "$_hook_script" "${_hook_args[@]+"${_hook_args[@]}"}"
         ) </dev/null >/dev/null 2>&1 &
       fi
     fi

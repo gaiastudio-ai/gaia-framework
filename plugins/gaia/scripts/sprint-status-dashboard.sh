@@ -839,6 +839,48 @@ _render_fallback_dashboard() {
 # MAIN — route to cache or fallback path
 # ==========================================================================
 
+# ---------- Multi-sprint overview renderer (concurrent mode) ----------
+# Renders a table of all non-closed sprints from per-sprint cache files.
+_render_multi_sprint_overview() {
+  local sd="$1" bound_id="${2:-}"
+  printf '\n'
+  printf '  All Active Sprints\n'
+  printf '=%.0s' {1..72}; printf '\n'
+  printf '  %-20s %12s %12s %10s %8s %10s\n' \
+    "Sprint" "Stories" "Points" "Progress" "Pace" "Phase"
+  printf '  %-20s %12s %12s %10s %8s %10s\n' \
+    "------" "-------" "------" "--------" "----" "-----"
+  local _mo_f _mo_sid _mo_marker _mo_pct _mo_done _mo_total _mo_dp _mo_tp _mo_pace _mo_phase _mo_status
+  for _mo_f in "$sd"/.sprint-progress-cache-*.json; do
+    [ -f "$_mo_f" ] || continue
+    _mo_sid="${_mo_f##*/}"
+    _mo_sid="${_mo_sid#.sprint-progress-cache-}"
+    _mo_sid="${_mo_sid%.json}"
+    # Skip caches whose recorded status is closed.
+    _mo_status="$(jq -r '.sprint.status // ""' "$_mo_f" 2>/dev/null)" || _mo_status=""
+    [[ "$_mo_status" = "closed" ]] && continue
+    _mo_pct="$(jq -r '.totals.progress_pct // 0' "$_mo_f" 2>/dev/null)" || _mo_pct="0"
+    _mo_done="$(jq -r '.totals.done_stories // 0' "$_mo_f" 2>/dev/null)" || _mo_done="0"
+    _mo_total="$(jq -r '.totals.total_stories // 0' "$_mo_f" 2>/dev/null)" || _mo_total="0"
+    _mo_dp="$(jq -r '.totals.done_points // 0' "$_mo_f" 2>/dev/null)" || _mo_dp="0"
+    _mo_tp="$(jq -r '.totals.total_points // 0' "$_mo_f" 2>/dev/null)" || _mo_tp="0"
+    _mo_pace="$(jq -r '.sprint.pace // "—"' "$_mo_f" 2>/dev/null)" || _mo_pace="—"
+    _mo_phase="$(jq -r '.sprint.active_phase // "—"' "$_mo_f" 2>/dev/null)" || _mo_phase="—"
+    _mo_marker=""
+    if [[ -n "$bound_id" ]] && [[ "$_mo_sid" = "$bound_id" ]]; then
+      _mo_marker=" *"
+    fi
+    printf '  %-20s %5s/%-5s %5s/%-5s %8s%% %8s %10s\n' \
+      "${_mo_sid}${_mo_marker}" "$_mo_done" "$_mo_total" "$_mo_dp" "$_mo_tp" \
+      "${_mo_pct%%.*}" "$_mo_pace" "$_mo_phase"
+  done
+  printf '=%.0s' {1..72}; printf '\n'
+  if [[ -n "$bound_id" ]]; then
+    printf '  * = bound sprint for this session\n'
+  fi
+  printf '\n'
+}
+
 # When SPRINT_STATUS_YAML is set without SPRINT_CACHE_JSON, force fallback.
 if [[ -n "${SPRINT_STATUS_YAML:-}" ]] && [[ -z "${SPRINT_CACHE_JSON:-}" ]]; then
   log "notice: SPRINT_STATUS_YAML set without cache override, showing basic dashboard"
@@ -853,8 +895,15 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# Derive cache path
+# Derive cache path. In concurrent mode with --sprint, prefer the per-sprint
+# cache file over the compatibility proxy.
 CACHE_FILE="${SPRINT_CACHE_JSON:-${PROJECT_ROOT}/.gaia/state/.sprint-progress-cache.json}"
+if [[ -z "${SPRINT_CACHE_JSON:-}" ]] && [[ -n "$_DASH_SPRINT_ARG" ]]; then
+  _PER_SPRINT_CACHE="${PROJECT_ROOT}/.gaia/state/.sprint-progress-cache-${_DASH_SPRINT_ARG}.json"
+  if [[ -f "$_PER_SPRINT_CACHE" ]]; then
+    CACHE_FILE="$_PER_SPRINT_CACHE"
+  fi
+fi
 
 # Shared validity check: non-empty, valid JSON, top-level object with
 # the expected shape (sprint and stories keys). Returns 0 when valid.
@@ -931,6 +980,30 @@ if ! _cache_is_valid "$CACHE_FILE"; then
   log "notice: cache unavailable after rebuild, showing basic dashboard"
   _render_fallback_dashboard
   exit 0
+fi
+
+# --- Multi-sprint overview: no --sprint in concurrent mode ---
+_DASH_STATE_DIR="${PROJECT_ROOT}/.gaia/state"
+if [[ -z "$_DASH_SPRINT_ARG" ]] && [[ -d "$_DASH_STATE_DIR" ]]; then
+  _DASH_NC_COUNT=0
+  for _df in "$_DASH_STATE_DIR"/.sprint-progress-cache-*.json; do
+    [ -f "$_df" ] || continue
+    # Skip caches whose recorded status is closed.
+    _df_st="$(jq -r '.sprint.status // ""' "$_df" 2>/dev/null)" || _df_st=""
+    [[ "$_df_st" = "closed" ]] && continue
+    _DASH_NC_COUNT=$((_DASH_NC_COUNT + 1))
+  done
+  if [[ "$_DASH_NC_COUNT" -gt 1 ]]; then
+    # Resolve the bound sprint for highlight.
+    _DASH_BOUND=""
+    _DASH_BINDING_SH="${SCRIPT_DIR}/lib/session-binding.sh"
+    _DASH_SESSION_ID="${GAIA_SESSION_ID:-}"
+    if [[ -n "$_DASH_SESSION_ID" ]] && [[ -x "$_DASH_BINDING_SH" ]]; then
+      _DASH_BOUND="$("$_DASH_BINDING_SH" read --session-id "$_DASH_SESSION_ID" --project-root "$PROJECT_ROOT" 2>/dev/null)" || _DASH_BOUND=""
+    fi
+    _render_multi_sprint_overview "$_DASH_STATE_DIR" "$_DASH_BOUND"
+    exit 0
+  fi
 fi
 
 _render_cache_dashboard "$CACHE_FILE"
