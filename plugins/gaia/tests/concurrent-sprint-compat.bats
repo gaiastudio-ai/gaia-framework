@@ -40,6 +40,15 @@ stacks:
     path: "."
 YAML
 
+  # Planning artifacts (required by the independence gate in concurrent mode).
+  local planning_dir="$TEST_DIR/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$planning_dir/epics"
+  cat > "$planning_dir/epics-and-stories.md" <<'MD'
+# Epics and Stories
+
+## E900 — Test Epic
+MD
+
   export PROJECT_ROOT="$TEST_DIR"
   export PROJECT_PATH="$TEST_DIR"
   export IMPLEMENTATION_ARTIFACTS="$IMPL_DIR"
@@ -71,6 +80,9 @@ status: ${status}
 points: 3
 risk: medium
 sprint_id: "${sprint_id}"
+predicted_touch_set: ["gaia-public/plugins/gaia/tests/fixture-${key}.txt"]
+depends_on: []
+blocks: []
 ---
 # Story: Test ${key}
 

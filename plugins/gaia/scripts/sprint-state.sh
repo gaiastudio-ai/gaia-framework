@@ -1889,6 +1889,57 @@ do_inject_locked() {
     fi
   fi
 
+  # --- Independence re-check gate ---
+  # In concurrent mode, verify the story does not violate independence
+  # rules before writing it into the sprint. The gate only reads (no lock
+  # acquisition), so no lock nesting occurs.
+  if _is_concurrent_mode; then
+    # Locate the story file using the same glob patterns as locate_story_file
+    # but without calling die on failure. Runs in a subshell to avoid
+    # clobbering STORY_FILE in the outer scope.
+    # Locate the story file. The glob + filter runs in a subshell; the
+    # legacy-path skip uses string ops instead of case to stay bash 3.2
+    # safe (case patterns with ) inside $() break the 3.2 parser).
+    local _gate_story_file=""
+    _gate_story_file="$(
+      shopt -s nullglob
+      local _matches=()
+      _matches=( "${IMPLEMENTATION_ARTIFACTS}/${story_key}-"*.md \
+                 "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${story_key}-"*/story.md )
+      shopt -u nullglob
+      local _f
+      for _f in ${_matches[@]+"${_matches[@]}"}; do
+        # Skip legacy stories/ paths — bash 3.2 safe string test.
+        if [ "${_f%/stories/*/story.md}" != "$_f" ]; then continue; fi
+        if awk 'NR==1 && /^---/ { in_fm=1; next } in_fm && /template:/ && /story/ { found=1; exit } in_fm && /^---/ { exit } END { exit (found ? 0 : 1) }' "$_f" 2>/dev/null; then
+          printf '%s' "$_f"; break
+        fi
+      done
+    )" || true
+    if [ -z "$_gate_story_file" ] || [ ! -f "$_gate_story_file" ]; then
+      die "inject: independence re-check refused — story file for $story_key not found (fail-closed in concurrent mode)"
+    fi
+    # Refuse injection when predicted_touch_set is absent (R33: fail closed).
+    if ! /usr/bin/grep -q 'predicted_touch_set:' "$_gate_story_file" 2>/dev/null; then
+      die "inject: independence re-check refused — $story_key has no predicted_touch_set (fail-closed in concurrent mode; add the field before injection)"
+    fi
+    local _gate_script="${SPRINT_STATE_SCRIPT_DIR}/independence-gate.sh"
+    if [ ! -x "$_gate_script" ]; then
+      die "inject: independence re-check refused — gate script not found: ${_gate_script} (fail-closed in concurrent mode)"
+    fi
+    local _gate_sprint_id=""
+    _gate_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null)" || true
+    if [ -z "$_gate_sprint_id" ]; then
+      die "inject: independence re-check refused — sprint_id unresolvable (fail-closed in concurrent mode)"
+    fi
+    local _gate_rc=0
+    bash "$_gate_script" "$_gate_story_file" \
+      --candidate "$_gate_sprint_id" 2>&1 || _gate_rc=$?
+    if [ "$_gate_rc" -ne 0 ]; then
+      die "inject: independence re-check failed for $story_key — mutation blocked"
+    fi
+  fi
+
   # Re-locate story file under lock.
   locate_story_file "$story_key"
 

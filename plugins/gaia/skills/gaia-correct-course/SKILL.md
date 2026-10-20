@@ -112,6 +112,8 @@ For stories **removed** from the sprint (moved back to backlog):
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" transition --story {story_key} --to backlog
 ```
 
+**Independence re-check gate (concurrent sprints only).** Before calling `inject` or editing a story's `depends_on`, `blocks`, or `predicted_touch_set`, when concurrent sprints are active, run `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh` to verify the mutation does not violate independence rules. For inject, pass the story file and `--candidate <sprint_id>`. For dependency or scope-change story-file edits, use the staged-edit entry point: `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh edit --story <file> --set <field>=<value>`. The edit mode writes a temp copy, runs the check, and applies on pass; on failure the story file is byte-unchanged.
+
 For stories **injected** into the sprint that **already have a story file** (the story file's `frontmatter.sprint_id` MUST match the active sprint):
 ```bash
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT}" "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" inject --story {story_key} [--sprint-id {sprint_id}]

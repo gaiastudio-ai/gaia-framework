@@ -40,6 +40,15 @@ stacks:
     path: "."
 YAML
 
+  # Planning artifacts (required by the independence check gate in concurrent mode).
+  local planning_dir="$TEST_DIR/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$planning_dir/epics"
+  cat > "$planning_dir/epics-and-stories.md" <<'MD'
+# Epics and Stories
+
+## E900 — Test Epic
+MD
+
   # Export variables for sprint-state.sh.
   export PROJECT_ROOT="$TEST_DIR"
   export PROJECT_PATH="$TEST_DIR"
@@ -105,11 +114,15 @@ create_story_file() {
 ---
 template: 'story'
 key: "${key}"
+epic: "E900"
 title: "Test story ${key}"
 status: backlog
 points: 3
 risk: medium
 sprint_id: "${sprint_id}"
+predicted_touch_set: ["gaia-public/plugins/gaia/tests/fixture-${key}.txt"]
+depends_on: []
+blocks: []
 ---
 # Story: Test ${key}
 YAML

@@ -819,3 +819,5 @@
 2	concurrent-sprint-lifecycle.bats	42
 3	concurrent-sprint-compat.bats	8
 3	concurrent-sprint-sweep.bats	10
+3	concurrent-sprint-recheck.bats	18
+3	concurrent-sprint-drift.bats	14

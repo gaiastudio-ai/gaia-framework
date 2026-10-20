@@ -38,6 +38,15 @@ setup() {
   LIFECYCLE="$MEMORY_PATH/lifecycle-events.jsonl"
 
   mkdir -p "$STATE_DIR" "$ART_DIR" "$ARCHIVE_DIR" "$MEMORY_PATH" "$CKPT_DIR" "$CONFIG_DIR"
+
+  # Planning artifacts (required by the independence gate in concurrent mode).
+  local planning_dir="$TEST_TMP/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$planning_dir/epics"
+  cat > "$planning_dir/epics-and-stories.md" <<'MD'
+# Epics and Stories
+
+## E900 — Test Epic
+MD
 }
 
 teardown() {
@@ -327,6 +336,9 @@ status: ready-for-dev
 sprint_id: "sprint-900"
 points: 3
 risk: medium
+predicted_touch_set: ["gaia-public/plugins/gaia/tests/fixture-E900-S4.txt"]
+depends_on: []
+blocks: []
 ---
 # Story: Test story
 YAML
@@ -360,6 +372,9 @@ status: ready-for-dev
 sprint_id: "sprint-900"
 points: 3
 risk: medium
+predicted_touch_set: ["gaia-public/plugins/gaia/tests/fixture-E900-S4.txt"]
+depends_on: []
+blocks: []
 ---
 # Story: Test story
 YAML

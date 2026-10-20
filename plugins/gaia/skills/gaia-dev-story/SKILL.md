@@ -481,6 +481,16 @@ This gate sits OUTSIDE the Step 5 TDD body so the pause-free TDD invariant is pr
 The hook fires exactly once per Step 5. If the gate returns `SKIP`, no subagent is dispatched and no prompt is presented.
 <!-- step5 tdd-review-gate end -->
 
+### Step 5b -- Touch-set Drift Check (concurrent sprints only)
+
+When concurrent sprints are active (`sprint.max_concurrent_active` > 1 AND per-sprint state files exist), run the touch-set drift detector after the TDD Red phase:
+
+- Run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"` from inside the story's worktree.
+- **Exit 0:** no drift — continue to Step 6.
+- **Exit 1:** drift detected. The drifted files are named on stdout. HALT the story. Record a finding: `| N | bug | high | Touch-set drift: files outside predicted_touch_set modified: {file_list} | Update predicted_touch_set and re-run independence check |`. Resume only after the operator updates the touch-set via `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh edit --story "$STORY_FILE" --set predicted_touch_set=<explicit_paths>` (no new wildcard entries covering the drifted paths).
+- **Exit 2:** fail-closed (non-git workspace in concurrent mode, or unresolvable drift base). HALT with the diagnostic.
+- **Single-sprint mode:** the script exits 0 immediately.
+
 ### Step 6 -- TDD Green Phase (Implement to Pass)
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 6 tdd-green {story_key}` to record the step-boundary event.
@@ -524,6 +534,10 @@ This gate sits OUTSIDE the Step 6 TDD body so the pause-free TDD invariant is pr
 
 The hook fires exactly once per Step 6 and ALWAYS BEFORE Step 6b advisory hints.
 <!-- step6 tdd-review-gate end -->
+
+### Step 6c -- Touch-set Drift Check (concurrent sprints only)
+
+Same protocol as Step 5b. Run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"` after the Green phase. Same halt/resume/finding semantics.
 
 <!-- step 6b begin -->
 ### Step 6b -- Conditional Check Advisory Hints
@@ -575,6 +589,10 @@ The hook fires exactly once per Step 7 and ALWAYS BEFORE Step 7b Val-in-TDD pass
 <!-- step7 tdd-review-gate end -->
 
 <!-- step 7b begin -->
+### Step 7c -- Touch-set Drift Check (concurrent sprints only)
+
+Same protocol as Step 5b. Run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"` after the Refactor phase. Same halt/resume/finding semantics.
+
 ### Step 7b -- Val-in-TDD single post-Refactor pass
 
 After Step 7 Refactor completes with all tests green, run a SINGLE Val pass over the diff (artifacts touched during Steps 5-7) before moving on to Step 8 Capture Findings. This restores V1's Val-in-TDD capability without re-introducing per-phase pauses inside the TDD body — Steps 5/6/7 remain pause-free per the contract enforced by `tests/skills/gaia-dev-story-step7b-val.bats`.
@@ -651,6 +669,8 @@ else:
 ### Step 10 -- Commit and Push
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 10 commit-push {story_key}` to record the step-boundary event.
+
+**Touch-set drift check (concurrent sprints only).** Before staging files for commit, run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"`. Same halt/resume/finding protocol as Step 5b. This catches drift introduced during the TDD cycle that was not caught by the per-phase checks.
 
 <!-- step10 script-wiring begin -->
 At the top of the CI section — before any commit / push action — the orchestrator
