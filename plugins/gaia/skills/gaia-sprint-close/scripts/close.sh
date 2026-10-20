@@ -3,12 +3,12 @@
 #
 # Closes the active sprint:
 #   1. Pre-conditions — retro doc present, idempotency check, all-done-or-force.
-#   2. Yaml write — `yq -i '.status = "closed" | .closed_at = "<ISO>"'`.
+#   2. Status write — delegates to sprint-state.sh close writer.
 #   3. Archive — copy yaml to .gaia/artifacts/implementation-artifacts/sprint-archive/.
 #   4. Lifecycle event — append `sprint_closed` via lifecycle-event.sh.
 #
-# Lifts the boundary-write restriction from
-# feedback_sprint_boundary_yaml_write.md inside this script ONLY.
+# All state-file writes are performed by the sprint-state.sh close writer;
+# close.sh takes no lock and performs no direct yq writes to the state file.
 #
 # The skill's separate `finalize.sh` is the generic plugin lifecycle hook
 # (write checkpoint, emit `workflow_complete`); this script is the action.
@@ -182,6 +182,7 @@ USAGE
 
 FORCE_ROLLOVER_RAW=""
 FORCE_BYPASS_SENTINEL=0
+_RESUME_MODE=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -215,12 +216,51 @@ SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
 # ---------- Step 2 — Idempotency short-circuit ----------
 # Done BEFORE retro check so already-closed sprints don't require an existing
 # retro doc (idempotency check doesn't require retro presence).
+# In concurrent mode: closed + archive present = exit 0; closed + archive
+# missing = resume via the close writer (exception to closed-id refusal).
+# In single-sprint mode: closed = exit 0 regardless of archive presence.
 
 current_status="$(yaml_top_scalar status "$YAML_PATH")"
 if [ "$current_status" = "closed" ]; then
   existing_closed_at="$(yaml_top_scalar closed_at "$YAML_PATH")"
-  warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
-  exit 0
+
+  # Detect concurrent mode via the lock library.
+  _is_concurrent=0
+  _lock_lib="${PLUGIN_SCRIPTS_DIR}/lib/acquire-lock.sh"
+  if [ -f "$_lock_lib" ]; then
+    # shellcheck source=../../../scripts/lib/acquire-lock.sh
+    . "$_lock_lib"
+    _max_conc=""
+    _cfg="${PROJECT_CONFIG:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/project-config.yaml}"
+    if [ -f "$_cfg" ]; then
+      _max_conc="$(yq '.sprint.max_concurrent_active // ""' "$_cfg" 2>/dev/null)" || _max_conc=""
+    fi
+    _state_dir="$(dirname "$YAML_PATH")"
+    if acquire_lock_is_concurrent_mode "$_max_conc" "$_state_dir" 2>/dev/null; then
+      _is_concurrent=1
+    fi
+  fi
+
+  if [ "$_is_concurrent" -eq 1 ]; then
+    # Concurrent mode: check for archive.
+    _archive_pattern="$ARCHIVE_DIR/${SPRINT_ID}-closed-*.yaml"
+    _archive_count=0
+    for _af in $_archive_pattern; do
+      [ -f "$_af" ] && _archive_count=$((_archive_count + 1))
+    done
+
+    if [ "$_archive_count" -gt 0 ]; then
+      warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+      exit 0
+    fi
+    # Archive missing — resume. Will be passed to the close writer below.
+    _RESUME_MODE=1
+    warn "warning: sprint ${SPRINT_ID} is closed but archive is missing — resuming"
+  else
+    # Single-sprint mode: exit 0 regardless of archive presence.
+    warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+    exit 0
+  fi
 fi
 
 # ---------- Step 1 — Pre-condition: retro doc exists ----------
@@ -331,58 +371,55 @@ else
   _sentinel_force_bypassed=0
 fi
 
-# ---------- Step 4 — Yaml write ----------
-# Route the status flip through sprint-state.sh transition (the sanctioned
-# review→closed boundary writer) rather than direct yq -i. When sprint-state.sh
-# is not available (e.g., legacy fixtures or tests) or when the transition is
-# not a legal edge in the state machine (e.g. active→closed), fall back to the
-# direct yq -i path. The sentinel gate above has already verified that
-# /gaia-sprint-review ran (or --force was passed), so every path below is safe.
+# ---------- Step 4 — Status write via sprint-state.sh close writer ----------
+# All state-file writes are delegated to the sprint-state.sh close writer.
+# close.sh takes no lock and performs no direct yq writes. When
+# sprint-state.sh is missing or not executable, close.sh fails loudly.
 
 CLOSED_AT="$(iso_now)"
 SPRINT_STATE_SH="${SPRINT_STATE_SH:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/sprint-state.sh}"
 
-if [ -x "$SPRINT_STATE_SH" ]; then
-  # Capture the transition's exit code and stderr so close.sh can distinguish:
-  #   exit 0  — review->closed succeeded; stamp closed_at only.
-  #   exit 2 + mismatch phrase — sprint-id mismatch; propagate the message, stop.
-  #   exit 2 without mismatch phrase — other exit-2 error; stop with generic message.
-  #   any other non-zero — non-legal edge (e.g. active->closed). Fall back to
-  #     direct yq — safe because the sentinel gate already passed above.
-  #
-  # Plain assignments (not `local`) because close.sh runs at script top level
-  # where every bash version rejects `local` outside a function.
-  _trans_stderr="$(mktemp)"
-  _trans_rc=0
-  "$SPRINT_STATE_SH" transition --sprint "$SPRINT_ID" --to closed \
-    >/dev/null 2>"$_trans_stderr" || _trans_rc=$?
+if [ ! -x "$SPRINT_STATE_SH" ]; then
+  die "sprint-state.sh not found or not executable at $SPRINT_STATE_SH — cannot close sprint"
+fi
 
-  if [ "$_trans_rc" -eq 0 ]; then
-    rm -f "$_trans_stderr"
-    yq -i ".closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
-      || die "yq closed_at write failed on $YAML_PATH after sprint-state.sh transition"
-  elif [ "$_trans_rc" -eq 2 ] \
-    && grep -q 'does not match active sprint-status.yaml sprint_id' "$_trans_stderr"; then
-    # Sprint-id mismatch — propagate the writer's message (it names both ids).
-    cat "$_trans_stderr" >&2
-    rm -f "$_trans_stderr"
-    exit 1
-  elif [ "$_trans_rc" -eq 2 ]; then
-    # Exit 2 without the mismatch phrase (parse error or other advisory).
-    cat "$_trans_stderr" >&2
-    rm -f "$_trans_stderr"
-    die "transition failed (exit $_trans_rc)"
-  else
-    # Any other non-zero exit (e.g. active->closed is not a legal edge in the
-    # state machine, missing sentinel). Fall back to direct yq — safe because
-    # the sentinel gate already passed above.
-    rm -f "$_trans_stderr"
-    yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
-      || die "yq write failed on $YAML_PATH"
-  fi
+# Build the close writer arguments.
+_close_args=(close --sprint-id "$SPRINT_ID" --closed-at "$CLOSED_AT"
+             --pre-close-status "$current_status")
+# Pass --force only when the sentinel was actually bypassed (not just
+# when the user passed --force — if the sentinel was present, it's a
+# normal review-to-closed regardless of --force).
+if [ "${_sentinel_force_bypassed:-0}" -eq 1 ]; then
+  _close_args+=(--force)
+fi
+if [ -n "$FORCE_ROLLOVER_RAW" ]; then
+  _close_args+=(--rollover-keys "$FORCE_ROLLOVER_RAW")
+fi
+if [ "${_RESUME_MODE:-0}" -eq 1 ]; then
+  _close_args+=(--resume)
+fi
+
+# Capture the close writer's exit code and stderr.
+_close_stderr="$(mktemp)"
+_close_rc=0
+"$SPRINT_STATE_SH" "${_close_args[@]}" 2>"$_close_stderr" || _close_rc=$?
+
+if [ "$_close_rc" -eq 0 ]; then
+  rm -f "$_close_stderr"
+elif [ "$_close_rc" -eq 2 ]; then
+  # Sprint-id mismatch or transition refusal — propagate the message.
+  cat "$_close_stderr" >&2
+  rm -f "$_close_stderr"
+  die "close writer failed (exit $_close_rc)"
+elif [ "$_close_rc" -eq 3 ] || [ "$_close_rc" -eq 4 ] || [ "$_close_rc" -eq 5 ]; then
+  # Lock contention, symlink, or identity mismatch.
+  cat "$_close_stderr" >&2
+  rm -f "$_close_stderr"
+  exit "$_close_rc"
 else
-  yq -i ".status = \"closed\" | .closed_at = \"${CLOSED_AT}\"" "$YAML_PATH" \
-    || die "yq write failed on $YAML_PATH"
+  cat "$_close_stderr" >&2
+  rm -f "$_close_stderr"
+  die "close writer failed (exit $_close_rc)"
 fi
 
 # ---------- Step 5 — Archive ----------

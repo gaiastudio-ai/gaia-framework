@@ -815,6 +815,6 @@
 1	ci-fast-feedback-cap.bats	5
 1	publish-gate-release-commit.bats	5
 3	concurrent-sprint-surfaces.bats	28
-4	test-hygiene-guard.bats	15
-3	concurrent-sprint-compat.bats	8
-3	concurrent-sprint-sweep.bats	10
+2	concurrent-sprint-lifecycle.bats	26
+2	concurrent-sprint-lifecycle.bats	42
+2	concurrent-sprint-lifecycle.bats	42

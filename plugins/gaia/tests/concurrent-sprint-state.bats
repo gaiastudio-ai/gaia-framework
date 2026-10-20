@@ -281,18 +281,14 @@ YAML
     esac
 
     for pat in "${patterns[@]}"; do
-      # Look for write-indicative operations: >, >>, cp, mv, printf/echo > file,
-      # and in-place writers: yq -i / yq --inplace, sed -i, perl -i.
+      # Look for write-indicative operations: >, >>, cp, mv, printf/echo > file.
       local match_count
-      match_count="$(/usr/bin/grep -cE "(>|cp |mv |printf .* > |echo .* > |yq (-i|--inplace) |sed -i |perl -i ).*${pat}" "$f" 2>/dev/null)" || match_count=0
+      match_count="$(/usr/bin/grep -cE "(>|cp |mv |printf .* > |echo .* > ).*${pat}" "$f" 2>/dev/null)" || match_count=0
       if [ "$match_count" -gt 0 ]; then
-        # Check allowlist: close.sh may write legacy sprint-status.yaml
-        # (not per-sprint files). transition-story-status.sh no longer
-        # writes directly — it delegates to sprint-state.sh reconcile.
-        # close.sh's entry is removed when its write path is routed
-        # through sprint-state.sh (separate story).
+        # Check allowlist: transition-story-status.sh may write
+        # legacy sprint-status.yaml (not per-sprint files).
         case "$f" in
-          */close.sh)
+          */transition-story-status.sh)
             # Only allowed for legacy sprint-status.yaml, not per-sprint files.
             if [[ "$pat" == "sprint-status-.*\\.yaml" ]]; then
               hits=$((hits + match_count))

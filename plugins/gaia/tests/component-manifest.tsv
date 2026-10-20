@@ -114,6 +114,7 @@ core	concurrent-sprint-config.bats
 core	concurrent-sprint-glossary.bats
 core	concurrent-sprint-independence-cd.bats
 core	concurrent-sprint-ledger.bats
+core	concurrent-sprint-lifecycle.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-merge.bats
 core	concurrent-sprint-perf.bats
