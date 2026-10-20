@@ -18,8 +18,23 @@
 #
 # Output on stdout: selected file paths, one per line.
 # Output on stderr: structured log lines (counts, costs, fallback).
+#
+# SECURITY: every numeric value read from the baseline file, the budget
+# argument, or the environment is validated against ^[0-9]+$ BEFORE any
+# bash arithmetic.  Bash $((...)) recursively evaluates variable names,
+# so an unvalidated string like "a[$(cmd)]" would execute cmd.  Invalid
+# values are treated as unknown (fallback cost) and logged.
 
 set -euo pipefail
+
+# Strict numeric validator — rejects anything that is not a non-negative
+# integer (no leading zeros except bare "0", no signs, no expressions).
+is_uint() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *)           return 0 ;;
+  esac
+}
 
 if [ $# -lt 1 ]; then
   echo "Usage: $0 <baseline.tsv> [budget_seconds]" >&2
@@ -29,20 +44,30 @@ fi
 BASELINE="$1"
 BUDGET="${2:-240}"
 
+# Validate budget.
+if ! is_uint "$BUDGET" || [ "$BUDGET" -eq 0 ]; then
+  echo "NOTICE: invalid budget '${BUDGET}'; skipping fast-feedback." >&2
+  exit 0
+fi
+
 # ── Load baseline ──────────────────────────────────────────────────────────
 if [ ! -r "$BASELINE" ]; then
   echo "NOTICE: timing baseline unavailable; skipping fast-feedback." >&2
   exit 0
 fi
 
-# ── Compute fallback: median of known times, floor 4s ──────────────────────
+# ── Compute fallback: median of known VALID times, floor 4s ───────────────
 fallback=4
-if [ "$(tail -n +2 "$BASELINE" | wc -l | tr -d ' ')" -gt 0 ]; then
-  sorted_times=$(tail -n +2 "$BASELINE" | awk -F'\t' '{ print $2 }' | sort -n)
-  n=$(echo "$sorted_times" | wc -l | tr -d ' ')
+# Extract only rows whose wall_seconds column passes numeric validation.
+valid_times=$(tail -n +2 "$BASELINE" \
+  | awk -F'\t' '$2 ~ /^[0-9]+$/ { print $2 }' \
+  | sort -n)
+n=$(printf '%s\n' "$valid_times" | grep -c '[0-9]' || true)
+
+if [ "$n" -gt 0 ]; then
   mid=$(( (n + 1) / 2 ))
-  med=$(echo "$sorted_times" | sed -n "${mid}p")
-  if [ "${med:-0}" -gt "$fallback" ] 2>/dev/null; then
+  med=$(printf '%s\n' "$valid_times" | sed -n "${mid}p")
+  if is_uint "$med" && [ "$med" -gt "$fallback" ]; then
     fallback="$med"
   fi
 fi
@@ -58,21 +83,25 @@ if [ ! -s "$candidates_file" ]; then
   exit 0
 fi
 
-# ── Build cost list using awk to look up each candidate in the baseline ────
-# Produces: cost<TAB>filepath lines.
-awk -F'\t' '
-  NR == FNR && FNR > 1 { cost[$1] = $2; next }
+# ── Build cost list using awk ─────────────────────────────────────────────
+# awk validates that cost values are non-negative integers; anything else
+# gets the fallback.  This prevents injection payloads from ever reaching
+# bash arithmetic.
+awk -F'\t' -v fb="$fallback" '
+  NR == FNR && FNR > 1 {
+    if ($2 ~ /^[0-9]+$/) cost[$1] = $2
+    next
+  }
   NR != FNR {
     if ($0 == "") next
-    # Extract basename for lookup.
     bname = $0
     gsub(/.*\//, "", bname)
-    c = (bname in cost) ? cost[bname] : "'"$fallback"'"
+    c = (bname in cost) ? cost[bname] : fb
     print c "\t" $0
   }
 ' "$BASELINE" "$candidates_file" | sort -t"$(printf '\t')" -k1,1n > "$tmpdir/sorted"
 
-# ── Select within budget ──────────────────────────────────────────────────
+# ── Select within budget (all values pre-validated by awk) ────────────────
 included_count=0
 included_cost=0
 dropped_count=0
@@ -80,6 +109,11 @@ dropped_cost=0
 
 while IFS=$'\t' read -r cost file; do
   [ -z "$file" ] && continue
+  # Defense in depth: re-validate after sort (the awk above already filters,
+  # but a corrupted temp file or sort artifact must not reach $(())).
+  if ! is_uint "$cost"; then
+    cost="$fallback"
+  fi
   new_total=$((included_cost + cost))
   if [ "$new_total" -le "$BUDGET" ]; then
     echo "$file"

@@ -1,4 +1,4 @@
-file	wall_seconds
+#file	wall_seconds
 AF-2026-05-21-4-review-skill-resolvers.bats	1
 E74-S10-test-device-matrix.bats	1
 E74-S10-test-mobile-e2e.bats	1
@@ -162,7 +162,7 @@ check-status-discipline.bats	1
 check-story-layout-sync.bats	1
 checkpoint.bats	1
 ci-config-slice.bats	1
-ci-fast-feedback-cap.bats	1
+ci-fast-feedback-cap.bats	60
 ci-prefix-detection.bats	1
 ci-regen-helpers-coverage.bats	1
 ci-skip-shim-parity.bats	1
