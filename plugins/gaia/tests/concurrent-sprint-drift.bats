@@ -317,7 +317,7 @@ _perf_check() {
   }
 }
 
-@test "warm cache invalidates on story change and re-parses only changed file" {
+@test "warm re-check within 2 seconds for 3x15 stories with one change" {
   # Create 3 active sprints with 15 stories each.
   local s snum key sid epic
   for s in 900 901 902; do
@@ -345,41 +345,43 @@ STORY
     done
   done
 
-  # Cold run (populates cache).
+  # Cold run (populates parse cache + realpath cache).
   local cache_dir; cache_dir="$(mktemp -d)"
   export GAIA_IC_CACHE_DIR="$cache_dir"
   bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || true
 
-  # Verify cache populated.
+  # Verify cache populated (parse entries + realpath entries).
   local cache_count
   cache_count="$(find "$cache_dir" -type f | wc -l | tr -d ' ')"
   [ "$cache_count" -ge 45 ]
 
-  # Change one story file.
+  # Change one story file so its cache entry is invalidated.
   echo "# changed" >> "$IMPL_DIR/epic-e900/E900-S1-perf/story.md"
 
-  # Warm run: cache invalidates for changed file, result still correct.
-  local rc=0
+  # Time ONLY the warm re-check (sub-second timer).
+  local t0 t1 elapsed rc=0
+  t0="$(_perf_now)"
   bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || rc=$?
+  t1="$(_perf_now)"
+  elapsed="$(python3 -c "print($t1-$t0)" 2>/dev/null || echo "$((${t1%%.*} - ${t0%%.*}))")"
+
+  # Check passes (no overlap in disjoint fixture).
   [ "$rc" -eq 0 ]
 
-  # Warm run faster than cold (cache reduces parsing).
-  local t0_cold t1_cold t0_warm t1_warm
-  # Re-cold: clear cache, time it.
-  rm -rf "$cache_dir"/*
-  t0_cold="$(_perf_now)"
-  bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || true
-  t1_cold="$(_perf_now)"
-  # Re-warm: change a different file, time it.
-  echo "# changed2" >> "$IMPL_DIR/epic-e901/E901-S1-perf/story.md"
-  t0_warm="$(_perf_now)"
-  bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || true
-  t1_warm="$(_perf_now)"
-  local cold_t warm_t
-  cold_t="$(python3 -c "print($t1_cold-$t0_cold)" 2>/dev/null || echo "99")"
-  warm_t="$(python3 -c "print($t1_warm-$t0_warm)" 2>/dev/null || echo "99")"
-  # Warm must be faster than cold (cache benefit).
-  python3 -c "import sys; sys.exit(0 if float('$warm_t') < float('$cold_t') else 1)" 2>/dev/null
+  # Warm must complete within 2 seconds.
+  _perf_check "$elapsed" 2
+
+  # Verify cache invalidation: the changed story must have been re-parsed.
+  # Its cache entry's stat line must reflect the NEW mtime+size (not the
+  # original). Read the cache entry for E900-S1 and compare.
+  local changed_sf="$IMPL_DIR/epic-e900/E900-S1-perf/story.md"
+  local current_stat
+  current_stat="$(stat -c '%Y %s' "$changed_sf" 2>/dev/null || stat -f '%m %z' "$changed_sf" 2>/dev/null)"
+  local cid
+  cid="$(printf '%s' "$changed_sf" | md5 2>/dev/null || printf '%s' "$changed_sf" | md5sum 2>/dev/null | cut -d' ' -f1)"
+  local cached_stat
+  cached_stat="$(head -1 "$cache_dir/$cid" 2>/dev/null || echo "MISSING")"
+  [ "$cached_stat" = "$current_stat" ]
 
   rm -rf "$cache_dir"
 }

@@ -1110,16 +1110,40 @@ _ic_run_rules_cd() {
   done < "$tmpdir/all_fps.tsv" > "$existing_files"
 
   if [ -s "$existing_files" ]; then
-    # Resolve all paths. One realpath call per file but in a tight loop
-    # (no other subprocesses per iteration). Uses the external realpath
-    # command so shimmed/overridden realpath is respected (fail-closed).
+    # Resolve all paths. Uses a per-file realpath cache when
+    # GAIA_IC_CACHE_DIR is set to avoid redundant subprocess forks on
+    # the warm-start hot path (AC9 2-second budget).
     : > "$tmpdir/realpath_paired.tsv"
+    local _rp_cache_dir=""
+    if [ -n "$_ic_cache_dir" ] && [ -d "$_ic_cache_dir" ]; then
+      _rp_cache_dir="${_ic_cache_dir}/rp"
+      mkdir -p "$_rp_cache_dir"
+    fi
     while IFS=$'\t' read -r fp norm; do
       [ -n "$fp" ] || continue
-      local rp
-      rp="$(realpath "$fp" 2>&1)" || {
-        _ic_die "realpath failed for ${fp}: ${rp}"
-      }
+      local rp="" _rp_hit=0
+      if [ -n "$_rp_cache_dir" ]; then
+        local _rp_fstat _rp_cid _rp_cf
+        _rp_fstat="$(stat -c '%Y %s' "$fp" 2>/dev/null || stat -f '%m %z' "$fp" 2>/dev/null || echo "0 0")"
+        _rp_cid="$(printf '%s' "$fp" | md5 2>/dev/null || printf '%s' "$fp" | md5sum 2>/dev/null | cut -d' ' -f1)"
+        _rp_cf="${_rp_cache_dir}/${_rp_cid}"
+        if [ -f "$_rp_cf" ]; then
+          local _rp_cs
+          _rp_cs="$(head -1 "$_rp_cf")"
+          if [ "$_rp_cs" = "$_rp_fstat" ]; then
+            rp="$(tail -1 "$_rp_cf")"
+            _rp_hit=1
+          fi
+        fi
+      fi
+      if [ "$_rp_hit" -eq 0 ]; then
+        rp="$(realpath "$fp" 2>&1)" || {
+          _ic_die "realpath failed for ${fp}: ${rp}"
+        }
+        if [ -n "$_rp_cache_dir" ]; then
+          { printf '%s\n%s\n' "$_rp_fstat" "$rp"; } > "$_rp_cf"
+        fi
+      fi
       printf '%s\t%s\n' "$norm" "$rp"
     done < "$existing_files" > "$tmpdir/realpath_paired.tsv"
   else
