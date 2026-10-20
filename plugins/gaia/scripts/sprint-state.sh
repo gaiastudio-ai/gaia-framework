@@ -1894,22 +1894,31 @@ do_inject_locked() {
   # rules before writing it into the sprint. The gate only reads (no lock
   # acquisition), so no lock nesting occurs.
   if _is_concurrent_mode; then
+    # Locate the story file via resolve-story-file.sh (source it once
+    # for the gate, reusable across calls within the same process).
+    if ! type -t resolve_story_file >/dev/null 2>&1; then
+      # shellcheck source=resolve-story-file.sh
+      . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+    fi
     local _gate_story_file=""
     _gate_story_file="$(resolve_story_file "$story_key" 2>/dev/null)" || true
-    if [ -n "$_gate_story_file" ] && [ -f "$_gate_story_file" ]; then
-      local _gate_script="${SCRIPT_DIR}/independence-gate.sh"
-      if [ -x "$_gate_script" ]; then
-        local _gate_sprint_id=""
-        _gate_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null)" || true
-        if [ -n "$_gate_sprint_id" ]; then
-          local _gate_rc=0
-          bash "$_gate_script" "$_gate_story_file" \
-            --candidate "$_gate_sprint_id" 2>&1 || _gate_rc=$?
-          if [ "$_gate_rc" -ne 0 ]; then
-            die "inject: independence re-check failed for $story_key — mutation blocked"
-          fi
-        fi
-      fi
+    if [ -z "$_gate_story_file" ] || [ ! -f "$_gate_story_file" ]; then
+      die "inject: independence re-check refused — story file for $story_key not found (fail-closed in concurrent mode)"
+    fi
+    local _gate_script="${SPRINT_STATE_SCRIPT_DIR}/independence-gate.sh"
+    if [ ! -x "$_gate_script" ]; then
+      die "inject: independence re-check refused — gate script not found: ${_gate_script} (fail-closed in concurrent mode)"
+    fi
+    local _gate_sprint_id=""
+    _gate_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null)" || true
+    if [ -z "$_gate_sprint_id" ]; then
+      die "inject: independence re-check refused — sprint_id unresolvable (fail-closed in concurrent mode)"
+    fi
+    local _gate_rc=0
+    bash "$_gate_script" "$_gate_story_file" \
+      --candidate "$_gate_sprint_id" 2>&1 || _gate_rc=$?
+    if [ "$_gate_rc" -ne 0 ]; then
+      die "inject: independence re-check failed for $story_key — mutation blocked"
     fi
   fi
 

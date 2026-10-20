@@ -342,6 +342,134 @@ YAML
 
 # ---- AC8: no internal traceability identifiers ----
 
+# ---- AC1: gate inside sprint-state.sh inject (through the REAL inject path) ----
+
+@test "sprint-state.sh inject refuses overlapping story in concurrent mode" {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  _mk_story "E900-S2" "E900" "gaia-public/plugins/gaia/scripts/independence-check.sh" "sprint-900"
+  # Inject via the REAL sprint-state.sh inject subcommand.
+  run bash -c "PROJECT_PATH='$TEST_DIR' IMPLEMENTATION_ARTIFACTS='$IMPL_DIR' \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash '$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh' inject \
+      --story E900-S2 --sprint-id sprint-900 2>&1"
+  [ "$status" -ne 0 ]
+  # Must be refused by the independence gate (FAIL or refused message).
+  [[ "$output" == *"FAIL"* ]] || [[ "$output" == *"refused"* ]] || [[ "$output" == *"blocked"* ]]
+  # State file must NOT contain E900-S2.
+  ! /usr/bin/grep -q "E900-S2" "$STATE_DIR/sprint-status-sprint-900.yaml"
+}
+
+@test "sprint-state.sh inject succeeds for non-overlapping story in concurrent mode" {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  _mk_story "E900-S3" "E900" "gaia-public/plugins/gaia/scripts/lifecycle-event.sh" "sprint-900"
+  run bash -c "PROJECT_PATH='$TEST_DIR' IMPLEMENTATION_ARTIFACTS='$IMPL_DIR' \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash '$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh' inject \
+      --story E900-S3 --sprint-id sprint-900 2>&1"
+  [ "$status" -eq 0 ]
+  /usr/bin/grep -q "E900-S3" "$STATE_DIR/sprint-status-sprint-900.yaml"
+}
+
+@test "sprint-state.sh inject skips gate in single-sprint mode" {
+  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+project_name: "single-sprint"
+stacks:
+  - name: bash
+    path: "."
+YAML
+  rm -f "$STATE_DIR"/sprint-status-*.yaml
+  # Create a single-sprint state file.
+  cat > "$STATE_DIR/sprint-status.yaml" <<'YAML'
+sprint_id: "sprint-900"
+status: active
+total_points: 0
+goals: []
+stories: []
+YAML
+  _mk_story "E900-S1" "E900" "gaia-public/plugins/gaia/scripts/sprint-state.sh" "sprint-900"
+  PROJECT_PATH="$TEST_DIR" \
+    bash "$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh" inject \
+      --story E900-S1 2>&1
+  /usr/bin/grep -q "E900-S1" "$STATE_DIR/sprint-status.yaml"
+}
+
+# ---- Fail-closed: gate refuses when story file not found ----
+
+@test "inject gate refuses when story file resolution fails in concurrent mode" {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  # Try to inject a key with no story file.
+  local out
+  out="$(PROJECT_PATH="$TEST_DIR" \
+    bash "$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh" inject \
+      --story E900-S99 --sprint-id sprint-900 2>&1)" || true
+  [[ "$out" == *"fail-closed"* ]] || [[ "$out" == *"not found"* ]]
+}
+
+# ---- Fail-closed: catch-all refuses when independence-check.sh absent ----
+
+@test "catch-all flag change refuses when independence-check.sh absent in concurrent mode" {
+  _create_sprint "sprint-900" "active" "E28-S500:E28:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E28-S501:E28:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  # Rename independence-check.sh to simulate absence.
+  local ic="$BATS_TEST_SCRIPT_DIR/scripts/independence-check.sh"
+  mv "$ic" "${ic}.bak"
+  local before
+  before="$(cat "$PLANNING_DIR/epics-and-stories.md")"
+  run bash "$CAF_SCRIPT" --unset E28 \
+    --epics-file "$PLANNING_DIR/epics-and-stories.md" --shards-dir "$SHARDS_DIR"
+  mv "${ic}.bak" "$ic"
+  [ "$status" -ne 0 ]
+  # Epics file must be byte-identical (no change applied).
+  local after
+  after="$(cat "$PLANNING_DIR/epics-and-stories.md")"
+  [ "$before" = "$after" ]
+}
+
+# ---- Injection prevention: malicious key rejected ----
+
+@test "independence-gate.sh rejects malicious story key format" {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  # Create a story file with a malicious key.
+  local evil_dir="$IMPL_DIR/epic-e900/evil-test-story"
+  mkdir -p "$evil_dir"
+  cat > "$evil_dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S1;rm -rf /"
+epic: "E900"
+status: in-progress
+sprint_id: "sprint-900"
+predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]
+depends_on: []
+blocks: []
+---
+# Story
+STORY
+  run bash "$GATE_SCRIPT" "$evil_dir/story.md" --candidate sprint-900
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid story key format"* ]]
+}
+
+# ---- Catch-all flag refusal leaves epics file byte-identical ----
+
+@test "catch-all flag violation refusal leaves epics file byte-identical" {
+  _create_sprint "sprint-900" "active" "E28-S500:E28:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E28-S501:E28:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  local before
+  before="$(cat "$PLANNING_DIR/epics-and-stories.md")"
+  run bash "$CAF_SCRIPT" --unset E28 \
+    --epics-file "$PLANNING_DIR/epics-and-stories.md" --shards-dir "$SHARDS_DIR"
+  [ "$status" -ne 0 ]
+  local after
+  after="$(cat "$PLANNING_DIR/epics-and-stories.md")"
+  [ "$before" = "$after" ]
+}
+
+# ---- AC8: no internal traceability identifiers ----
+
 @test "no internal traceability identifiers in published gate script" {
   [ -f "$GATE_SCRIPT" ]
   # Scan for leaked IDs; exclude load-bearing regex patterns and test fixtures.

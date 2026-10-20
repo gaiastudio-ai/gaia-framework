@@ -533,6 +533,21 @@ _catch_all_set_unset() {
   local gate_result="pass"
   local ic_script="${script_dir}/../independence-check.sh"
 
+  # Fail closed in concurrent mode: the independence check must be present.
+  if [ ! -x "$ic_script" ]; then
+    # Check if concurrent mode is active (per-sprint files exist).
+    local _caf_has_per_sprint=0
+    for f in "${state_dir}"/sprint-status-*.yaml; do
+      [ -f "$f" ] || continue
+      case "$f" in *.lock|*.result) continue ;; esac
+      _caf_has_per_sprint=1; break
+    done
+    if [ "$_caf_has_per_sprint" -eq 1 ]; then
+      printf 'catch-all-flag.sh: independence check not found — refusing change (fail-closed in concurrent mode)\n' >&2
+      return 1
+    fi
+  fi
+
   if [ -x "$ic_script" ]; then
     # Find the first active sprint (any one will do for the check).
     local first_sprint=""
@@ -559,23 +574,35 @@ _catch_all_set_unset() {
     done
 
     if [ -n "$first_sprint" ]; then
-      # Back up the epics file, apply the change, check, then revert on failure.
-      local epics_backup
-      epics_backup="$(mktemp "${TMPDIR:-/tmp}/caf-bak.XXXXXX")"
-      cp "$epics_file" "$epics_backup"
+      # Stage the edit in a temp copy, check against it, then atomically
+      # move into place on pass. The real file is never modified until the
+      # check succeeds — crash-safe.
+      local epics_staged
+      epics_staged="$(mktemp "${TMPDIR:-/tmp}/caf-staged.XXXXXX")"
+      cp "$epics_file" "$epics_staged"
+      _catch_all_write_inline_marker "$epics_staged" "$epic_key" "$new_val"
 
-      # Apply the flag change to the real file (pre-check).
-      _catch_all_write_inline_marker "$epics_file" "$epic_key" "$new_val"
+      # Point the check at the staged file by temporarily swapping it in.
+      # Use a trap to restore the original on any failure/signal.
+      local _caf_orig="$epics_file"
+      mv -f "$epics_file" "${epics_file}.caf-orig"
+      cp "$epics_staged" "$epics_file"
+      # shellcheck disable=SC2064
+      trap "mv -f '${epics_file}.caf-orig' '$epics_file' 2>/dev/null; rm -f '$epics_staged'" EXIT
 
       local check_rc=0
       bash "$ic_script" --candidate "$first_sprint" 2>/dev/null || check_rc=$?
+
       if [ "$check_rc" -ne 0 ]; then
         gate_result="fail"
-        # Revert the epics file.
-        mv -f "$epics_backup" "$epics_file"
+        # Restore the original.
+        mv -f "${epics_file}.caf-orig" "$epics_file"
       else
-        rm -f "$epics_backup"
+        # Check passed — the staged file is already in place.
+        rm -f "${epics_file}.caf-orig" "$epics_staged"
       fi
+      # Clear the crash-recovery trap.
+      trap - EXIT
     fi
   fi
 

@@ -209,34 +209,36 @@ _ig_default_mode() {
   local key=""
   key="$(_ig_read_fm_field "$story_file" "key")" || true
 
-  # Build overlay args: the story file is always an overlay.
-  local ic_args="--candidate $candidate --overlay"
+  # Build the command as an array — no eval, no injection risk.
   local ic_script="${_IG_SCRIPT_DIR}/independence-check.sh"
   [ -x "$ic_script" ] || _ig_die "independence-check.sh not found: $ic_script"
 
-  # Build the full command with all overlays.
-  local cmd_overlay_args=""
-  cmd_overlay_args="--overlay $(printf '%q' "$story_file")"
+  local cmd_args=()
+  cmd_args+=( bash "$ic_script" --candidate "$candidate" )
+  cmd_args+=( --overlay "$story_file" )
   if [ -n "$overlay_files" ]; then
     local ov
     while IFS= read -r ov; do
       [ -n "$ov" ] || continue
-      cmd_overlay_args="$cmd_overlay_args --overlay $(printf '%q' "$ov")"
+      cmd_args+=( --overlay "$ov" )
     done <<< "$overlay_files"
   fi
 
   # Build skip args for carry-over keys (R77).
-  local skip_args=""
+  # Validate key format to prevent injection via crafted story keys.
   if [ -n "$key" ]; then
+    if ! printf '%s' "$key" | /usr/bin/grep -qE '^E[0-9]+-S[0-9]+$'; then
+      _ig_die "invalid story key format: $key"
+    fi
     local other_sprint=""
     other_sprint="$(_ig_find_key_in_other_sprints "$key" "$candidate" 2>/dev/null)" || true
     if [ -n "$other_sprint" ]; then
-      skip_args="--skip-key-in-sprint ${key}:${other_sprint}"
+      cmd_args+=( --skip-key-in-sprint "${key}:${other_sprint}" )
     fi
   fi
 
   local rc=0
-  eval bash \"\$ic_script\" --candidate \"\$candidate\" $cmd_overlay_args $skip_args 2>&1 || rc=$?
+  "${cmd_args[@]}" 2>&1 || rc=$?
 
   if [ "$rc" -ne 0 ]; then
     return 1

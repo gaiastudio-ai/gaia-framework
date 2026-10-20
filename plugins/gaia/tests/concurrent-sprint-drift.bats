@@ -371,17 +371,78 @@ STORY
   # Warm must complete within 2 seconds.
   _perf_check "$elapsed" 2
 
-  # Verify cache invalidation: the changed story must have been re-parsed.
-  # Its cache entry's stat line must reflect the NEW mtime+size (not the
-  # original). Read the cache entry for E900-S1 and compare.
+  # Verify cache invalidation: the changed story's cache entry must have
+  # the CURRENT content checksum (line 2), proving it was re-parsed.
   local changed_sf="$IMPL_DIR/epic-e900/E900-S1-perf/story.md"
-  local current_stat
-  current_stat="$(stat -c '%Y %s' "$changed_sf" 2>/dev/null || stat -f '%m %z' "$changed_sf" 2>/dev/null)"
+  local current_cksum
+  current_cksum="$(cksum < "$changed_sf")"
   local cid
   cid="$(printf '%s' "$changed_sf" | md5 2>/dev/null || printf '%s' "$changed_sf" | md5sum 2>/dev/null | cut -d' ' -f1)"
-  local cached_stat
-  cached_stat="$(head -1 "$cache_dir/$cid" 2>/dev/null || echo "MISSING")"
-  [ "$cached_stat" = "$current_stat" ]
+  local cached_cksum
+  cached_cksum="$(sed -n '2p' "$cache_dir/$cid" 2>/dev/null || echo "MISSING")"
+  [ "$cached_cksum" = "$current_cksum" ]
+
+  rm -rf "$cache_dir"
+}
+
+@test "same-size edit within same second invalidates cache via content hash" {
+  # Reproduction of the mtime+size false-cache-hit: two story files with
+  # different content but identical size, with mtime forced to match.
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+
+  local sf="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"
+  local cache_dir; cache_dir="$(mktemp -d)"
+  export GAIA_IC_CACHE_DIR="$cache_dir"
+
+  # Cold run fills cache (E900-S1 touches sprint-state.sh — no overlap).
+  bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || true
+
+  # Record the original stat for the mtime+size forgery.
+  local orig_stat
+  orig_stat="$(stat -c '%Y %s' "$sf" 2>/dev/null || stat -f '%m %z' "$sf" 2>/dev/null)"
+
+  # Rewrite the story with an overlapping touch-set but keep exact same size
+  # by using a path of the same byte length. "sprint-state.sh" is 15 chars;
+  # use "resolve-config.sh" (17 chars), pad original to match.
+  # Simpler: just rewrite with the overlapping path and force the cached
+  # stat key to match by writing it into the cache entry directly.
+  cat > "$sf" <<'STORY'
+---
+template: 'story'
+key: "E900-S1"
+epic: "E900"
+status: in-progress
+sprint_id: "sprint-900"
+priority: "P2"
+size: "M"
+points: 3
+risk: "medium"
+predicted_touch_set: ["gaia-public/plugins/gaia/scripts/independence-check.sh"]
+depends_on: []
+blocks: []
+date: "2026-10-19"
+author: "Test"
+---
+# Story: E900-S1
+STORY
+
+  # Forge the cache entry: overwrite line 1 (stat key) with the original
+  # stat so the mtime+size pre-filter thinks nothing changed.
+  local cid
+  cid="$(printf '%s' "$sf" | md5 2>/dev/null || printf '%s' "$sf" | md5sum 2>/dev/null | cut -d' ' -f1)"
+  if [ -f "$cache_dir/$cid" ]; then
+    local _old_cksum
+    _old_cksum="$(sed -n '2p' "$cache_dir/$cid")"
+    { printf '%s\n' "$orig_stat"; printf '%s\n' "$_old_cksum"; tail -n +3 "$cache_dir/$cid"; } > "$cache_dir/${cid}.tmp"
+    mv -f "$cache_dir/${cid}.tmp" "$cache_dir/$cid"
+  fi
+
+  # Warm run: content hash must catch the change despite matching stat.
+  local rc=0
+  bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || rc=$?
+  # The new path overlaps sprint-901 → must FAIL.
+  [ "$rc" -ne 0 ]
 
   rm -rf "$cache_dir"
 }

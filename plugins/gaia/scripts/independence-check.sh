@@ -792,20 +792,32 @@ _ic_run_rules_cd() {
 
     while IFS=$'\t' read -r _ck _cs _cf; do
       [ -n "$_ck" ] || continue
-      # Compute stat key: mtime + size.
-      local _stat_key=""
+      # Cache key: content checksum (cksum is POSIX, always available).
+      # mtime+size is a cheap pre-filter; content hash is authoritative
+      # so a same-size edit within the same second always invalidates.
+      local _stat_key="" _content_key=""
       _stat_key="$(stat -c '%Y %s' "$_cf" 2>/dev/null || stat -f '%m %z' "$_cf" 2>/dev/null || echo "0 0")"
-      # Cache file: md5 hash of the absolute path.
       local _cache_id=""
       _cache_id="$(printf '%s' "$_cf" | md5 2>/dev/null || printf '%s' "$_cf" | md5sum 2>/dev/null | cut -d' ' -f1)"
       local _cache_file="${_ic_cache_dir}/${_cache_id}"
 
       if [ -f "$_cache_file" ]; then
-        local _cached_stat=""
-        _cached_stat="$(head -1 "$_cache_file")"
+        local _cached_stat="" _cached_cksum=""
+        _cached_stat="$(sed -n '1p' "$_cache_file")"
+        _cached_cksum="$(sed -n '2p' "$_cache_file")"
         if [ "$_cached_stat" = "$_stat_key" ]; then
-          # Cache hit: read cached data.
-          tail -n +2 "$_cache_file" >> "$cached_parsed"
+          # Cheap pre-filter passed — trust the cache.
+          tail -n +3 "$_cache_file" >> "$cached_parsed"
+          continue
+        fi
+        # Stat changed — verify content hash.
+        _content_key="$(cksum < "$_cf" 2>/dev/null || echo "0 0")"
+        if [ "$_cached_cksum" = "$_content_key" ]; then
+          # Content identical despite stat change — update stat, use cache.
+          local _tmp_cf="${_cache_file}.tmp"
+          { printf '%s\n%s\n' "$_stat_key" "$_content_key"; tail -n +3 "$_cache_file"; } > "$_tmp_cf"
+          mv -f "$_tmp_cf" "$_cache_file"
+          tail -n +3 "$_cache_file" >> "$cached_parsed"
           continue
         fi
       fi
@@ -885,17 +897,19 @@ _ic_run_rules_cd() {
     }
   ' /dev/null > "$fresh_parsed"
 
-  # Write cache entries for freshly parsed files.
+  # Write cache entries for freshly parsed files (stat + content hash + data).
   if [ -n "$_ic_cache_dir" ] && [ -d "$_ic_cache_dir" ] && [ -s "$fresh_parsed" ]; then
     while IFS=$'\t' read -r _ck _cs _cf; do
       [ -n "$_ck" ] || continue
-      local _stat_key=""
+      local _stat_key="" _content_key=""
       _stat_key="$(stat -c '%Y %s' "$_cf" 2>/dev/null || stat -f '%m %z' "$_cf" 2>/dev/null || echo "0 0")"
+      _content_key="$(cksum < "$_cf" 2>/dev/null || echo "0 0")"
       local _cache_id=""
       _cache_id="$(printf '%s' "$_cf" | md5 2>/dev/null || printf '%s' "$_cf" | md5sum 2>/dev/null | cut -d' ' -f1)"
       local _cache_file="${_ic_cache_dir}/${_cache_id}"
       {
         printf '%s\n' "$_stat_key"
+        printf '%s\n' "$_content_key"
         /usr/bin/grep "^${_ck}	" "$fresh_parsed" || true
       } > "$_cache_file"
     done < "$parse_needed"
