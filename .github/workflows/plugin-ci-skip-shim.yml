@@ -50,6 +50,7 @@ on:
       - 'plugins/gaia/**'
       - '.github/workflows/plugin-ci.yml'
       - '.github/bats-shard-assignments.tsv'
+      - '.github/bats-file-timing.tsv'
       - '.github/scripts/**'
       - 'profiling/**'
       - 'scripts/audit-v2-migration.sh'
