@@ -47,6 +47,8 @@ MD
   (
     cd "$GIT_DIR"
     git init -q
+    git config user.email "test@test.local"
+    git config user.name "Test"
     git checkout -q -b staging
     echo '# sprint-state' > plugins/gaia/scripts/sprint-state.sh
     echo '# ic' > plugins/gaia/scripts/independence-check.sh
