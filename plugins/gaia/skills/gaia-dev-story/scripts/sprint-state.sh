@@ -4318,6 +4318,13 @@ _cmd_close_concurrent() {
     # Write closing marker.
     _write_closing_marker "$marker_file" "$sprint_id"
 
+    # Test-only pause seam: when set, touch the named file as a ready
+    # signal and wait for the file to be removed (poll). Inert when unset.
+    if [ -n "${_GAIA_CLOSE_PAUSE_PHASE_A:-}" ]; then
+      touch "$_GAIA_CLOSE_PAUSE_PHASE_A"
+      while [ -f "$_GAIA_CLOSE_PAUSE_PHASE_A" ]; do sleep 1; done
+    fi
+
     # Remove holder sidecar before releasing L4.
     rm -f "$sidecar_file"
   ) || phase_a_rc=$?
@@ -4407,6 +4414,20 @@ _cmd_close_concurrent() {
     _GAIA_TMP_PATHS[${#_GAIA_TMP_PATHS[@]}-1]=""
     trap - RETURN
 
+    # Test-only pause seam: when set, touch the named file as a ready
+    # signal and wait for the file to be removed (poll). Inert when unset.
+    if [ -n "${_GAIA_CLOSE_PAUSE_PHASE_B:-}" ]; then
+      touch "$_GAIA_CLOSE_PAUSE_PHASE_B"
+      while [ -f "$_GAIA_CLOSE_PAUSE_PHASE_B" ]; do sleep 1; done
+    fi
+
+    # Test-only injection seam: when set, source the named script after the
+    # status write but before the audit. Used to inject a non-done story so
+    # the post-close audit exercises its rollback path. Inert when unset.
+    if [ -n "${_GAIA_CLOSE_INJECT_AFTER_WRITE:-}" ] && [ -f "${_GAIA_CLOSE_INJECT_AFTER_WRITE}" ]; then
+      bash "${_GAIA_CLOSE_INJECT_AFTER_WRITE}" "$per_sprint_yaml"
+    fi
+
     # Post-close audit.
     _close_post_audit "$per_sprint_yaml" "$sprint_id" "$pre_close_status" "$rollover_keys_csv"
   ) || phase_b_rc=$?
@@ -4452,6 +4473,11 @@ _cmd_close_resume() {
   if [ -f "$marker_file" ] && _closing_marker_owner_alive "$marker_file"; then
     printf 'sprint close in progress (sprint %s) -- retry\n' "$sprint_id" >&2
     return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+  fi
+
+  # Clean up stale marker left by a killed close (dead-owner).
+  if [ -f "$marker_file" ] && ! _closing_marker_owner_alive "$marker_file"; then
+    rm -f "$marker_file"
   fi
 
   # Read recorded close inputs from the per-sprint state.
