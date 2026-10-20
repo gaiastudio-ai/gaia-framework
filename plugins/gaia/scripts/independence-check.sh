@@ -553,7 +553,7 @@ _expand_globs() {
 
   # Write the find command into a temp script to avoid arg-length issues
   # and to properly handle spaces in PROJECT_ROOT.
-  local find_script="${output_file}.find.sh"
+  local find_script="${output_file}.find-cmd"
   {
     printf '#!/usr/bin/env bash\n'
     printf 'set -euo pipefail\n'
