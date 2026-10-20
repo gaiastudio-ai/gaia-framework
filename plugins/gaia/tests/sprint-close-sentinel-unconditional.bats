@@ -23,9 +23,8 @@ setup() {
   YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
   export SPRINT_STATUS_YAML="$YAML"
   export GAIA_SPRINT_CLOSE_DATE="2026-06-24"
-  # Disable sprint-state.sh routing — we test close.sh's own sentinel logic,
-  # not the sprint-state.sh layer (which is unchanged by this fix).
-  export SPRINT_STATE_SH="/nonexistent/sprint-state.sh"
+  # Point at the real sprint-state.sh close writer.
+  export SPRINT_STATE_SH="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
   mkdir -p "$(dirname "$YAML")" "$ART" "$MEMORY_PATH" "$CKPT_DIR"
 }
 
