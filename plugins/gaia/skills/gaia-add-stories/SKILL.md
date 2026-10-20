@@ -95,6 +95,10 @@ This skill is the native Claude Code conversion of the legacy add-stories workfl
 - Display protection report.
 - If any protection violation detected: HALT -- do not proceed until resolved.
 
+### Step 6b -- Independence Re-check Gate (concurrent sprints only)
+
+When adding a story to an epic whose stories are in an active sprint and other active sprints exist, run `${CLAUDE_PLUGIN_ROOT}/scripts/independence-gate.sh <story_file> --candidate <sprint_id>` before the addition. On failure, block the addition and surface the diagnostic.
+
 ### Step 7 -- Append to Epics and Stories
 
 - If new epic created: append entire epic section at end of document with all new stories.

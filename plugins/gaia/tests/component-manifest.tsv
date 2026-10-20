@@ -111,6 +111,7 @@ core	concurrent-sprint-binding.bats
 core	concurrent-sprint-catch-all.bats
 core	concurrent-sprint-compat.bats
 core	concurrent-sprint-config.bats
+core	concurrent-sprint-drift.bats
 core	concurrent-sprint-glossary.bats
 core	concurrent-sprint-independence-cd.bats
 core	concurrent-sprint-ledger.bats
@@ -118,6 +119,7 @@ core	concurrent-sprint-lifecycle.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-merge.bats
 core	concurrent-sprint-perf.bats
+core	concurrent-sprint-recheck.bats
 core	concurrent-sprint-state.bats
 core	concurrent-sprint-surfaces.bats
 core	concurrent-sprint-sweep.bats

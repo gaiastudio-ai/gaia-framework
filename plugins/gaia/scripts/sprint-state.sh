@@ -1889,6 +1889,30 @@ do_inject_locked() {
     fi
   fi
 
+  # --- Independence re-check gate ---
+  # In concurrent mode, verify the story does not violate independence
+  # rules before writing it into the sprint. The gate only reads (no lock
+  # acquisition), so no lock nesting occurs.
+  if _is_concurrent_mode; then
+    local _gate_story_file=""
+    _gate_story_file="$(resolve_story_file "$story_key" 2>/dev/null)" || true
+    if [ -n "$_gate_story_file" ] && [ -f "$_gate_story_file" ]; then
+      local _gate_script="${SCRIPT_DIR}/independence-gate.sh"
+      if [ -x "$_gate_script" ]; then
+        local _gate_sprint_id=""
+        _gate_sprint_id="$(read_yaml_sprint_id "$SPRINT_STATUS_YAML" 2>/dev/null)" || true
+        if [ -n "$_gate_sprint_id" ]; then
+          local _gate_rc=0
+          bash "$_gate_script" "$_gate_story_file" \
+            --candidate "$_gate_sprint_id" 2>&1 || _gate_rc=$?
+          if [ "$_gate_rc" -ne 0 ]; then
+            die "inject: independence re-check failed for $story_key — mutation blocked"
+          fi
+        fi
+      fi
+    fi
+  fi
+
   # Re-locate story file under lock.
   locate_story_file "$story_key"
 
