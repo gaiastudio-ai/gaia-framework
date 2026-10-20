@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.223.0] — 2026-10-20
+
+### Added
+
+- (independence-gate) add continuous re-check gates and runtime drift halt (#2274)
+- (sprint-close) add close writer with two-phase protocol and release ordering (#2278)
+- (sweep) route sprint-status writes through the per-sprint resolver (#2273)
+- (ci) replace fast-feedback file-count cap with cost-based selection (#2272)
+- (concurrent) per-sprint status cache, multi-sprint surfaces and +N indicator (#2267)
+- (independence-check) add touch-set overlap and artifact exclusivity (#2263)
+- (binding) add --sprint argument resolver for sprint-scoped commands (#2254)
+
+### Changed
+
+- back-merge main into staging after v1.222.1
+- back-merge main into staging after v1.222.0
+
+### Fixed
+
+- (tests) plant sweep-guard fixtures in a temp tree, never the plugin tree (#2279)
+- (tests) pin root-resolving suites to temp dirs and add hygiene guards (#2261)
+- (lock) side-effect-free sourcing, migrate inline sites, harden tests (#2256)
+- (ci,publish) cap fast-feedback selection and read released commit in publish gate (#2266)
+- (review-summary-gen) separate stderr in tests and guard empty array on bash 3.2 (#2268)
+- (statusline) write context-window snapshot at session project root only (#2258)
+- (transition-story-status) harden gh calls with --repo, block YAML, branch search (#2259)
+- (sprint-status-mod) drop unreachable waiting-agent rule and threshold config (#2257)
+- (transcript-writer) covering-directory matching and CWD isolation in gitignore fallback (#2255)
+- (ci) harden ci workflow -- locale guard, action pinning, measured shard rebalance (#2253)
+- (register-write) resolve 6 review findings in round lifecycle (#2252)
+- (register-write) harden round lifecycle against concurrency, reuse and fail-open gaps (#2248)
+
 ## [Unreleased]
 
 ### Fixed
