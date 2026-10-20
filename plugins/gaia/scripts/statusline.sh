@@ -265,6 +265,7 @@ case "$_GAIA_SELF" in
             "lib/statusline-glyphs.sh:$_GAIA_INSTALL_DIR/lib/statusline-glyphs.sh" \
             "lib/statusline-colors.sh:$_GAIA_INSTALL_DIR/lib/statusline-colors.sh" \
             "lib/statusline-project-cache-key.sh:$_GAIA_INSTALL_DIR/lib/statusline-project-cache-key.sh" \
+            "lib/session-binding.sh:$_GAIA_INSTALL_DIR/lib/session-binding.sh" \
             "statusline-update-check.sh:$_GAIA_INSTALL_DIR/statusline-update-check.sh" \
             "statusline-git-dirty-check.sh:$_GAIA_INSTALL_DIR/statusline-git-dirty-check.sh"; do
             _gp_src="$_GAIA_CACHE_SCRIPTS/${_gp%%:*}"
@@ -589,6 +590,163 @@ if [ "$GAIA_RICH" = "1" ]; then
       SPRINT_ID=""
     fi
   fi
+
+  # ---- Concurrent mode: bound-sprint resolution and +N indicator ----
+  # When per-sprint cache files exist, resolve this session's bound sprint
+  # via the session-binding helper. The +N indicator shows how many other
+  # non-closed sprints are tracked alongside the bound one.
+  _SL_PLUS_N=""
+  _SL_CLOSED_LABEL=""
+  _SL_STATE_DIR=""
+  # Extract directory with parameter expansion (no subprocess).
+  if [ -n "$_SPRINT_CACHE_FILE" ]; then
+    _SL_STATE_DIR="${_SPRINT_CACHE_FILE%/*}"
+  elif [ -n "$SPRINT_FILE" ]; then
+    _SL_STATE_DIR="${SPRINT_FILE%/*}"
+  fi
+
+  if [ -n "$_SL_STATE_DIR" ] && [ -d "$_SL_STATE_DIR" ]; then
+    # Check if per-sprint cache files exist (a proxy for concurrent mode).
+    _SL_HAS_PER_SPRINT=0
+    for _slpc in "$_SL_STATE_DIR"/.sprint-progress-cache-*.json; do
+      [ -f "$_slpc" ] || continue
+      _SL_HAS_PER_SPRINT=1
+      break
+    done
+
+    if [ "$_SL_HAS_PER_SPRINT" = "1" ]; then
+      # Extract session ID from stdin JSON.
+      _SL_SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null)" || _SL_SESSION_ID=""
+
+      # Resolve bound sprint via the session-binding helper.
+      _SL_BINDING_SH=""
+      if [ -n "${_GAIA_INSTALL_DIR:-}" ] && [ -f "$_GAIA_INSTALL_DIR/lib/session-binding.sh" ]; then
+        _SL_BINDING_SH="$_GAIA_INSTALL_DIR/lib/session-binding.sh"
+      fi
+      # Fallback: the plugin scripts dir (when running from source, not installed).
+      if [ -z "$_SL_BINDING_SH" ]; then
+        _SL_SELF_SCRIPTS=""
+        case "${BASH_SOURCE[0]:-$0}" in
+          */*) _SL_SELF_SCRIPTS="${BASH_SOURCE[0]%/*}" ;;
+          *)   _SL_SELF_SCRIPTS="." ;;
+        esac
+        if [ -f "$_SL_SELF_SCRIPTS/lib/session-binding.sh" ]; then
+          _SL_BINDING_SH="$_SL_SELF_SCRIPTS/lib/session-binding.sh"
+        fi
+      fi
+
+      if [ -z "$_SL_BINDING_SH" ]; then
+        # Helper missing: degrade to single-sprint rendering with stderr warning.
+        printf 'statusline: session-binding helper not found, falling back to single-sprint\n' >&2
+      elif [ -n "$_SL_SESSION_ID" ]; then
+        _SL_BOUND_ID=""
+        _SL_BIND_EXIT=1
+        set +e
+        _SL_BOUND_ID="$("$_SL_BINDING_SH" read --session-id "$_SL_SESSION_ID" --project-root "$PROJECT_ROOT" 2>/dev/null)"
+        _SL_BIND_EXIT=$?
+        set -e
+
+        case "$_SL_BIND_EXIT" in
+          0)
+            # Bound: use the per-sprint cache for this sprint.
+            _sl_clean_sprint_id "$_SL_BOUND_ID"
+            _SL_BOUND_ID="$_SL_CLEAN_ID"
+            if [ -n "$_SL_BOUND_ID" ]; then
+              _SL_PER_CACHE="$_SL_STATE_DIR/.sprint-progress-cache-${_SL_BOUND_ID}.json"
+              if [ -f "$_SL_PER_CACHE" ] && [ -r "$_SL_PER_CACHE" ] && command -v jq >/dev/null 2>&1; then
+                _SL_PER_OUT="$(jq -r '
+                  if type != "object" then "FALLBACK"
+                  elif (has("sprint") | not) then "FALLBACK"
+                  elif .sprint == null then "NONE"
+                  elif (.sprint | type) != "object" then "FALLBACK"
+                  elif (.sprint.status // "") == "closed" then "NONE"
+                  else
+                    (.sprint.id // null) as $id |
+                    (.totals.progress_pct // null) as $pct |
+                    (.action_needed // null) as $an |
+                    if $id == null or $pct == null or $an == null then "FALLBACK"
+                    elif ($id | type) != "string" then "FALLBACK"
+                    elif ($pct | type) != "number" then "FALLBACK"
+                    elif ($pct != ($pct | floor)) then "FALLBACK"
+                    elif ($pct < 0 or $pct > 100) then "FALLBACK"
+                    elif ($an | type) != "array" then "FALLBACK"
+                    else
+                      ($id | gsub("\u001b\\[[0-9;]*[A-Za-z]"; "")
+                           | gsub("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)"; "")
+                           | gsub("[\u0000-\u001f]"; "")) as $clean_id |
+                      if ($clean_id | test("^[A-Za-z0-9-]+$")) and (($clean_id | length) <= 64) then
+                        "SEG\t\($clean_id)\t\((($pct | floor) + 0) | tostring)\t\($an | length)"
+                      else "FALLBACK"
+                      end
+                    end
+                  end
+                ' "$_SL_PER_CACHE" 2>/dev/null)" || _SL_PER_OUT="FALLBACK"
+                case "$_SL_PER_OUT" in
+                  SEG"$_SL_TAB"*)
+                    _S_REST="${_SL_PER_OUT#SEG"$_SL_TAB"}"
+                    _S_ID="${_S_REST%%"$_SL_TAB"*}"
+                    _S_REST="${_S_REST#*"$_SL_TAB"}"
+                    _S_PCT="${_S_REST%%"$_SL_TAB"*}"
+                    _S_WARN_N="${_S_REST#*"$_SL_TAB"}"
+                    _S_OK=1
+                    case "$_S_ID" in ''|*[!A-Za-z0-9-]*) _S_OK=0 ;; esac
+                    case "$_S_PCT" in ''|*[!0-9]*) _S_OK=0 ;; esac
+                    case "$_S_WARN_N" in ''|*[!0-9]*) _S_OK=0 ;; esac
+                    if [ "$_S_OK" = "1" ] && [ "${#_S_ID}" -le 64 ] && [ "${#_S_PCT}" -le 3 ] \
+                      && [ "$_S_PCT" -le 100 ] && [ "${#_S_WARN_N}" -le 9 ]; then
+                      _SPRINT_CACHE_HIT=1
+                      SPRINT_ID="$_S_ID"
+                      _SPRINT_PCT="$_S_PCT"
+                      [ "$_S_WARN_N" -gt 0 ] && _SPRINT_WARN=1
+                    fi
+                    ;;
+                esac
+              fi
+
+              # Count per-sprint cache files for other non-closed sprints (+N).
+              _SL_OTHER_N=0
+              for _slpc in "$_SL_STATE_DIR"/.sprint-progress-cache-*.json; do
+                [ -f "$_slpc" ] || continue
+                _slpc_base="${_slpc##*/}"
+                _slpc_sid="${_slpc_base#.sprint-progress-cache-}"
+                _slpc_sid="${_slpc_sid%.json}"
+                # Skip the bound sprint itself.
+                [ "$_slpc_sid" = "$_SL_BOUND_ID" ] && continue
+                # Skip any cache whose recorded status is closed (defense in depth).
+                if command -v jq >/dev/null 2>&1; then
+                  _slpc_status="$(jq -r '.sprint.status // ""' "$_slpc" 2>/dev/null)" || _slpc_status=""
+                  [ "$_slpc_status" = "closed" ] && continue
+                fi
+                _SL_OTHER_N=$((_SL_OTHER_N + 1))
+              done
+              if [ "$_SL_OTHER_N" -gt 0 ]; then
+                _SL_PLUS_N="+${_SL_OTHER_N}"
+              fi
+            fi
+            ;;
+          2)
+            # Bound sprint closed: render read-only labelled "closed", no +N.
+            _sl_clean_sprint_id "$_SL_BOUND_ID"
+            _SL_BOUND_ID="$_SL_CLEAN_ID"
+            if [ -n "$_SL_BOUND_ID" ]; then
+              SPRINT_ID="$_SL_BOUND_ID"
+              _SPRINT_PCT=""
+              _SPRINT_WARN=0
+              _SPRINT_CACHE_HIT=1
+              _SL_CLOSED_LABEL=" closed"
+            fi
+            ;;
+          3)
+            # Invalid binding: single-sprint fallback with stderr warning.
+            printf 'statusline: invalid session binding, falling back to single-sprint\n' >&2
+            ;;
+          *)
+            # exit 1 (unbound) or other: single-sprint rendering (no +N).
+            ;;
+        esac
+      fi
+    fi
+  fi
 fi
 
 # ---- Width detection ------------------------------------------------------
@@ -704,15 +862,31 @@ if [ -n "$BRANCH" ]; then
 fi
 SPRINT_CHUNK=""
 if [ -n "$SPRINT_ID" ]; then
-  if [ -n "$_SPRINT_PCT" ]; then
+  if [ -n "${_SL_CLOSED_LABEL:-}" ]; then
+    # Closed sprint: read-only labelled "closed", no percentage, no +N.
+    _SP_TEXT="${SPRINT_ID}${_SL_CLOSED_LABEL}"
+    SPRINT_CHUNK="${COLOR_MUTED}${_SP_TEXT}${COLOR_RESET}"
+  elif [ -n "$_SPRINT_PCT" ]; then
     _SP_TEXT="${SPRINT_ID} ${_SPRINT_PCT}%"
+    # Append +N indicator when other non-closed sprints exist.
+    if [ -n "${_SL_PLUS_N:-}" ]; then
+      _SP_TEXT="${_SP_TEXT} ${_SL_PLUS_N}"
+    fi
+    if [ "$_SPRINT_WARN" = "1" ]; then
+      SPRINT_CHUNK="${COLOR_WARN:-}${GLYPH_WARN:-!} ${_SP_TEXT}${COLOR_RESET}"
+    else
+      SPRINT_CHUNK="${COLOR_MUTED}${_SP_TEXT}${COLOR_RESET}"
+    fi
   else
     _SP_TEXT="$SPRINT_ID"
-  fi
-  if [ "$_SPRINT_WARN" = "1" ]; then
-    SPRINT_CHUNK="${COLOR_WARN:-}${GLYPH_WARN:-!} ${_SP_TEXT}${COLOR_RESET}"
-  else
-    SPRINT_CHUNK="${COLOR_MUTED}${_SP_TEXT}${COLOR_RESET}"
+    if [ -n "${_SL_PLUS_N:-}" ]; then
+      _SP_TEXT="${_SP_TEXT} ${_SL_PLUS_N}"
+    fi
+    if [ "$_SPRINT_WARN" = "1" ]; then
+      SPRINT_CHUNK="${COLOR_WARN:-}${GLYPH_WARN:-!} ${_SP_TEXT}${COLOR_RESET}"
+    else
+      SPRINT_CHUNK="${COLOR_MUTED}${_SP_TEXT}${COLOR_RESET}"
+    fi
   fi
 fi
 
