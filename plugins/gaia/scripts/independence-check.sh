@@ -805,18 +805,17 @@ _ic_run_rules_cd() {
         local _cached_stat="" _cached_cksum=""
         _cached_stat="$(sed -n '1p' "$_cache_file")"
         _cached_cksum="$(sed -n '2p' "$_cache_file")"
-        if [ "$_cached_stat" = "$_stat_key" ]; then
-          # Cheap pre-filter passed — trust the cache.
-          tail -n +3 "$_cache_file" >> "$cached_parsed"
-          continue
-        fi
-        # Stat changed — verify content hash.
+        # Always verify content hash — stat is only informational.
+        # A same-size edit within the same second changes content but not
+        # mtime+size, so stat alone is never sufficient.
         _content_key="$(cksum < "$_cf" 2>/dev/null || echo "0 0")"
         if [ "$_cached_cksum" = "$_content_key" ]; then
-          # Content identical despite stat change — update stat, use cache.
-          local _tmp_cf="${_cache_file}.tmp"
-          { printf '%s\n%s\n' "$_stat_key" "$_content_key"; tail -n +3 "$_cache_file"; } > "$_tmp_cf"
-          mv -f "$_tmp_cf" "$_cache_file"
+          # Content identical — use cache. Update stat if it drifted.
+          if [ "$_cached_stat" != "$_stat_key" ]; then
+            local _tmp_cf2="${_cache_file}.tmp"
+            { printf '%s\n%s\n' "$_stat_key" "$_content_key"; tail -n +3 "$_cache_file"; } > "$_tmp_cf2"
+            mv -f "$_tmp_cf2" "$_cache_file"
+          fi
           tail -n +3 "$_cache_file" >> "$cached_parsed"
           continue
         fi

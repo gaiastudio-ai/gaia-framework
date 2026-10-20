@@ -386,10 +386,10 @@ STORY
 }
 
 @test "same-size edit within same second invalidates cache via content hash" {
-  # Reproduction of the mtime+size false-cache-hit: two story files with
-  # different content but identical size, with mtime forced to match.
+  # Reproduction: equal-length sed replacement + touch -t back to original
+  # mtime so stat (mtime+size) is byte-identical before and after.
   _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
-  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/resolve-config.sh"
 
   local sf="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"
   local cache_dir; cache_dir="$(mktemp -d)"
@@ -398,50 +398,47 @@ STORY
   # Cold run fills cache (E900-S1 touches sprint-state.sh — no overlap).
   bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || true
 
-  # Record the original stat for the mtime+size forgery.
-  local orig_stat
+  # Record original stat and mtime.
+  local orig_stat orig_mtime
   orig_stat="$(stat -c '%Y %s' "$sf" 2>/dev/null || stat -f '%m %z' "$sf" 2>/dev/null)"
+  orig_mtime="$(stat -c '%Y' "$sf" 2>/dev/null || stat -f '%m' "$sf" 2>/dev/null)"
 
-  # Rewrite the story with an overlapping touch-set but keep exact same size
-  # by using a path of the same byte length. "sprint-state.sh" is 15 chars;
-  # use "resolve-config.sh" (17 chars), pad original to match.
-  # Simpler: just rewrite with the overlapping path and force the cached
-  # stat key to match by writing it into the cache entry directly.
-  cat > "$sf" <<'STORY'
----
-template: 'story'
-key: "E900-S1"
-epic: "E900"
-status: in-progress
-sprint_id: "sprint-900"
-priority: "P2"
-size: "M"
-points: 3
-risk: "medium"
-predicted_touch_set: ["gaia-public/plugins/gaia/scripts/independence-check.sh"]
-depends_on: []
-blocks: []
-date: "2026-10-19"
-author: "Test"
----
-# Story: E900-S1
-STORY
-
-  # Forge the cache entry: overwrite line 1 (stat key) with the original
-  # stat so the mtime+size pre-filter thinks nothing changed.
-  local cid
-  cid="$(printf '%s' "$sf" | md5 2>/dev/null || printf '%s' "$sf" | md5sum 2>/dev/null | cut -d' ' -f1)"
-  if [ -f "$cache_dir/$cid" ]; then
-    local _old_cksum
-    _old_cksum="$(sed -n '2p' "$cache_dir/$cid")"
-    { printf '%s\n' "$orig_stat"; printf '%s\n' "$_old_cksum"; tail -n +3 "$cache_dir/$cid"; } > "$cache_dir/${cid}.tmp"
-    mv -f "$cache_dir/${cid}.tmp" "$cache_dir/$cid"
+  # Equal-length replacement: "sprint-state.sh" (15 chars) → "resolve-config" (14 chars + .sh = 17)
+  # Use a path that's exactly the same length to keep file size identical.
+  # "sprint-state.sh" = 15 bytes; "resolve-config." = 15 bytes (with trailing dot).
+  # Actually: sed in-place equal-length replacement.
+  # The story has: predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]
+  # Replace with:  predicted_touch_set: ["gaia-public/plugins/gaia/scripts/resolve-config.sh"]
+  # sprint-state.sh is 15 chars, resolve-config.sh is 17 chars — NOT equal.
+  # Use padding: replace "sprint-state.sh" with "resolve-cfg.sh " (15 chars with trailing space).
+  # Or: just use sed and then truncate/pad to same size.
+  local orig_size
+  orig_size="$(wc -c < "$sf" | tr -d ' ')"
+  sed 's/sprint-state\.sh/resolve-config.sh/' "$sf" > "${sf}.new"
+  # Trim or pad to exact original size.
+  local new_size
+  new_size="$(wc -c < "${sf}.new" | tr -d ' ')"
+  if [ "$new_size" -gt "$orig_size" ]; then
+    head -c "$orig_size" "${sf}.new" > "${sf}.trimmed"
+    mv -f "${sf}.trimmed" "${sf}.new"
+  elif [ "$new_size" -lt "$orig_size" ]; then
+    dd if=/dev/zero bs=1 count=$((orig_size - new_size)) 2>/dev/null >> "${sf}.new"
   fi
+  mv -f "${sf}.new" "$sf"
+
+  # Restore original mtime so stat matches exactly.
+  touch -d "@${orig_mtime}" "$sf" 2>/dev/null || \
+    touch -t "$(python3 -c "import datetime; print(datetime.datetime.fromtimestamp(${orig_mtime}).strftime('%Y%m%d%H%M.%S'))" 2>/dev/null || echo '202601010000.00')" "$sf" 2>/dev/null || true
+
+  # Assert stat is identical to original (the pre-filter would pass).
+  local new_stat
+  new_stat="$(stat -c '%Y %s' "$sf" 2>/dev/null || stat -f '%m %z' "$sf" 2>/dev/null)"
+  [ "$new_stat" = "$orig_stat" ]
 
   # Warm run: content hash must catch the change despite matching stat.
   local rc=0
   bash "$IC_SCRIPT" --candidate sprint-900 > /dev/null 2>&1 || rc=$?
-  # The new path overlaps sprint-901 → must FAIL.
+  # The new path overlaps sprint-901 → must FAIL (not false-PASS from stale cache).
   [ "$rc" -ne 0 ]
 
   rm -rf "$cache_dir"

@@ -395,6 +395,43 @@ YAML
   /usr/bin/grep -q "E900-S1" "$STATE_DIR/sprint-status.yaml"
 }
 
+# ---- Fail-closed: absent predicted_touch_set refuses injection ----
+
+@test "inject refuses story without predicted_touch_set in concurrent mode" {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"
+  # Create a story WITHOUT predicted_touch_set.
+  local epic_slug="e900"
+  local sd="$IMPL_DIR/epic-${epic_slug}/E900-S99-no-touchset"
+  mkdir -p "$sd"
+  cat > "$sd/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S99"
+epic: "E900"
+status: in-progress
+sprint_id: "sprint-900"
+priority: "P2"
+size: "M"
+points: 3
+risk: "medium"
+depends_on: []
+blocks: []
+date: "2026-10-20"
+author: "Test"
+---
+# Story: E900-S99
+STORY
+  run bash -c "PROJECT_PATH='$TEST_DIR' IMPLEMENTATION_ARTIFACTS='$IMPL_DIR' \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash '$BATS_TEST_SCRIPT_DIR/scripts/sprint-state.sh' inject \
+      --story E900-S99 --sprint-id sprint-900 2>&1"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no predicted_touch_set"* ]]
+  # State file must NOT contain E900-S99.
+  ! /usr/bin/grep -q "E900-S99" "$STATE_DIR/sprint-status-sprint-900.yaml"
+}
+
 # ---- Fail-closed: gate refuses when story file not found ----
 
 @test "inject gate refuses when story file resolution fails in concurrent mode" {
