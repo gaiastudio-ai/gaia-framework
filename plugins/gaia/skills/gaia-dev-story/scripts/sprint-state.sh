@@ -1897,6 +1897,9 @@ do_inject_locked() {
     # Locate the story file using the same glob patterns as locate_story_file
     # but without calling die on failure. Runs in a subshell to avoid
     # clobbering STORY_FILE in the outer scope.
+    # Locate the story file. The glob + filter runs in a subshell; the
+    # legacy-path skip uses string ops instead of case to stay bash 3.2
+    # safe (case patterns with ) inside $() break the 3.2 parser).
     local _gate_story_file=""
     _gate_story_file="$(
       shopt -s nullglob
@@ -1905,8 +1908,9 @@ do_inject_locked() {
                  "${IMPLEMENTATION_ARTIFACTS}"/epic-*/"${story_key}-"*/story.md )
       shopt -u nullglob
       local _f
-      for _f in "${_matches[@]}"; do
-        case "$_f" in */stories/*/story.md) continue ;; esac
+      for _f in ${_matches[@]+"${_matches[@]}"}; do
+        # Skip legacy stories/ paths — bash 3.2 safe string test.
+        if [ "${_f%/stories/*/story.md}" != "$_f" ]; then continue; fi
         if awk 'NR==1 && /^---/ { in_fm=1; next } in_fm && /template:/ && /story/ { found=1; exit } in_fm && /^---/ { exit } END { exit (found ? 0 : 1) }' "$_f" 2>/dev/null; then
           printf '%s' "$_f"; break
         fi
