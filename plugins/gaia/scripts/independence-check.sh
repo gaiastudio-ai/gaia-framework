@@ -1110,36 +1110,18 @@ _ic_run_rules_cd() {
   done < "$tmpdir/all_fps.tsv" > "$existing_files"
 
   if [ -s "$existing_files" ]; then
-    # Resolve all paths. Use batched processing to minimise subprocess
-    # overhead on the warm-start hot path (AC9 2-second budget).
+    # Resolve all paths. One realpath call per file but in a tight loop
+    # (no other subprocesses per iteration). Uses the external realpath
+    # command so shimmed/overridden realpath is respected (fail-closed).
     : > "$tmpdir/realpath_paired.tsv"
-    if command -v python3 >/dev/null 2>&1; then
-      # Fast path: batch all realpath calls in one python3 process.
-      awk -F'\t' '{ print $1 }' "$existing_files" | \
-        python3 -c '
-import os, sys
-for line in sys.stdin:
-    p = line.rstrip("\n")
-    if p:
-        try:
-            print(os.path.realpath(p))
-        except Exception:
-            print(p)
-' > "$tmpdir/_rp_out.txt"
-      paste -d'	' <(awk -F'\t' '{ print $2 }' "$existing_files") \
-                    "$tmpdir/_rp_out.txt" > "$tmpdir/realpath_paired.tsv"
-      rm -f "$tmpdir/_rp_out.txt"
-    else
-      # Fallback: one realpath call per file.
-      while IFS=$'\t' read -r fp norm; do
-        [ -n "$fp" ] || continue
-        local rp
-        rp="$(realpath "$fp" 2>&1)" || {
-          _ic_die "realpath failed for ${fp}: ${rp}"
-        }
-        printf '%s\t%s\n' "$norm" "$rp"
-      done < "$existing_files" > "$tmpdir/realpath_paired.tsv"
-    fi
+    while IFS=$'\t' read -r fp norm; do
+      [ -n "$fp" ] || continue
+      local rp
+      rp="$(realpath "$fp" 2>&1)" || {
+        _ic_die "realpath failed for ${fp}: ${rp}"
+      }
+      printf '%s\t%s\n' "$norm" "$rp"
+    done < "$existing_files" > "$tmpdir/realpath_paired.tsv"
   else
     : > "$tmpdir/realpath_paired.tsv"
   fi

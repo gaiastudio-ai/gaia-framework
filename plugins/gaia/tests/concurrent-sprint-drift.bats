@@ -152,7 +152,7 @@ CKPT
 @test "absent checkpoint does not suppress drift detection" {
   _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"
   local sf="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"
-  ( cd "$GIT_DIR" && echo '# untracked' > plugins/gaia/scripts/test-fixture-untracked.sh && git add plugins/gaia/scripts/test-fixture-untracked.sh )
+  ( cd "$GIT_DIR" && echo '# untracked' > plugins/gaia/scripts/test-fixture-untracked.txt && git add plugins/gaia/scripts/test-fixture-untracked.txt )
   run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$sf'"
   [ "$status" -ne 0 ]
   [[ "$output" == *"test-fixture-untracked"* ]]
