@@ -4,6 +4,8 @@
 # passes write-boundary; pre-existing flat-location notes migrate; the SKILL.md
 # dispatch sections carry the surface contract.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   WRITER="$PLUGIN/skills/gaia-meeting/scripts/meeting-notes-writer.sh"

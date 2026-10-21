@@ -3,6 +3,8 @@
 # sanitizer library, scaffold/generate-frontmatter integration, and touch-set
 # inference helper.
 
+load 'test_helper.bash'
+
 setup() {
   # Resolve the plugin root relative to this test file.
   PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

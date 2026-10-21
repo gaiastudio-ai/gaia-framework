@@ -19,6 +19,8 @@
 # Story: E79-S4 (P0, M, 5 pts, medium risk; sprint-40)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 PLUGIN_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"

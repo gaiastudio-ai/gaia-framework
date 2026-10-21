@@ -18,6 +18,8 @@
 # Story: E77-S5 (Tier 1 — plugin-code sub-rubric)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

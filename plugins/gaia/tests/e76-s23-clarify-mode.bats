@@ -5,6 +5,8 @@
 # collision-freedom, bias-to-template mapping, template presence, and the
 # not-a-decision / not-a-brainstorm structural constraints on the template.
 
+load 'test_helper.bash'
+
 setup() {
   # Derive the gaia plugin root from this test file's location so the suite is
   # resilient to repo-rename / checkout-dir flips (the dir name is not assumed).

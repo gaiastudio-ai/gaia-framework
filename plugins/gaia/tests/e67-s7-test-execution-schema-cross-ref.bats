@@ -20,6 +20,8 @@
 # `test_execution.tier_{1,2,3}.placement` is present in PRD §4.38.2 / FR-RSV2-11
 # so the reconciliation note is anchored where readers expect it.
 
+load 'test_helper.bash'
+
 setup() {
   # Resolve the project root by walking up from the test file until we find
   # docs/planning-artifacts/. The test file lives at

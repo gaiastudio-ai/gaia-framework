@@ -3,6 +3,8 @@
 #
 # Story: E93-S4. Traces to AC2, NFR-069, T-SGR-4.
 
+load 'test_helper.bash'
+
 setup() {
   RUNNER="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
 }

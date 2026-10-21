@@ -3,6 +3,8 @@
 # provider-retirement edits: removed command page, rewritten pages,
 # navigation link cleanup, and scoped provider-term sweep.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"

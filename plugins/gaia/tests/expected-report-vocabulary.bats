@@ -4,6 +4,8 @@
 # rubric-drift guards scoped to the defining Phase block, and retired-
 # provider terminology checks.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 

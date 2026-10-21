@@ -5,6 +5,8 @@
 # dispatches each entry to the device-farm adapter, and aggregates per-device
 # verdicts into a composite verdict.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 PLUGIN_ROOT="$BATS_TEST_DIRNAME/.."

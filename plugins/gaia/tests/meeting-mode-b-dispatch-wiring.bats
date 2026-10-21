@@ -10,6 +10,8 @@
 # primitive) is live-only verification, NOT bats-coverable — the bash layer is
 # all that can be asserted here.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

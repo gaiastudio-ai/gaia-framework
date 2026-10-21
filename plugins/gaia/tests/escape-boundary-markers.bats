@@ -5,6 +5,8 @@
 # contains `<<<`.  It exposes a sourceable function escape_boundary_markers
 # that reads stdin and writes stdout.
 
+load 'test_helper.bash'
+
 fail() { printf '%s\n' "$1" >&2; return 1; }
 
 setup() {

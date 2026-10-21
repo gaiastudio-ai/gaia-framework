@@ -15,6 +15,8 @@
 # Story: E77-S4 (Tier 1 — Sub-rubric loader pipeline migration)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

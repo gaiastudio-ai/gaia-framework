@@ -14,6 +14,8 @@
 # false-green) or running a stale list. This guard fails CI on any drift so the
 # manifest is regenerated in the same change.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

@@ -11,6 +11,8 @@
 # no tracked file is ever overwritten. Tests that need a custom acquire-lock or
 # verify-pr-merged replace the copy.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
   LOCK_LIB="${PLUGIN_ROOT}/scripts/lib/acquire-lock.sh"

@@ -8,6 +8,8 @@
 # compliance and environments blocks already coerce their list/scalar forms;
 # this pins the matching scalar-coercion guard on the ci_platform block.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   GEN="$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"

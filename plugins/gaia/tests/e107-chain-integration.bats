@@ -17,6 +17,8 @@
 # Everything runs against a temp tree built in $BATS_TEST_TMPDIR; the live
 # project tree is never touched.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1

@@ -10,6 +10,8 @@
 #   TC-RV2-45 — Forward: every _CONFIG_HYDRATION_ALLOWLIST member is a declared schema property.
 #   TC-RV2-46 — Reverse: every schema property is in allowlist, managed-elsewhere, or x-no-auto-hydration.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." && pwd)"
   HYDRATION="${PLUGIN_ROOT}/scripts/lib/config-hydration.sh"

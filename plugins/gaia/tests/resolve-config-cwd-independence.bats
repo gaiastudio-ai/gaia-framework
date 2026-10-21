@@ -16,6 +16,8 @@
 # resolve-config.bats setup() compensates by cd'ing into a clean directory
 # so the fixture path can be exercised.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

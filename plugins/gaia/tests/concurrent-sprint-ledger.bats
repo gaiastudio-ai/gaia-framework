@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # concurrent-sprint-ledger.bats — tests for the cross-session resource ledger.
 
+load 'test_helper.bash'
+
 setup() {
   TEST_DIR="$(mktemp -d)"
   export GAIA_STATE_DIR="${TEST_DIR}/state"

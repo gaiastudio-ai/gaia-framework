@@ -7,6 +7,8 @@
 # asserts the brownfield scanner_tier reconciliation prose. Back-compat (bare
 # provider) is the load-bearing invariant.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCHEMA="$REPO_ROOT/plugins/gaia/schemas/project-config.schema.json"

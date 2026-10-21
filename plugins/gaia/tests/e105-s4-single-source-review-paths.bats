@@ -13,6 +13,8 @@
 #
 # Maps to AC1-AC5, AC-INT1. Refs: ADR-127 §7.4, FR-402, FR-556, retro AI-99, Test02 #2.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   EXTRACT="$REPO_ROOT/plugins/gaia/skills/gaia-retro/scripts/review-extract.sh"

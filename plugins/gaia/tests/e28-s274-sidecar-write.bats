@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # Tests for sidecar-write.sh — general-purpose agent sidecar writer.
 
+load 'test_helper.bash'
+
 setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../scripts/sidecar-write.sh"
   TMPROOT="${BATS_TEST_TMPDIR}/project-$$"

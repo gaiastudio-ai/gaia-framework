@@ -5,6 +5,8 @@
 # compose-verdict reducer and routes to /gaia-correct-course via the
 # type-target-resolver sprint-correction type.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

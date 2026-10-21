@@ -7,6 +7,8 @@
 # Contract: ADR-098 (allowlist), ADR-101 §6 (reconciler never writes config_phase),
 #           ADR-096 (config_phase monotonicity).
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." && pwd)"

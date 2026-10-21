@@ -15,6 +15,8 @@
 #   Task 5 — bats coverage asserts token_estimate is numeric and > 0
 #         on at least one iteration record.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PRODUCER="$REPO_ROOT/plugins/gaia/scripts/append-val-iteration.sh"

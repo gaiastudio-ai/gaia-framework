@@ -10,6 +10,8 @@
 # These tests pin that the scanner now sweeps BOTH the nested subdir and the
 # legacy flat location, de-duplicated.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SCRIPT="$PLUGIN_ROOT/skills/gaia-retro/scripts/cross-retro-detect.sh"

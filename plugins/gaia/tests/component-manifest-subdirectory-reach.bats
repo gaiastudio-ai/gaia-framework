@@ -24,6 +24,8 @@
 #   carries a tree-relative path for exactly that reason, and the collision
 #   tests below prove each one resolves to its own file.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

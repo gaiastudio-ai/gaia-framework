@@ -23,6 +23,8 @@
 # ${var,,}). POSIX awk and BSD/GNU-neutral grep only -- no grep -P, no sed -i.
 # grep -c output is trimmed with tr -d ' ' because BSD grep pads it.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
