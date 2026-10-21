@@ -249,19 +249,23 @@ EOF
   return 0
 }
 
-# _sw_lock_reason <story_key> — the lock text this library writes and recognises.
-_sw_lock_reason() { printf 'gaia story %s pid %s' "$1" "$2"; }
+# _sw_lock_reason <story_key> <pid> — the lock text this library writes and
+# recognises.  The format includes a creation timestamp so the reap heuristic
+# can distinguish a freshly created worktree from an abandoned one.
+_sw_lock_reason() { printf 'gaia story %s pid %s ts %s' "$1" "$2" "$(date +%s)"; }
 
 # _sw_pid_from_reason <reason> — the pid recorded in one of OUR lock reasons, or
 # empty when the reason is not ours or carries no usable pid.
 #
 # The match is anchored on the exact shape `_sw_lock_reason` writes:
-#   gaia story <story-key> pid <digits>
-# Matching a bare " pid <n> " substring instead would claim another tool's lock
-# whose reason merely mentions a pid, and with intact-directory reaping live that
-# means unlocking, deleting and unregistering a worktree that was never ours.
-# Anything that is not our own shape yields no pid, so every veto downstream
-# treats it as foreign and leaves it strictly alone.
+#   gaia story <story-key> pid <digits>[ ts <digits>]
+# The optional ` ts <digits>` suffix (a creation timestamp) is stripped before
+# the pid is validated.  Matching a bare " pid <n> " substring instead would
+# claim another tool's lock whose reason merely mentions a pid, and with
+# intact-directory reaping live that means unlocking, deleting and unregistering
+# a worktree that was never ours.  Anything that is not our own shape yields no
+# pid, so every veto downstream treats it as foreign and leaves it strictly
+# alone.
 _sw_pid_from_reason() {
   local reason="${1:-}" rest pid key
 
@@ -282,12 +286,38 @@ _sw_pid_from_reason() {
     ''|*" "*) printf ''; return 0 ;;
   esac
 
-  # Exactly one trailing token, all digits.
+  # Extract the pid token.  The new format may carry an optional ` ts <epoch>`
+  # suffix after the pid; strip it before validation.
   pid="${rest#* pid }"
+  case "$pid" in
+    *" ts "*)
+      pid="${pid%% ts *}"
+      ;;
+  esac
   case "$pid" in
     ''|*" "*|*[!0-9]*) printf ''; return 0 ;;
   esac
   printf '%s' "$pid"
+}
+
+# _sw_ts_from_reason <reason> — the creation epoch recorded in one of OUR lock
+# reasons, or empty when the reason carries no timestamp.  Lock reasons created
+# before the timestamp field was added have no ` ts <digits>` suffix; the
+# caller treats that as "old enough to reap".
+_sw_ts_from_reason() {
+  local reason="${1:-}" ts
+
+  # Only our own reasons carry a parseable timestamp.
+  case "$reason" in
+    *" ts "*) ;;
+    *) printf ''; return 0 ;;
+  esac
+
+  ts="${reason##* ts }"
+  case "$ts" in
+    ''|*[!0-9]*) printf ''; return 0 ;;
+  esac
+  printf '%s' "$ts"
 }
 
 # _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
@@ -327,6 +357,30 @@ _sw_reapable() {
     [ ! -e "$path" ] || return 1
   else
     _sw_pid_alive "$pid" && return 1
+  fi
+
+  # A dead owner PID alone is not sufficient evidence.  Claude Code's one-shot
+  # Bash calls always exit immediately, so every owner PID is dead by the time
+  # the next worktree_create runs.  A creation timestamp in the lock reason
+  # prevents a freshly created worktree from being mistaken for an orphan.
+  #
+  # When the lock reason carries no timestamp (a worktree created before this
+  # field was added), the worktree is treated as old enough to reap: the field's
+  # absence is itself evidence the record predates the safety window.
+  #
+  # Default safety threshold: 1800 seconds (30 minutes).  Overridable via
+  # GAIA_WORKTREE_REAP_AGE_SECONDS for testing and operator control.
+  if [ -e "$path" ]; then
+    local ts now age threshold
+    ts="$(_sw_ts_from_reason "$reason")"
+    if [ -n "$ts" ]; then
+      now="$(date +%s)"
+      age=$(( now - ts ))
+      threshold="${GAIA_WORKTREE_REAP_AGE_SECONDS:-1800}"
+      if [ "$age" -lt "$threshold" ]; then
+        return 1
+      fi
+    fi
   fi
 
   # Work that exists only locally is never destroyed, even when the owner is gone.
