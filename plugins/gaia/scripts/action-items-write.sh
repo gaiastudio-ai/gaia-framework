@@ -12,6 +12,7 @@
 #   - aiw_bootstrap_file         — create file with schema header if absent
 #   - aiw_next_id                — compute next AI-{n} id
 #   - aiw_check_dedup            — idempotent dedup by composite key
+#   - aiw_detect_indent          — detect list-entry indent of existing file
 #   - aiw_validate_classification — enforce explicit classification enum
 #   - aiw_build_entry            — build a YAML entry string
 #   - aiw_append_entry           — atomic append with flock
@@ -59,6 +60,7 @@ EOF
 
 # ---------------------------------------------------------------------------
 # aiw_next_id — compute next AI-{n} from existing entries
+# Handles both quoted (id: "AI-6") and unquoted (id: AI-6) id values.
 # ---------------------------------------------------------------------------
 aiw_next_id() {
   local target="$1"
@@ -69,7 +71,7 @@ aiw_next_id() {
       if [ "$n" -gt "$max_n" ] 2>/dev/null; then
         max_n="$n"
       fi
-    done < <(grep -oE 'id: "AI-([0-9]+)"' "$target" | grep -oE '[0-9]+')
+    done < <(grep -oE 'id: "?AI-[0-9]+"?' "$target" | grep -oE '[0-9]+')
   fi
   printf 'AI-%d\n' "$((max_n + 1))"
 }
@@ -88,12 +90,12 @@ aiw_check_dedup() {
   # An entry matches when sprint_id, classification, and ref_key=ref_value all match.
   local found
   found="$(awk -v sid="$sprint_id" -v cls="$classification" -v rk="$ref_key" -v rv="$ref_value" '
-    /^  - id:/ {
+    /^[[:space:]]*- id:/ {
       # Flush previous entry if all three fields matched.
       if (in_entry && s_match && c_match && r_match) { print "MATCH"; exit }
       in_entry=1; s_match=0; c_match=0; r_match=0; next
     }
-    in_entry && /^[^ ]/ {
+    in_entry && /^[^[:space:]]/ && !/^[[:space:]]*- id:/ {
       if (s_match && c_match && r_match) { print "MATCH"; exit }
       in_entry=0; next
     }
@@ -118,6 +120,24 @@ aiw_check_dedup() {
 }
 
 # ---------------------------------------------------------------------------
+# aiw_detect_indent — detect the indent prefix of existing list entries
+# Returns the whitespace before the first "- id:" line.
+# Defaults to "  " (2-space, under items: mapping) when no entries exist.
+# ---------------------------------------------------------------------------
+aiw_detect_indent() {
+  local target="$1"
+  if [ -f "$target" ]; then
+    local line
+    line="$(grep -m1 '.*- id:' "$target")"
+    if [ -n "$line" ]; then
+      printf '%s' "${line%%- id:*}"
+      return
+    fi
+  fi
+  printf '  '
+}
+
+# ---------------------------------------------------------------------------
 # aiw_validate_classification — enforce explicit classification enum
 # ---------------------------------------------------------------------------
 aiw_validate_classification() {
@@ -135,24 +155,28 @@ aiw_validate_classification() {
 
 # ---------------------------------------------------------------------------
 # aiw_build_entry — build a YAML entry string
-# Args: id sprint_id classification text ref_key ref_value
+# Args: id sprint_id classification text ref_key ref_value [list_prefix]
+# list_prefix defaults to "  " (2-space); pass "" for 0-indent entries.
 # ---------------------------------------------------------------------------
 aiw_build_entry() {
   local id="$1" sprint_id="$2" classification="$3" text="$4" ref_key="$5" ref_value="$6"
+  local list_prefix="${7-  }"
+  local field_prefix="${list_prefix}  "
   local timestamp
   timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   local theme_hash
   theme_hash="$(printf '%s' "$text" | shasum -a 256 | awk '{print $1}')"
 
-  printf '  - id: "%s"\n' "$id"
-  printf '    sprint_id: "%s"\n' "$sprint_id"
-  printf '    text: "%s"\n' "$text"
-  printf '    classification: "%s"\n' "$classification"
-  printf '    status: "open"\n'
-  printf '    escalation_count: 0\n'
-  printf '    created_at: "%s"\n' "$timestamp"
-  printf '    theme_hash: "sha256:%s"\n' "$theme_hash"
-  printf '    %s: "%s"\n' "$ref_key" "$ref_value"
+  printf '%s' "${list_prefix}"
+  printf -- '- id: "%s"\n' "$id"
+  printf '%ssprint_id: "%s"\n' "$field_prefix" "$sprint_id"
+  printf '%stext: "%s"\n' "$field_prefix" "$text"
+  printf '%sclassification: "%s"\n' "$field_prefix" "$classification"
+  printf '%sstatus: "open"\n' "$field_prefix"
+  printf '%sescalation_count: 0\n' "$field_prefix"
+  printf '%screated_at: "%s"\n' "$field_prefix" "$timestamp"
+  printf '%stheme_hash: "sha256:%s"\n' "$field_prefix" "$theme_hash"
+  printf '%s%s: "%s"\n' "$field_prefix" "$ref_key" "$ref_value"
 }
 
 # ---------------------------------------------------------------------------
@@ -245,9 +269,13 @@ aiw_write() {
   local next_id
   next_id="$(aiw_next_id "$target")"
 
+  # Detect indent of existing entries and match it
+  local indent
+  indent="$(aiw_detect_indent "$target")"
+
   # Build entry
   local entry
-  entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value")"
+  entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value" "$indent")"
 
   # Atomic append
   aiw_append_entry "$target" "$entry"
