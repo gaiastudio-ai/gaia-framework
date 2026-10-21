@@ -22,9 +22,11 @@ setup() {
 
   # Minimal git repo for tests that need one.
   _init_git_fixture() {
-    git -C "$TEST_TMPDIR" init -q 2>/dev/null
-    git -C "$TEST_TMPDIR" checkout -b staging 2>/dev/null
-    git -C "$TEST_TMPDIR" commit --allow-empty -m "init" -q 2>/dev/null
+    git -C "$TEST_TMPDIR" init -q
+    git -C "$TEST_TMPDIR" config user.email "test@test"
+    git -C "$TEST_TMPDIR" config user.name "test"
+    git -C "$TEST_TMPDIR" checkout -b staging -q
+    git -C "$TEST_TMPDIR" commit --allow-empty -m "init" -q
   }
 }
 
