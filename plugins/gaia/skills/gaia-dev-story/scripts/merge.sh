@@ -160,7 +160,18 @@ fi
 
 # Enforce security invariants BEFORE any gh pr merge call.
 # All three hard gates run; YOLO mode does not bypass.
-assert_branch_not_protected || die "aborting: protected-branch invariant failed"
+
+# Read the PR head branch from the GitHub API so the protected-branch guard
+# checks the actual PR branch, not the local HEAD. After a story worktree
+# teardown the local checkout is typically on staging (protected), but the
+# PR head is the feature branch that should be merged. Fail closed: when
+# the PR head cannot be determined (network, auth, missing PR), refuse the
+# merge with an actionable message rather than falling back to local HEAD.
+PR_HEAD_BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")"
+if [ -z "$PR_HEAD_BRANCH" ]; then
+  die "aborting: could not determine PR head branch for #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
+fi
+assert_branch_not_protected "$PR_HEAD_BRANCH" || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
 # Resolve PR target (baseRefName) from gh and verify against the canonical

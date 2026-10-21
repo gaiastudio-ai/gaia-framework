@@ -9,7 +9,7 @@
 # appears here, the regression FAILS and the build halts.
 #
 # Public functions:
-#   - assert_branch_not_protected      : current branch != main / staging
+#   - assert_branch_not_protected [br] : br (or local HEAD) != main / staging
 #   - assert_no_secrets_staged         : no .env, *credentials*, common API
 #                                        key / Bearer / Slack token in stage
 #   - assert_pr_target_from_chain TGT  : TGT == ci_cd.promotion_chain[0].branch
@@ -23,7 +23,8 @@
 #
 # Usage (from pr-create.sh / merge.sh):
 #   source "$(dirname "$0")/../../scripts/lib/dev-story-security-invariants.sh"
-#   assert_branch_not_protected
+#   assert_branch_not_protected              # reads local HEAD
+#   assert_branch_not_protected "$branch"    # uses $branch directly
 #   assert_no_secrets_staged
 #   assert_pr_target_from_chain "$BASE_BRANCH"   # merge.sh only
 #
@@ -46,11 +47,22 @@ GAIA_DSSI_SECRET_CONTENT_PATTERNS=(
 )
 
 # ---------------------------------------------------------------------------
-# assert_branch_not_protected
+# assert_branch_not_protected [branch]
+#
+# When a branch name is passed as $1, it is used directly. When omitted the
+# function falls back to reading the local HEAD via git rev-parse. Callers
+# that already know the PR head branch (e.g. merge.sh after querying the
+# GitHub API) should pass it explicitly so the guard works correctly even
+# when the local checkout is on a protected branch (the common case after a
+# story worktree has been torn down).
 # ---------------------------------------------------------------------------
 assert_branch_not_protected() {
   local branch protected
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  if [[ -n "${1:-}" ]]; then
+    branch="$1"
+  else
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+  fi
   if [[ -z "$branch" ]]; then
     echo "security-invariant FAIL: cannot determine current branch" >&2
     return 1
