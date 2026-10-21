@@ -159,11 +159,16 @@ json_string_array() {
 usage() {
   cat <<'USAGE' >&2
 Usage:
-  close.sh [--force] [--force-with-rollover <key1,key2,...>] [--help]
+  close.sh [--sprint <sprint-id>] [<sprint-id>] [--force] [--force-with-rollover <key1,key2,...>] [--help]
 
-Closes the active sprint: writes status:closed + closed_at to sprint-status.yaml,
+Closes the target sprint: writes status:closed + closed_at to sprint-status.yaml,
 archives the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/,
 and emits a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl.
+
+Sprint resolution (via the shared resolver):
+  1. Explicit --sprint <id> (highest priority).
+  2. Session binding (GAIA_BINDING_DIR/bound_sprint_id).
+  3. Single-sprint default (one active sprint, no ambiguity).
 
 Pre-conditions:
   - A retro doc must exist at .gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-*.md
@@ -172,6 +177,7 @@ Pre-conditions:
   - Sprint must not already be closed (idempotent re-close exits 0 with warning).
 
 Flags:
+  --sprint <id>           Target a specific sprint (concurrent mode).
   --force                 Bypass the sprint-review sentinel check (audited; recorded in close-summary).
   --force-with-rollover   Close with non-done stories (must list exactly the non-done keys).
 
@@ -183,11 +189,22 @@ USAGE
 FORCE_ROLLOVER_RAW=""
 FORCE_BYPASS_SENTINEL=0
 _RESUME_MODE=0
+_SPRINT_FLAG=""
+_POSITIONAL_SPRINT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
     --force)
       FORCE_BYPASS_SENTINEL=1
+      shift
+      ;;
+    --sprint)
+      [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
+      _SPRINT_FLAG="$2"
+      shift 2
+      ;;
+    --sprint=*)
+      _SPRINT_FLAG="${1#--sprint=}"
       shift
       ;;
     --force-with-rollover)
@@ -199,19 +216,101 @@ while [ "$#" -gt 0 ]; do
       FORCE_ROLLOVER_RAW="${1#--force-with-rollover=}"
       shift
       ;;
-    *) die "unknown argument: $1" ;;
+    -*)
+      die "unknown argument: $1"
+      ;;
+    *)
+      # Positional argument: treat as sprint ID.
+      if [ -n "$_POSITIONAL_SPRINT" ]; then
+        die "unexpected positional argument: $1 (already have $_POSITIONAL_SPRINT)"
+      fi
+      _POSITIONAL_SPRINT="$1"
+      shift
+      ;;
   esac
 done
+
+# ---------- Sprint resolution via shared resolver ----------
+
+SESSION_BINDING_SH="$PLUGIN_SCRIPTS_DIR/lib/session-binding.sh"
+if [ -f "$SESSION_BINDING_SH" ]; then
+  # shellcheck source=../../../scripts/lib/session-binding.sh
+  . "$SESSION_BINDING_SH"
+fi
+
+# Positional/flag conflict detection (before the resolver).
+# When both a positional sprint ID and --sprint are given with different
+# values, refuse immediately with a conflict diagnostic.
+if [ -n "$_SPRINT_FLAG" ] && [ -n "$_POSITIONAL_SPRINT" ]; then
+  if [ "$_SPRINT_FLAG" != "$_POSITIONAL_SPRINT" ]; then
+    die "positional sprint ID '$_POSITIONAL_SPRINT' conflicts with --sprint '$_SPRINT_FLAG'"
+  fi
+fi
+
+# Merge positional into --sprint for the resolver (the resolver only
+# accepts --sprint for the sprint-close command class).
+_effective_sprint="${_SPRINT_FLAG:-${_POSITIONAL_SPRINT:-}}"
+
+# Build resolver arguments.
+_resolver_args=(--command sprint-close)
+if [ -n "$_effective_sprint" ]; then
+  _resolver_args+=(--sprint "$_effective_sprint")
+fi
+
+# Resolve the target sprint ID. The resolver handles:
+#   - explicit --sprint (highest priority)
+#   - session binding fallback
+#   - single-sprint default
+# On failure (unknown ID, conflict, ambiguous), it prints diagnostics to
+# stderr and returns non-zero.
+# When an explicit sprint was requested, propagate resolver failures.
+# When no explicit sprint was given, a resolver failure (e.g. missing state
+# directory in legacy layouts) falls through to the legacy single-sprint path.
+if type resolve_sprint_arg >/dev/null 2>&1; then
+  _resolver_rc=0
+  RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>/dev/null)" || _resolver_rc=$?
+  if [ "$_resolver_rc" -ne 0 ]; then
+    if [ -n "$_effective_sprint" ]; then
+      # Explicit sprint requested — re-run to show the diagnostic.
+      resolve_sprint_arg "${_resolver_args[@]}" >/dev/null || exit $?
+    fi
+    # No explicit sprint and resolver failed (legacy layout, missing state
+    # dir) — fall through to legacy single-sprint path.
+    RESOLVED_SPRINT=""
+  fi
+else
+  # session-binding.sh absent — use the effective sprint or fall through.
+  RESOLVED_SPRINT="$_effective_sprint"
+fi
 
 # ---------- Dependency check ----------
 
 command -v yq >/dev/null 2>&1 || die "yq required (mikefarah v4); install via 'brew install yq' or equivalent"
 
-YAML_PATH="$(resolve_yaml_path)"
+# When a specific sprint was resolved, look for its per-sprint state file
+# first; fall back to the main sprint-status.yaml for single-sprint mode.
+if [ -n "${RESOLVED_SPRINT:-}" ]; then
+  _per_sprint="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status-${RESOLVED_SPRINT}.yaml"
+  if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
+    YAML_PATH="$SPRINT_STATUS_YAML"
+  elif [ -f "$_per_sprint" ]; then
+    YAML_PATH="$_per_sprint"
+  else
+    # Fall back to main file (single-sprint layout or env override).
+    YAML_PATH="$(resolve_yaml_path)"
+  fi
+else
+  YAML_PATH="$(resolve_yaml_path)"
+fi
 [ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $YAML_PATH"
 
 SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
 [ -n "$SPRINT_ID" ] || die "sprint_id not found in $YAML_PATH"
+
+# Sanity: when the resolver gave us an ID, the state file must match.
+if [ -n "${RESOLVED_SPRINT:-}" ] && [ "$SPRINT_ID" != "$RESOLVED_SPRINT" ]; then
+  die "sprint ID mismatch: resolver gave '${RESOLVED_SPRINT}' but state file contains '${SPRINT_ID}'"
+fi
 
 # ---------- Step 2 — Idempotency short-circuit ----------
 # Done BEFORE retro check so already-closed sprints don't require an existing
