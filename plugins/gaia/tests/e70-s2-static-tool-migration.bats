@@ -11,6 +11,8 @@
 # E70-S1 `--input <file-list>` flag form (the ATDD pre-dated E70-S1 finalising
 # the contract; this bats reflects what actually shipped).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 ADAPTERS_DIR="$BATS_TEST_DIRNAME/../scripts/adapters"

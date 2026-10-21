@@ -4,6 +4,9 @@
 
 # Unified ID-scrub pattern used by all AC5 tests (exempt: regex literals in this file).
 # Covers: FR-nnn, NFR-nnn, SR-nnn, ADR-nnn, E#-S#, TC-XXX-n, AF-20xx, AI-20xx
+
+load 'test_helper.bash'
+
 _ID_PATTERN='FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'
 
 setup() {

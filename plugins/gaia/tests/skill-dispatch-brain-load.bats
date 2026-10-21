@@ -19,6 +19,8 @@
 # Dir-rename-resilient: PLUGIN_ROOT derives from BATS_TEST_DIRNAME, never a
 # hard-coded repo/owner literal.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
   AUDIT="${PLUGIN_ROOT}/scripts/audit-skill-brain-load.sh"

@@ -13,6 +13,8 @@
 # All tests are filesystem-only (no network, no service dispatch) per AC2's
 # contract-only annotation.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."

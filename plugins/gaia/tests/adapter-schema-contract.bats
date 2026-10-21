@@ -5,6 +5,8 @@
 # bats template under plugins/gaia/scripts/adapters/_schema/ are present and
 # correctly formalize the implicit pattern shipped by E66-S2 adapters.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 ADAPTERS_DIR="$BATS_TEST_DIRNAME/../scripts/adapters"

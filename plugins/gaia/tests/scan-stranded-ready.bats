@@ -4,6 +4,8 @@
 # one-shot decision-log read, golden-test parity, fork-count scaling, bash 3.2
 # compatibility, and edge cases.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

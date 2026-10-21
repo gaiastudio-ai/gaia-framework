@@ -4,6 +4,8 @@
 # runs the REAL snapshot script, and pins every field path the module and
 # its tests read, including those sanitizeCache gives a per-field limit.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   SNAPSHOT="$REPO_ROOT/plugins/gaia/scripts/sprint-progress-snapshot.sh"

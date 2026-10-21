@@ -12,6 +12,8 @@
 # Refs: ADR-128, Test02 F-9, E106-S3, E107-S1, FR-558. Val W1/W2: parse the
 # roster row (not the bold-label **Depends on:** block); soft-deps don't block.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   LINT="$REPO_ROOT/plugins/gaia/scripts/backlog-select-lint.sh"

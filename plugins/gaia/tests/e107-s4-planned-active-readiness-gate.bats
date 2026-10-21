@@ -12,6 +12,8 @@
 #
 # Maps to AC1-AC5, AC-INT1. Refs: ADR-128, E107-S1/S3, E106-S3, FR-560, NFR-92.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   GATE="$REPO_ROOT/plugins/gaia/scripts/planned-active-gate.sh"

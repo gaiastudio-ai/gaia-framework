@@ -5,6 +5,8 @@
 # mverify_annotate / mverify_scan_keys), so the public-function coverage gate
 # recognizes them and the fail-safe contract is asserted at the function level.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   LIB="$REPO_ROOT/plugins/gaia/scripts/manual-verification-scan.sh"

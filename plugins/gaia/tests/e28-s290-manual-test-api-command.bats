@@ -7,6 +7,8 @@
 # Fix: a sprint_review.manual_test.api_command config key whose value is passed
 # as the api --target; absent ⇒ api surface SKIPPED (not a bogus slug run).
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

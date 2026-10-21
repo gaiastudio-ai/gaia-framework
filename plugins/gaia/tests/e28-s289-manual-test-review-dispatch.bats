@@ -17,6 +17,8 @@
 # the REAL dispatch-surface.sh (not a mock) for the opt-in cases so the
 # fail-open / wrong-target defects cannot hide.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

@@ -10,6 +10,8 @@
 # AND the full suite still runs). A core-only or agents-only change does NOT
 # run the component stacks. The staging->main promotion runs the full set.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

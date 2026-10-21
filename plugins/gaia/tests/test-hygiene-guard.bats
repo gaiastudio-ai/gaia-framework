@@ -13,6 +13,8 @@
 #   4. (Teardown guard) No suite teardown removes the shared bats runtime
 #      temporary directories.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

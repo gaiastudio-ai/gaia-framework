@@ -13,6 +13,8 @@
 #                               Steps 1 and 2 token cells = n/a (needs BOTH
 #                               consecutive snapshots). Only step 3 has tokens.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/step-report.sh"

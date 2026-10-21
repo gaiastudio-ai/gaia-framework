@@ -2,6 +2,8 @@
 # never-built-commands.bats -- asserts the eight never-built design commands
 # remain absent from the skill tree, workflow manifest, and help CSV.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SKILLS_DIR="$PLUGIN_ROOT/skills"

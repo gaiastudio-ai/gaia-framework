@@ -5,6 +5,8 @@
 # subcommands (set-goals, get-goals, update-goals, set-review-justification,
 # and the sprint-level transition form `transition --sprint <id> --to <state>`).
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1

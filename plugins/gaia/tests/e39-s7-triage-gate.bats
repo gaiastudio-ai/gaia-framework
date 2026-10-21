@@ -3,6 +3,8 @@
 # Asserts the per-sprint triage proof-of-run sentinel write/check behavior and
 # the sprint-close prerequisite documentation.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SENTINEL="$PLUGIN/skills/gaia-triage-findings/scripts/triage-sentinel.sh"

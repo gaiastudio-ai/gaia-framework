@@ -13,6 +13,8 @@
 #    LLM to read via this command; the resolver returned "unknown field
 #    for --field" and Step 1 HALTed.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

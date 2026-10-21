@@ -2,6 +2,8 @@
 # Tests that planning-class test docs write to planning-artifacts/ and
 # execution outputs stay under test-artifacts/.
 
+load 'test_helper.bash'
+
 setup() {
   SKILLS_DIR="${BATS_TEST_DIRNAME}/../skills"
 }

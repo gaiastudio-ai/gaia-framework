@@ -4,6 +4,8 @@
 
 # shellcheck disable=SC2030,SC2031
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
 

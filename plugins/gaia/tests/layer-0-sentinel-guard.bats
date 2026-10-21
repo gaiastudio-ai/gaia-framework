@@ -5,6 +5,8 @@
 # guard that detects it. Defense-in-depth against the AF-4 root cause (a user
 # blindly copying the .example template to .yaml without customizing).
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   TEMPLATE="${PLUGIN_ROOT}/gaia/templates/test-environment.yaml.example"

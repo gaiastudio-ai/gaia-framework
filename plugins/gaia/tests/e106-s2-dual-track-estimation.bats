@@ -13,6 +13,8 @@
 #
 # Refs: AC1-AC5, TS1-TS4, ADR-128, ADR-042, NFR-90, FR-549, FR-550
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/dual-track-estimate.sh"

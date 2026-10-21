@@ -3,6 +3,8 @@
 # dead-reference scan) + TC-STCL-8 (gaia-help.csv row swap) + retirement
 # structural assertions for /gaia-tech-debt-review.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   ROOT="$(cd "$PLUGIN/../.." && pwd)"   # repo root (contains plugins/)

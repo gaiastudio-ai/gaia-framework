@@ -10,6 +10,8 @@
 # suite and ~58 other never-run tests). This guard pins the known-wired set:
 # any new subdir must be added here AND wired into a runner, or CI fails.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

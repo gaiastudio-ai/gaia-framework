@@ -8,6 +8,8 @@
 #
 # Refs: AC1, AC2, AC3, AC4, AC7, AC8, FR-RSV2-1, FR-RSV2-2, FR-RSV2-4.
 
+load 'test_helper.bash'
+
 setup() {
   DETECTOR="${BATS_TEST_DIRNAME}/../scripts/review-common/placeholder-test-detector.sh"
   TMPDIR_LOCAL="$(mktemp -d)"

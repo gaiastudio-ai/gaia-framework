@@ -6,6 +6,8 @@
 # helper that backward-compatibly migrates projects upgraded from v1.156.0 /
 # E17-S30 where the file lives at the legacy path.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."

@@ -3,6 +3,8 @@
 #
 # Story: E93-S4. Traces to AC4, T-SGR-2, SR-66, NFR-072.
 
+load 'test_helper.bash'
+
 setup() {
   HELPER="${BATS_TEST_DIRNAME}/../scripts/lib/exec-with-timeout.sh"
   TMPDIR_TEST="$(mktemp -d)"

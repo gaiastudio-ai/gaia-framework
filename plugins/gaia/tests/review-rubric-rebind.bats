@@ -7,6 +7,8 @@
 # that the review-skill template carries the design-record formulation,
 # and that the base dev persona directs to the project reference.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   # Split-fragment provider literal -- never contiguous in this file

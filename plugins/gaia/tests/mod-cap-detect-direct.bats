@@ -3,6 +3,8 @@
 # its handlers with a hand-built $ whose members follow the runtime's API
 # shapes ($.clock.every hands back an object with cancel()).
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   HOOKS_DIR="$REPO_ROOT/plugins/gaia/hooks"

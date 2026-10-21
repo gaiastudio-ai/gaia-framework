@@ -7,6 +7,8 @@
 # `status: "active"` previously returned the literal `"active"` (with
 # quotes) and silently failed the ADR-108 D1 case-match.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
