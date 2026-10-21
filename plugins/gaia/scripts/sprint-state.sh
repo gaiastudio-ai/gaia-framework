@@ -192,7 +192,7 @@ Usage:
 Subcommands:
   init              Bootstrap a fresh sprint-status.yaml when none exists yet.
                     Seeds the canonical shape (sprint_id / status=planned /
-                    total_points=0 / goals=[] / items=[]) under flock — a fresh
+                    total_points=0 / goals=[] / stories=[]) under flock — a fresh
                     sprint starts in the `planned` state (planned → active →
                     review → closed). Idempotent — refuses to overwrite
                     an existing yaml. Required before the first `inject` in a
@@ -3412,7 +3412,7 @@ _resolve_active_yaml() {
 }
 
 # cmd_init — bootstrap a sprint-status.yaml when none exists yet.
-# Seeds the canonical shape (sprint id/state/total_points=0/items=[]/goals=[]),
+# Seeds the canonical shape (sprint id/state/total_points=0/stories=[]/goals=[]),
 # under flock to remain consistent with all other writers, and is
 # idempotent: re-init against an existing yaml is rejected.
 cmd_init() {
@@ -3425,7 +3425,7 @@ cmd_init() {
   # Optional `--start-date`, `--end-date`, `--sprint-length-days` flags.
   # When a date flag is provided, the seed includes the field. When the date
   # flags are absent the seed carries only the minimal shape (sprint_id /
-  # status / total_points / goals / items). The end-date can also be derived
+  # status / total_points / goals / stories). The end-date can also be derived
   # from start + length.
   #
   # `--capacity-points` is accepted-but-inert: capacity judgement is now made
@@ -3567,7 +3567,7 @@ cmd_init() {
         [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
         printf 'total_points: 0\n'
         printf 'goals: []\n'
-        printf 'items: []\n'
+        printf 'stories: []\n'
       } > "$tmp"
       mv "$tmp" "$new_per_sprint"
       printf '%s: seeded %s for sprint %s (concurrent mode)\n' "$init_verb" "$new_per_sprint" "$sprint_id"
@@ -3644,7 +3644,7 @@ cmd_init() {
     [ -n "$end_date" ]        && printf 'end_date: "%s"\n' "$end_date"
     printf 'total_points: 0\n'
     printf 'goals: []\n'
-    printf 'items: []\n'
+    printf 'stories: []\n'
   } > "$tmp"
   mv "$tmp" "$yaml"
   printf '%s: seeded %s for sprint %s\n' "$init_verb" "$yaml" "$sprint_id"

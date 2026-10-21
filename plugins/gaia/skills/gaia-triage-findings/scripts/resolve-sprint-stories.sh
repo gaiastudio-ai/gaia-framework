@@ -73,14 +73,28 @@ if [ "$sprint_status_value" != "active" ]; then
 fi
 
 # Committed story keys from the top-level `stories:` sequence (`- key: "…"`).
+# Legacy fallback: if `stories:` is absent, try the legacy `items:` key.
+# When both exist, `stories:` wins (the canonical key post-alignment).
 keys=$(awk '
-  /^stories[[:space:]]*:/ { in_stories = 1; next }
-  in_stories && /^[A-Za-z_]/ { in_stories = 0 }   # next top-level key ends the block
+  /^stories[[:space:]]*:/ { in_stories = 1; saw_stories = 1; next }
+  /^items[[:space:]]*:/ { in_items = 1; next }
+  in_stories && /^[A-Za-z_]/ { in_stories = 0 }
+  in_items && /^[A-Za-z_]/ { in_items = 0 }
   in_stories && /key[[:space:]]*:/ {
     line = $0
     sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
     gsub(/["'\'']/, "", line)
-    print line
+    stories_keys = stories_keys line "\n"
+  }
+  in_items && /key[[:space:]]*:/ {
+    line = $0
+    sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
+    gsub(/["'\'']/, "", line)
+    items_keys = items_keys line "\n"
+  }
+  END {
+    if (saw_stories) { printf "%s", stories_keys }
+    else { printf "%s", items_keys }
   }
 ' "$SPRINT_STATUS")
 
