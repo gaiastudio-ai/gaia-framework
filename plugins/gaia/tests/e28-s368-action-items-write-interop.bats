@@ -205,9 +205,9 @@ _make_zero_indent_fixture() {
   local got
   got="$(aiw_build_entry "AI-5" "sprint-50" "process" "test text" "story_key" "E900-S1" "  ")"
   # List item at 2-space indent
-  printf '%s\n' "$got" | grep -q '^  - id: "AI-5"'
+  grep -q '^  - id: "AI-5"' <<<"$got"
   # Fields at 4-space indent
-  printf '%s\n' "$got" | grep -q '^    sprint_id: "sprint-50"'
+  grep -q '^    sprint_id: "sprint-50"' <<<"$got"
 }
 
 @test "aiw_build_entry with empty prefix produces 0-indent entry" {
@@ -215,16 +215,16 @@ _make_zero_indent_fixture() {
   local got
   got="$(aiw_build_entry "AI-5" "sprint-50" "process" "test text" "story_key" "E900-S1" "")"
   # List item at column 0
-  printf '%s\n' "$got" | grep -q '^- id: "AI-5"'
+  grep -q '^- id: "AI-5"' <<<"$got"
   # Fields at 2-space indent
-  printf '%s\n' "$got" | grep -q '^  sprint_id: "sprint-50"'
+  grep -q '^  sprint_id: "sprint-50"' <<<"$got"
 }
 
 @test "aiw_build_entry defaults to 2-space prefix when no 7th arg" {
   _load_aiw
   local got
   got="$(aiw_build_entry "AI-5" "sprint-50" "process" "test text" "story_key" "E900-S1")"
-  printf '%s\n' "$got" | grep -q '^  - id: "AI-5"'
+  grep -q '^  - id: "AI-5"' <<<"$got"
 }
 
 # ===========================================================================
