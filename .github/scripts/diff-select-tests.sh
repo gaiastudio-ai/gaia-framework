@@ -12,6 +12,7 @@
 #      directory name.
 #   5. A changed workflow file (.github/workflows/*.yml) selects any .bats
 #      file whose name contains "ci" or "workflow".
+#   6. A changed test_helper.bash selects every .bats that loads it.
 #
 # Output: one .bats file path per line (relative to repo root), deduplicated.
 # Exit 0 with empty output means no test files are diff-selected.
@@ -92,6 +93,14 @@ while IFS= read -r f; do
     while IFS= read -r bt; do
       selected+=("$bt")
     done < <(find "$TESTS_DIR" -maxdepth 1 -name '*ci*' -o -name '*workflow*' 2>/dev/null)
+    continue
+  fi
+
+  # Rule 6: changed test_helper.bash -> all suites that load it
+  if [[ "$f" == plugins/gaia/tests/test_helper.bash ]]; then
+    while IFS= read -r bt; do
+      selected+=("$bt")
+    done < <(/usr/bin/grep -rlE "^load ['\"]?test_helper" "$TESTS_DIR"/*.bats 2>/dev/null)
     continue
   fi
 done <<< "$changed"
