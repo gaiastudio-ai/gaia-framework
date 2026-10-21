@@ -39,6 +39,12 @@ fi
 
 STORY_KEY="$1"
 SLUG="$2"
+
+# Apply the same slug cap as worktree_create so branch names stay consistent.
+# story-worktree.sh caps at 60 characters; replicate that here with cut(1)
+# (POSIX-portable, works on bash 3.2).
+_SLUG_MAX=60
+SLUG="$(printf '%s' "$SLUG" | cut -c "1-${_SLUG_MAX}")"
 BRANCH_NAME="feat/${STORY_KEY}-${SLUG}"
 
 WORK_DIR="${PROJECT_PATH:-.}"
@@ -47,6 +53,20 @@ cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 # Non-git CWD detection (post-cd so we check the resolved working directory).
 # Replaces the prior `die` semantics; non-git CWD now exits 0 with a warning.
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
+# Worktree dedup: if the working directory is a linked worktree that already
+# has a feat/<story-key>-* branch checked out (possibly truncated differently),
+# reuse that branch instead of creating a second one.
+_current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+if [ -n "$_current_branch" ] && [ "$_current_branch" != "$BRANCH_NAME" ]; then
+  case "$_current_branch" in
+    "feat/${STORY_KEY}-"*)
+      log "reusing worktree branch '$_current_branch' (matches story key)"
+      echo "already exists: $_current_branch"
+      exit 0
+      ;;
+  esac
+fi
 
 # Check if the branch already exists (local)
 if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then

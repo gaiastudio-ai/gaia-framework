@@ -855,6 +855,7 @@ skills	frontmatter-lib.bats
 skills	gaia-sprint-review-track-b-foreground.bats
 skills	gaia-sprint-review-track-b-orchestration.bats
 skills	generate-frontmatter-golden.bats
+skills	git-branch-dedup.bats
 skills	init-review-gate.bats
 skills	issue-1129-1304-portability-version.bats
 skills	issue-1151-trace-finalize-blocked-exit.bats
