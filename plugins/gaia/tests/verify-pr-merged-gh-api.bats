@@ -401,11 +401,11 @@ remove_gh_from_path() {
       # Skip lines that are just the grep/run invocations (self-reference).
       case "$line" in
         *'run grep'*|*'write_pat'*) continue ;;
+        *'plugins/gaia/'*)
+          echo "BAD write target: $line"
+          bad=1
+          ;;
       esac
-      if printf '%s\n' "$line" | grep -qE 'plugins/gaia/' ; then
-        echo "BAD write target: $line"
-        bad=1
-      fi
     done
     [ "$bad" -eq 0 ]
   fi
