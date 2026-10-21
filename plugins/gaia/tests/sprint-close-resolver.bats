@@ -206,8 +206,8 @@ teardown() {
   # The error must come from the resolver (conflict), not "unknown argument".
   [[ "$output" != *"unknown argument"* ]]
   # The resolver emits "conflicts with" or "conflict" (case-insensitive check
-  # via grep to avoid bash-4-only ${,,}).
-  printf '%s' "$output" | /usr/bin/grep -iq 'conflict'
+  # via here-string + grep to avoid bash-4-only ${,,} and racy pipe).
+  /usr/bin/grep -iq 'conflict' <<<"$output"
 }
 
 # ---------- AC5: Unknown sprint ID ----------
