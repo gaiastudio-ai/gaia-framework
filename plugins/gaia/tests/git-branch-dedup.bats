@@ -177,7 +177,7 @@ _mk_worktree() {
   # Only run if /bin/bash is 3.x (macOS default)
   local bash_ver
   bash_ver="$(/bin/bash --version 2>/dev/null | head -1 || true)"
-  if ! printf '%s' "$bash_ver" | grep -qF 'version 3.'; then
+  if [[ "$bash_ver" != *'version 3.'* ]]; then
     skip "no bash 3.2 at /bin/bash"
   fi
 
