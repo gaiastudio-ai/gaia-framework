@@ -123,7 +123,7 @@ _make_zero_indent_fixture() {
   [ "$got" = "AI-7" ]
 }
 
-@test "aiw_next_id returns AI-1 for file with no entries" {
+@test "aiw_next_id returns the first id for file with no entries" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   aiw_bootstrap_file "$target"
