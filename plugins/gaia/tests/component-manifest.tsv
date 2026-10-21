@@ -896,4 +896,5 @@ skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
 skills	verdict-provenance-check.bats
+skills	verify-pr-merged-gh-api.bats
 skills	write-val-sentinel-sprint-id-format.bats

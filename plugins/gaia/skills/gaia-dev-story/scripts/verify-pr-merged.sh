@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # verify-pr-merged.sh — post-completion gate for gaia-dev-story
 #
-# Verifies that a merge commit containing the story key exists on the target
-# branch. Called by the orchestrator after the dev-story subagent returns
-# status=done, before accepting the done transition.
+# Verifies that the story's pull request has actually been merged by checking
+# the GitHub API (`gh pr list` + merge status), rather than grepping commit
+# messages which can false-pass when an older commit mentions the story key.
 #
-# Covers both squash-merge and merge-commit strategies by searching the full
-# git log (not just --merges) with a word-boundary pattern and a fallback
-# Story: body-line check (plain and link forms).
+# When the `gh` CLI is unavailable or the API call fails, falls back to the
+# legacy commit-grep check with a WARNING so the degradation is auditable.
 #
 # Usage:
 #   verify-pr-merged.sh <story_key> <target_branch>
@@ -17,9 +16,9 @@
 #   PROJECT_PATH — optional. The git working directory (defaults to .).
 #
 # Exit codes:
-#   0 — merge commit found on target branch (gate passes)
+#   0 — PR merged on target branch (gate passes)
 #   1 — usage/argument error
-#   2 — no merge commit found (gate fails; orchestrator should re-run Steps 10-13)
+#   2 — PR not merged / not found (gate fails)
 #   3 — no promotion chain configured (gate skips silently)
 
 set -euo pipefail
@@ -41,6 +40,7 @@ SCRIPT_NAME="gaia-dev-story/verify-pr-merged.sh"
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" && pwd)/non-git-cwd-guard.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
+warn() { printf '%s: WARNING: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "usage: verify-pr-merged.sh <story_key> <target_branch|--no-chain>"; exit 1; }
 
 if [ $# -lt 2 ]; then
@@ -62,29 +62,141 @@ cd "$WORK_DIR" || { log "cannot cd to $WORK_DIR"; exit 1; }
 # Non-git CWD detection (post-cd so we check the resolved working directory).
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
-# Word-boundary grep pattern to avoid false positives.
-# Uses \b<key>\b as primary match on one-line subjects. Falls back to
-# "Story: <key>" in full commit bodies — matching both plain form
-# (Story: KEY) and link form (Story: [KEY](url)).
-# Case-insensitive to handle squash-merge rewrites.
-#
-# The inline `git log | grep` SIGPIPE workaround is centralised in
-# safe_grep_log() (sourced above) so this script and any future callers no
-# longer have to re-derive the trick.
-PATTERN="\\b${STORY_KEY}\\b"
+# ---------------------------------------------------------------------------
+# Primary path: check PR merge status via the GitHub API.
+# ---------------------------------------------------------------------------
 
-if safe_grep_log -i -q -E "$PATTERN" --oneline "$TARGET"; then
-  log "merge commit for ${STORY_KEY} found on ${TARGET} — gate passes"
+# check_pr_via_api — query gh for PRs matching the story key, then check
+# the feature-branch PR's merge status. Returns 0 (merged), 2 (not merged),
+# or 1 (API unavailable — caller should fall back).
+check_pr_via_api() {
+  # Guard: gh must be on PATH.
+  if ! command -v gh >/dev/null 2>&1; then
+    warn "gh CLI not found on PATH — falling back to commit-based check"
+    return 1
+  fi
+
+  # Query for PRs whose head branch contains the story key (the feature
+  # branch convention is feat/<story_key>-<slug>).
+  local pr_json
+  if ! pr_json="$(gh pr list \
+        --search "$STORY_KEY" \
+        --state all \
+        --json number,headRefName,state,mergedAt \
+        --limit 50 2>/dev/null)"; then
+    warn "gh pr list failed — falling back to commit-based check"
+    return 1
+  fi
+
+  # Empty or null response means no PRs found.
+  if [ -z "$pr_json" ] || [ "$pr_json" = "[]" ] || [ "$pr_json" = "null" ]; then
+    log "no PRs found matching ${STORY_KEY} — gate fails"
+    log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+    exit 2
+  fi
+
+  # Find the feature-branch PR: its headRefName starts with "feat/<story_key>".
+  # Use a simple line-by-line parse that works without jq (bash 3.2 safe).
+  local feature_merged=""
+  local feature_found=0
+  local key_lower
+  # Lowercase the story key for case-insensitive branch matching.
+  # bash 3.2 safe: use tr instead of ${var,,}.
+  key_lower="$(printf '%s' "$STORY_KEY" | tr '[:upper:]' '[:lower:]')"
+
+  # Normalise compact JSON to one-field-per-line so the line-by-line parser
+  # works whether gh outputs pretty-printed or compact JSON.  The sed chain:
+  #   1. split on },{ boundaries (object separator)
+  #   2. split on ," boundaries (field separator inside an object)
+  #   3. put } on its own line (end-of-object marker for the parser)
+  local pr_lines
+  pr_lines="$(printf '%s\n' "$pr_json" \
+    | sed 's/},{/}\
+{/g' \
+    | sed 's/,"/\
+"/g' \
+    | sed 's/}/\
+}/g')"
+
+  local current_head="" current_merged=""
+  while IFS= read -r line; do
+    case "$line" in
+      *'"headRefName"'*)
+        current_head="$(printf '%s' "$line" | sed 's/.*"headRefName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+        ;;
+      *'"mergedAt"'*)
+        # Extract mergedAt value; handles both "mergedAt":"2026..." and "mergedAt":"".
+        current_merged="$(printf '%s' "$line" | sed 's/.*"mergedAt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+        ;;
+      *'}'*)
+        # End of an object — check if this is the feature PR.
+        if [ -n "$current_head" ]; then
+          local head_lower
+          head_lower="$(printf '%s' "$current_head" | tr '[:upper:]' '[:lower:]')"
+          case "$head_lower" in
+            feat/"$key_lower"*)
+              feature_found=1
+              if [ -n "$current_merged" ]; then
+                feature_merged="$current_merged"
+              fi
+              ;;
+          esac
+        fi
+        current_head=""
+        current_merged=""
+        ;;
+    esac
+  done <<EOF
+$pr_lines
+EOF
+
+  if [ "$feature_found" -eq 0 ]; then
+    log "no feature-branch PR found for ${STORY_KEY} — gate fails"
+    log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+    exit 2
+  fi
+
+  if [ -n "$feature_merged" ]; then
+    log "PR for ${STORY_KEY} merged at ${feature_merged} on ${TARGET} — gate passes"
+    return 0
+  fi
+
+  log "PR for ${STORY_KEY} exists but is not merged — gate fails"
+  log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+  exit 2
+}
+
+# ---------------------------------------------------------------------------
+# Commit-grep fallback (legacy logic, used only when gh is unavailable).
+# ---------------------------------------------------------------------------
+
+commit_grep_fallback() {
+  local pattern="\\b${STORY_KEY}\\b"
+
+  if safe_grep_log -i -q -E "$pattern" --oneline "$TARGET"; then
+    log "merge commit for ${STORY_KEY} found on ${TARGET} via commit grep (fallback) — gate passes"
+    return 0
+  fi
+
+  # Secondary fallback: "Story: <key>" in full commit bodies (plain or link form).
+  if safe_grep_log -i -q -E "Story:[[:space:]]*\[?${STORY_KEY}(\]|\\b)" --format='%B' "$TARGET"; then
+    log "merge commit for ${STORY_KEY} found via Story: tag on ${TARGET} (fallback) — gate passes"
+    return 0
+  fi
+
+  log "${STORY_KEY} not found on ${TARGET} — gate fails"
+  log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+  exit 2
+}
+
+# ---------------------------------------------------------------------------
+# Main flow: try API first, fall back to commit grep.
+# ---------------------------------------------------------------------------
+
+if check_pr_via_api; then
   exit 0
 fi
 
-# Fallback: check for "Story: <key>" in full commit messages (plain or link form).
-# Plain: "Story: KEY", Link: "Story: [KEY](url)".
-if safe_grep_log -i -q -E "Story:[[:space:]]*\[?${STORY_KEY}(\]|\\b)" --format='%B' "$TARGET"; then
-  log "merge commit for ${STORY_KEY} found via Story: tag on ${TARGET} — gate passes"
-  exit 0
-fi
-
-log "${STORY_KEY} not found on ${TARGET} — gate fails"
-log "orchestrator should re-run the commit/push/PR/CI/merge steps"
-exit 2
+# check_pr_via_api returned 1 (API unavailable) — use the commit-grep fallback.
+commit_grep_fallback
+exit 0

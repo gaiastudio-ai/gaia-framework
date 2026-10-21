@@ -810,8 +810,6 @@
 2	concurrent-sprint-arg.bats	62
 2	concurrent-sprint-independence-cd.bats	38
 3	concurrent-sprint-perf.bats	3
-2	concurrent-sprint-independence-cd.bats	38
-3	concurrent-sprint-perf.bats	3
 1	ci-fast-feedback-cap.bats	5
 1	publish-gate-release-commit.bats	5
 3	concurrent-sprint-surfaces.bats	28
@@ -823,3 +821,4 @@
 3	concurrent-sprint-drift.bats	14
 1	git-branch-dedup.bats	9
 2	verdict-resolver-required-false-malformed-json.bats	23
+1	verify-pr-merged-gh-api.bats	20
