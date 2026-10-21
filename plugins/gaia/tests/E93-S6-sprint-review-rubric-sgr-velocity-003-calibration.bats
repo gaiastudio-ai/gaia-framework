@@ -42,9 +42,9 @@ teardown() { common_teardown; }
 @test "AC5a: 7-goal completion-pass sweep — advisory names scaled floor and goals-below count" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/7-goal-sweep-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Floor = max(0.10, 0.30 * (4/7)) = 0.171... → "17%" or "17.14%" — assert "17"
+  # Floor = min(1/7, max(0.10, 0.30 * (4/7))) = min(0.1429, 0.171) = 0.1429 → "14%"
   [[ "$output" == *"sprint_shape: completion-pass applied"* ]]
-  [[ "$output" == *"17"* ]]
+  [[ "$output" == *"14"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -68,17 +68,17 @@ teardown() { common_teardown; }
 # AC5(c) — 5-goal default sprint scales floor to 24%; below-floor goals
 # surface at MEDIUM intermediate severity (not HIGH).
 # ---------------------------------------------------------------------------
-@test "AC5c: 5-goal default — scaled floor is 24% (computed from formula)" {
+@test "AC5c: 5-goal default — scaled floor is 20% (capped at 1/N)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC" --emit-floor
   [ "$status" -eq 0 ]
-  # Floor = 0.30 * (4/5) = 0.24 → assert "24" appears
-  [[ "$output" == *"floor_pct"*"24"* ]]
+  # Floor = min(1/5, max(0.10, 0.30*(4/5))) = min(0.20, 0.24) = 0.20
+  [[ "$output" == *'"floor_pct":0.2'* ]]
 }
 
-@test "AC5c: 5-goal default — goals within 5%% of floor emit MEDIUM (intermediate tier)" {
+@test "AC5c: 5-goal default — goals within 5pp of floor emit MEDIUM (intermediate tier)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 3 (20%) is within 5% of 24% floor → MEDIUM
+  # Goal 4 (15%) is within 5pp of 20% floor → MEDIUM
   medium_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"Medium"' || true)
   [ "$medium_count" -ge 1 ]
 }

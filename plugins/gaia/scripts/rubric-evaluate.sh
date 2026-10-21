@@ -6,8 +6,9 @@
 #      sprint_shape (optional, default 'thrust').
 #   2) Compute per-goal share = sum(stories where goal_index == g).points /
 #      total_points.
-#   3) Compute scaled floor_pct = max(0.10, 0.30 * (4 / max(4, N)))
-#      where N = len(goals).
+#   3) Compute scaled floor_pct = min(1.0/N, max(0.10, 0.30 * (4 / max(4, N))))
+#      where N = len(goals).  The outer min(1.0/N, ...) caps the total of
+#      all per-goal floors at 100% so a fully delivered sprint always passes.
 #   4) For each below-floor goal, emit a finding:
 #        - severity = High when (floor_pct - share) > 0.05
 #        - severity = Medium when 0 < (floor_pct - share) <= 0.05
@@ -147,7 +148,7 @@ if total_points <= 0:
     sys.exit(2)
 
 n_goals = len(goals)
-floor_pct = max(0.10, 0.30 * (4.0 / max(4.0, float(n_goals))))
+floor_pct = min(1.0 / n_goals, max(0.10, 0.30 * (4.0 / max(4.0, float(n_goals)))))
 
 # Compute per-goal share.
 per_goal_share = {}
