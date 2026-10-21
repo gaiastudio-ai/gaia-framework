@@ -114,7 +114,8 @@ _litter_snapshot_before() {
 }
 
 # _litter_check_after — call from teardown_file to diff the snapshot.
-# Fails if new files appeared under the plugin tree.
+# Fails if new untracked files appeared under the plugin tree, or if any
+# tracked file was modified (git-status clean check).
 _litter_check_after() {
   [ -n "$_LITTER_SNAPSHOT" ] && [ "$_LITTER_SNAPSHOT" != "SKIP" ] || return 0
   [ -f "$_LITTER_SNAPSHOT" ] || return 0
@@ -132,7 +133,7 @@ _litter_check_after() {
     | grep -v 'zz-probe-dir/' \
     || true)"
   if [ -n "$litter" ]; then
-    printf 'LITTER: %s left files under the plugin tree:\n%s\n' \
+    printf 'LITTER: %s left changes under the plugin tree:\n%s\n' \
       "${BATS_TEST_FILENAME##*/}" "$litter" >&2
     return 1
   fi

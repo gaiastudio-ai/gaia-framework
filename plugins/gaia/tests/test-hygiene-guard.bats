@@ -180,12 +180,11 @@ _setup_clears_root_vars() {
 #   (b) every .bats that overrides setup_file calls _litter_snapshot_before,
 #   (c) every .bats that overrides teardown_file calls _litter_check_after.
 
-# 159 pre-existing suites do not load test_helper.bash. Those suites predate
-# this guard and are a documented gap (filed as a Finding). The guard ensures
-# the gap does not GROW: any new .bats file must load test_helper.bash.
-_LEGACY_NO_LOAD_CAP=159
+# Every suite must load test_helper.bash — the cap is 0 and any omission
+# fails CI immediately.
+_LEGACY_NO_LOAD_CAP=0
 
-@test "no new bats file omits test_helper (litter detection coverage)" {
+@test "every bats file loads test_helper (litter detection coverage)" {
   local missing=()
   local scanned=0
 
@@ -385,8 +384,18 @@ _LEGACY_NO_LOAD_CAP=159
     ' "$f")"
     [ -n "$body" ] || continue
 
+    # Direct removal of the shared dirs
     if /usr/bin/grep -qE 'rm[[:space:]].*(\$\{?BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR\}?)' <<<"$body"; then
       violations+=("$(basename "$f")")
+      continue
+    fi
+
+    # Indirection: assigning BATS_RUN_TMPDIR or BATS_SUITE_TMPDIR to a
+    # variable and then removing that variable evades the direct check.
+    # Detect the assignment pattern inside teardown bodies.
+    if /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"; then
+      violations+=("$(basename "$f")")
+      continue
     fi
   done < <(find "$TESTS_DIR" -maxdepth 1 -name '*.bats' | LC_ALL=C sort)
 
@@ -396,11 +405,11 @@ _LEGACY_NO_LOAD_CAP=159
   }
 
   if [ "${#violations[@]}" -gt 0 ]; then
-    printf 'FAIL: %d file(s) remove shared bats runtime tmp dirs in teardown:\n' "${#violations[@]}" >&2
+    printf 'FAIL: %d file(s) remove or alias shared bats runtime tmp dirs in teardown:\n' "${#violations[@]}" >&2
     for v in "${violations[@]}"; do
       printf '  - %s\n' "$v" >&2
     done
-    printf '\nFix: teardown should only remove TEST_TMP or BATS_TEST_TMPDIR, never the shared runtime dirs.\n' >&2
+    printf '\nFix: teardown should only remove TEST_TMP or BATS_TEST_TMPDIR, never the shared runtime dirs (even via a local alias).\n' >&2
     return 1
   fi
 }
@@ -469,6 +478,46 @@ BATS
     printf 'Clean suite should pass, but got status %d\noutput:\n%s\n' "$status" "$output" >&2
     return 1
   }
+}
+
+@test "per-file litter guard catches modification of a tracked file" {
+  cd "$REPO_ROOT"
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || skip "not in a git worktree"
+
+  # Choose a tracked file under the plugin tree to modify and revert.
+  local target="$PLUGIN_DIR/tests/test_helper.bash"
+  [ -f "$target" ] || skip "test_helper.bash not found"
+
+  local d="$BATS_TEST_TMPDIR/perfile-modify-$$"
+  mkdir -p "$d"
+
+  # The synthetic suite loads test_helper (gets setup_file/teardown_file)
+  # and appends a harmless byte to a tracked file.
+  cat > "$d/modify-tracked.bats" <<BATS
+#!/usr/bin/env bats
+load '$TESTS_DIR/test_helper.bash'
+BATS
+  printf '%s "%s" {\n' '@test' 'modify tracked file' >> "$d/modify-tracked.bats"
+  printf '  printf "\\n" >> "%s"\n' "$target" >> "$d/modify-tracked.bats"
+  printf '}\n' >> "$d/modify-tracked.bats"
+
+  run bats "$d/modify-tracked.bats"
+
+  # Revert the modification regardless of result.
+  git -C "$REPO_ROOT" checkout -- "$target" 2>/dev/null || true
+
+  # The bats run should have failed (teardown_file caught the modification).
+  [ "$status" -ne 0 ] || {
+    printf 'Expected teardown_file to fail on modified tracked file, but bats exited 0\n' >&2
+    return 1
+  }
+  case "$output" in
+    *LITTER*) : ;;
+    *)
+      printf 'teardown_file output does not report the modification.\noutput:\n%s\n' "$output" >&2
+      return 1
+      ;;
+  esac
 }
 
 @test "indirect sourcing guard catches a helper chain to a root-resolver" {
@@ -627,6 +676,54 @@ HELPER
 
   if /usr/bin/grep -qE 'rm[[:space:]].*(\$\{?BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR\}?)' <<<"$body"; then
     printf 'False positive: safe teardown incorrectly matched\n' >&2
+    return 1
+  fi
+}
+
+@test "teardown guard detects variable indirection for BATS_RUN_TMPDIR" {
+  local d="$BATS_TEST_TMPDIR/indirect-$$"
+  mkdir -p "$d"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'teardown() {\n'
+    printf '  local d="$BATS_RUN_TMPDIR"\n'
+    printf '  rm -rf "$d"\n'
+    printf '}\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'
+  } > "$d/indirect.bats"
+
+  local body
+  body="$(awk '
+    /^teardown(_file)?\s*\(\)/ { inside=1 }
+    inside { print }
+    inside && /^}/ { inside=0 }
+  ' "$d/indirect.bats")"
+
+  # The indirection check should match the assignment.
+  /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"
+}
+
+@test "teardown guard indirection check does not match TEST_TMP assignment" {
+  local d="$BATS_TEST_TMPDIR/safe-indirect-$$"
+  mkdir -p "$d"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'teardown() {\n'
+    printf '  local d="$TEST_TMP"\n'
+    printf '  rm -rf "$d"\n'
+    printf '}\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'
+  } > "$d/safe-indirect.bats"
+
+  local body
+  body="$(awk '
+    /^teardown(_file)?\s*\(\)/ { inside=1 }
+    inside { print }
+    inside && /^}/ { inside=0 }
+  ' "$d/safe-indirect.bats")"
+
+  if /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"; then
+    printf 'False positive: TEST_TMP assignment incorrectly matched indirection check\n' >&2
     return 1
   fi
 }
