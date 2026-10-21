@@ -778,7 +778,6 @@ scripts-sprint	phase-persistence.bats
 scripts-sprint	resolve-story-file-coverage-stub.bats
 scripts-sprint	resolve-story-file.bats
 scripts-sprint	sprint-close-env-isolation-guard.bats
-scripts-sprint	sprint-close-resolver.bats
 scripts-sprint	sprint-close-sentinel-unconditional.bats
 scripts-sprint	sprint-progress-audit.bats
 scripts-sprint	sprint-state-advance.bats
