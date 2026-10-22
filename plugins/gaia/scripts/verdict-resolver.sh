@@ -331,12 +331,19 @@ if [ -n "$ANALYSIS" ]; then
   fi
 fi
 
-# LLM findings file: tolerate missing-or-empty by treating as no findings.
+# LLM findings file: validate when provided. A readable file whose JSON is
+# malformed (truncated, invalid syntax, zero-byte) is BLOCKED with a
+# diagnostic — not silently treated as "no findings".
 # Skip when --register is given (LLM findings go through the register).
 LLM_OK=0
 if [ -z "$REGISTER" ]; then
-  if [ -r "$LLM" ] && jq -e . "$LLM" >/dev/null 2>&1; then
-    LLM_OK=1
+  if [ -r "$LLM" ]; then
+    if jq -e . "$LLM" >/dev/null 2>&1; then
+      LLM_OK=1
+    else
+      printf '%s: malformed LLM-findings JSON: invalid or truncated: %s\n' "$SCRIPT_NAME" "$LLM" >&2
+      emit "BLOCKED"
+    fi
   fi
 fi
 
@@ -374,7 +381,7 @@ if [ "$EE_OK" = "1" ]; then
   ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
     if jq -e '
       [.suites[]?
-        | select((.required // true) == true)
+        | select(.required != false)
         | select((.timeout // false) == true)
       ] | length > 0
     ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
@@ -391,7 +398,7 @@ if [ "$EE_OK" = "1" ]; then
   ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
     if jq -e '
       [.suites[]?
-        | select((.required // true) == true)
+        | select(.required != false)
         | select((.timeout // false) == false)
         | select((.exit_code // 0) != 0)
       ] | length > 0

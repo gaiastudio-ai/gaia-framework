@@ -664,6 +664,7 @@ scripts-core	vcp-cpt-09-phase3-solutioning.bats
 scripts-core	vcp-cpt-09-phase3-testing.bats
 scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
+scripts-core	verdict-resolver-required-false-malformed-json.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
 scripts-core	worktree-git-push.bats
