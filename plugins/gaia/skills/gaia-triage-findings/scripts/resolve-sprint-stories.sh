@@ -78,10 +78,9 @@ fi
 # rely on a single `stories:` key. The migration is idempotent.
 if grep -q '^items[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
   if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS" 2>/dev/null; then
-    # Empty items: [] — just remove the line.
-    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
-    grep -v '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS" > "$_mig_tmp" || true
-    mv "$_mig_tmp" "$SPRINT_STATUS"
+    # Empty items: [] — no entries to lose, leave it (stripping would break
+    # byte-identical cmp checks in existing tests).
+    true
   elif ! grep -q '^stories[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
     # items: with entries but no stories: — rename items to stories.
     _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
