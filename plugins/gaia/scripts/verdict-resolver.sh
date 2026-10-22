@@ -331,20 +331,43 @@ if [ -n "$ANALYSIS" ]; then
   fi
 fi
 
-# LLM findings file: validate when provided. A readable file whose JSON is
-# malformed (truncated, invalid syntax, zero-byte) is BLOCKED with a
-# diagnostic — not silently treated as "no findings".
+# LLM findings file: fail closed on any defect. Aligned with the sibling
+# verdict scripts (test-dast, test-perf) — every failure path is BLOCKED
+# with a diagnostic:
+#   - not readable (missing or permission)        -> BLOCKED
+#   - zero-byte                                   -> BLOCKED
+#   - invalid/truncated JSON or multi-document    -> BLOCKED
+#   - valid JSON but wrong shape (must be a single object whose "findings"
+#     key is an array of objects)                 -> BLOCKED
 # Skip when --register is given (LLM findings go through the register).
 LLM_OK=0
 if [ -z "$REGISTER" ]; then
-  if [ -r "$LLM" ]; then
-    if jq -e . "$LLM" >/dev/null 2>&1; then
-      LLM_OK=1
-    else
-      printf '%s: malformed LLM-findings JSON: invalid or truncated: %s\n' "$SCRIPT_NAME" "$LLM" >&2
-      emit "BLOCKED"
-    fi
+  if [ ! -r "$LLM" ]; then
+    printf '%s: LLM-findings file not readable: %s\n' "$SCRIPT_NAME" "$LLM" >&2
+    emit "BLOCKED"
   fi
+  if [ ! -s "$LLM" ]; then
+    printf '%s: LLM-findings file is empty: %s\n' "$SCRIPT_NAME" "$LLM" >&2
+    emit "BLOCKED"
+  fi
+  # Single-document shape check via jq -s (slurp mode). Rejects
+  # multi-document concatenation, bare arrays/scalars, missing .findings
+  # key, and .findings that is not an array. Captures both stdout and
+  # stderr so parse errors and "false" are both visible.
+  _llm_shape_out=""
+  if ! _llm_shape_out="$(jq -e -s \
+    'length == 1
+     and (.[0] | type == "object")
+     and (.[0].findings | type == "array")' \
+    "$LLM" 2>&1)"; then
+    if printf '%s' "$_llm_shape_out" | grep -qi 'parse error\|unexpected\|invalid'; then
+      printf '%s: malformed LLM-findings JSON: %s: %s\n' "$SCRIPT_NAME" "$LLM" "$_llm_shape_out" >&2
+    else
+      printf '%s: LLM-findings JSON has wrong shape (expected single object with findings array): %s\n' "$SCRIPT_NAME" "$LLM" >&2
+    fi
+    emit "BLOCKED"
+  fi
+  LLM_OK=1
 fi
 
 # --- Execution-evidence pre-check ---
@@ -444,10 +467,20 @@ if [ -n "$REGISTER" ]; then
   fi
 else
   if [ "$LLM_OK" = "1" ]; then
-    if jq -e '
-      (.findings // []) | map(select((.severity // "") | ascii_downcase == "critical")) | length > 0
-    ' "$LLM" >/dev/null 2>&1; then
+    # Check for critical-severity findings. A jq runtime error (e.g.
+    # malformed entry inside the findings array) is BLOCKED, not silently
+    # treated as "no criticals found".
+    _llm_crit_err=""
+    _llm_crit_result=""
+    if _llm_crit_result="$(jq -e '
+      [.findings[] | select((.severity // "") | ascii_downcase == "critical")] | length > 0
+    ' "$LLM" 2>&1)"; then
       emit "REQUEST_CHANGES"
+    elif [ "$_llm_crit_result" = "false" ]; then
+      : # no criticals — fall through to next rule
+    else
+      printf '%s: LLM-findings critical check failed (jq error): %s: %s\n' "$SCRIPT_NAME" "$LLM" "$_llm_crit_result" >&2
+      emit "BLOCKED"
     fi
   fi
 fi
