@@ -18,6 +18,7 @@
 #   1 — error (no git repo, invalid args, etc.)
 
 set -euo pipefail
+_ORIG_LC_ALL="${LC_ALL:-}"
 LC_ALL=C
 export LC_ALL
 
@@ -43,9 +44,11 @@ SLUG="$2"
 # Apply the same slug cap as worktree_create so branch names stay consistent.
 # Source the library and call worktree_slug_cap directly — this keeps the cap
 # value, locale handling, and truncation logic in a single place.
+# The call runs in the caller's original locale so that cut(1) counts
+# characters, matching how worktree_create invokes the same function.
 # shellcheck source=../../../scripts/lib/story-worktree.sh
 . "$GUARD_DIR/../../../scripts/lib/story-worktree.sh"
-SLUG="$(worktree_slug_cap "$SLUG")"
+SLUG="$(LC_ALL="${_ORIG_LC_ALL:-}" worktree_slug_cap "$SLUG")"
 BRANCH_NAME="feat/${STORY_KEY}-${SLUG}"
 
 WORK_DIR="${PROJECT_PATH:-.}"
