@@ -72,14 +72,78 @@ if [ "$sprint_status_value" != "active" ]; then
   exit 0
 fi
 
+# ---------- Migrate legacy items: key in-place ----------
+# sprint-state.sh runs its own migration before every subcommand, but this
+# script is invoked independently. Migrate here so the reader below can
+# rely on a single `stories:` key. The migration is idempotent.
+if grep -q '^items[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
+  if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS" 2>/dev/null; then
+    # Empty items: [] — just remove the line.
+    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
+    grep -v '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS" > "$_mig_tmp" || true
+    mv "$_mig_tmp" "$SPRINT_STATUS"
+  elif ! grep -q '^stories[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
+    # items: with entries but no stories: — rename items to stories.
+    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
+    sed 's/^items[[:space:]]*:[[:space:]]*$/stories:/' "$SPRINT_STATUS" > "$_mig_tmp"
+    mv "$_mig_tmp" "$SPRINT_STATUS"
+  else
+    # Both keys present — merge items entries into stories (stories wins on
+    # duplicate key), remove items block. Self-contained awk, no sourcing.
+    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
+    if awk '
+      BEGIN { in_items=0; in_stories=0; ic=0; sc=0; oc=0; saw_s=0; saw_i=0 }
+      /^items[[:space:]]*:[[:space:]]*$/ { in_items=1; in_stories=0; saw_i=1; next }
+      /^stories[[:space:]]*:[[:space:]]*$/ { in_stories=1; in_items=0; saw_s=1; next }
+      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_items=0; saw_s=1; next }
+      /^[A-Za-z_]/ { in_items=0; in_stories=0 }
+      in_items {
+        il[ic++]=$0
+        if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+          k=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+          gsub(/["'\''[:space:]]/, "", k); ik[k]=1
+        }
+        next
+      }
+      in_stories {
+        sl[sc++]=$0
+        if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+          k=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+          gsub(/["'\''[:space:]]/, "", k); sk[k]=1
+        }
+        next
+      }
+      { ol[oc++]=$0 }
+      END {
+        for (i=0;i<oc;i++) print ol[i]
+        if (sc>0||ic>0) {
+          print "stories:"
+          for (i=0;i<sc;i++) print sl[i]
+          ck=""; skip=0
+          for (i=0;i<ic;i++) {
+            if (il[i] ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+              ck=il[i]; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", ck)
+              gsub(/["'\''[:space:]]/, "", ck); skip=(ck in sk)?1:0
+            }
+            if (!skip) print il[i]
+          }
+        }
+      }
+    ' "$SPRINT_STATUS" > "$_mig_tmp"; then
+      mv "$_mig_tmp" "$SPRINT_STATUS"
+    else
+      rm -f "$_mig_tmp"
+    fi
+  fi
+fi
+
 # Committed story keys from the top-level `stories:` sequence (`- key: "…"`).
-# Legacy fallback: if `stories:` is absent, try the legacy `items:` key.
-# When both exist, `stories:` wins (the canonical key post-alignment).
+# Fallback: if `stories:` is absent (e.g. read-only file where migration
+# could not run), try the legacy `items:` key.
 keys=$(awk '
-  /^stories[[:space:]]*:/ { in_stories = 1; saw_stories = 1; next }
-  /^items[[:space:]]*:/ { in_items = 1; next }
-  in_stories && /^[A-Za-z_]/ { in_stories = 0 }
-  in_items && /^[A-Za-z_]/ { in_items = 0 }
+  /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; saw_stories = 1; next }
+  /^items[[:space:]]*:/ { in_items = 1; in_stories = 0; next }
+  (in_stories || in_items) && /^[A-Za-z_]/ { in_stories = 0; in_items = 0 }
   in_stories && /key[[:space:]]*:/ {
     line = $0
     sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)

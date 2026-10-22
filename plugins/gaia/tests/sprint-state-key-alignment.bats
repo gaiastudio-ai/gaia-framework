@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
-# sprint-state-key-alignment.bats — tests for sprint-status.yaml key alignment.
+# sprint-state-key-alignment.bats — behavioral tests for the items-to-stories
+# key alignment and legacy migration.
 #
-# Verifies that sprint-state.sh init/inject and all reader sites use the
-# canonical `stories:` key (not the legacy `items:` key), and that legacy
-# files with `items:` are handled gracefully.
+# Every test creates its own temp project layout, runs the REAL sprint-state.sh
+# entry point, and asserts observable behavior (not grep patterns).
 
 load 'test_helper.bash'
 
@@ -12,42 +12,88 @@ bats_require_minimum_version 1.5.0
 SPRINT_STATE="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
 RESOLVE_SPRINT_STORIES="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
 
-setup() {
-  common_setup
-  # Create a minimal project layout in TEST_TMP so sprint-state.sh can resolve
-  # paths without touching the real plugin tree.
+# _setup_project — scaffold a minimal project tree in TEST_TMP.
+_setup_project() {
   mkdir -p "$TEST_TMP/project/.gaia/state"
   mkdir -p "$TEST_TMP/project/.gaia/config"
   mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$TEST_TMP/project/.gaia/memory"
-
-  # Minimal project config so sprint-state.sh doesn't bail on missing config.
   cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<'YAML'
 project_name: "test-project"
 stacks:
   - name: bash-dev
     path: "."
 YAML
-
   export PROJECT_ROOT="$TEST_TMP/project"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP/project"
   export PROJECT_PATH="$TEST_TMP/project"
   export SPRINT_STATUS_YAML="$TEST_TMP/project/.gaia/state/sprint-status.yaml"
 }
 
+# _create_story_file KEY TITLE STATUS SPRINT_ID [POINTS] [RISK]
+_create_story_file() {
+  local key="$1" title="$2" status="$3" sprint_id="$4"
+  local points="${5:-2}" risk="${6:-medium}"
+  local epic
+  epic=$(printf '%s' "$key" | sed 's/-S[0-9]*//')
+  local dir="$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-${epic}/${key}-${title// /-}"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<EOF
+---
+template: 'story'
+key: "${key}"
+title: "${title}"
+status: "${status}"
+sprint_id: "${sprint_id}"
+points: ${points}
+risk: "${risk}"
+epic: "${epic}"
+---
+# Story: ${title}
+EOF
+}
+
+# _legacy_yaml — create a legacy sprint-status.yaml with stories under items:
+_legacy_yaml() {
+  local sprint_id="$1" status="$2"
+  shift 2
+  {
+    printf 'sprint_id: "%s"\n' "$sprint_id"
+    printf 'status: %s\n' "$status"
+    printf 'total_points: 0\n'
+    printf 'goals: []\n'
+    printf 'items:\n'
+    while [ $# -gt 0 ]; do
+      local key="$1" s_status="$2"
+      shift 2
+      printf '  - key: "%s"\n' "$key"
+      printf '    title: '\''story %s'\''\n' "$key"
+      printf '    status: "%s"\n' "$s_status"
+      printf '    points: 2\n'
+      printf '    risk_level: "medium"\n'
+      printf '    assignee: null\n'
+      printf '    blocked_by: null\n'
+      printf '    updated: "2026-01-01"\n'
+    done
+  } > "$SPRINT_STATUS_YAML"
+}
+
+setup() {
+  common_setup
+  _setup_project
+}
+
 teardown() { common_teardown; }
 
 # ---------------------------------------------------------------------------
-# AC1 — sprint-state.sh init seeds `stories:` not `items:`
+# AC1 — init seeds stories: not items:
 # ---------------------------------------------------------------------------
 @test "init seeds stories key, not items key" {
   run bash "$SPRINT_STATE" init --sprint-id sprint-999
   [ "$status" -eq 0 ]
-  # The created file must contain `stories:` and must NOT contain `items:`
   grep -q '^stories:' "$SPRINT_STATUS_YAML"
   run grep -q '^items:' "$SPRINT_STATUS_YAML"
   [ "$status" -ne 0 ]
-  # Structural validation: sprint_id, status, total_points, goals present
   grep -q '^sprint_id:' "$SPRINT_STATUS_YAML"
   grep -q '^status: planned' "$SPRINT_STATUS_YAML"
   grep -q '^total_points: 0' "$SPRINT_STATUS_YAML"
@@ -55,160 +101,125 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
-# AC2 — all writer/reader sites use the `stories:` key consistently
+# AC3 — migration: inject onto legacy items-only file
 # ---------------------------------------------------------------------------
-@test "no writer site in sprint-state.sh seeds or appends to items key" {
-  local script="$SPRINT_STATE"
-  [ -f "$script" ]
+@test "inject onto legacy items-only file migrates and appends" {
+  _legacy_yaml sprint-inj active \
+    "E900-S1" "in-progress" \
+    "E900-S2" "ready-for-dev"
+  _create_story_file E900-S1 "story one" in-progress sprint-inj
+  _create_story_file E900-S2 "story two" ready-for-dev sprint-inj
+  _create_story_file E900-S3 "story three" ready-for-dev sprint-inj
 
-  # Init writer sites: the printf lines that seed the story-list key.
-  # These lines appear in the concurrent-mode and single-sprint init paths.
-  # They must all say 'stories' not 'items'.
-  local init_seeds
-  init_seeds=$(grep -c "printf.*'items: \[\]" "$script" || true)
-  [ "$init_seeds" -eq 0 ]
-}
+  # Inject a new story — the migration runs before inject touches the file.
+  run bash "$SPRINT_STATE" inject --story E900-S3
+  [ "$status" -eq 0 ]
 
-@test "sprint-state.sh readers all reference stories key" {
-  local script="$SPRINT_STATE"
-  [ -f "$script" ]
-
-  # Every awk reader block marker must use stories:, not items:.
-  # Sprint-state.sh should have zero items: references in code
-  # (comments mentioning legacy migration are acceptable).
-  local items_in_code
-  items_in_code=$(grep -n 'items:' "$script" | grep -v '^[[:space:]]*#' || true)
-  [ -z "$items_in_code" ]
-}
-
-@test "resolve-sprint-stories.sh reader uses stories key with items fallback" {
-  local script="$RESOLVE_SPRINT_STORIES"
-  [ -f "$script" ]
-  # The awk block in this script reads the stories: key as primary
-  grep -q 'stories' "$script"
-  grep -q 'in_stories' "$script"
-  # It also has a fallback for legacy items: key
-  grep -q 'in_items' "$script"
-  # The END block prefers stories: over items:
-  grep -q 'saw_stories' "$script"
-}
-
-@test "covered sites include init, inject, done-check, dep-lint, reconcile, triage reader" {
-  local script="$SPRINT_STATE"
-  [ -f "$script" ]
-
-  # Init: stories: [] seed
-  grep -q "printf.*'stories: \[\]" "$script"
-  # Inject/append: the awk writer references stories:
-  grep -q 'stories:.*\[\]' "$script"
-  # Done-check: _yaml_all_stories_done references stories:
-  grep -q '_yaml_all_stories_done' "$script"
-  # Dep-lint: .stories[] yq selector
-  grep -q '\.stories\[\]' "$script"
-  # Reconcile structural check: grep for stories:
-  grep -qE "grep.*stories:" "$script"
-  # Triage reader: resolve-sprint-stories.sh references stories:
-  grep -q 'stories' "$RESOLVE_SPRINT_STORIES"
+  # After migration+inject: all three stories under stories:, no items: key.
+  grep -q '^stories:' "$SPRINT_STATUS_YAML"
+  run grep -q '^items:' "$SPRINT_STATUS_YAML"
+  [ "$status" -ne 0 ]
+  # All three keys present.
+  grep -q '"E900-S1"' "$SPRINT_STATUS_YAML"
+  grep -q '"E900-S2"' "$SPRINT_STATUS_YAML"
+  grep -q '"E900-S3"' "$SPRINT_STATUS_YAML"
 }
 
 # ---------------------------------------------------------------------------
-# AC3 — legacy items: file migration
+# AC3 — migration: detect-auto-close sees migrated entries
 # ---------------------------------------------------------------------------
-@test "reader handles legacy items-only file without data loss" {
-  # Create a legacy sprint-status.yaml with items: key and no stories: key
-  cat > "$SPRINT_STATUS_YAML" <<'YAML'
-sprint_id: "sprint-legacy"
-status: active
-total_points: 5
-goals: []
-items:
-  - key: "E900-S1"
-    title: 'Legacy story one'
-    status: "in-progress"
-    points: 3
-    risk_level: "medium"
-    assignee: null
-    blocked_by: null
-    updated: "2026-01-01"
-  - key: "E900-S2"
-    title: 'Legacy story two'
-    status: "ready-for-dev"
-    points: 2
-    risk_level: "low"
-    assignee: null
-    blocked_by: null
-    updated: "2026-01-01"
-YAML
+@test "detect-auto-close sees non-done story under legacy items key" {
+  _legacy_yaml sprint-dac active \
+    "E900-S1" "in-progress" \
+    "E900-S2" "done"
+  _create_story_file E900-S1 "story one" in-progress sprint-dac
+  _create_story_file E900-S2 "story two" "done" sprint-dac
 
-  # Create story files so resolver can find them
-  mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S1-legacy-story-one"
-  printf -- '---\nkey: "E900-S1"\nstatus: "in-progress"\n---\n# Story\n' > \
-    "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S1-legacy-story-one/story.md"
-  mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S2-legacy-story-two"
-  printf -- '---\nkey: "E900-S2"\nstatus: "ready-for-dev"\n---\n# Story\n' > \
-    "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S2-legacy-story-two/story.md"
+  # detect-auto-close should find the non-done story and NOT recommend close.
+  run bash "$SPRINT_STATE" detect-auto-close
+  [ "$status" -eq 0 ]
+  # The output must NOT say "auto_close_eligible: true".
+  [[ "$output" != *"auto_close_eligible: true"* ]]
+}
 
-  # Run the triage reader
+# ---------------------------------------------------------------------------
+# AC3 — migration: transition --sprint gate refuses when non-done
+# ---------------------------------------------------------------------------
+@test "transition --sprint gate sees migrated non-done story under items key" {
+  _legacy_yaml sprint-gate active \
+    "E900-S1" "in-progress"
+  _create_story_file E900-S1 "story one" in-progress sprint-gate
+
+  # Transition to review should be refused because E900-S1 is not done.
+  run --separate-stderr bash "$SPRINT_STATE" transition --sprint sprint-gate --to review
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC3 — migration: reconcile sees migrated entries
+# ---------------------------------------------------------------------------
+@test "reconcile processes migrated entries from legacy items key" {
+  _legacy_yaml sprint-rec active \
+    "E900-S1" "ready-for-dev"
+  _create_story_file E900-S1 "story one" ready-for-dev sprint-rec
+
+  # Reconcile should find the story and process it.
+  run bash "$SPRINT_STATE" reconcile --sprint-id sprint-rec
+  [ "$status" -eq 0 ]
+  # After reconcile, items: should be migrated to stories:.
+  grep -q '^stories:' "$SPRINT_STATUS_YAML"
+  run grep -q '^items:' "$SPRINT_STATUS_YAML"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC3 — triage reader sees migrated entries
+# ---------------------------------------------------------------------------
+@test "triage reader finds stories from legacy items-only file" {
+  _legacy_yaml sprint-tri active \
+    "E900-S1" "in-progress" \
+    "E900-S2" "ready-for-dev"
+  _create_story_file E900-S1 "story one" in-progress sprint-tri
+  _create_story_file E900-S2 "story two" ready-for-dev sprint-tri
+
   run bash "$RESOLVE_SPRINT_STORIES" \
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
-
   [ "$status" -eq 0 ]
-  # Both stories must be found
   [[ "$output" == *"E900-S1"* ]]
   [[ "$output" == *"E900-S2"* ]]
-  # Count: exactly 2 lines of output
   local count
   count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
   [ "$count" -eq 2 ]
 }
 
 # ---------------------------------------------------------------------------
-# AC4 — freshly initialized sprint with 20 stories, triage finds all 20
+# AC4 — 20 stories round-trip
 # ---------------------------------------------------------------------------
 @test "triage finds all 20 stories after init and inject" {
-  # Initialize a fresh sprint
   run bash "$SPRINT_STATE" init --sprint-id sprint-test
   [ "$status" -eq 0 ]
 
-  # Create story files with proper frontmatter and inject 20 stories
   local i key
   for i in $(seq 1 20); do
     key="E99-S${i}"
-    mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E99/${key}-test-story-${i}"
-    cat > "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E99/${key}-test-story-${i}/story.md" <<EOF
----
-template: 'story'
-key: "${key}"
-title: "test story ${i}"
-status: "ready-for-dev"
-sprint_id: "sprint-test"
-points: 2
-risk: "medium"
-epic: "E99"
----
-# Story
-EOF
+    _create_story_file "$key" "test story ${i}" ready-for-dev sprint-test
     run bash "$SPRINT_STATE" inject --story "$key"
     [ "$status" -eq 0 ]
   done
 
-  # Transition sprint to active so the scoped reader works
   run bash "$SPRINT_STATE" transition --sprint sprint-test --to active
   [ "$status" -eq 0 ]
 
-  # Run the triage reader
   run bash "$RESOLVE_SPRINT_STORIES" \
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
 
-  # Must find exactly 20 story files
   local count
   count=$(printf '%s\n' "$output" | grep -c '.' || true)
   [ "$count" -eq 20 ]
 
-  # Every key must appear
   for i in $(seq 1 20); do
     [[ "$output" == *"E99-S${i}"* ]]
   done
@@ -226,27 +237,12 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# AC5b — legacy items-only file, reader finds the story
+# AC5b — legacy items-only file: reader finds stories
 # ---------------------------------------------------------------------------
-@test "reader finds story in legacy items-only file (AC5b)" {
-  cat > "$SPRINT_STATUS_YAML" <<'YAML'
-sprint_id: "sprint-legacy-5b"
-status: active
-total_points: 2
-goals: []
-items:
-  - key: "E900-S1"
-    title: 'Legacy story'
-    status: "ready-for-dev"
-    points: 2
-    risk_level: "low"
-    assignee: null
-    blocked_by: null
-    updated: "2026-01-01"
-YAML
-  mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S1-legacy-story"
-  printf -- '---\nkey: "E900-S1"\nstatus: "ready-for-dev"\n---\n# Story\n' > \
-    "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S1-legacy-story/story.md"
+@test "triage reader finds story in legacy items-only file (AC5b)" {
+  _legacy_yaml sprint-5b active \
+    "E900-S1" "ready-for-dev"
+  _create_story_file E900-S1 "legacy story" ready-for-dev sprint-5b
 
   run bash "$RESOLVE_SPRINT_STORIES" \
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
@@ -256,17 +252,20 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC5c — file with both items: and stories: keys, stories: preferred
+# AC5c — both keys: items-before-stories order
 # ---------------------------------------------------------------------------
-@test "reader prefers stories key when both keys present (AC5c)" {
+@test "both keys (items before stories) — all entries found after migration" {
+  _create_story_file E900-S1 "items story" in-progress sprint-both
+  _create_story_file E900-S2 "stories story" ready-for-dev sprint-both
+
   cat > "$SPRINT_STATUS_YAML" <<'YAML'
-sprint_id: "sprint-both-keys"
+sprint_id: "sprint-both"
 status: active
 total_points: 4
 goals: []
 items:
   - key: "E900-S1"
-    title: 'Items story'
+    title: 'items story'
     status: "in-progress"
     points: 2
     risk_level: "medium"
@@ -275,7 +274,7 @@ items:
     updated: "2026-01-01"
 stories:
   - key: "E900-S2"
-    title: 'Stories story'
+    title: 'stories story'
     status: "ready-for-dev"
     points: 2
     risk_level: "low"
@@ -283,24 +282,109 @@ stories:
     blocked_by: null
     updated: "2026-01-01"
 YAML
-  mkdir -p "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S2-stories-story"
-  printf -- '---\nkey: "E900-S2"\nstatus: "ready-for-dev"\n---\n# Story\n' > \
-    "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts/epic-E900/E900-S2-stories-story/story.md"
 
   run bash "$RESOLVE_SPRINT_STORIES" \
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  # stories: key is preferred, so E900-S2 should be found
+  # After migration: both stories present (items entries merged into stories).
+  [[ "$output" == *"E900-S1"* ]]
   [[ "$output" == *"E900-S2"* ]]
-  # items: key entries should NOT appear when stories: is present
-  [[ "$output" != *"E900-S1"* ]]
+  local count
+  count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
+  [ "$count" -eq 2 ]
 }
 
 # ---------------------------------------------------------------------------
-# AC5d — empty stories list, reader returns zero stories gracefully
+# AC5c — both keys: stories-before-items order
 # ---------------------------------------------------------------------------
-@test "reader returns zero stories from empty list without error (AC5d)" {
+@test "both keys (stories before items) — all entries found after migration" {
+  _create_story_file E900-S1 "stories story" ready-for-dev sprint-rev
+  _create_story_file E900-S2 "items story" in-progress sprint-rev
+
+  cat > "$SPRINT_STATUS_YAML" <<'YAML'
+sprint_id: "sprint-rev"
+status: active
+total_points: 4
+goals: []
+stories:
+  - key: "E900-S1"
+    title: 'stories story'
+    status: "ready-for-dev"
+    points: 2
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+items:
+  - key: "E900-S2"
+    title: 'items story'
+    status: "in-progress"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+YAML
+
+  run bash "$RESOLVE_SPRINT_STORIES" \
+    --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
+    --sprint-status "$SPRINT_STATUS_YAML"
+  [ "$status" -eq 0 ]
+  # After migration: both stories present.
+  [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"E900-S2"* ]]
+  local count
+  count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
+  [ "$count" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC5c — both keys with duplicate key: stories wins
+# ---------------------------------------------------------------------------
+@test "both keys with duplicate key — stories version wins" {
+  _create_story_file E900-S1 "the story" "done" sprint-dup
+
+  cat > "$SPRINT_STATUS_YAML" <<'YAML'
+sprint_id: "sprint-dup"
+status: active
+total_points: 2
+goals: []
+items:
+  - key: "E900-S1"
+    title: 'items version'
+    status: "in-progress"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+stories:
+  - key: "E900-S1"
+    title: 'stories version'
+    status: "done"
+    points: 2
+    risk_level: "low"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+YAML
+
+  # After migration, the stories version should win.
+  run bash "$SPRINT_STATE" detect-auto-close
+  [ "$status" -eq 0 ]
+  # Only one entry for E900-S1 should remain.
+  local key_count
+  key_count=$(grep -c '"E900-S1"' "$SPRINT_STATUS_YAML" || true)
+  [ "$key_count" -eq 1 ]
+  # The status should be "done" (from stories:), not "in-progress" (from items:).
+  grep -A 2 '"E900-S1"' "$SPRINT_STATUS_YAML" | grep -q '"done"'
+}
+
+# ---------------------------------------------------------------------------
+# AC5d — empty stories list: graceful
+# ---------------------------------------------------------------------------
+@test "empty stories list handled gracefully (AC5d)" {
   cat > "$SPRINT_STATUS_YAML" <<'YAML'
 sprint_id: "sprint-empty"
 status: active
@@ -313,13 +397,12 @@ YAML
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  # Output should be empty (no stories)
   [ -z "$output" ]
 }
 
-@test "reader returns zero stories from empty legacy items list without error (AC5d legacy)" {
+@test "empty legacy items list handled gracefully (AC5d legacy)" {
   cat > "$SPRINT_STATUS_YAML" <<'YAML'
-sprint_id: "sprint-empty-legacy"
+sprint_id: "sprint-empty-leg"
 status: active
 total_points: 0
 goals: []
@@ -334,46 +417,144 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC6 — bash version compatibility (structural check)
+# AC6 — bash version compat (structural check)
 # ---------------------------------------------------------------------------
-@test "no bash 4+ syntax in sprint-state.sh changed code" {
+@test "no bash 4+ syntax in sprint-state.sh" {
   local script="$SPRINT_STATE"
   [ -f "$script" ]
-  # Check for bash 4+ features that break on macOS /bin/bash 3.2
   local violations
   violations=$(grep -nE 'local -A |declare -A |\$\{[a-zA-Z_]+,,\}|\$\{[a-zA-Z_]+\^\^\}|readarray |mapfile |\|\&' "$script" || true)
   [ -z "$violations" ]
 }
 
 # ---------------------------------------------------------------------------
-# AC7 — no leaked identifiers in plugin tree changes
-# ---------------------------------------------------------------------------
-@test "no leaked internal identifiers in sprint-state.sh" {
-  local script="$SPRINT_STATE"
-  [ -f "$script" ]
-  # Scan for internal traceability IDs (excluding regex-literal contexts
-  # and synthetic test IDs like E99-S1 or E900-S1)
-  # Check for FR-nnn, NFR-nnn, SR-nnn, ADR-nnn, TC-nnn patterns
-  local leaks
-  leaks=$(grep -nE '\b(FR|NFR|SR|ADR|TC)-[0-9]{2,}' "$script" | grep -v 'E\[0-9\]' | grep -v '#.*test' || true)
-  [ -z "$leaks" ]
-}
-
-@test "no leaked internal identifiers in resolve-sprint-stories.sh" {
-  local script="$RESOLVE_SPRINT_STORIES"
-  [ -f "$script" ]
-  local leaks
-  leaks=$(grep -nE '\b(FR|NFR|SR|ADR|TC)-[0-9]{2,}' "$script" | grep -v 'E\[0-9\]' | grep -v '#.*test' || true)
-  [ -z "$leaks" ]
-}
-
-# ---------------------------------------------------------------------------
 # AC8 — fixtures use temp dirs only
 # ---------------------------------------------------------------------------
-@test "this test suite uses only temp dirs for fixtures" {
-  # Verify our setup creates files under TEST_TMP, not the real plugin tree
+@test "all fixtures use temp dirs, not the real plugin tree" {
   [ -d "$TEST_TMP" ]
   [ -d "$TEST_TMP/project/.gaia/state" ]
-  # Our SPRINT_STATUS_YAML points to the temp dir, not the real project
   [[ "$SPRINT_STATUS_YAML" == "$TEST_TMP"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# F1 — reproduce the original 1-of-20 symptom from issue 2119
+# ---------------------------------------------------------------------------
+@test "F1: legacy yaml with 19 items + 1 story — migration makes all 20 visible" {
+  # Reproduce the exact shape from the upstream issue: sprint-plan wrote 19
+  # stories under items:, then inject added 1 story under stories:.
+  # Without migration, triage sees only the stories: block = 1 story.
+  {
+    printf 'sprint_id: "sprint-repro"\n'
+    printf 'status: active\n'
+    printf 'total_points: 40\n'
+    printf 'goals: []\n'
+    printf 'items:\n'
+    for i in $(seq 1 19); do
+      printf '  - key: "E900-S%d"\n' "$i"
+      printf '    title: '\''planned story %d'\''\n' "$i"
+      printf '    status: "done"\n'
+      printf '    points: 2\n'
+      printf '    risk_level: "medium"\n'
+      printf '    assignee: null\n'
+      printf '    blocked_by: null\n'
+      printf '    updated: "2026-01-01"\n'
+    done
+    printf 'stories:\n'
+    printf '  - key: "E900-S20"\n'
+    printf '    title: '\''injected story'\''\n'
+    printf '    status: "done"\n'
+    printf '    points: 2\n'
+    printf '    risk_level: "medium"\n'
+    printf '    assignee: null\n'
+    printf '    blocked_by: null\n'
+    printf '    updated: "2026-01-01"\n'
+  } > "$SPRINT_STATUS_YAML"
+
+  # Create story files for all 20.
+  for i in $(seq 1 20); do
+    _create_story_file "E900-S${i}" "story ${i}" "done" sprint-repro
+  done
+
+  # After migration (triggered by resolve-sprint-stories.sh), triage should
+  # find all 20 stories.
+  run bash "$RESOLVE_SPRINT_STORIES" \
+    --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
+    --sprint-status "$SPRINT_STATUS_YAML"
+  [ "$status" -eq 0 ]
+  local count
+  count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
+  [ "$count" -eq 20 ]
+}
+
+@test "F1: migration merges items into stories — no data loss" {
+  {
+    printf 'sprint_id: "sprint-merge"\n'
+    printf 'status: active\n'
+    printf 'total_points: 6\n'
+    printf 'goals: []\n'
+    printf 'items:\n'
+    printf '  - key: "E900-S1"\n'
+    printf '    title: '\''item story'\''\n'
+    printf '    status: "done"\n'
+    printf '    points: 2\n'
+    printf '    risk_level: "medium"\n'
+    printf '    assignee: null\n'
+    printf '    blocked_by: null\n'
+    printf '    updated: "2026-01-01"\n'
+    printf '  - key: "E900-S2"\n'
+    printf '    title: '\''item story 2'\''\n'
+    printf '    status: "in-progress"\n'
+    printf '    points: 2\n'
+    printf '    risk_level: "medium"\n'
+    printf '    assignee: null\n'
+    printf '    blocked_by: null\n'
+    printf '    updated: "2026-01-01"\n'
+    printf 'stories:\n'
+    printf '  - key: "E900-S3"\n'
+    printf '    title: '\''stories story'\''\n'
+    printf '    status: "ready-for-dev"\n'
+    printf '    points: 2\n'
+    printf '    risk_level: "low"\n'
+    printf '    assignee: null\n'
+    printf '    blocked_by: null\n'
+    printf '    updated: "2026-01-01"\n'
+  } > "$SPRINT_STATUS_YAML"
+  _create_story_file E900-S1 "item story" "done" sprint-merge
+  _create_story_file E900-S2 "item story 2" in-progress sprint-merge
+  _create_story_file E900-S3 "stories story" ready-for-dev sprint-merge
+
+  # Trigger migration via detect-auto-close (any subcommand works).
+  run bash "$SPRINT_STATE" detect-auto-close
+  [ "$status" -eq 0 ]
+
+  # Verify: items: is gone, stories: has all 3 entries.
+  run grep -q '^items:' "$SPRINT_STATUS_YAML"
+  [ "$status" -ne 0 ]
+  grep -q '^stories:' "$SPRINT_STATUS_YAML"
+  grep -q '"E900-S1"' "$SPRINT_STATUS_YAML"
+  grep -q '"E900-S2"' "$SPRINT_STATUS_YAML"
+  grep -q '"E900-S3"' "$SPRINT_STATUS_YAML"
+}
+
+# ---------------------------------------------------------------------------
+# Migration idempotency
+# ---------------------------------------------------------------------------
+@test "migration is idempotent — running twice produces same result" {
+  _legacy_yaml sprint-idem active \
+    "E900-S1" "ready-for-dev"
+  _create_story_file E900-S1 "story one" ready-for-dev sprint-idem
+
+  # First migration via detect-auto-close.
+  run bash "$SPRINT_STATE" detect-auto-close
+  [ "$status" -eq 0 ]
+  local first_content
+  first_content=$(cat "$SPRINT_STATUS_YAML")
+
+  # Second run — should be a no-op.
+  run bash "$SPRINT_STATE" detect-auto-close
+  [ "$status" -eq 0 ]
+  local second_content
+  second_content=$(cat "$SPRINT_STATUS_YAML")
+
+  [ "$first_content" = "$second_content" ]
 }

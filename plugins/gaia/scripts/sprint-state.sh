@@ -859,6 +859,126 @@ _update_compatibility_proxy() {
   ) || true  # Proxy failure is non-fatal (per-sprint file is authoritative).
 }
 
+# _migrate_items_to_stories — one-shot migration of the legacy `items:` key.
+#
+# When sprint-status.yaml was seeded by a pre-alignment init, the story list
+# lives under `items:`. All readers enumerate `stories:` only. This helper
+# merges any `items:` entries into `stories:` (stories wins on duplicate key),
+# removes the `items:` block, and writes atomically via tmpfile+mv.
+#
+# Idempotent: no-op when `items:` is absent or empty. Fails closed when the
+# file cannot be parsed. Callers should hold the sprint-status lock when the
+# write path is reachable concurrently, but the main-dispatch call site runs
+# before any subcommand, so the serialisation point is the subcommand's own
+# lock acquisition.
+_migrate_items_to_stories() {
+  local yaml="$1"
+  [ -f "$yaml" ] || return 0
+
+  # Fast path: no items: key at all — nothing to migrate.
+  grep -q '^items[[:space:]]*:' "$yaml" 2>/dev/null || return 0
+
+  # Fast path: items: [] (empty list, no entries) — just remove the line.
+  if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$yaml" 2>/dev/null; then
+    # Only act if the line exists; remove it atomically.
+    local tmp_empty
+    tmp_empty="$(mktemp "${yaml}.mig.XXXXXX")"
+    grep -v '^items:[[:space:]]*\[\][[:space:]]*$' "$yaml" > "$tmp_empty" || true
+    mv "$tmp_empty" "$yaml"
+    return 0
+  fi
+
+  # Full migration: collect items entries and stories entries, merge, emit.
+  local tmp_mig
+  tmp_mig="$(mktemp "${yaml}.mig.XXXXXX")"
+  awk '
+    BEGIN {
+      in_items = 0; in_stories = 0
+      items_count = 0; stories_count = 0
+      other_count = 0; saw_stories = 0; saw_items = 0
+    }
+    # Detect items: block start (populated list).
+    /^items[[:space:]]*:[[:space:]]*$/ {
+      in_items = 1; in_stories = 0; saw_items = 1; next
+    }
+    # Detect stories: block start (populated or empty list).
+    /^stories[[:space:]]*:[[:space:]]*$/ {
+      in_stories = 1; in_items = 0; saw_stories = 1; next
+    }
+    /^stories[[:space:]]*:[[:space:]]*\[\][[:space:]]*$/ {
+      in_items = 0; saw_stories = 1; next
+    }
+    # A new top-level key ends whichever block we are in.
+    /^[A-Za-z_]/ {
+      in_items = 0; in_stories = 0
+    }
+    in_items {
+      items_lines[items_count++] = $0
+      # Extract keys for dedup.
+      if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+        k = $0
+        sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+        gsub(/["'\''[:space:]]/, "", k)
+        items_keys[k] = 1
+      }
+      next
+    }
+    in_stories {
+      stories_lines[stories_count++] = $0
+      if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+        k = $0
+        sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+        gsub(/["'\''[:space:]]/, "", k)
+        stories_keys[k] = 1
+      }
+      next
+    }
+    # Non-block lines: store for output.
+    {
+      other[other_count++] = $0
+    }
+    END {
+      # Emit non-block lines, inserting the merged stories: block where
+      # stories: or items: originally appeared (whichever comes first in
+      # the output, which is the non-block line just before the first
+      # block started — but since we stripped block lines, we emit the
+      # merged block at the end of the non-block content).
+      for (i = 0; i < other_count; i++) {
+        print other[i]
+      }
+      # Emit merged stories: block. Stories entries first (they win on
+      # duplicate key), then items entries whose key is not in stories.
+      if (stories_count > 0 || items_count > 0) {
+        print "stories:"
+        for (i = 0; i < stories_count; i++) {
+          print stories_lines[i]
+        }
+        # Append items entries not already in stories. Walk items lines
+        # and track the current entry key; skip the whole entry if its
+        # key exists in stories_keys.
+        cur_key = ""
+        skip = 0
+        for (i = 0; i < items_count; i++) {
+          ln = items_lines[i]
+          if (ln ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
+            cur_key = ln
+            sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", cur_key)
+            gsub(/["'\''[:space:]]/, "", cur_key)
+            skip = (cur_key in stories_keys) ? 1 : 0
+          }
+          if (!skip) print ln
+        }
+      }
+    }
+  ' "$yaml" > "$tmp_mig" || {
+    rm -f "$tmp_mig"
+    printf '%s: error: failed to migrate items: to stories: in %s (fail-closed)\n' \
+      "${SCRIPT_NAME:-sprint-state.sh}" "$yaml" >&2
+    return 1
+  }
+  mv "$tmp_mig" "$yaml"
+}
+
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
 # Honor pre-exported SPRINT_STATUS_YAML so tests can point the script at a
 # temp-dir yaml that does not live under IMPLEMENTATION_ARTIFACTS.
@@ -5001,6 +5121,12 @@ main() {
     SPRINT_STATE_SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
   fi
   resolve_paths
+
+  # Migrate legacy `items:` key to `stories:` before any reader/writer runs.
+  # Guarded on file existence so init (which creates the file) is not blocked.
+  if [ -f "$SPRINT_STATUS_YAML" ]; then
+    _migrate_items_to_stories "$SPRINT_STATUS_YAML" || true
+  fi
 
   # Wire the sprint argument for the resolver. In concurrent mode,
   # override SPRINT_STATUS_YAML to point at the per-sprint file so all
