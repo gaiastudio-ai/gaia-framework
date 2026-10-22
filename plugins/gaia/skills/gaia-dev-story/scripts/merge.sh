@@ -171,6 +171,10 @@ PR_HEAD_BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName'
 if [ -z "$PR_HEAD_BRANCH" ]; then
   die "aborting: could not determine PR head branch for #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
 fi
+# Validate: reject non-branch output (error text, "null", whitespace).
+if ! git check-ref-format --branch "$PR_HEAD_BRANCH" >/dev/null 2>&1; then
+  die "aborting: PR head branch name '${PR_HEAD_BRANCH}' is not a valid ref. The gh query may have returned an error or 'null'."
+fi
 assert_branch_not_protected "$PR_HEAD_BRANCH" || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
@@ -241,9 +245,10 @@ if [ -n "$bad_checks" ]; then
   exit 1
 fi
 
-# Shared prerequisite for guards 2 and 3: fetch and resolve origin/<base>.
-# A merge gate must fail closed — both a failed fetch and an unresolvable
-# ref exit non-zero with an actionable message.
+# Shared prerequisite for guards 2 and 3: fetch the base and the PR head.
+# After worktree teardown, local HEAD is the primary checkout (staging),
+# not the PR branch, so guards must compare against the fetched PR head
+# commit rather than HEAD. Fail closed on fetch or resolve failure.
 if ! git fetch origin "$PR_TARGET" --quiet 2>/dev/null; then
   log "aborting: 'git fetch origin ${PR_TARGET}' failed."
   log "Check network connectivity and that the remote branch exists, then retry."
@@ -255,17 +260,36 @@ if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Guard 2: the branch must be based on the current base tip.
-# A stale base means the PR was opened against an older revision and needs a
-# rebase before it can land cleanly.
-if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
-  head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
-  log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+# Fetch the PR head ref so guards 2 and 3 work after worktree teardown.
+# Try the named branch first; fall back to the pull-request ref.
+PR_HEAD_COMMIT=""
+if git fetch origin "$PR_HEAD_BRANCH" --quiet 2>/dev/null; then
+  PR_HEAD_COMMIT="$(git rev-parse --verify "origin/${PR_HEAD_BRANCH}" 2>/dev/null || echo "")"
+fi
+if [ -z "$PR_HEAD_COMMIT" ]; then
+  if git fetch origin "pull/${PR_NUMBER}/head" --quiet 2>/dev/null; then
+    PR_HEAD_COMMIT="$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")"
+  fi
+fi
+if [ -z "$PR_HEAD_COMMIT" ]; then
+  log "aborting: could not fetch the PR head ref (tried origin/${PR_HEAD_BRANCH} and pull/${PR_NUMBER}/head)."
+  log "Check network connectivity and that the PR branch exists on the remote, then retry."
+  exit 1
+fi
+
+# Guard 2: the PR head must be based on the current base tip.
+# Uses the fetched PR head commit, not local HEAD, so the guard works
+# correctly after worktree teardown.
+if ! git merge-base --is-ancestor "origin/${PR_TARGET}" "$PR_HEAD_COMMIT" 2>/dev/null; then
+  head_short="$(git rev-parse --short "$PR_HEAD_COMMIT" 2>/dev/null || echo "$PR_HEAD_COMMIT")"
+  log "aborting: PR head ${head_short} (${PR_HEAD_BRANCH}) is not based on origin/${PR_TARGET}."
   log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
   exit 1
 fi
 
 # Guard 3: no commit in the PR range may carry an assistant attribution trailer.
+# Scans origin/<base>..<pr_head_commit> — the PR's actual commits, not
+# local HEAD (which is the primary checkout after teardown).
 # Maintainable pattern list — extend by adding entries below.
 ASSISTANT_TRAILER_PATTERNS=(
   "noreply@anthropic.com"
@@ -288,10 +312,13 @@ _build_trailer_regex() {
 }
 
 trailer_regex="$(_build_trailer_regex)"
-# Scan every line of every commit body in the PR range for Co-Authored-By
-# trailers that match the assistant pattern list. Uses NUL as the record
-# separator to handle multi-line bodies (including trailers after description
-# paragraphs).
+# Fail closed: if the commit range cannot be enumerated, refuse the merge.
+pr_commit_list="$(git log --format='%H' "origin/${PR_TARGET}..${PR_HEAD_COMMIT}" 2>/dev/null)" || pr_commit_list=""
+if [ -z "$pr_commit_list" ]; then
+  log "aborting: could not enumerate commits in origin/${PR_TARGET}..${PR_HEAD_COMMIT}."
+  log "The PR range may be empty or unreachable. Fetch and retry."
+  exit 1
+fi
 while IFS= read -r commit_hash; do
   [ -z "$commit_hash" ] && continue
   body="$(git log -1 --format='%B' "$commit_hash" 2>/dev/null || true)"
@@ -303,7 +330,7 @@ while IFS= read -r commit_hash; do
     log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
     exit 1
   fi
-done < <(git log --format='%H' "origin/${PR_TARGET}..HEAD" 2>/dev/null)
+done <<< "$pr_commit_list"
 
 # ---------------------------------------------------------------------------
 # Concurrent-mode promotion-merge lock (L3).
