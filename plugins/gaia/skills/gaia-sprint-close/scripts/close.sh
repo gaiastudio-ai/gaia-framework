@@ -200,11 +200,13 @@ while [ "$#" -gt 0 ]; do
       ;;
     --sprint)
       [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
+      [ -n "$2" ] || die "--sprint requires a non-empty sprint ID"
       _SPRINT_FLAG="$2"
       shift 2
       ;;
     --sprint=*)
       _SPRINT_FLAG="${1#--sprint=}"
+      [ -n "$_SPRINT_FLAG" ] || die "--sprint requires a non-empty sprint ID"
       shift
       ;;
     --force-with-rollover)
@@ -251,6 +253,14 @@ fi
 # accepts --sprint for the sprint-close command class).
 _effective_sprint="${_SPRINT_FLAG:-${_POSITIONAL_SPRINT:-}}"
 
+# Detect the per-sprint state layout BEFORE calling the resolver.
+# Legacy projects without .gaia/state/ skip the resolver entirely and use
+# the old resolve_yaml_path single-sprint path. This decision is made once
+# and is not inferred from any resolver failure.
+_state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
+_has_state_dir=0
+[ -d "$_state_dir" ] && _has_state_dir=1
+
 # Build resolver arguments.
 _resolver_args=(--command sprint-close)
 if [ -n "$_effective_sprint" ]; then
@@ -262,22 +272,22 @@ fi
 #   - session binding fallback
 #   - single-sprint default
 # On failure (unknown ID, conflict, ambiguous), it prints diagnostics to
-# stderr and returns non-zero.
-# When an explicit sprint was requested, propagate resolver failures.
-# When no explicit sprint was given, a resolver failure (e.g. missing state
-# directory in legacy layouts) falls through to the legacy single-sprint path.
-if type resolve_sprint_arg >/dev/null 2>&1; then
+# stderr and returns non-zero — close.sh propagates that exit (fail closed).
+if [ "$_has_state_dir" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
+  _resolver_stderr="$(mktemp)"
   _resolver_rc=0
-  RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>/dev/null)" || _resolver_rc=$?
+  RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>"$_resolver_stderr")" || _resolver_rc=$?
   if [ "$_resolver_rc" -ne 0 ]; then
-    if [ -n "$_effective_sprint" ]; then
-      # Explicit sprint requested — re-run to show the diagnostic.
-      resolve_sprint_arg "${_resolver_args[@]}" >/dev/null || exit $?
-    fi
-    # No explicit sprint and resolver failed (legacy layout, missing state
-    # dir) — fall through to legacy single-sprint path.
-    RESOLVED_SPRINT=""
+    # Fail closed: surface the resolver's diagnostic and exit non-zero.
+    cat "$_resolver_stderr" >&2
+    rm -f "$_resolver_stderr"
+    exit "$_resolver_rc"
   fi
+  rm -f "$_resolver_stderr"
+elif [ "$_has_state_dir" -eq 0 ] && type resolve_sprint_arg >/dev/null 2>&1; then
+  # Legacy layout without .gaia/state/ — skip the resolver, use the
+  # effective sprint or the old single-sprint path.
+  RESOLVED_SPRINT="$_effective_sprint"
 else
   # session-binding.sh absent — use the effective sprint or fall through.
   RESOLVED_SPRINT="$_effective_sprint"

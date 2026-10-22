@@ -253,6 +253,172 @@ teardown() {
   [ "$archive_count" -ge 1 ]
 }
 
+# ---------- Fail-open guards ----------
+
+@test "ambiguous sprints with no binding refuses and changes nothing" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+  unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
+
+  # Snapshot state dir before.
+  local snap_before
+  snap_before="$(mktemp -d)"
+  cp -R "$TEST_TMP/.gaia/state/" "$snap_before/"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  # The resolver's "specify --sprint" diagnostic must surface.
+  [[ "$output" == *"--sprint"* ]]
+  # State dir must be byte-identical (no sprint closed).
+  diff -r "$TEST_TMP/.gaia/state/" "$snap_before/"
+  # No archive created.
+  local arc
+  arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$arc" -eq 0 ]
+  # No lifecycle event.
+  [ ! -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" ] || \
+    [ "$(wc -l < "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" | tr -d ' ')" -eq 0 ]
+  rm -rf "$snap_before"
+}
+
+@test "stale binding to missing sprint refuses and changes nothing" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Bind to a non-existent sprint.
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/stale-session"
+  mkdir -p "$bind_dir"
+  printf 'sprint-777' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  # Snapshot state dir.
+  local snap_before
+  snap_before="$(mktemp -d)"
+  cp -R "$TEST_TMP/.gaia/state/" "$snap_before/"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sprint-777"* ]] || [[ "$output" == *"not found"* ]]
+  diff -r "$TEST_TMP/.gaia/state/" "$snap_before/"
+  rm -rf "$snap_before"
+}
+
+@test "empty --sprint= value is rejected" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --sprint=
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"non-empty"* ]]
+}
+
+# ---------- Positional-only ----------
+
+@test "positional-only sprint ID closes the named sprint" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" sprint-900
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-900"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  # sprint-901 must still be active.
+  local s901_status
+  s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_status" = "active" ]
+}
+
+# ---------- Resolved-ID vs state-file mismatch ----------
+
+@test "resolver ID vs state-file mismatch is refused" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Corrupt the per-sprint file so its sprint_id disagrees with the filename.
+  yq -i '.sprint_id = "sprint-999"' "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml"
+
+  run bash "$CLOSE_SH" --sprint sprint-900
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"mismatch"* ]]
+}
+
+# ---------- Stronger assertions on happy-path ----------
+
+@test "explicit --sprint leaves the other sprint byte-identical and writes correct archive and event" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Snapshot sprint-901 state file before close.
+  local s901_before
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH" --sprint sprint-900
+
+  [ "$status" -eq 0 ]
+
+  # sprint-901 file is byte-identical.
+  local s901_after
+  s901_after="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_before" = "$s901_after" ]
+
+  # Archive filename contains the target sprint ID.
+  local archive
+  archive="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name 'sprint-900-closed-*.yaml' 2>/dev/null | head -1)"
+  [ -n "$archive" ]
+
+  # Lifecycle event names the correct sprint.
+  local event_file="$TEST_TMP/.gaia/memory/lifecycle-events.jsonl"
+  [ -f "$event_file" ]
+  /usr/bin/grep -q '"sprint-900"' "$event_file"
+  # Must NOT contain sprint-901 in the event.
+  ! /usr/bin/grep -q '"sprint-901"' "$event_file"
+}
+
+# ---------- SKILL invocation ----------
+
+@test "close.sh with --sprint as the skill passes it closes the named sprint" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Invoke close.sh exactly as the SKILL.md Action line does (with arguments).
+  run bash "$CLOSE_SH" --sprint sprint-900
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-900"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  local s901_status
+  s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_status" = "active" ]
+}
+
 # ---------- AC7: Bash 3.2 compatibility ----------
 
 @test "close.sh runs without syntax errors under /bin/bash 3.2" {
