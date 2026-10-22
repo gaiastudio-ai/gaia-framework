@@ -8,8 +8,10 @@
 #      total_points.
 #   3) Compute scaled floor_pct = min(1.0/N, max(0.10, 0.30 * (4 / max(4, N))))
 #      where N = len(goals).  The outer min(1.0/N, ...) caps the total of
-#      all per-goal floors at 100% so a fully delivered sprint always passes.
-#   4) For each below-floor goal, emit a finding:
+#      all per-goal floors at 100%.
+#   4) For each below-floor goal whose stories are NOT all done, emit a
+#      finding.  A fully delivered goal (every assigned story done) is
+#      exempt — it is substantive regardless of its share of capacity.
 #        - severity = High when (floor_pct - share) > 0.05
 #        - severity = Medium when 0 < (floor_pct - share) <= 0.05
 #                     (intermediate tier per Risk 3 mitigation)
@@ -150,11 +152,20 @@ if total_points <= 0:
 n_goals = len(goals)
 floor_pct = min(1.0 / n_goals, max(0.10, 0.30 * (4.0 / max(4.0, float(n_goals)))))
 
-# Compute per-goal share.
+# Compute per-goal share and delivery status.
 per_goal_share = {}
+goal_fully_delivered = {}
 for idx in range(1, n_goals + 1):
-    pts = sum(s.get("points", 0) for s in stories if s.get("goal_index") == idx)
+    goal_stories = [s for s in stories if s.get("goal_index") == idx]
+    pts = sum(s.get("points", 0) for s in goal_stories)
     per_goal_share[idx] = float(pts) / float(total_points)
+    # A goal is fully delivered when it has at least one story and every
+    # assigned story has status "done".  Goals with zero stories are NOT
+    # fully delivered (they behave as before — the floor check applies).
+    goal_fully_delivered[idx] = (
+        len(goal_stories) > 0
+        and all(s.get("status") == "done" for s in goal_stories)
+    )
 
 if emit_floor:
     print(json.dumps({"meta": "floor", "floor_pct": round(floor_pct, 4), "n_goals": n_goals}, separators=(',', ':')))
@@ -164,6 +175,11 @@ findings = []
 for idx in range(1, n_goals + 1):
     share = per_goal_share[idx]
     if share >= floor_pct:
+        continue
+    # A fully delivered goal is exempt from the incidental-goal floor:
+    # the team invested enough to complete every assigned story, so the
+    # goal is substantive regardless of its share of total capacity.
+    if goal_fully_delivered[idx]:
         continue
     n_goals_below_floor += 1
     delta = floor_pct - share

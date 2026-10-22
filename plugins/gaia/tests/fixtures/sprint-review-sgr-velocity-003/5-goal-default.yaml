@@ -29,11 +29,11 @@ stories:
     goal_index: 3
   - key: "T-S4"
     title: "Goal 4 story"
-    status: "done"
+    status: "in-progress"
     points: 3
     goal_index: 4
   - key: "T-S5"
     title: "Goal 5 story"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 5

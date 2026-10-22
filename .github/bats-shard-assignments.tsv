@@ -364,7 +364,7 @@
 2	round-lifecycle.bats	125
 2	round-wiring.bats	23
 2	safe-grep-log.bats	8
-2	sgr-velocity-003-floor-scaling.bats	12
+2	sgr-velocity-003-floor-scaling.bats	20
 2	sister-skills-strategy-test-artifact-fallback.bats	5
 2	skill-frontmatter-guard.bats	3
 2	skill-rename-preflight.bats	16

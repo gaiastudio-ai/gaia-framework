@@ -40,6 +40,46 @@ _gen_balanced_fixture() {
   } > "$outfile"
 }
 
+# Helper: generate a 4-goal fixture with specific point splits.
+# Args: $1=outfile, $2=p1, $3=p2, $4=p3, $5=p4, $6=status for goal-4 story
+#       (default "done"). All other stories are "done".
+_gen_4goal_fixture() {
+  local outfile="$1" p1="$2" p2="$3" p3="$4" p4="$5"
+  local g4_status="${6:-done}"
+  local total=$(( p1 + p2 + p3 + p4 ))
+  {
+    printf 'sprint_id: "test-4goal-uneven"\n'
+    printf 'total_points: %d\n' "$total"
+    printf 'status: review\n'
+    printf 'goals:\n'
+    printf '  - "Goal 1"\n'
+    printf '  - "Goal 2"\n'
+    printf '  - "Goal 3"\n'
+    printf '  - "Goal 4"\n'
+    printf 'stories:\n'
+    printf '  - key: "E900-S1"\n'
+    printf '    title: "Story 1"\n'
+    printf '    status: "done"\n'
+    printf '    points: %d\n' "$p1"
+    printf '    goal_index: 1\n'
+    printf '  - key: "E900-S2"\n'
+    printf '    title: "Story 2"\n'
+    printf '    status: "done"\n'
+    printf '    points: %d\n' "$p2"
+    printf '    goal_index: 2\n'
+    printf '  - key: "E900-S3"\n'
+    printf '    title: "Story 3"\n'
+    printf '    status: "done"\n'
+    printf '    points: %d\n' "$p3"
+    printf '    goal_index: 3\n'
+    printf '  - key: "E900-S4"\n'
+    printf '    title: "Story 4"\n'
+    printf '    status: "%s"\n' "$g4_status"
+    printf '    points: %d\n' "$p4"
+    printf '    goal_index: 4\n'
+  } > "$outfile"
+}
+
 # ---------------------------------------------------------------------------
 # AC1 — floor sum never exceeds 100% for N=1..12 (evaluator)
 # ---------------------------------------------------------------------------
@@ -114,7 +154,7 @@ print(round(result, 4))
   local key
   for key in $keys; do
     local n_val
-    n_val=$(echo "$key" | sed 's/N=//')
+    n_val="${key#N=}"
     local expected
     expected=$(jq -r --arg k "$key" '.severity_rules[] | select(.id=="sgr-velocity-003") | .formula.examples[$k]' "$RUBRIC")
     local computed
@@ -177,6 +217,114 @@ print(round(result, 4))
 }
 
 # ---------------------------------------------------------------------------
+# AC2 — fully delivered uneven splits all pass (no findings)
+# ---------------------------------------------------------------------------
+@test "4 goals fully delivered at 13/13/12/12 emits no findings" {
+  local fixture="$TEST_TMP/uneven-13-13-12-12.yaml"
+  _gen_4goal_fixture "$fixture" 13 13 12 12
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  local fc
+  fc=$(printf '%s\n' "$output" | /usr/bin/grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$fc" -eq 0 ]
+}
+
+@test "4 goals fully delivered at 26/25/25/24 emits no findings" {
+  local fixture="$TEST_TMP/uneven-26-25-25-24.yaml"
+  _gen_4goal_fixture "$fixture" 26 25 25 24
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  local fc
+  fc=$(printf '%s\n' "$output" | /usr/bin/grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$fc" -eq 0 ]
+}
+
+@test "4 goals fully delivered at 6/5/5/4 emits no findings" {
+  local fixture="$TEST_TMP/uneven-6-5-5-4.yaml"
+  _gen_4goal_fixture "$fixture" 6 5 5 4
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  local fc
+  fc=$(printf '%s\n' "$output" | /usr/bin/grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$fc" -eq 0 ]
+}
+
+@test "4 goals fully delivered at extreme 40/4/3/3 emits no findings" {
+  local fixture="$TEST_TMP/uneven-40-4-3-3.yaml"
+  _gen_4goal_fixture "$fixture" 40 4 3 3
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  local fc
+  fc=$(printf '%s\n' "$output" | /usr/bin/grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$fc" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC2 — same splits with one story not done in the small goal still fire
+# ---------------------------------------------------------------------------
+@test "13/13/12/12 with goal-4 story in-progress fires for goal 4" {
+  local fixture="$TEST_TMP/notdone-13-13-12-12.yaml"
+  _gen_4goal_fixture "$fixture" 13 13 12 12 "in-progress"
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"goal_index":4'* ]]
+}
+
+@test "6/5/5/4 with goal-4 story blocked fires for goal 4" {
+  local fixture="$TEST_TMP/notdone-6-5-5-4.yaml"
+  _gen_4goal_fixture "$fixture" 6 5 5 4 "blocked"
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"goal_index":4'* ]]
+}
+
+@test "40/4/3/3 with goal-4 story in-progress fires for goal 4" {
+  local fixture="$TEST_TMP/notdone-40-4-3-3.yaml"
+  _gen_4goal_fixture "$fixture" 40 4 3 3 "in-progress"
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"goal_index":4'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC2 — goal with zero stories behaves as before (not fully delivered)
+# ---------------------------------------------------------------------------
+@test "goal with zero stories is not exempt from floor check" {
+  # 4 goals, but goal 4 has no stories at all (0 points, 0% share).
+  local fixture="$TEST_TMP/zero-stories.yaml"
+  cat > "$fixture" <<'YAML'
+sprint_id: "test-zero-stories"
+total_points: 30
+status: review
+goals:
+  - "Goal 1"
+  - "Goal 2"
+  - "Goal 3"
+  - "Goal 4"
+stories:
+  - key: "E900-S1"
+    title: "Story 1"
+    status: "done"
+    points: 12
+    goal_index: 1
+  - key: "E900-S2"
+    title: "Story 2"
+    status: "done"
+    points: 10
+    goal_index: 2
+  - key: "E900-S3"
+    title: "Story 3"
+    status: "done"
+    points: 8
+    goal_index: 3
+YAML
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  # Goal 4 has 0 stories / 0% share — not exempt, should fire
+  [[ "$output" == *'"goal_index":4'* ]]
+}
+
+# ---------------------------------------------------------------------------
 # AC3 — parametric N=4..12: every fully-delivered balanced goal count passes
 # ---------------------------------------------------------------------------
 @test "parametric N=4 through 12 fully delivered (balanced) all pass" {
@@ -200,7 +348,8 @@ print(round(result, 4))
 # ---------------------------------------------------------------------------
 @test "4 goals with one under floor fires sgr-velocity-003 for that goal" {
   local fixture="$TEST_TMP/fixture-4-under.yaml"
-  # 4 goals, total 20 points. Goal 4 gets only 1 point (5% share).
+  # 4 goals, total 20 points. Goal 4 gets only 1 point (5% share)
+  # and its story is in-progress, so the floor check fires.
   cat > "$fixture" <<'YAML'
 sprint_id: "test-4-goal-under"
 total_points: 20
@@ -228,7 +377,7 @@ stories:
     goal_index: 3
   - key: "E900-S4"
     title: "Story 4"
-    status: "done"
+    status: "in-progress"
     points: 1
     goal_index: 4
 YAML
@@ -247,6 +396,7 @@ YAML
 # ---------------------------------------------------------------------------
 @test "goal exactly 5pp below floor is graded MEDIUM not HIGH" {
   # 5-goal, 20 total points, floor=0.20. Goal 4 at 15% = exactly 5pp below.
+  # Goals 4 and 5 have in-progress stories so they are NOT exempt.
   local fixture="$TEST_TMP/boundary-5pp.yaml"
   cat > "$fixture" <<'YAML'
 sprint_id: "test-5pp-boundary"
@@ -276,12 +426,12 @@ stories:
     goal_index: 3
   - key: "E900-S4"
     title: "Story 4"
-    status: "done"
+    status: "in-progress"
     points: 3
     goal_index: 4
   - key: "E900-S5"
     title: "Story 5"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 5
 YAML
@@ -326,10 +476,11 @@ YAML
       fi
       printf '    goal_index: %d\n' "$g"
     done
-    # Goal 10 gets only 2 points (2% share, below 10% floor)
+    # Goal 10 gets only 2 points (2% share, below 10% floor).
+    # Story is in-progress so the goal is NOT exempt.
     printf '  - key: "E900-S10"\n'
     printf '    title: "Story 10"\n'
-    printf '    status: "done"\n'
+    printf '    status: "in-progress"\n'
     printf '    points: 2\n'
     printf '    goal_index: 10\n'
   } > "$fixture"
