@@ -168,7 +168,9 @@ for idx in range(1, n_goals + 1):
     n_goals_below_floor += 1
     delta = floor_pct - share
     # Severity tiering: HIGH if >5 pp below, MEDIUM if within 5 pp.
-    if delta > 0.05:
+    # Round to 10 decimals to avoid floating-point boundary error
+    # (e.g. 0.20 - 0.15 = 0.050000000000000003 in IEEE 754).
+    if round(delta, 10) > 0.05:
         base_sev = "High"
     else:
         base_sev = "Medium"

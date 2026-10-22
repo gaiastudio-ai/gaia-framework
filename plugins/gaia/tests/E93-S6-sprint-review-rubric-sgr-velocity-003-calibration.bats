@@ -44,7 +44,7 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   # Floor = min(1/7, max(0.10, 0.30 * (4/7))) = min(0.1429, 0.171) = 0.1429 → "14%"
   [[ "$output" == *"sprint_shape: completion-pass applied"* ]]
-  [[ "$output" == *"14"* ]]
+  [[ "$output" == *"floor scaled to 14%"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -72,15 +72,20 @@ teardown() { common_teardown; }
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC" --emit-floor
   [ "$status" -eq 0 ]
   # Floor = min(1/5, max(0.10, 0.30*(4/5))) = min(0.20, 0.24) = 0.20
-  [[ "$output" == *'"floor_pct":0.2'* ]]
+  local floor_val
+  floor_val=$(printf '%s\n' "$output" | grep '"meta":"floor"' | python3 -c "import sys,json; print(json.load(sys.stdin)['floor_pct'])")
+  [ "$floor_val" = "0.2" ]
 }
 
-@test "AC5c: 5-goal default — goals within 5pp of floor emit MEDIUM (intermediate tier)" {
+@test "AC5c: 5-goal default — goal at exactly 5pp below floor emits MEDIUM (intermediate tier)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 4 (15%) is within 5pp of 20% floor → MEDIUM
+  # Goal 4 (15%) is exactly 5pp below 20% floor → MEDIUM (not HIGH)
   medium_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"Medium"' || true)
   [ "$medium_count" -ge 1 ]
+  # Verify specifically goal 4 is the MEDIUM one
+  [[ "$output" == *'"goal_index":4'*'"severity":"Medium"'* ]] || \
+    [[ "$output" == *'"severity":"Medium"'*'"goal_index":4'* ]]
 }
 
 @test "AC5c: 5-goal default — goals >5%% below floor emit HIGH" {
