@@ -2,10 +2,11 @@
 # verify-pr-merged.sh — post-completion gate for gaia-dev-story
 #
 # Verifies that the story's pull request has actually been merged by checking
-# the GitHub API (`gh pr list` + merge status), rather than grepping commit
-# messages which can false-pass when an older commit mentions the story key.
+# the GitHub API (gh pr list with --jq filtering by feature-branch prefix,
+# target branch, and state), rather than grepping commit messages which can
+# false-pass when an older commit mentions the story key.
 #
-# When the `gh` CLI is unavailable or the API call fails, falls back to the
+# When the gh CLI is unavailable or the API call fails, falls back to the
 # legacy commit-grep check with a WARNING so the degradation is auditable.
 #
 # Usage:
@@ -66,9 +67,12 @@ non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 # Primary path: check PR merge status via the GitHub API.
 # ---------------------------------------------------------------------------
 
-# check_pr_via_api — query gh for PRs matching the story key, then check
-# the feature-branch PR's merge status. Returns 0 (merged), 2 (not merged),
-# or 1 (API unavailable — caller should fall back).
+# check_pr_via_api — query gh for the feature-branch PR's state. Uses gh's
+# built-in --jq to filter by branch prefix and target branch, then extract
+# the state.  Avoids manual JSON parsing entirely.
+#
+# Returns 0 (merged) or exits 2 (not merged / not found).
+# Returns 1 when the API is unavailable and the caller should fall back.
 check_pr_via_api() {
   # Guard: gh must be on PATH.
   if ! command -v gh >/dev/null 2>&1; then
@@ -76,94 +80,58 @@ check_pr_via_api() {
     return 1
   fi
 
-  # Query for PRs whose head branch contains the story key (the feature
-  # branch convention is feat/<story_key>-<slug>).
-  local pr_json
-  if ! pr_json="$(gh pr list \
-        --search "$STORY_KEY" \
+  # Lowercase the story key for case-insensitive branch matching.
+  # bash 3.2 safe: use tr instead of ${var,,}.
+  local key_lower
+  key_lower="$(printf '%s' "$STORY_KEY" | tr '[:upper:]' '[:lower:]')"
+  local target_lower
+  target_lower="$(printf '%s' "$TARGET" | tr '[:upper:]' '[:lower:]')"
+
+  # Use gh's built-in --jq to:
+  #   1. Filter PRs whose headRefName starts with "feat/<key>-" (trailing dash
+  #      prevents prefix collisions: key S1 must not match branch S10).
+  #   2. Filter PRs whose baseRefName matches the target branch.
+  #   3. When multiple PRs match, report the newest (last in the array, which
+  #      gh returns sorted by creation date descending). If any is OPEN or
+  #      CLOSED, the gate must not pass on a stale MERGED PR — so we pick
+  #      the first (newest) entry's state.
+  #   4. Return "NO_MATCH" when no PR matches the filters.
+  # Deciding by state (MERGED vs OPEN/CLOSED) avoids the null-vs-empty
+  # mergedAt parsing bug that broke the original sed-based approach.
+  local pr_state
+  if ! pr_state="$(gh pr list \
         --state all \
-        --json number,headRefName,state,mergedAt \
-        --limit 50 2>/dev/null)"; then
+        --json headRefName,baseRefName,state \
+        --limit 200 \
+        --jq '[.[] | select((.headRefName | ascii_downcase | startswith("feat/'"${key_lower}"'-")) and (.baseRefName | ascii_downcase == "'"${target_lower}"'"))] | if length == 0 then "NO_MATCH" else .[0].state end' \
+        2>/dev/null)"; then
     warn "gh pr list failed — falling back to commit-based check"
     return 1
   fi
 
-  # Empty or null response means no PRs found.
-  if [ -z "$pr_json" ] || [ "$pr_json" = "[]" ] || [ "$pr_json" = "null" ]; then
-    log "no PRs found matching ${STORY_KEY} — gate fails"
-    log "orchestrator should re-run the commit/push/PR/CI/merge steps"
-    exit 2
+  # Empty output means gh produced nothing useful (parse failure, etc.).
+  # Fail closed: fall back rather than silently passing.
+  if [ -z "$pr_state" ]; then
+    warn "gh pr list returned empty output — falling back to commit-based check"
+    return 1
   fi
 
-  # Find the feature-branch PR: its headRefName starts with "feat/<story_key>".
-  # Use a simple line-by-line parse that works without jq (bash 3.2 safe).
-  local feature_merged=""
-  local feature_found=0
-  local key_lower
-  # Lowercase the story key for case-insensitive branch matching.
-  # bash 3.2 safe: use tr instead of ${var,,}.
-  key_lower="$(printf '%s' "$STORY_KEY" | tr '[:upper:]' '[:lower:]')"
-
-  # Normalise compact JSON to one-field-per-line so the line-by-line parser
-  # works whether gh outputs pretty-printed or compact JSON.  The sed chain:
-  #   1. split on },{ boundaries (object separator)
-  #   2. split on ," boundaries (field separator inside an object)
-  #   3. put } on its own line (end-of-object marker for the parser)
-  local pr_lines
-  pr_lines="$(printf '%s\n' "$pr_json" \
-    | sed 's/},{/}\
-{/g' \
-    | sed 's/,"/\
-"/g' \
-    | sed 's/}/\
-}/g')"
-
-  local current_head="" current_merged=""
-  while IFS= read -r line; do
-    case "$line" in
-      *'"headRefName"'*)
-        current_head="$(printf '%s' "$line" | sed 's/.*"headRefName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-        ;;
-      *'"mergedAt"'*)
-        # Extract mergedAt value; handles both "mergedAt":"2026..." and "mergedAt":"".
-        current_merged="$(printf '%s' "$line" | sed 's/.*"mergedAt"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-        ;;
-      *'}'*)
-        # End of an object — check if this is the feature PR.
-        if [ -n "$current_head" ]; then
-          local head_lower
-          head_lower="$(printf '%s' "$current_head" | tr '[:upper:]' '[:lower:]')"
-          case "$head_lower" in
-            feat/"$key_lower"*)
-              feature_found=1
-              if [ -n "$current_merged" ]; then
-                feature_merged="$current_merged"
-              fi
-              ;;
-          esac
-        fi
-        current_head=""
-        current_merged=""
-        ;;
-    esac
-  done <<EOF
-$pr_lines
-EOF
-
-  if [ "$feature_found" -eq 0 ]; then
-    log "no feature-branch PR found for ${STORY_KEY} — gate fails"
-    log "orchestrator should re-run the commit/push/PR/CI/merge steps"
-    exit 2
-  fi
-
-  if [ -n "$feature_merged" ]; then
-    log "PR for ${STORY_KEY} merged at ${feature_merged} on ${TARGET} — gate passes"
-    return 0
-  fi
-
-  log "PR for ${STORY_KEY} exists but is not merged — gate fails"
-  log "orchestrator should re-run the commit/push/PR/CI/merge steps"
-  exit 2
+  case "$pr_state" in
+    NO_MATCH)
+      log "no feature-branch PR found for ${STORY_KEY} targeting ${TARGET} — gate fails"
+      log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+      exit 2
+      ;;
+    MERGED)
+      log "PR for ${STORY_KEY} merged on ${TARGET} — gate passes"
+      return 0
+      ;;
+    *)
+      log "PR for ${STORY_KEY} exists (state: ${pr_state}) but is not merged — gate fails"
+      log "orchestrator should re-run the commit/push/PR/CI/merge steps"
+      exit 2
+      ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
