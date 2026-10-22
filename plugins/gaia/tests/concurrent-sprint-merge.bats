@@ -81,12 +81,23 @@ case "\$1" in
     ;;
   rev-parse)
     if [ "\${2:-}" = "--verify" ] && [[ "\${3:-}" == origin/* ]]; then
-      echo "0000000000000000000000000000000000000000"
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       exit 0
     fi
     ;;
   log)
-    [ "\${2:-}" = "--format=%H" ] && exit 0
+    if [ "\${2:-}" = "--format=%H" ]; then
+      # Return a fake commit hash so the trailer scan has a non-empty range.
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      exit 0
+    fi
+    if [ "\${2:-}" = "-1" ]; then
+      # git log -1 --format=%B <hash> — return an empty body (no trailer).
+      exit 0
+    fi
+    ;;
+  check-ref-format)
+    [ "\${2:-}" = "--branch" ] && { echo "\${3:-}"; exit 0; }
     ;;
 esac
 exec "$REAL_GIT" "\$@"
@@ -491,17 +502,24 @@ case "\$1" in
     if [ "\${2:-}" = "origin" ]; then
       count=\$(cat "$fetch_counter" 2>/dev/null || echo "0")
       echo "\$((count + 1))" > "$fetch_counter"
-      [ "\$count" -ge 1 ] && exit 1
+      # Allow pre-merge fetches (base + PR head); fail the post-merge one.
+      [ "\$count" -ge 2 ] && exit 1
       exit 0
     fi
     ;;
   merge-base) [ "\${2:-}" = "--is-ancestor" ] && exit 0 ;;
   rev-parse)
     if [ "\${2:-}" = "--verify" ] && [[ "\${3:-}" == origin/* ]]; then
-      echo "0000000000000000000000000000000000000000"; exit 0
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; exit 0
     fi
     ;;
-  log) [ "\${2:-}" = "--format=%H" ] && exit 0 ;;
+  log)
+    if [ "\${2:-}" = "--format=%H" ]; then
+      echo "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"; exit 0
+    fi
+    [ "\${2:-}" = "-1" ] && exit 0
+    ;;
+  check-ref-format) [ "\${2:-}" = "--branch" ] && { echo "\${3:-}"; exit 0; } ;;
 esac
 exec "$REAL_GIT" "\$@"
 STUB
