@@ -484,9 +484,15 @@ BATS
   cd "$REPO_ROOT"
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || skip "not in a git worktree"
 
-  # Choose a tracked file under the plugin tree to modify and revert.
-  local target="$PLUGIN_DIR/tests/test_helper.bash"
-  [ -f "$target" ] || skip "test_helper.bash not found"
+  # Pick a tracked file under the plugin tree that is clean (no pending
+  # modifications).  BOUNDARIES.md is a small, stable file.
+  local target="$PLUGIN_DIR/scripts/adapters/BOUNDARIES.md"
+  [ -f "$target" ] || skip "BOUNDARIES.md not found"
+  # Guard: the file must start clean — skip when it is already dirty so
+  # the test does not produce a false negative.
+  if git -C "$REPO_ROOT" status --porcelain -- "$target" | /usr/bin/grep -q .; then
+    skip "target file already dirty"
+  fi
 
   local d="$BATS_TEST_TMPDIR/perfile-modify-$$"
   mkdir -p "$d"
