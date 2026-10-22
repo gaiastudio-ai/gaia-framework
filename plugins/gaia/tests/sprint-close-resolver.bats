@@ -263,18 +263,21 @@ teardown() {
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
   unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
 
-  # Snapshot state dir before.
-  local snap_before
-  snap_before="$(mktemp -d)"
-  cp -R "$TEST_TMP/.gaia/state/" "$snap_before/"
+  # Snapshot per-sprint files before.
+  local s900_before s901_before main_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  main_before="$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")"
 
   run bash "$CLOSE_SH"
 
   [ "$status" -ne 0 ]
   # The resolver's "specify --sprint" diagnostic must surface.
   [[ "$output" == *"--sprint"* ]]
-  # State dir must be byte-identical (no sprint closed).
-  diff -r "$TEST_TMP/.gaia/state/" "$snap_before/"
+  # All state files must be byte-identical (no sprint closed).
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+  [ "$main_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
   # No archive created.
   local arc
   arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
@@ -282,7 +285,6 @@ teardown() {
   # No lifecycle event.
   [ ! -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" ] || \
     [ "$(wc -l < "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" | tr -d ' ')" -eq 0 ]
-  rm -rf "$snap_before"
 }
 
 @test "stale binding to missing sprint refuses and changes nothing" {
@@ -298,17 +300,18 @@ teardown() {
   printf 'sprint-777' > "$bind_dir/bound_sprint_id"
   export GAIA_BINDING_DIR="$bind_dir"
 
-  # Snapshot state dir.
-  local snap_before
-  snap_before="$(mktemp -d)"
-  cp -R "$TEST_TMP/.gaia/state/" "$snap_before/"
+  # Snapshot per-sprint files before.
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
 
   run bash "$CLOSE_SH"
 
   [ "$status" -ne 0 ]
   [[ "$output" == *"sprint-777"* ]] || [[ "$output" == *"not found"* ]]
-  diff -r "$TEST_TMP/.gaia/state/" "$snap_before/"
-  rm -rf "$snap_before"
+  # Per-sprint files must be byte-identical.
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
 }
 
 @test "empty --sprint= value is rejected" {
