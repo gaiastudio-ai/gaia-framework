@@ -54,12 +54,13 @@ make_fixture_repo() {
   fixture_git -C "$REPO" checkout -q -b feat/story-branch
   fixture_git -C "$REPO" commit --allow-empty -q -m "feature work"
 
-  # Set up origin/staging so merge-base --is-ancestor works.
+  # Set up origin so merge-base --is-ancestor and the PR-head fetch work.
   # A local remote lets us `git fetch origin` without network.
   ORIGIN="$TEST_TMP/origin"
   fixture_git clone --bare -q "$REPO" "$ORIGIN"
   fixture_git -C "$REPO" remote remove origin 2>/dev/null || true
   fixture_git -C "$REPO" remote add origin "$ORIGIN"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   fixture_git -C "$REPO" fetch -q origin
 
   export PROJECT_PATH="$REPO"
@@ -222,6 +223,7 @@ STUB
   make_fixture_repo
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -235,6 +237,7 @@ STUB
   make_fixture_repo
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: GitHub Copilot <copilot@github.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -247,6 +250,7 @@ STUB
   make_fixture_repo
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nco-authored-by: CLAUDE <claude@example.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -259,6 +263,7 @@ STUB
   make_fixture_repo
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: Human Developer <human@example.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -eq 0 ]
@@ -269,6 +274,7 @@ STUB
   make_fixture_repo
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "bad commit$(printf '\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   local bad_hash
   bad_hash="$(fixture_git -C "$REPO" rev-parse --short HEAD)"
   make_stub_gh
@@ -334,6 +340,7 @@ STUB
   # Create a commit whose body has a description paragraph THEN the trailer.
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "$(printf 'implement feature X\n\nThis change adds the feature X integration\nwith full backward compatibility.\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
