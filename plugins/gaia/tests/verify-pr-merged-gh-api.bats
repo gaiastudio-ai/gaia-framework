@@ -3,7 +3,12 @@
 # proving the gate checks actual PR merge status via the GitHub API
 # rather than commit-message grep.
 #
-# Stubs the gh CLI; never contacts the real GitHub API.
+# The gh stub executes the script's real --jq expression (via system jq)
+# against fixture JSON arrays shaped like real gh output (compact,
+# "mergedAt":null for unmerged PRs).  This means the jq filter logic —
+# prefix matching, baseRefName checking, newest-first ordering — is
+# exercised end-to-end in every test.
+#
 # All fixtures live in BATS_TEST_TMPDIR; nothing under plugins/gaia/.
 
 load 'test_helper.bash'
@@ -72,35 +77,45 @@ make_fixture_repo() {
 }
 
 # make_stub_gh — write an executable gh stub under $TEST_TMP/bin.
-# When the script passes --jq, the stub returns the pre-computed
-# GH_PR_LIST_RESULT (simulating gh's built-in jq filtering).
-# Without --jq, it returns GH_PR_LIST_JSON (raw JSON array).
+#
+# When the script passes --jq, the stub runs the REAL jq expression (via
+# system jq) against GH_PR_LIST_JSON.  This means the script's actual
+# filter logic (prefix matching, baseRefName, ordering) is exercised
+# end-to-end.  Any jq parse failure exits non-zero so the script falls back.
 make_stub_gh() {
   STUB_BIN="$TEST_TMP/bin"
   mkdir -p "$STUB_BIN"
-  cat > "$STUB_BIN/gh" <<'STUB'
+  # Resolve jq path now (before PATH might be narrowed).
+  local jq_path
+  jq_path="$(command -v jq)"
+  cat > "$STUB_BIN/gh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 
 # Record every invocation for post-hoc assertions.
-printf '%s\n' "$*" >> "${GH_CALL_LOG:-/dev/null}"
+printf '%s\n' "\$*" >> "\${GH_CALL_LOG:-/dev/null}"
 
 # --- gh pr list ---
-if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
-  if [ "${GH_PR_LIST_EXIT:-0}" -ne 0 ]; then
-    exit "${GH_PR_LIST_EXIT}"
+if [ "\$1" = "pr" ] && [ "\$2" = "list" ]; then
+  if [ "\${GH_PR_LIST_EXIT:-0}" -ne 0 ]; then
+    exit "\${GH_PR_LIST_EXIT}"
   fi
-  # Detect --jq flag; when present, return pre-filtered result.
-  # No `local` — this is a top-level script, not a function.
-  _has_jq=0
-  for _a in "$@"; do
-    case "$_a" in --jq) _has_jq=1 ;; esac
+  # Find --jq and its argument.
+  _jq_expr=""
+  _found_jq=0
+  for _a in "\$@"; do
+    if [ "\$_found_jq" -eq 1 ]; then
+      _jq_expr="\$_a"
+      break
+    fi
+    case "\$_a" in --jq) _found_jq=1 ;; esac
   done
-  if [ "$_has_jq" -eq 1 ] && [ -n "${GH_PR_LIST_RESULT+set}" ]; then
-    printf '%s\n' "${GH_PR_LIST_RESULT}"
-    exit 0
+  if [ -n "\$_jq_expr" ]; then
+    # Run the real jq expression against the fixture JSON.
+    printf '%s\n' "\${GH_PR_LIST_JSON:-[]}" | "${jq_path}" -r "\$_jq_expr"
+    exit \$?
   fi
-  printf '%s\n' "${GH_PR_LIST_JSON:-[]}"
+  printf '%s\n' "\${GH_PR_LIST_JSON:-[]}"
   exit 0
 fi
 
@@ -114,7 +129,7 @@ STUB
 # remove_gh_from_path — build a clean PATH containing only the tools the
 # script needs but NOT gh.  Avoids the /usr/bin leak (Ubuntu CI has
 # /usr/bin/gh) by symlinking individual tools into an isolated directory.
-# Saves the original PATH so teardown (which needs rm, etc.) can restore it.
+# Saves the original PATH so teardown can restore it.
 remove_gh_from_path() {
   _SAVED_PATH="$PATH"
   local clean_bin="$TEST_TMP/clean-bin"
@@ -135,10 +150,8 @@ remove_gh_from_path() {
   make_fixture_repo E900-S1
 
   make_stub_gh
-  export GH_CALL_LOG="$TEST_TMP/gh-calls.txt"
-  : > "$GH_CALL_LOG"
-  # Real gh shape: open PR has state OPEN.  The --jq filter returns "OPEN".
-  export GH_PR_LIST_RESULT="OPEN"
+  # Real gh shape: open PR has mergedAt null.
+  export GH_PR_LIST_JSON='[{"number":42,"headRefName":"feat/E900-S1-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S1 staging
   [ "$status" -eq 2 ]
@@ -148,8 +161,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S2
 
   make_stub_gh
-  # No matching PRs — jq filter returns NO_MATCH.
-  export GH_PR_LIST_RESULT="NO_MATCH"
+  export GH_PR_LIST_JSON='[]'
 
   run bash "$SCRIPT" E900-S2 staging
   [ "$status" -eq 2 ]
@@ -159,7 +171,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S3
 
   make_stub_gh
-  export GH_PR_LIST_RESULT="CLOSED"
+  export GH_PR_LIST_JSON='[{"number":99,"headRefName":"feat/E900-S3-slug","baseRefName":"staging","state":"CLOSED","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S3 staging
   [ "$status" -eq 2 ]
@@ -169,8 +181,8 @@ remove_gh_from_path() {
   make_fixture_repo E900-S20
 
   make_stub_gh
-  # Real gh returns state OPEN when mergedAt is null.
-  export GH_PR_LIST_RESULT="OPEN"
+  # Explicit: mergedAt is the JSON null, not empty string.
+  export GH_PR_LIST_JSON='[{"number":200,"headRefName":"feat/E900-S20-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S20 staging
   [ "$status" -eq 2 ]
@@ -184,7 +196,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S4
 
   make_stub_gh
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":50,"headRefName":"feat/E900-S4-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S4 staging
   [ "$status" -eq 0 ]
@@ -196,7 +208,7 @@ remove_gh_from_path() {
   make_stub_gh
   export GH_CALL_LOG="$TEST_TMP/gh-calls.txt"
   : > "$GH_CALL_LOG"
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":55,"headRefName":"feat/E900-S5-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S5 staging
   [ "$status" -eq 0 ]
@@ -216,9 +228,28 @@ remove_gh_from_path() {
   fixture_git -C "$REPO" commit --allow-empty -q -m "feat: implement E900-S6 (#60)"
 
   make_stub_gh
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":60,"headRefName":"feat/E900-S6-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T14:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S6 staging
+  [ "$status" -eq 0 ]
+}
+
+# Pretty-printed JSON (gh output varies by version).
+@test "merged PR with pretty-printed JSON: gate passes" {
+  make_fixture_repo E900-S23
+
+  make_stub_gh
+  export GH_PR_LIST_JSON='[
+  {
+    "number": 230,
+    "headRefName": "feat/E900-S23-slug",
+    "baseRefName": "staging",
+    "state": "MERGED",
+    "mergedAt": "2026-10-21T12:00:00Z"
+  }
+]'
+
+  run bash "$SCRIPT" E900-S23 staging
   [ "$status" -eq 0 ]
 }
 
@@ -230,8 +261,8 @@ remove_gh_from_path() {
   make_fixture_repo E900-S7
 
   make_stub_gh
-  # The jq filter already selected only the feature-branch PR → MERGED.
-  export GH_PR_LIST_RESULT="MERGED"
+  # Two PRs in the response: feature PR merged, docs PR open.
+  export GH_PR_LIST_JSON='[{"number":70,"headRefName":"feat/E900-S7-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T15:00:00Z"},{"number":71,"headRefName":"docs/planning-E900-S7","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S7 staging
   [ "$status" -eq 0 ]
@@ -241,8 +272,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S8
 
   make_stub_gh
-  # jq filter picks the newest feat/ PR → still MERGED.
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":80,"headRefName":"feat/E900-S8-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T16:00:00Z"},{"number":81,"headRefName":"chore/sprint-plan","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S8 staging
   [ "$status" -eq 0 ]
@@ -252,20 +282,20 @@ remove_gh_from_path() {
   make_fixture_repo E900-S9
 
   make_stub_gh
-  # jq filter picks the newest feat/ PR → OPEN (the older merged one is not first).
-  export GH_PR_LIST_RESULT="OPEN"
+  # Feature PR #90 is OPEN (newest), planning PR #91 is MERGED but not feat/.
+  export GH_PR_LIST_JSON='[{"number":90,"headRefName":"feat/E900-S9-slug","baseRefName":"staging","state":"OPEN","mergedAt":null},{"number":91,"headRefName":"docs/atdd-E900-S9","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T10:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S9 staging
   [ "$status" -eq 2 ]
 }
 
-@test "prefix collision: key S1 does not match branch feat/S10-slug" {
+@test "prefix collision: key S1 does not match branch feat/E900-S10-slug" {
   make_fixture_repo E900-S1
 
   make_stub_gh
-  # The jq filter uses startswith("feat/e900-s1-") which does NOT match
-  # "feat/e900-s10-slug".  No match for S1 → NO_MATCH.
-  export GH_PR_LIST_RESULT="NO_MATCH"
+  # Only a PR for E900-S10 exists (merged). No PR for E900-S1.
+  # The jq startswith("feat/e900-s1-") must NOT match "feat/E900-S10-slug".
+  export GH_PR_LIST_JSON='[{"number":100,"headRefName":"feat/E900-S10-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S1 staging
   [ "$status" -eq 2 ]
@@ -275,8 +305,8 @@ remove_gh_from_path() {
   make_fixture_repo E900-S21
 
   make_stub_gh
-  # PRs exist but none match the feat/<key>- prefix → NO_MATCH.
-  export GH_PR_LIST_RESULT="NO_MATCH"
+  # PRs exist but none have a feat/<key>- head branch.
+  export GH_PR_LIST_JSON='[{"number":210,"headRefName":"docs/E900-S21-plan","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"},{"number":211,"headRefName":"chore/cleanup","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
 
   run bash "$SCRIPT" E900-S21 staging
   [ "$status" -eq 2 ]
@@ -287,10 +317,21 @@ remove_gh_from_path() {
 
   make_stub_gh
   # Feature PR exists but targets main, not staging.
-  # The jq filter checks baseRefName == target → NO_MATCH for staging.
-  export GH_PR_LIST_RESULT="NO_MATCH"
+  export GH_PR_LIST_JSON='[{"number":220,"headRefName":"feat/E900-S22-slug","baseRefName":"main","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   run bash "$SCRIPT" E900-S22 staging
+  [ "$status" -eq 2 ]
+}
+
+@test "older merged PR + newer open PR for same branch: gate fails (newest wins)" {
+  make_fixture_repo E900-S24
+
+  make_stub_gh
+  # gh returns newest first.  The newer PR (OPEN) comes first in the array.
+  # An older PR for the same branch prefix was merged, but the newest is open.
+  export GH_PR_LIST_JSON='[{"number":242,"headRefName":"feat/E900-S24-v2","baseRefName":"staging","state":"OPEN","mergedAt":null},{"number":241,"headRefName":"feat/E900-S24-v1","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-20T12:00:00Z"}]'
+
+  run bash "$SCRIPT" E900-S24 staging
   [ "$status" -eq 2 ]
 }
 
@@ -361,7 +402,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S14
 
   make_stub_gh
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":140,"headRefName":"feat/E900-S14-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   local bash5
   bash5="$(command -v bash)"
@@ -373,7 +414,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S15
 
   make_stub_gh
-  export GH_PR_LIST_RESULT="MERGED"
+  export GH_PR_LIST_JSON='[{"number":150,"headRefName":"feat/E900-S15-slug","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
 
   run /bin/bash "$SCRIPT" E900-S15 staging
   [ "$status" -eq 0 ]

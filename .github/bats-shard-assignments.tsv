@@ -822,3 +822,4 @@
 1	git-branch-dedup.bats	9
 2	verdict-resolver-required-false-malformed-json.bats	23
 1	verify-pr-merged-gh-api.bats	20
+1	verify-pr-merged-gh-api.bats	25
