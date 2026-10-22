@@ -253,13 +253,17 @@ fi
 # accepts --sprint for the sprint-close command class).
 _effective_sprint="${_SPRINT_FLAG:-${_POSITIONAL_SPRINT:-}}"
 
-# Detect the per-sprint state layout BEFORE calling the resolver.
-# Legacy projects without .gaia/state/ skip the resolver entirely and use
-# the old resolve_yaml_path single-sprint path. This decision is made once
-# and is not inferred from any resolver failure.
+# Detect whether to use the resolver or the legacy single-sprint path.
+# Two conditions skip the resolver:
+#   1. SPRINT_STATUS_YAML is set — the caller explicitly chose the file.
+#   2. .gaia/state/ does not exist — legacy layout, no per-sprint files.
+# This decision is made once BEFORE calling the resolver and is not
+# inferred from any resolver failure.
 _state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
-_has_state_dir=0
-[ -d "$_state_dir" ] && _has_state_dir=1
+_use_resolver=0
+if [ -z "${SPRINT_STATUS_YAML:-}" ] && [ -d "$_state_dir" ]; then
+  _use_resolver=1
+fi
 
 # Build resolver arguments.
 _resolver_args=(--command sprint-close)
@@ -273,7 +277,7 @@ fi
 #   - single-sprint default
 # On failure (unknown ID, conflict, ambiguous), it prints diagnostics to
 # stderr and returns non-zero — close.sh propagates that exit (fail closed).
-if [ "$_has_state_dir" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
+if [ "$_use_resolver" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
   _resolver_stderr="$(mktemp)"
   _resolver_rc=0
   RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>"$_resolver_stderr")" || _resolver_rc=$?
@@ -284,12 +288,10 @@ if [ "$_has_state_dir" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
     exit "$_resolver_rc"
   fi
   rm -f "$_resolver_stderr"
-elif [ "$_has_state_dir" -eq 0 ] && type resolve_sprint_arg >/dev/null 2>&1; then
-  # Legacy layout without .gaia/state/ — skip the resolver, use the
-  # effective sprint or the old single-sprint path.
-  RESOLVED_SPRINT="$_effective_sprint"
 else
-  # session-binding.sh absent — use the effective sprint or fall through.
+  # Resolver skipped (SPRINT_STATUS_YAML set, .gaia/state/ absent, or
+  # session-binding.sh not found). Use the effective sprint or fall
+  # through to the legacy single-sprint path.
   RESOLVED_SPRINT="$_effective_sprint"
 fi
 
