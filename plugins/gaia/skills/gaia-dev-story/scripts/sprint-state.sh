@@ -878,13 +878,10 @@ _migrate_items_to_stories() {
   # Fast path: no items: key at all — nothing to migrate.
   grep -q '^items[[:space:]]*:' "$yaml" 2>/dev/null || return 0
 
-  # Fast path: items: [] (empty list, no entries) — just remove the line.
+  # Fast path: items: [] (empty list, no entries) — leave it. An empty
+  # items: [] causes no data loss (there are no entries to miss), and
+  # stripping it would break byte-identical cmp checks in existing tests.
   if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$yaml" 2>/dev/null; then
-    # Only act if the line exists; remove it atomically.
-    local tmp_empty
-    tmp_empty="$(mktemp "${yaml}.mig.XXXXXX")"
-    grep -v '^items:[[:space:]]*\[\][[:space:]]*$' "$yaml" > "$tmp_empty" || true
-    mv "$tmp_empty" "$yaml"
     return 0
   fi
 
@@ -5123,9 +5120,21 @@ main() {
   resolve_paths
 
   # Migrate legacy `items:` key to `stories:` before any reader/writer runs.
-  # Guarded on file existence so init (which creates the file) is not blocked.
-  if [ -f "$SPRINT_STATUS_YAML" ]; then
-    _migrate_items_to_stories "$SPRINT_STATUS_YAML" || true
+  # The fast-path grep runs without the lock; only when a populated items:
+  # block is found do we acquire the sprint-status lock, migrate, and release.
+  # A subshell isolates the lock lifecycle from the subcommand's own lock.
+  if [ -f "$SPRINT_STATUS_YAML" ] \
+     && grep -q '^items[[:space:]]*:' "$SPRINT_STATUS_YAML" 2>/dev/null \
+     && ! grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS_YAML" 2>/dev/null; then
+    (
+      if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
+        printf '%s: warning: could not acquire lock for items-to-stories migration\n' \
+          "$SCRIPT_NAME" >&2
+        exit 0
+      fi
+      trap 'release_lock 9 2>/dev/null || true' EXIT
+      _migrate_items_to_stories "$SPRINT_STATUS_YAML" || true
+    )
   fi
 
   # Wire the sprint argument for the resolver. In concurrent mode,
