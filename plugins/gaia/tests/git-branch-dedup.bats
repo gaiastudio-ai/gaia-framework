@@ -12,10 +12,6 @@ load 'test_helper.bash'
 
 bats_require_minimum_version 1.5.0
 
-# The slug cap that worktree_create uses (must match the value in
-# story-worktree.sh).
-_SLUG_MAX=60
-
 setup() {
   common_setup
 
@@ -23,6 +19,12 @@ setup() {
   export PLUGIN_ROOT
   GIT_BRANCH_SH="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/git-branch.sh"
   [ -f "$GIT_BRANCH_SH" ] || fail "git-branch.sh not found at $GIT_BRANCH_SH"
+
+  # Source the real worktree library to get the authoritative slug cap.
+  STORY_WORKTREE_SH="$PLUGIN_ROOT/scripts/lib/story-worktree.sh"
+  [ -f "$STORY_WORKTREE_SH" ] || fail "story-worktree.sh not found at $STORY_WORKTREE_SH"
+  # shellcheck source=../scripts/lib/story-worktree.sh
+  . "$STORY_WORKTREE_SH"
 
   # Build a throwaway bare repo (serves as "origin") and a primary clone.
   BARE="$TEST_TMP/bare.git"
@@ -61,15 +63,15 @@ _mk_worktree() {
 # Worktree dedup: reuse an existing worktree branch with a truncated slug
 # ---------------------------------------------------------------------------
 
-@test "reuses existing truncated-slug branch from the worktree" {
-  local long_slug short_slug wt_branch wt_path story_key="E900-S1"
+@test "reuses existing truncated-slug branch via show-ref path" {
+  local long_slug capped_slug wt_branch wt_path story_key="E900-S1"
 
   # A slug longer than the cap, so worktree_create would truncate it.
   long_slug="this-is-a-very-long-slug-that-exceeds-the-sixty-character-slug-cap-limit"
-  short_slug="${long_slug:0:$_SLUG_MAX}"
-  wt_branch="feat/${story_key}-${short_slug}"
+  capped_slug="$(worktree_slug_cap "$long_slug")"
+  wt_branch="feat/${story_key}-${capped_slug}"
 
-  # Simulate what worktree_create does: create a worktree on the truncated branch.
+  # Create a worktree on the capped branch (simulating worktree_create).
   wt_path="$TEST_TMP/wt-${story_key}"
   _mk_worktree "$PRIMARY" "$wt_branch" "$wt_path"
 
@@ -79,9 +81,9 @@ _mk_worktree() {
   echo "output=$output"
   [ "$status" -eq 0 ]
 
-  # It must report the EXISTING (truncated) branch, not create a new one.
-  [[ "$output" == *"already exists: $wt_branch"* ]] || \
-  [[ "$output" == *"reusing worktree branch: $wt_branch"* ]]
+  # The capped branch name equals the computed BRANCH_NAME, so this takes the
+  # show-ref path. Assert the exact output line.
+  [[ "$output" == *"already exists: $wt_branch"* ]]
 
   # There must NOT be a branch with the full slug.
   local full_branch="feat/${story_key}-${long_slug}"
@@ -93,8 +95,8 @@ _mk_worktree() {
   local custom_slug wt_branch wt_path story_key="E900-S6"
 
   # Simulate a worktree created by an older version with a different cap:
-  # the branch slug is shorter than the current 60-char cap but still a
-  # valid feat/<key>-<slug> pattern.
+  # the branch slug is shorter than the current cap but still a valid
+  # feat/<key>-<slug> pattern.
   custom_slug="older-version-truncated-slug"
   wt_branch="feat/${story_key}-${custom_slug}"
 
@@ -117,21 +119,69 @@ _mk_worktree() {
 }
 
 # ---------------------------------------------------------------------------
+# Key-boundary: dedup must not match a prefix of another story key
+# ---------------------------------------------------------------------------
+
+@test "does not reuse branch of a different story whose key is a prefix" {
+  local wt_path story_key="E900-S1"
+
+  # Create a worktree on feat/E900-S10-other (note: key E900-S10, not E900-S1).
+  local other_branch="feat/E900-S10-other-story-slug"
+  wt_path="$TEST_TMP/wt-boundary"
+  _mk_worktree "$PRIMARY" "$other_branch" "$wt_path"
+
+  # Run git-branch.sh with key E900-S1. It must NOT reuse the E900-S10 branch.
+  local slug="my-real-slug"
+  local expected_branch="feat/${story_key}-${slug}"
+  run env PROJECT_PATH="$wt_path" bash "$GIT_BRANCH_SH" "$story_key" "$slug"
+  echo "status=$status"
+  echo "output=$output"
+  [ "$status" -eq 0 ]
+  # Last line must be exactly the created line — not an "already exists" reuse.
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
+}
+
+@test "does not reuse branch when key is prefix but missing the dash separator" {
+  local wt_path story_key="E900-S1"
+
+  # E900-S1x-y looks like E900-S1 if the dash is missing from the case pattern.
+  local other_branch="feat/E900-S1x-another-slug"
+  wt_path="$TEST_TMP/wt-prefix"
+  _mk_worktree "$PRIMARY" "$other_branch" "$wt_path"
+
+  local slug="correct-slug"
+  local expected_branch="feat/${story_key}-${slug}"
+  run env PROJECT_PATH="$wt_path" bash "$GIT_BRANCH_SH" "$story_key" "$slug"
+  echo "status=$status"
+  echo "output=$output"
+  [ "$status" -eq 0 ]
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
+}
+
+# ---------------------------------------------------------------------------
 # Slug cap: new branch uses slug cap consistent with worktree_create
 # ---------------------------------------------------------------------------
 
-@test "new branch applies slug cap when slug exceeds the limit" {
-  local long_slug expected_slug story_key="E900-S2"
+@test "new branch applies slug cap matching worktree_slug_cap" {
+  local long_slug capped_slug story_key="E900-S2"
 
   long_slug="this-is-a-very-long-slug-that-exceeds-the-sixty-character-slug-cap-limit"
-  expected_slug="${long_slug:0:$_SLUG_MAX}"
-  local expected_branch="feat/${story_key}-${expected_slug}"
+  capped_slug="$(worktree_slug_cap "$long_slug")"
+  local expected_branch="feat/${story_key}-${capped_slug}"
 
   run env PROJECT_PATH="$PRIMARY" bash "$GIT_BRANCH_SH" "$story_key" "$long_slug"
   echo "status=$status"
   echo "output=$output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$expected_branch"* ]]
+  # Exact last-line match — substring would let a larger cap pass.
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
+
+  # Verify the exact ref exists.
+  run git -C "$PRIMARY" show-ref --verify "refs/heads/$expected_branch"
+  [ "$status" -eq 0 ]
 
   # The full-slug branch must NOT exist.
   local full_branch="feat/${story_key}-${long_slug}"
@@ -147,7 +197,26 @@ _mk_worktree() {
   echo "status=$status"
   echo "output=$output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"created: $expected_branch"* ]]
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
+}
+
+@test "slug cap agrees with worktree_slug_cap for a multibyte slug" {
+  local mb_slug capped_slug story_key="E900-S8"
+
+  # Build a slug with multibyte characters that exceeds the cap.
+  mb_slug="$(printf 'caf%s-' 'é' | head -c 200 | tr -d '\n')"
+  # Pad to ensure it exceeds the cap.
+  mb_slug="${mb_slug}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  capped_slug="$(worktree_slug_cap "$mb_slug")"
+  local expected_branch="feat/${story_key}-${capped_slug}"
+
+  run env PROJECT_PATH="$PRIMARY" bash "$GIT_BRANCH_SH" "$story_key" "$mb_slug"
+  echo "status=$status"
+  echo "output=$output"
+  [ "$status" -eq 0 ]
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -181,36 +250,15 @@ _mk_worktree() {
     skip "no bash 3.2 at /bin/bash"
   fi
 
-  local long_slug story_key="E900-S5"
+  local long_slug capped_slug story_key="E900-S5"
   long_slug="this-is-a-very-long-slug-that-exceeds-the-sixty-character-slug-cap-limit"
-  local expected_slug="${long_slug:0:$_SLUG_MAX}"
-  local expected_branch="feat/${story_key}-${expected_slug}"
+  capped_slug="$(worktree_slug_cap "$long_slug")"
+  local expected_branch="feat/${story_key}-${capped_slug}"
 
   run env PROJECT_PATH="$PRIMARY" /bin/bash "$GIT_BRANCH_SH" "$story_key" "$long_slug"
   echo "status=$status"
   echo "output=$output"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$expected_branch"* ]]
-}
-
-# ---------------------------------------------------------------------------
-# Fixture isolation: no writes to the real plugin tree (structural check)
-# ---------------------------------------------------------------------------
-
-@test "test fixtures use only temp directories" {
-  # This test is a structural assertion: every path variable used as a git
-  # repo target must be rooted under BATS_TEST_TMPDIR or TEST_TMP.
-  # The litter guard in test_helper.bash also catches stray writes.
-  local pattern
-  pattern="$(grep -cE '^\s*(PRIMARY|BARE|wt_path)=' "$BATS_TEST_FILENAME" || true)"
-  [ "$pattern" -gt 0 ]
-
-  # None of the assignments point outside TEST_TMP
-  run grep -E '^\s*(PRIMARY|BARE|wt_path)=' "$BATS_TEST_FILENAME"
-  echo "$output"
-  # Every assignment must reference TEST_TMP (the per-test temp dir)
-  while IFS= read -r line; do
-    [[ "$line" == *'TEST_TMP'* ]] || [[ "$line" == *'BATS_TEST_TMPDIR'* ]] || \
-      fail "fixture path not rooted in temp dir: $line"
-  done <<< "$output"
+  local last_line="${lines[${#lines[@]}-1]}"
+  [[ "$last_line" == "created: $expected_branch" ]]
 }

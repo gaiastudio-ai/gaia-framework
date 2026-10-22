@@ -41,10 +41,11 @@ STORY_KEY="$1"
 SLUG="$2"
 
 # Apply the same slug cap as worktree_create so branch names stay consistent.
-# story-worktree.sh caps at 60 characters; replicate that here with cut(1)
-# (POSIX-portable, works on bash 3.2).
-_SLUG_MAX=60
-SLUG="$(printf '%s' "$SLUG" | cut -c "1-${_SLUG_MAX}")"
+# Source the library and call worktree_slug_cap directly — this keeps the cap
+# value, locale handling, and truncation logic in a single place.
+# shellcheck source=../../../scripts/lib/story-worktree.sh
+. "$GUARD_DIR/../../../scripts/lib/story-worktree.sh"
+SLUG="$(worktree_slug_cap "$SLUG")"
 BRANCH_NAME="feat/${STORY_KEY}-${SLUG}"
 
 WORK_DIR="${PROJECT_PATH:-.}"
