@@ -1,9 +1,25 @@
 #!/usr/bin/env bash
-# test_helper.bash — shared setup/teardown for the E28-S17 bats suite.
+# test_helper.bash — shared setup/teardown for bats suites under the plugin
+# test directory.
 #
 # Provides per-test temp dirs under $BATS_TMPDIR (never touches the working
 # tree), a run_script helper that always invokes the real script from
 # plugins/gaia/scripts/, and deterministic LC_ALL/TZ pinning.
+
+# ---------------------------------------------------------------------------
+# Save the caller's pipefail / nounset state BEFORE enabling strict mode.
+# The helper needs strict mode for its own init code; the restore block at
+# the bottom of this file puts the caller back to its original state so
+# suites that were not written for pipefail/nounset are not broken.
+# ---------------------------------------------------------------------------
+_TH_PREV_PIPEFAIL=0
+_TH_PREV_NOUNSET=0
+if set -o 2>/dev/null | /usr/bin/grep -q 'pipefail.*on' 2>/dev/null; then
+  _TH_PREV_PIPEFAIL=1
+fi
+if set -o 2>/dev/null | /usr/bin/grep -q 'nounset.*on' 2>/dev/null; then
+  _TH_PREV_NOUNSET=1
+fi
 
 set -euo pipefail
 LC_ALL=C
@@ -81,9 +97,9 @@ common_teardown() {
 # Per-file litter guard (setup_file / teardown_file)
 # ---------------------------------------------------------------------------
 # Snapshots `git status` under the plugin tree before the first test in a
-# .bats file, then diffs after the last test. Any new untracked file is
-# litter — the teardown fails and names BATS_TEST_FILENAME + the offending
-# paths.
+# .bats file, then diffs after the last test. Any new untracked file or
+# modification to a tracked file is caught — the teardown fails and names
+# BATS_TEST_FILENAME + the offending paths.
 #
 # Works only inside a git work tree; silently skips (with a note) otherwise.
 # Safe for parallel worktrees: each worktree has its own git index.
@@ -207,3 +223,15 @@ assert_file_contains() {
   fi
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# Restore the caller's shell options so suites that did not have pipefail
+# or nounset enabled before loading this helper do not inherit them.
+# ---------------------------------------------------------------------------
+if [ "$_TH_PREV_PIPEFAIL" -eq 0 ]; then
+  set +o pipefail 2>/dev/null || true
+fi
+if [ "$_TH_PREV_NOUNSET" -eq 0 ]; then
+  set +u 2>/dev/null || true
+fi
+unset _TH_PREV_PIPEFAIL _TH_PREV_NOUNSET
