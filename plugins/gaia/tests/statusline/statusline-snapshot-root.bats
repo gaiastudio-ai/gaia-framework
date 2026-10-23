@@ -8,6 +8,8 @@
 #   - Root without .gaia/ -> no tree created, exit 0, no stderr
 #   - Snapshot uses project_dir even when PROJECT_PATH overrides current_dir
 
+load '../test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"

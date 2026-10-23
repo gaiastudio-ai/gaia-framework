@@ -132,7 +132,7 @@ _assert_fragment_shape_in_source() {
 
 @test "story Dev Notes documents one-sprint deprecation window + out-of-scope removal" {
   local story_file
-  story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1)"
+  story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1 || true)"
   # The story file lives outside the gaia-public/ git tree (in the parent
   # project's docs/). When CI runs against an isolated gaia-public/ checkout
   # the file is absent — skip in that case (mirrors the convention used by
