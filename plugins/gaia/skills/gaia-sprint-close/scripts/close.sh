@@ -27,6 +27,42 @@ LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 # shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
 . "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
 
+# Fail-closed guard: if the shared lib did not load, define an inline
+# fallback that implements the same union-by-key semantics. Without this,
+# parse_stories would silently see 0 stories and the precheck would pass.
+if ! type read_stories_or_items >/dev/null 2>&1; then
+  read_stories_or_items() {
+    local yaml="$1"; [ -f "$yaml" ] || return 0
+    awk '
+      /^stories[[:space:]]*:[[:space:]]*$/ { in_s=1; in_i=0; next }
+      /^items[[:space:]]*:[[:space:]]*$/ { in_i=1; in_s=0; next }
+      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s=0; next }
+      /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i=0; next }
+      (in_s||in_i) && /^[A-Za-z_]/ { in_s=0; in_i=0 }
+      in_s && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        s_key[k]=1; s_order[s_n++]=k; next
+      }
+      in_s && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        s_st[s_order[s_n-1]]=v; next
+      }
+      in_i && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        i_order[i_n++]=k; next
+      }
+      in_i && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        i_st[i_order[i_n-1]]=v; next
+      }
+      END {
+        for(j=0;j<s_n;j++){printf "%s\t%s\n",s_order[j],s_st[s_order[j]];seen[s_order[j]]=1}
+        for(j=0;j<i_n;j++){if(!(i_order[j] in seen))printf "%s\t%s\n",i_order[j],i_st[i_order[j]]}
+      }
+    ' "$yaml"
+  }
+fi
+
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"

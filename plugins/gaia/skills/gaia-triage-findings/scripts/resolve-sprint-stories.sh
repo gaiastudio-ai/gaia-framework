@@ -86,28 +86,29 @@ if [ -n "$_MIG_LIB_DIR" ] && [ -f "$_MIG_LIB_DIR/acquire-lock.sh" ] && [ -f "$_M
   migrate_items_to_stories "$SPRINT_STATUS" --lock "${SPRINT_STATUS}.lock" || true
 fi
 
-# Committed story keys from the top-level `stories:` sequence (`- key: "…"`).
-# Fallback: if `stories:` is absent (e.g. read-only file where migration
-# could not run), try the legacy `items:` key.
+# Committed story keys: union of `stories:` and `items:` blocks.
+# When both blocks exist, `stories:` wins on duplicate key, and items-only
+# keys are included. Matches the shared reader so the result is identical
+# whether migration ran or not.
 keys=$(awk '
-  /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; saw_stories = 1; next }
+  /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; next }
   /^items[[:space:]]*:/ { in_items = 1; in_stories = 0; next }
   (in_stories || in_items) && /^[A-Za-z_]/ { in_stories = 0; in_items = 0 }
   in_stories && /key[[:space:]]*:/ {
     line = $0
     sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
-    gsub(/["'\'']/, "", line)
-    stories_keys = stories_keys line "\n"
+    gsub(/["'"'"'"]/, "", line)
+    if (!(line in s_seen)) { s_order[s_n++] = line; s_seen[line] = 1 }
   }
   in_items && /key[[:space:]]*:/ {
     line = $0
     sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
-    gsub(/["'\'']/, "", line)
-    items_keys = items_keys line "\n"
+    gsub(/["'"'"'"]/, "", line)
+    if (!(line in i_seen)) { i_order[i_n++] = line; i_seen[line] = 1 }
   }
   END {
-    if (saw_stories) { printf "%s", stories_keys }
-    else { printf "%s", items_keys }
+    for (j = 0; j < s_n; j++) { printf "%s\n", s_order[j]; seen[s_order[j]] = 1 }
+    for (j = 0; j < i_n; j++) { if (!(i_order[j] in seen)) printf "%s\n", i_order[j] }
   }
 ' "$SPRINT_STATUS")
 
