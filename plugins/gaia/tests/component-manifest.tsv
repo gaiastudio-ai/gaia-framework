@@ -4,6 +4,7 @@ core	E78-S6-plugin-versioning-rubric.bats
 core	E79-S4-csp-readers.bats
 core	a11y-three-phase-reorganization.bats
 core	action-items-canonical-path.bats
+core	action-items-write-retro-interop.bats
 core	action-skill-contract.bats
 core	adapter-schema-contract.bats
 core	adapters/credential-isolation.bats
@@ -175,7 +176,6 @@ core	e28-s187-revert-tools-field.bats
 core	e28-s272-env-var-reference.bats
 core	e28-s276-dormant-env.bats
 core	e28-s283-brownfield-fidelity-summary.bats
-core	e28-s368-action-items-write-interop.bats
 core	e29-s7-v1-checkpoint-deletion-plan.bats
 core	e34-s1-val-sidecar-perf.bats
 core	e34-s1-val-sidecar-writer-units.bats

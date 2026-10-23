@@ -35,7 +35,7 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# aiw_bootstrap_file — create action-items.yaml with §10.28.6 schema header
+# aiw_bootstrap_file — create action-items.yaml with canonical schema header
 # ---------------------------------------------------------------------------
 aiw_bootstrap_file() {
   local target="$1"
@@ -61,6 +61,8 @@ EOF
 # ---------------------------------------------------------------------------
 # aiw_next_id — compute next AI-{n} from existing entries
 # Handles both quoted (id: "AI-6") and unquoted (id: AI-6) id values.
+# Anchored to item id lines only: ignores dated ids (AI-YYYY-MM-DD-N),
+# embedded text, and non-item fields like parent_id.
 # ---------------------------------------------------------------------------
 aiw_next_id() {
   local target="$1"
@@ -71,7 +73,7 @@ aiw_next_id() {
       if [ "$n" -gt "$max_n" ] 2>/dev/null; then
         max_n="$n"
       fi
-    done < <(grep -oE 'id: "?AI-[0-9]+"?' "$target" | grep -oE '[0-9]+')
+    done < <(grep -E '^[[:space:]]*-[[:space:]]+id:[[:space:]]+"?AI-[0-9]+"?[[:space:]]*$' "$target" | grep -oE 'AI-[0-9]+' | grep -oE '[0-9]+')
   fi
   printf 'AI-%d\n' "$((max_n + 1))"
 }
@@ -121,14 +123,16 @@ aiw_check_dedup() {
 
 # ---------------------------------------------------------------------------
 # aiw_detect_indent — detect the indent prefix of existing list entries
-# Returns the whitespace before the first "- id:" line.
-# Defaults to "  " (2-space, under items: mapping) when no entries exist.
+# Returns the whitespace before the LAST "- id:" item line (append
+# position). Skips comment lines; defaults to "  " (2-space) when no
+# entries exist.
 # ---------------------------------------------------------------------------
 aiw_detect_indent() {
   local target="$1"
   if [ -f "$target" ]; then
     local line
-    line="$(grep -m1 '.*- id:' "$target")"
+    # Match only real item lines (skip comments), take the last one
+    line="$(grep '^[[:space:]]*- id:' "$target" | tail -1)"
     if [ -n "$line" ]; then
       printf '%s' "${line%%- id:*}"
       return
@@ -251,15 +255,15 @@ aiw_write() {
     return 1
   fi
 
-  # Validate classification BEFORE any file writes (scenario 7)
+  # Validate classification before any file writes
   if ! aiw_validate_classification "$classification"; then
     return 1
   fi
 
-  # Bootstrap file if missing (AC3)
+  # Bootstrap file if missing
   aiw_bootstrap_file "$target"
 
-  # Idempotency check (scenarios 5, 6)
+  # Idempotency check
   if aiw_check_dedup "$target" "$sprint_id" "$classification" "$ref_key" "$ref_value"; then
     printf 'status=skipped_idempotent\nreason=entry with matching composite key already exists\n'
     return 0
@@ -269,7 +273,7 @@ aiw_write() {
   local next_id
   next_id="$(aiw_next_id "$target")"
 
-  # Detect indent of existing entries and match it
+  # Detect indent of existing entries and match it (uses last entry's indent)
   local indent
   indent="$(aiw_detect_indent "$target")"
 
@@ -277,8 +281,31 @@ aiw_write() {
   local entry
   entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value" "$indent")"
 
+  # Take a backup before append for rollback on verification failure
+  local backup="${target}.pre-append"
+  cp -p "$target" "$backup"
+
   # Atomic append
   aiw_append_entry "$target" "$entry"
+
+  # Post-append verification: the file must still parse as YAML and
+  # contain the new id on an item line. If either check fails, restore
+  # the backup and fail closed.
+  if command -v yq >/dev/null 2>&1; then
+    if ! yq '.' "$target" >/dev/null 2>&1; then
+      cp -p "$backup" "$target"
+      rm -f "$backup"
+      printf 'status=error\nreason=post-append YAML parse failed; restored backup\n'
+      return 1
+    fi
+  fi
+  if ! grep -qE '^[[:space:]]*-[[:space:]]+id:.*'"$next_id"'' "$target" 2>/dev/null; then
+    cp -p "$backup" "$target"
+    rm -f "$backup"
+    printf 'status=error\nreason=post-append id verification failed; restored backup\n'
+    return 1
+  fi
+  rm -f "$backup"
 
   printf 'status=ok\nid=%s\ntarget=%s\n' "$next_id" "$target"
   return 0
