@@ -406,8 +406,9 @@ STUB
   mkdir -p "$plugin_root/scripts/lib"
   cp "$real_scripts/sprint-state.sh"             "$plugin_root/scripts/"
   cp "$real_scripts/lifecycle-event.sh"           "$plugin_root/scripts/"
-  cp "$real_scripts/lib/story-state-machine.sh"   "$plugin_root/scripts/lib/"
-  cp "$real_scripts/lib/acquire-lock.sh"           "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/story-state-machine.sh"        "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/acquire-lock.sh"               "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/migrate-items-to-stories.sh"   "$plugin_root/scripts/lib/"
   chmod +x "$plugin_root/scripts/sprint-state.sh" \
            "$plugin_root/scripts/lifecycle-event.sh"
 
