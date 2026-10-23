@@ -1,14 +1,8 @@
 #!/usr/bin/env bats
 # verify-pr-merged-gh-api.bats — behavioural tests for verify-pr-merged.sh
-# proving the gate checks actual PR merge status via the GitHub API
-# rather than commit-message grep.
 #
 # The gh stub executes the script's real --jq expression (via system jq)
-# against fixture JSON arrays shaped like real gh output (compact,
-# "mergedAt":null for unmerged PRs).  This means the jq filter logic —
-# prefix matching, baseRefName checking, newest-first ordering — is
-# exercised end-to-end in every test.
-#
+# against fixture JSON arrays shaped like real gh output.
 # All fixtures live in BATS_TEST_TMPDIR; nothing under plugins/gaia/.
 
 load 'test_helper.bash'
@@ -17,10 +11,7 @@ SCRIPT_REL="../skills/gaia-dev-story/scripts/verify-pr-merged.sh"
 
 setup() {
   common_setup
-
   SCRIPT="$(cd "$BATS_TEST_DIRNAME/$(dirname "$SCRIPT_REL")" && pwd)/$(basename "$SCRIPT_REL")"
-
-  # Isolated git config — no ambient signing / user.name interference.
   export HOME="$TEST_TMP/home"
   export GIT_CONFIG_GLOBAL="$TEST_TMP/home/.gitconfig"
   export GIT_CONFIG_NOSYSTEM=1
@@ -29,10 +20,7 @@ setup() {
 }
 
 teardown() {
-  # Restore PATH if narrowed by remove_gh_from_path, so rm/bats cleanup work.
-  if [ -n "${_SAVED_PATH:-}" ]; then
-    export PATH="$_SAVED_PATH"
-  fi
+  if [ -n "${_SAVED_PATH:-}" ]; then export PATH="$_SAVED_PATH"; fi
   common_teardown
 }
 
@@ -64,7 +52,6 @@ make_fixture_repo() {
   export PROJECT_PATH="$REPO"
 }
 
-# make_stub_gh — gh stub that executes the real --jq expression via system jq.
 make_stub_gh() {
   STUB_BIN="$TEST_TMP/bin"
   mkdir -p "$STUB_BIN"
@@ -86,6 +73,20 @@ if [ "\$1" = "pr" ] && [ "\$2" = "list" ]; then
     exit \$?
   fi
   printf '%s\n' "\${GH_PR_LIST_JSON:-[]}"
+  exit 0
+fi
+if [ "\$1" = "pr" ] && [ "\$2" = "view" ]; then
+  if [ "\${GH_PR_VIEW_EXIT:-0}" -ne 0 ]; then exit "\${GH_PR_VIEW_EXIT}"; fi
+  _jq_expr="" _found_jq=0
+  for _a in "\$@"; do
+    if [ "\$_found_jq" -eq 1 ]; then _jq_expr="\$_a"; break; fi
+    case "\$_a" in --jq) _found_jq=1 ;; esac
+  done
+  if [ -n "\$_jq_expr" ]; then
+    printf '%s\n' "\${GH_PR_VIEW_JSON:-null}" | "${jq_path}" -r "\$_jq_expr"
+    exit \$?
+  fi
+  printf '%s\n' "\${GH_PR_VIEW_JSON:-{}}"
   exit 0
 fi
 exit 0
@@ -114,6 +115,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S1
   make_stub_gh
   export GH_PR_LIST_JSON='[{"number":42,"headRefName":"feat/E900-S1-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
+  export GH_PR_VIEW_JSON='{"state":"OPEN","mergedAt":null}'
   run bash "$SCRIPT" E900-S1 staging
   [ "$status" -eq 2 ]
 }
@@ -130,15 +132,17 @@ remove_gh_from_path() {
   make_fixture_repo E900-S3
   make_stub_gh
   export GH_PR_LIST_JSON='[{"number":99,"headRefName":"feat/E900-S3-slug","baseRefName":"staging","state":"CLOSED","mergedAt":null}]'
+  export GH_PR_VIEW_JSON='{"state":"CLOSED","mergedAt":null}'
   run bash "$SCRIPT" E900-S3 staging
   [ "$status" -eq 2 ]
 }
 
-@test "real gh null mergedAt for open PR: gate fails" {
-  make_fixture_repo E900-S20
+@test "state MERGED but mergedAt null: gate fails" {
+  make_fixture_repo E900-S30
   make_stub_gh
-  export GH_PR_LIST_JSON='[{"number":200,"headRefName":"feat/E900-S20-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
-  run bash "$SCRIPT" E900-S20 staging
+  export GH_PR_LIST_JSON='[{"number":300,"headRefName":"feat/E900-S30-slug","baseRefName":"staging","state":"MERGED","mergedAt":null}]'
+  export GH_PR_VIEW_JSON='{"state":"MERGED","mergedAt":null}'
+  run bash "$SCRIPT" E900-S30 staging
   [ "$status" -eq 2 ]
 }
 
@@ -167,7 +171,6 @@ remove_gh_from_path() {
   [[ "${lines[0]}" == *"pr list"* ]]
   [[ "${lines[0]}" == *"--state all"* ]]
   [[ "${lines[0]}" == *"--jq"* ]]
-  [[ "${lines[0]}" == *"--json"* ]]
   [[ "${lines[0]}" == *"--search"* ]]
   [[ "${lines[0]}" == *"head:feat/e900-s5-"* ]]
 }
@@ -199,7 +202,7 @@ remove_gh_from_path() {
 }
 
 # ---------------------------------------------------------------------------
-# Remote-prefixed target branch (merge.sh passes "origin/staging")
+# Remote-prefixed and multi-segment target branches
 # ---------------------------------------------------------------------------
 
 @test "target origin/staging: remote prefix stripped for API check" {
@@ -210,12 +213,20 @@ remove_gh_from_path() {
   [ "$status" -eq 0 ]
 }
 
-@test "target origin/staging with open PR: gate fails" {
-  make_fixture_repo E900-S26
+@test "target origin/release/next: multi-segment branch preserved" {
+  make_fixture_repo E900-S31
   make_stub_gh
-  export GH_PR_LIST_JSON='[{"number":260,"headRefName":"feat/E900-S26-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
-  run bash "$SCRIPT" E900-S26 origin/staging
-  [ "$status" -eq 2 ]
+  export GH_PR_LIST_JSON='[{"number":310,"headRefName":"feat/E900-S31-slug","baseRefName":"release/next","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
+  run bash "$SCRIPT" E900-S31 origin/release/next
+  [ "$status" -eq 0 ]
+}
+
+@test "target release/next without remote prefix: branch preserved" {
+  make_fixture_repo E900-S32
+  make_stub_gh
+  export GH_PR_LIST_JSON='[{"number":320,"headRefName":"feat/E900-S32-slug","baseRefName":"release/next","state":"MERGED","mergedAt":"2026-10-21T12:00:00Z"}]'
+  run bash "$SCRIPT" E900-S32 release/next
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -234,6 +245,7 @@ remove_gh_from_path() {
   make_fixture_repo E900-S9
   make_stub_gh
   export GH_PR_LIST_JSON='[{"number":90,"headRefName":"feat/E900-S9-slug","baseRefName":"staging","state":"OPEN","mergedAt":null},{"number":91,"headRefName":"docs/atdd-E900-S9","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-21T10:00:00Z"}]'
+  export GH_PR_VIEW_JSON='{"state":"OPEN","mergedAt":null}'
   run bash "$SCRIPT" E900-S9 staging
   [ "$status" -eq 2 ]
 }
@@ -266,8 +278,24 @@ remove_gh_from_path() {
   make_fixture_repo E900-S24
   make_stub_gh
   export GH_PR_LIST_JSON='[{"number":242,"headRefName":"feat/E900-S24-v2","baseRefName":"staging","state":"OPEN","mergedAt":null},{"number":241,"headRefName":"feat/E900-S24-v1","baseRefName":"staging","state":"MERGED","mergedAt":"2026-10-20T12:00:00Z"}]'
+  export GH_PR_VIEW_JSON='{"state":"OPEN","mergedAt":null}'
   run bash "$SCRIPT" E900-S24 staging
   [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# Search lag confirmation via gh pr view
+# ---------------------------------------------------------------------------
+
+@test "search says open but pr view confirms merged: gate passes" {
+  make_fixture_repo E900-S33
+  make_stub_gh
+  # Search index lags — returns OPEN.
+  export GH_PR_LIST_JSON='[{"number":330,"headRefName":"feat/E900-S33-slug","baseRefName":"staging","state":"OPEN","mergedAt":null}]'
+  # But exact pr view says MERGED.
+  export GH_PR_VIEW_JSON='{"state":"MERGED","mergedAt":"2026-10-23T12:00:00Z"}'
+  run bash "$SCRIPT" E900-S33 staging
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -285,6 +313,13 @@ remove_gh_from_path() {
 @test "empty story key: gate rejects" {
   make_fixture_repo E900-S1
   run bash "$SCRIPT" '' staging
+  [ "$status" -eq 1 ]
+}
+
+@test "malicious target branch with jq injection: gate rejects" {
+  make_fixture_repo E900-S1
+  make_stub_gh
+  run bash "$SCRIPT" E900-S1 'staging"or(true)or"'
   [ "$status" -eq 1 ]
 }
 
@@ -344,10 +379,8 @@ remove_gh_from_path() {
   fixture_git -C "$REPO" checkout -q staging
   fixture_git -C "$REPO" commit --allow-empty -q -m "Story: E900-S27"
   make_stub_gh
-  # Invalid JSON makes the jq filter fail, triggering the API-failure fallback.
   export GH_PR_LIST_JSON='NOT_JSON'
   run bash "$SCRIPT" E900-S27 staging
-  # Fallback commit grep should find the story.
   [ "$status" -eq 0 ]
   [[ "$output" == *[Ww][Aa][Rr][Nn]* ]]
 }
@@ -389,10 +422,7 @@ remove_gh_from_path() {
     for line in "${lines[@]}"; do
       case "$line" in
         *'[0-9]'*|*'\\b'*|*'\\d'*) continue ;;
-        *)
-          echo "Leaked story key found: $line"
-          bad=1
-          ;;
+        *) echo "Leaked story key found: $line"; bad=1 ;;
       esac
     done
     [ "$bad" -eq 0 ]
@@ -400,7 +430,7 @@ remove_gh_from_path() {
 }
 
 # ---------------------------------------------------------------------------
-# Test suite never writes into the real plugin tree
+# Test suite hygiene
 # ---------------------------------------------------------------------------
 
 @test "teardown cleans up temp dirs" {

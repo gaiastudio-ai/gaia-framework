@@ -821,6 +821,7 @@
 3	concurrent-sprint-drift.bats	14
 1	git-branch-dedup.bats	9
 2	verdict-resolver-required-false-malformed-json.bats	23
-1	verify-pr-merged-gh-api.bats	20
-1	verify-pr-merged-gh-api.bats	25
-1	verify-pr-merged-gh-api.bats	27
+1	verify-pr-merged-gh-api.bats	30
+1	verify-pr-merged-gh-api.bats	30
+1	verify-pr-merged-gh-api.bats	30
+1	verify-pr-merged-gh-api.bats	30
