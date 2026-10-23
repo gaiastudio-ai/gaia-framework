@@ -7,14 +7,14 @@
 #
 # Refs: E67-S4, ADR-077.
 
-set -euo pipefail
-LC_ALL=C
-export LC_ALL
-export TZ=UTC
 
 # tests/scripts/review-common/qa/ -> ../../../../scripts
 SCRIPTS_DIR="$(cd "${BATS_TEST_DIRNAME}/../../../../scripts" && pwd)"
 export SCRIPTS_DIR
+
+# Source the shared helper for litter guard, strict mode, and common utilities.
+# shellcheck source=tests/test_helper.bash
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/test_helper.bash"
 
 REVIEW_COMMON_DIR="${SCRIPTS_DIR}/review-common"
 export REVIEW_COMMON_DIR
@@ -29,16 +29,4 @@ export VERDICT_RESOLVER
 SCHEMAS_DIR="$(cd "${BATS_TEST_DIRNAME}/../../../../schemas" && pwd)"
 export SCHEMAS_DIR
 
-common_setup() {
-  local slug
-  slug="$(printf '%s' "${BATS_TEST_NAME:-unknown}" | tr -c '[:alnum:]' '_')"
-  TEST_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-qa-${slug}-$$"
-  mkdir -p "$TEST_TMP"
-  export TEST_TMP
-}
 
-common_teardown() {
-  if [ -n "${TEST_TMP:-}" ] && [ -d "$TEST_TMP" ]; then
-    rm -rf "$TEST_TMP" 2>/dev/null || true
-  fi
-}
