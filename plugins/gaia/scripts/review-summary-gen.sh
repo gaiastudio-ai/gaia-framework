@@ -527,6 +527,23 @@ _render_summary() {
           _hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_bn}" -print 2>/dev/null | head -1)"
           [ -n "$_hit" ] && [ -f "$_hit" ] && found=1
         fi
+        # Accept pass-suffixed reports (e.g. code-review-{key}-pass2.md) at
+        # either the flat impl_artifacts/ location or the per-story reviews/
+        # subdir. The suffix convention is -passN before the .md extension.
+        if [ "$found" -eq 0 ]; then
+          local _base_no_ext="${_bn%.md}"
+          local _pass_hit
+          # Flat layout: {impl_artifacts}/<type>-{key}-passN.md
+          _pass_hit="$(find "$__impl_artifacts" -maxdepth 1 -type f -name "${_base_no_ext}-pass[0-9]*.md" -print 2>/dev/null | head -1)"
+          [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ] && found=1
+        fi
+        if [ "$found" -eq 0 ]; then
+          local _base_no_ext="${_bn%.md}"
+          local _pass_hit
+          # Per-story reviews/ subdir: epic-*/{key}-*/reviews/<type>-{key}-passN.md
+          _pass_hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_base_no_ext}-pass[0-9]*.md" -print 2>/dev/null | head -1)"
+          [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ] && found=1
+        fi
         if [ "$found" -eq 0 ]; then
           report_missing_idx="${report_missing_idx}${idx},"
         fi

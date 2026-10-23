@@ -613,6 +613,7 @@ scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config-cwd-independence.bats
 scripts-core	resolve-config.bats
 scripts-core	retirement-sweep.bats
+scripts-core	review-gate-hardening.bats
 scripts-core	review-gate-proof-of-execution.bats
 scripts-core	review-gate-sprint-scope.bats
 scripts-core	review-gate.bats

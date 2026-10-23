@@ -860,13 +860,13 @@ cmd_check() {
 
 # Rewrite exactly one row of the Review Gate table in $file, replacing the
 # Status cell of the matched gate with $new_verdict and the Report cell with
-# "—" (the canonical empty-report placeholder used by all six review
-# workflows). All other bytes are preserved. Runs under flock and uses
-# tempfile + atomic mv.
+# the provided report path (or "—" when none is given). All other bytes are
+# preserved. Runs under flock and uses tempfile + atomic mv.
 cmd_update() {
   local file="$1"
   local gate_name="$2"
   local new_verdict="$3"
+  local report_value="${4:-—}"
 
   # Validate the section exists (produces a precise error).
   # We also validate by loading canonical rows.
@@ -879,7 +879,7 @@ cmd_update() {
     # Stream $file through awk, rewriting only the first data row of the
     # first pipe-table under `## Review Gate` whose first cell matches
     # $gate_name. Preserve CRLF and all surrounding bytes.
-    awk -v target="$gate_name" -v new_status="$new_verdict" -v new_report="—" '
+    awk -v target="$gate_name" -v new_status="$new_verdict" -v new_report="$report_value" '
       BEGIN { in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0 }
 
       # Detect `## Review Gate` header. We preserve the line verbatim
@@ -1213,8 +1213,8 @@ main() {
                    && [ -n "$execution_evidence" ] \
                    && [ -f "$execution_evidence" ] \
                    && command -v jq >/dev/null 2>&1; then
-                  _ev_exit="$(jq -r '.exit_code // 0' "$execution_evidence" 2>/dev/null || printf '0')"
-                  _ev_fails="$(jq -r '[.suites[]?.fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null || printf '0')"
+                  _ev_exit="$(jq -r '[.suites[]? | select(.required != false) | .exit_code // 0] | max // 0' "$execution_evidence" 2>/dev/null || printf '0')"
+                  _ev_fails="$(jq -r '[.suites[]? | select(.required != false) | .fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null || printf '0')"
                   _ev_skipped="$(jq -r '.skipped // false' "$execution_evidence" 2>/dev/null || printf 'false')"
                   if [ "${_ev_exit:-0}" != "0" ]; then
                     die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports exit_code=${_ev_exit} (red suite). Either fix the failing tests and re-capture evidence, or record verdict=FAILED."
@@ -1237,7 +1237,7 @@ main() {
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"
       else
         # Update the story file's Review Gate table (byte-identical).
-        cmd_update "$STORY_FILE" "$gate_name" "$verdict"
+        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}"
       fi
 
       # Test-artifacts mirror hook.
