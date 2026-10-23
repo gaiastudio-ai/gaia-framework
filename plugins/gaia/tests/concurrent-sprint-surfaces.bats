@@ -549,7 +549,8 @@ _hook_copy_plugin_tree() {
   chmod +x "$dst/scripts/sprint-state.sh"
   local lib
   for lib in story-state-machine.sh acquire-lock.sh exec-with-timeout.sh \
-             gaia-paths.sh resolve-artifact-path.sh session-binding.sh; do
+             gaia-paths.sh resolve-artifact-path.sh session-binding.sh \
+             migrate-items-to-stories.sh; do
     [ -f "$SCRIPTS_DIR/lib/$lib" ] && cp "$SCRIPTS_DIR/lib/$lib" "$dst/scripts/lib/"
   done
   for sib in review-gate.sh lifecycle-event.sh; do
