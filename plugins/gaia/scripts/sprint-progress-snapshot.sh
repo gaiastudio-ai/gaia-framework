@@ -791,8 +791,9 @@ _read_sprint_yaml() {
   /^goals:/ { in_goals=1; in_stories=0; rest=$0; sub(/^goals:[[:space:]]*/, "", rest); if (rest ~ /^\[\]/) in_goals=0; next }
   in_goals && /^[[:space:]]+-/ { g=$0; gsub(/^[[:space:]]+-[[:space:]]*"?|"?[[:space:]]*$/, "", g); gsub(/[\037\r]/, "", g); if (gi==0) print "Z\037goal\037" g; gi++; next }
   in_goals && /^[^[:space:]]/ { in_goals=0 }
-  /^stories:/ { in_stories=1; in_goals=0; next }
-  in_stories && /^[^[:space:]]/ && !/^stories:/ { in_stories=0; next }
+  /^stories:/ { in_stories=1; in_goals=0; saw_stories=1; next }
+  /^items:/ && !saw_stories { in_stories=1; in_goals=0; next }
+  in_stories && /^[^[:space:]]/ && !/^stories:/ && !/^items:/ { in_stories=0; next }
   in_stories && /^[[:space:]]+-[[:space:]]+key:/ { si++; ck=v($0, "key"); key[si]=ck; next }
   in_stories && ck != "" {
     if (/^[[:space:]]+status:/)     { yst[si]=v($0, "status"); next }

@@ -184,8 +184,10 @@ _ic_read_sprint_keys() {
   awk '
     BEGIN { in_s = 0 }
     { line = $0; sub(/\r$/, "", line) }
-    line ~ /^stories:[[:space:]]*$/ { in_s = 1; next }
-    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { next }
+    line ~ /^stories:[[:space:]]*$/ { in_s = 1; saw_s = 1; next }
+    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { saw_s = 1; next }
+    line ~ /^items:[[:space:]]*$/ && !saw_s { in_s = 1; next }
+    line ~ /^items:[[:space:]]*\[\][[:space:]]*$/ { next }
     in_s && line ~ /^[^[:space:]-]/ { in_s = 0; next }
     !in_s { next }
     line ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {

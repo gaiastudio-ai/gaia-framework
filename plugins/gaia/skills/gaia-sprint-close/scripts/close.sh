@@ -103,6 +103,11 @@ parse_stories() {
   while IFS= read -r line; do
     if [[ "$line" =~ ^stories: ]]; then
       in_stories=true
+      _saw_stories=true
+      continue
+    fi
+    if [[ "$line" =~ ^items: ]] && [ "${_saw_stories:-}" != true ]; then
+      in_stories=true
       continue
     fi
     if [ "$in_stories" = true ]; then

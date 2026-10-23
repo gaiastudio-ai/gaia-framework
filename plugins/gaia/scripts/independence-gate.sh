@@ -161,7 +161,8 @@ _ig_find_key_in_other_sprints() {
     [ "$st" = "active" ] || continue
     # Check if key appears in stories list.
     if awk -v k="$key" '
-      /^stories:/ { in_s=1; next }
+      /^stories:/ { in_s=1; saw_s=1; next }
+      /^items:/ && !saw_s { in_s=1; next }
       in_s && /^[^[:space:]-]/ { in_s=0 }
       in_s && /key:/ {
         v=$0; sub(/.*key:[[:space:]]*/, "", v)
