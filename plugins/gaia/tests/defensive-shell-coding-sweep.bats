@@ -17,20 +17,18 @@ setup() {
   local tw="$SCRIPTS_LIB/transcript-writer.sh"
   [ -f "$tw" ] || skip "transcript-writer.sh not found"
   # The function assert_gitignored must include -- before the pattern argument.
-  # Grep for the functional call site (not a comment).
-  run /usr/bin/grep 'check-ignore' "$tw"
-  # Every non-comment check-ignore invocation must contain ' -- '
+  # Every non-comment check-ignore invocation must contain ' -- '.
   local line
   while IFS= read -r line; do
+    case "$line" in '#'*) continue ;; esac
     case "$line" in
-      '#'*|*'#'*check-ignore*) continue ;;
+      *check-ignore*)
+        case "$line" in
+          *' -- '*) : ;;  # has separator
+          *) echo "FAIL: check-ignore call missing '--': $line"; return 1 ;;
+        esac
+        ;;
     esac
-    if printf '%s' "$line" | /usr/bin/grep -q 'check-ignore'; then
-      printf '%s' "$line" | /usr/bin/grep -Fq ' -- ' || {
-        echo "FAIL: check-ignore call missing '--': $line"
-        return 1
-      }
-    fi
   done < "$tw"
 }
 
@@ -71,23 +69,16 @@ setup() {
       *'_ic_is_known_key()'*) in_func=1 ;;
     esac
     if [ "$in_func" = "1" ]; then
-      if printf '%s' "$line" | /usr/bin/grep -q '/usr/bin/grep'; then
-        # Must contain -F flag (fixed-string)
-        printf '%s' "$line" | /usr/bin/grep -q -- '-[a-zA-Z]*F' || {
-          echo "FAIL: grep call in _ic_is_known_key missing -F: $line"
-          return 1
-        }
-        # Must contain -w flag (whole-word)
-        printf '%s' "$line" | /usr/bin/grep -q -- '-[a-zA-Z]*w' || {
-          echo "FAIL: grep call in _ic_is_known_key missing -w: $line"
-          return 1
-        }
-        # Must contain -- separator
-        printf '%s' "$line" | /usr/bin/grep -Fq -- '-- ' || {
-          echo "FAIL: grep call in _ic_is_known_key missing --: $line"
-          return 1
-        }
-      fi
+      case "$line" in
+        */usr/bin/grep*)
+          # Must contain -F flag (fixed-string)
+          case "$line" in *-*F*) : ;; *) echo "FAIL: missing -F: $line"; return 1 ;; esac
+          # Must contain -w flag (whole-word)
+          case "$line" in *-*w*) : ;; *) echo "FAIL: missing -w: $line"; return 1 ;; esac
+          # Must contain -- separator
+          case "$line" in *' -- '*) : ;; *) echo "FAIL: missing --: $line"; return 1 ;; esac
+          ;;
+      esac
       # End of function
       case "$line" in
         '}') [ "$in_func" = "1" ] && in_func=2 ;;
@@ -270,10 +261,9 @@ setup() {
   "
   [ "$status" -eq 0 ]
   # Output must not contain //
-  if printf '%s' "$output" | /usr/bin/grep -Fq '//'; then
-    echo "FAIL: double slash found in output: $output"
-    return 1
-  fi
+  case "$output" in
+    *//*) echo "FAIL: double slash found in output: $output"; return 1 ;;
+  esac
 }
 
 @test "acquire-lock: close_predicate works without trailing slash" {
@@ -289,10 +279,9 @@ setup() {
   "
   [ "$status" -eq 0 ]
   # Still no double slash
-  if printf '%s' "$output" | /usr/bin/grep -Fq '//'; then
-    echo "FAIL: double slash found in output: $output"
-    return 1
-  fi
+  case "$output" in
+    *//*) echo "FAIL: double slash found in output: $output"; return 1 ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
