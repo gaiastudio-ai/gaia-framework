@@ -73,7 +73,7 @@
           <dt>Lifecycle phase:</dt>
           <dd>4 -- Implementation (close ceremony, post sprint-review PASSED)</dd>
           <dt>Arguments:</dt>
-          <dd><code>&lt;sprint-id&gt;</code></dd>
+          <dd><code>[--sprint &lt;sprint-id&gt;] [&lt;sprint-id&gt;] [--force] [--force-with-rollover &lt;keys&gt;]</code></dd>
         </dl>
       </header>
 
@@ -208,9 +208,23 @@
             <tr>
               <td><code>sprint-id</code></td>
               <td>Positional</td>
-              <td>Yes</td>
+              <td>No</td>
+              <td>Session binding or single active sprint</td>
+              <td>The sprint identifier (e.g., <code>sprint-12</code>) to close. Equivalent to <code>--sprint sprint-12</code>.</td>
+            </tr>
+            <tr>
+              <td><code>--sprint</code></td>
+              <td>Flag</td>
+              <td>No</td>
+              <td>Session binding or single active sprint</td>
+              <td>Target a specific sprint (concurrent mode). Without <code>--sprint</code> or a positional, the target is resolved from the session binding or the single active sprint.</td>
+            </tr>
+            <tr>
+              <td><code>--force</code></td>
+              <td>Flag</td>
+              <td>No</td>
               <td>--</td>
-              <td>The sprint identifier (e.g., <code>sprint-12</code>) to close.</td>
+              <td>Bypass the sprint-review sentinel check (audited; recorded in the close summary).</td>
             </tr>
             <tr>
               <td><code>--force-with-rollover</code></td>
@@ -238,10 +252,18 @@
 
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
-        <pre><code>/gaia-sprint-close sprint-12</code></pre>
+        <pre><code>/gaia-sprint-close --sprint sprint-12
+/gaia-sprint-close sprint-12
+/gaia-sprint-close</code></pre>
         <p>
-          Replace <code>sprint-12</code> with the sprint identifier returned
-          in the <code>/gaia-sprint-review</code> handoff message.
+          The first two forms target a specific sprint. The third form
+          resolves the target from the session binding or the single
+          active sprint. Replace <code>sprint-12</code> with the sprint
+          identifier returned in the <code>/gaia-sprint-review</code>
+          handoff message. Sprint identifiers must match
+          <code>[A-Za-z0-9][A-Za-z0-9._-]*</code>; words containing
+          shell metacharacters or characters outside this set are
+          refused.
         </p>
       </section>
 

@@ -95,14 +95,7 @@ hand-driving the deterministic scripts.
 
 ### Step 0 — Resolve Sprint Argument
 
-When the user passes `--sprint <sprint-id>`, resolve it via the shared sprint-argument resolver:
-
-```bash
-source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
-RESOLVED_SPRINT="$(resolve_sprint_arg --command sprint-close --sprint "<sprint-id>")"
-```
-
-Without `--sprint`, the resolver defaults to the bound sprint or the single active sprint. The `close.sh` wiring (passing the resolved ID through to the close write path) is delivered by the sprint-close lifecycle story -- this skill accepts `--sprint` at the resolver level.
+Sprint resolution is handled internally by `close.sh`: it sources `session-binding.sh`, calls `provision_binding_dir`, and runs `resolve_sprint_arg --command sprint-close`. The skill validates and forwards the user's arguments to close.sh (see the Action section for the accepted flags and the allow-list). Do not call the resolver separately.
 
 ### Step 1 — Pre-condition: retro exists
 
@@ -198,7 +191,8 @@ The report joins per-step timing and approximate per-step token estimates into p
 
 ## Inputs
 
-- Positional argument: none.
+- Optional positional argument: `<sprint-id>` — the sprint to close. Equivalent to `--sprint <sprint-id>`. When both are given with different values, the script refuses with a conflict error.
+- Optional flag: `--sprint <sprint-id>` — target a specific sprint (concurrent mode). Without `--sprint` or a positional, close.sh resolves the target via the session binding (if bound) or the single active sprint (if unambiguous).
 - Optional flag: `--force` — bypass the sprint-review sentinel check (audited; recorded in close-summary). The sole code path that permits closing without review evidence.
 - Optional flag: `--force-with-rollover <key1,key2,...>` — comma-separated story keys to roll over.
 - Optional env: `GAIA_SPRINT_CLOSE_DATE` — override the close-date stamp used in the archive filename (default: today UTC).
@@ -213,11 +207,31 @@ The report joins per-step timing and approximate per-step token estimates into p
 
 ## Action
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh
+Run `close.sh` via the Bash tool with validated arguments. Before invoking, split the user's input into words and accept ONLY:
+
+- `--sprint <id>` or `--sprint=<id>` where `<id>` matches `^[A-Za-z0-9][A-Za-z0-9._-]*$`
+- A bare positional `<id>` matching the same pattern
+- `--force`
+- `--force-with-rollover <keys>` where `<keys>` is a comma-separated list of story keys
+- `--help`
+
+Refuse any word containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`, `{`, `}`, `<`, `>`, `\`, `!`, `'`, `"`, newlines, or characters outside printable ASCII) with a clear error message naming the rejected word. Then invoke close.sh with each accepted word single-quoted:
+
+```bash
+bash '${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh' '--sprint' '<id>'
+```
+
+Do NOT use a `!` shell line with unsanitized text — the `!` prefix performs textual substitution that allows command injection.
 
 ## Finalize
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh
+After close.sh exits 0, run the finalize script to write the checkpoint and emit the workflow_complete lifecycle event:
+
+```bash
+bash '${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh'
+```
+
+Do NOT run finalize before close.sh succeeds — the checkpoint and brain reindex must see the archive.
 
 ## Advancing to the next sprint
 

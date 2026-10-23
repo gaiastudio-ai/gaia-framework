@@ -882,6 +882,7 @@ skills	promotion-chain-guard.bats
 skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
 skills	skills/gaia-doctor-stray-snapshots.bats
+skills	sprint-close-resolver.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
