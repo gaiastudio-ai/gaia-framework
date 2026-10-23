@@ -506,11 +506,16 @@ _render_summary() {
   # body and counted for the exit-status decision.
   local _project_path="${PROJECT_PATH:-.}"
   local report_missing_idx=""
+  # Track the actual file path found for each gate (may differ from the
+  # canonical relpath when a pass-suffixed or reviews/-subdir copy is the
+  # only one on disk). The renderer uses this for link targets.
+  local -a report_actual_paths=()
   local idx=0
   while [ $idx -lt 6 ]; do
     local rp="${relpaths[$idx]}"
     local verdict_here="${VERDICTS[$idx]}"
     local abs_rp
+    report_actual_paths[$idx]="$rp"
     case "$rp" in
       /*) abs_rp="$rp" ;;
       *)  abs_rp="$_project_path/$rp" ;;
@@ -525,24 +530,44 @@ _render_summary() {
           local _bn="${CANONICAL_REPORT_BASENAMES[$idx]//\{key\}/$key}"
           local _hit
           _hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_bn}" -print 2>/dev/null | head -1)"
-          [ -n "$_hit" ] && [ -f "$_hit" ] && found=1
+          if [ -n "$_hit" ] && [ -f "$_hit" ]; then
+            found=1
+            report_actual_paths[$idx]="$_hit"
+          fi
         fi
         # Accept pass-suffixed reports (e.g. code-review-{key}-pass2.md) at
         # either the flat impl_artifacts/ location or the per-story reviews/
-        # subdir. The suffix convention is -passN before the .md extension.
+        # subdir. The suffix convention is -passN.md (digits only after
+        # "pass", immediately followed by ".md") so that drafts like
+        # -pass1-draft.md are not matched. Among candidates, the highest
+        # pass number wins (pass10 > pass2).
         if [ "$found" -eq 0 ]; then
           local _base_no_ext="${_bn%.md}"
           local _pass_hit
           # Flat layout: {impl_artifacts}/<type>-{key}-passN.md
-          _pass_hit="$(find "$__impl_artifacts" -maxdepth 1 -type f -name "${_base_no_ext}-pass[0-9]*.md" -print 2>/dev/null | head -1)"
-          [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ] && found=1
+          # grep filters to exactly -pass<digits>.md (no drafts); the
+          # sed/sort pipeline picks the highest pass number numerically.
+          # The `|| true` absorbs grep's exit 1 when no line matches
+          # (pipefail would otherwise kill the script).
+          _pass_hit="$(find "$__impl_artifacts" -maxdepth 1 -type f -name "${_base_no_ext}-pass*.md" -print 2>/dev/null \
+            | { /usr/bin/grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
+            | sed 's/.*-pass\([0-9][0-9]*\)\.md$/\1 &/' | sort -t' ' -k1 -n -r | head -1 | cut -d' ' -f2-)"
+          if [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ]; then
+            found=1
+            report_actual_paths[$idx]="$_pass_hit"
+          fi
         fi
         if [ "$found" -eq 0 ]; then
           local _base_no_ext="${_bn%.md}"
           local _pass_hit
           # Per-story reviews/ subdir: epic-*/{key}-*/reviews/<type>-{key}-passN.md
-          _pass_hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_base_no_ext}-pass[0-9]*.md" -print 2>/dev/null | head -1)"
-          [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ] && found=1
+          _pass_hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_base_no_ext}-pass*.md" -print 2>/dev/null \
+            | { /usr/bin/grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
+            | sed 's/.*-pass\([0-9][0-9]*\)\.md$/\1 &/' | sort -t' ' -k1 -n -r | head -1 | cut -d' ' -f2-)"
+          if [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ]; then
+            found=1
+            report_actual_paths[$idx]="$_pass_hit"
+          fi
         fi
         if [ "$found" -eq 0 ]; then
           report_missing_idx="${report_missing_idx}${idx},"
@@ -612,7 +637,7 @@ _render_summary() {
         printf '**Report:** MISSING — `%s` not on disk (verdict %s written without evidence)\n' \
           "$relpath" "$verdict"
       else
-        printf '**Report:** [%s](%s)\n' "$relpath" "$relpath"
+        printf '**Report:** [%s](%s)\n' "${report_actual_paths[$i]}" "${report_actual_paths[$i]}"
       fi
       printf '**Synopsis:** %s\n' "$synopsis"
       printf '\n'
@@ -646,7 +671,7 @@ _render_summary() {
           "${headings[$i]}" "${VERDICTS[$i]}"
       else
         printf '| %s | %s | [link](%s) |\n' \
-          "${headings[$i]}" "${VERDICTS[$i]}" "${relpaths[$i]}"
+          "${headings[$i]}" "${VERDICTS[$i]}" "${report_actual_paths[$i]}"
       fi
       i=$((i + 1))
     done

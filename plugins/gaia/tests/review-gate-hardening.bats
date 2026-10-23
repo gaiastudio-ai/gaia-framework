@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # review-gate-hardening.bats — regression tests for proof-of-execution
 # optional-suite handling, report column pass-through, pass-suffixed report
-# discovery, and per-suite exit-code aggregation.
+# discovery, per-suite exit-code aggregation, data-integrity guards, and
+# fail-closed behaviour on malformed evidence.
 
 load 'test_helper.bash'
 
@@ -52,7 +53,6 @@ EOF
 }
 
 # Write a minimal execution-evidence JSON to a file.
-# Usage: _write_evidence <path> <json>
 _write_evidence() {
   printf '%s\n' "$2" > "$1"
 }
@@ -60,6 +60,14 @@ _write_evidence() {
 # Write a minimal report file.
 _write_report() {
   printf '# Review report\n' > "$1"
+}
+
+# Extract the link target from the Code Review **Report:** line in a
+# summary file. Returns the path inside the markdown link parentheses.
+_extract_code_review_link() {
+  sed -n '/^## Code Review$/,/^## /{
+    s/^\*\*Report:\*\* \[[^]]*\](\(.*\))$/\1/p
+  }' "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -83,7 +91,6 @@ _write_report() {
 
 @test "required suite with failures blocks PASSED verdict" {
   local ev_file="$TEST_TMP/evidence.json"
-  # exit_code 0 so only fail_count triggers the block
   _write_evidence "$ev_file" '{"suites":[{"name":"unit","required":true,"fail_count":2,"exit_code":0}]}'
   local report="$TEST_TMP/report.md"
   _write_report "$report"
@@ -159,7 +166,6 @@ _write_report() {
     --report "$report"
   [ "$status" -eq 0 ]
 
-  # Read the story file and check the Report column for Code Review
   local cr_line
   cr_line="$(/usr/bin/grep '| Code Review |' "$STORY_FILE")"
   [[ "$cr_line" == *"$report"* ]]
@@ -174,48 +180,140 @@ _write_report() {
 
   local cr_line
   cr_line="$(/usr/bin/grep '| Code Review |' "$STORY_FILE")"
-  # The report column should contain an em-dash or double-dash placeholder
   [[ "$cr_line" != *".md"* ]]
+}
+
+@test "backslash in report path is preserved byte-for-byte (not expanded by awk)" {
+  # A path containing a literal backslash-t sequence must survive the awk
+  # writer without the backslash being expanded into a tab character.
+  local bsdir
+  bsdir="$TEST_TMP/a\\tb"
+  mkdir -p "$bsdir"
+  local report="$bsdir/rep.md"
+  _write_report "$report"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report "$report"
+  [ "$status" -eq 0 ]
+
+  # The literal path string (with the backslash) must appear in the file,
+  # not a tab-expanded version.
+  /usr/bin/grep -qF "| $report |" "$STORY_FILE"
+  # Confirm no tab character crept in
+  run /usr/bin/grep -cP '\t' <<< "$(/usr/bin/grep '| Code Review |' "$STORY_FILE")" 2>/dev/null ||:
+  # The line must not contain an actual tab (beyond the original | delimiters)
+  local cr_line
+  cr_line="$(/usr/bin/grep '| Code Review |' "$STORY_FILE")"
+  [[ "$cr_line" != *$'\t'* ]]
+}
+
+@test "report path containing pipe character is refused" {
+  local report="$TEST_TMP/rep|pipe.md"
+  printf '# r\n' > "$report"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report "$report"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pipe character"* ]]
+}
+
+@test "report path containing newline is refused" {
+  local report
+  report="$(printf '%s/rep\nforged.md' "$TEST_TMP")"
+  printf '# r\n' > "$TEST_TMP/rep"  # in case it creates a partial file
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report "$report"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"newline"* ]]
 }
 
 # ---------------------------------------------------------------------------
 # AC3: pass-suffixed reports discovered by review-summary-gen.sh
 # ---------------------------------------------------------------------------
 
-@test "review-summary-gen finds pass-suffixed report in flat layout" {
-  # Set up the story with Code Review = PASSED
+@test "review-summary-gen finds pass-suffixed report and links the actual file" {
   bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "Code Review" \
     --verdict PASSED \
     --report-missing-reason "seeding gate"
 
-  # Create a pass-suffixed report (not the base name)
+  # Create only a pass-suffixed report (not the canonical name)
   local pass_report="$ART/code-review-${STORY_KEY}-pass2.md"
   _write_report "$pass_report"
 
   run bash "$SUMMARY" --story "$STORY_KEY"
   [ "$status" -eq 0 ]
-  # The output's last line is the summary file path
   local summary_file
   summary_file="$(echo "$output" | tail -1)"
   [ -f "$summary_file" ]
-  # The summary should not flag Code Review as MISSING
-  local content
-  content="$(cat "$summary_file")"
-  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
-  ! /usr/bin/grep -q 'MISSING.*code-review' <<< "$content"
+
+  # The rendered link must point at the pass-suffixed file, not the
+  # canonical (non-existent) name
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  [ -n "$link" ]
+  [[ "$link" == *"pass2.md" ]]
+  [ -f "$link" ]
 }
 
-@test "review-summary-gen finds pass-suffixed report in reviews/ subdir" {
-  # Set the story to have Code Review = PASSED
+@test "review-summary-gen picks the highest pass number" {
   bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "Code Review" \
     --verdict PASSED \
     --report-missing-reason "seeding gate"
 
-  # Create reviews/ subdir with pass-suffixed report
+  # Create pass2 and pass10 — pass10 must win
+  _write_report "$ART/code-review-${STORY_KEY}-pass2.md"
+  _write_report "$ART/code-review-${STORY_KEY}-pass10.md"
+
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local summary_file
+  summary_file="$(echo "$output" | tail -1)"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  [[ "$link" == *"pass10.md" ]]
+}
+
+@test "review-summary-gen does not match pass-suffixed drafts" {
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report-missing-reason "seeding gate"
+
+  # Only a draft exists — should be treated as MISSING
+  _write_report "$ART/code-review-${STORY_KEY}-pass1-draft.md"
+
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local summary_file
+  summary_file="$(echo "$output" | tail -1)"
+  local content
+  content="$(cat "$summary_file")"
+  # Must flag Code Review as MISSING because the draft is not a valid pass report
+  [[ "$content" == *"MISSING"*"code-review"* ]]
+}
+
+@test "review-summary-gen finds pass-suffixed report in reviews/ subdir and links it" {
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report-missing-reason "seeding gate"
+
   local reviews_dir="$ART/epic-E900/${STORY_KEY}-fixture/reviews"
   mkdir -p "$reviews_dir"
   local pass_report="$reviews_dir/code-review-${STORY_KEY}-pass2.md"
@@ -225,25 +323,24 @@ _write_report() {
   [ "$status" -eq 0 ]
   local summary_file
   summary_file="$(echo "$output" | tail -1)"
-  [ -f "$summary_file" ]
-  local content
-  content="$(cat "$summary_file")"
-  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
-  ! /usr/bin/grep -q 'MISSING.*code-review' <<< "$content"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  [ -n "$link" ]
+  [[ "$link" == *"pass2.md" ]]
+  [ -f "$link" ]
 }
 
 # ---------------------------------------------------------------------------
 # AC4: reviews/ subdirectory reports found (regression test)
 # ---------------------------------------------------------------------------
 
-@test "review-summary-gen finds report in reviews/ subdir (regression)" {
+@test "review-summary-gen finds report in reviews/ subdir and links it" {
   bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "Code Review" \
     --verdict PASSED \
     --report-missing-reason "seeding gate"
 
-  # Create per-story reviews/ dir with canonical basename
   local reviews_dir="$ART/epic-E900/${STORY_KEY}-fixture/reviews"
   mkdir -p "$reviews_dir"
   _write_report "$reviews_dir/code-review-${STORY_KEY}.md"
@@ -252,10 +349,11 @@ _write_report() {
   [ "$status" -eq 0 ]
   local summary_file
   summary_file="$(echo "$output" | tail -1)"
-  [ -f "$summary_file" ]
-  local content
-  content="$(cat "$summary_file")"
-  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  [ -n "$link" ]
+  [[ "$link" == *"/reviews/code-review-${STORY_KEY}.md" ]]
+  [ -f "$link" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -294,9 +392,7 @@ _write_report() {
 }
 
 @test "evidence with no top-level exit_code but per-suite nonzero exit blocks PASSED" {
-  # This tests that the code reads .suites[].exit_code, not .exit_code
   local ev_file="$TEST_TMP/evidence.json"
-  # No top-level .exit_code, but suites have it
   _write_evidence "$ev_file" '{"suites":[{"name":"unit","required":true,"fail_count":0,"exit_code":2}]}'
   local report="$TEST_TMP/report.md"
   _write_report "$report"
@@ -326,18 +422,58 @@ _write_report() {
   [ "$status" -eq 0 ]
 }
 
-# ---------------------------------------------------------------------------
-# AC9: tests use temp directories, never the real plugin tree
-# ---------------------------------------------------------------------------
+@test "mixed required suites: one green one red exit_code blocks PASSED" {
+  # Catches max->min mutant: min([0,1])=0 would pass; max([0,1])=1 blocks
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":[{"name":"unit","required":true,"fail_count":0,"exit_code":0},{"name":"e2e","required":true,"fail_count":0,"exit_code":1}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
 
-@test "all test fixtures live in BATS_TEST_TMPDIR" {
-  # Verify our story file is in the temp dir
-  [[ "$STORY_FILE" == "${BATS_TEST_TMPDIR}"* ]] || [[ "$STORY_FILE" == /tmp/* ]] || [[ "$STORY_FILE" == /private/tmp/* ]]
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"exit_code"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# Edge cases: malformed evidence
+# Fail-closed: malformed evidence
 # ---------------------------------------------------------------------------
+
+@test "malformed JSON evidence blocks PASSED with diagnostic" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" 'NOT JSON AT ALL'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not valid JSON"* ]]
+}
+
+@test "JSON array evidence blocks PASSED with diagnostic" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '[{"suites":[]}]'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not valid JSON or is not an object"* ]]
+}
 
 @test "empty suites array allows PASSED (no suites to fail)" {
   local ev_file="$TEST_TMP/evidence.json"
@@ -382,4 +518,12 @@ _write_report() {
     --report "$report" \
     --execution-evidence "$ev_file"
   [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC9: tests use temp directories, never the real plugin tree
+# ---------------------------------------------------------------------------
+
+@test "all test fixtures live in temp directories" {
+  [[ "$STORY_FILE" == "${BATS_TEST_TMPDIR}"* ]] || [[ "$STORY_FILE" == /tmp/* ]] || [[ "$STORY_FILE" == /private/tmp/* ]]
 }
