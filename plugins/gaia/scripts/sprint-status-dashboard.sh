@@ -176,7 +176,9 @@ fi
 # Mitigation catalog path.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/migrate-items-to-stories.sh
-. "$SCRIPT_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
+if [ -f "$SCRIPT_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$SCRIPT_DIR/lib/migrate-items-to-stories.sh"
+fi
 MITIGATION_CATALOG="${MITIGATION_CATALOG:-$SCRIPT_DIR/../skills/gaia-sprint-status/mitigation-catalog.yaml}"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
