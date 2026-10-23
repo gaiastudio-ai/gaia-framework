@@ -18,18 +18,15 @@ setup() {
   [ -f "$tw" ] || skip "transcript-writer.sh not found"
   # The function assert_gitignored must include -- before the pattern argument.
   # Every non-comment check-ignore invocation must contain ' -- '.
-  local line
-  while IFS= read -r line; do
-    case "$line" in '#'*) continue ;; esac
-    case "$line" in
-      *check-ignore*)
-        case "$line" in
-          *' -- '*) : ;;  # has separator
-          *) echo "FAIL: check-ignore call missing '--': $line"; return 1 ;;
-        esac
-        ;;
-    esac
-  done < "$tw"
+  # Scan non-comment lines that invoke git check-ignore.
+  # Filter: lines matching check-ignore but not starting with optional whitespace + #.
+  local bad_lines
+  bad_lines="$(/usr/bin/grep 'check-ignore' "$tw" | /usr/bin/grep -v '^[[:space:]]*#' | /usr/bin/grep -v ' -- ' || true)"
+  if [ -n "$bad_lines" ]; then
+    echo "FAIL: check-ignore call(s) missing '--':"
+    echo "$bad_lines"
+    return 1
+  fi
 }
 
 @test "transcript-writer: assert_gitignored treats dash-prefixed pattern as path" {
