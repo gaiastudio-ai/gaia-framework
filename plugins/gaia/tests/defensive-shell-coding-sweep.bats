@@ -440,9 +440,9 @@ YAML
   }
   _mk_sprint "sprint-900" "active" "E900-S1"
   _mk_sprint "sprint-901" "planned" "E901-S1"
-  touch "$proj/gaia-public/plugins/gaia/scripts/target.sh"
-  _mk_story "E900-S1" "E900" "gaia-public/plugins/gaia/scripts/target.sh"
-  _mk_story "E901-S1" "E901" "gaia-public/plugins/gaia/scripts/target.sh"
+  touch "$proj/gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _mk_story "E900-S1" "E900" "gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  _mk_story "E901-S1" "E901" "gaia-public/plugins/gaia/scripts/sprint-state.sh"
 
   local cache="$TEST_TMP/iccache"
   mkdir -p "$cache"
@@ -460,7 +460,7 @@ YAML
   for c in "$cache"/*; do
     [ -f "$c" ] || continue
     local bn; bn="$(basename "$c")"
-    sed 's#scripts/target.sh#scripts/decoy.sh#g' "$c" > "$poison/$bn"
+    sed 's#scripts/sprint-state.sh#scripts/resolve-config.sh#g' "$c" > "$poison/$bn"
     rm -f "$c"
     ln -s "$poison/$bn" "$c"
   done
