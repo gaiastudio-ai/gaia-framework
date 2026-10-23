@@ -93,12 +93,11 @@ aiw_check_dedup() {
   local found
   found="$(awk -v sid="$sprint_id" -v cls="$classification" -v rk="$ref_key" -v rv="$ref_value" '
     /^[[:space:]]*- id:/ {
-      # Flush previous entry if all three fields matched.
-      if (in_entry && s_match && c_match && r_match) { print "MATCH"; exit }
+      if (in_entry && s_match && c_match && r_match) { matched=1; exit }
       in_entry=1; s_match=0; c_match=0; r_match=0; next
     }
     in_entry && /^[^[:space:]]/ && !/^[[:space:]]*- id:/ {
-      if (s_match && c_match && r_match) { print "MATCH"; exit }
+      if (s_match && c_match && r_match) { matched=1; exit }
       in_entry=0; next
     }
     in_entry && /sprint_id:/ {
@@ -113,7 +112,10 @@ aiw_check_dedup() {
       pat = rk ":[[:space:]]*\"?" rv "\"?"
       if ($0 ~ pat) r_match=1
     }
-    END { if (in_entry && s_match && c_match && r_match) print "MATCH" }
+    END {
+      if (!matched && in_entry && s_match && c_match && r_match) matched=1
+      if (matched) print "MATCH"
+    }
   ' "$target")"
   if [ "$found" = "MATCH" ]; then
     return 0
