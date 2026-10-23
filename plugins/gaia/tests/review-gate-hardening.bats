@@ -203,8 +203,8 @@ _write_report() {
   # The summary should not flag Code Review as MISSING
   local content
   content="$(cat "$summary_file")"
-  ! echo "$content" | /usr/bin/grep -q 'Code Review.*MISSING'
-  ! echo "$content" | /usr/bin/grep -q 'MISSING.*code-review'
+  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
+  ! /usr/bin/grep -q 'MISSING.*code-review' <<< "$content"
 }
 
 @test "review-summary-gen finds pass-suffixed report in reviews/ subdir" {
@@ -228,8 +228,8 @@ _write_report() {
   [ -f "$summary_file" ]
   local content
   content="$(cat "$summary_file")"
-  ! echo "$content" | /usr/bin/grep -q 'Code Review.*MISSING'
-  ! echo "$content" | /usr/bin/grep -q 'MISSING.*code-review'
+  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
+  ! /usr/bin/grep -q 'MISSING.*code-review' <<< "$content"
 }
 
 # ---------------------------------------------------------------------------
@@ -255,7 +255,7 @@ _write_report() {
   [ -f "$summary_file" ]
   local content
   content="$(cat "$summary_file")"
-  ! echo "$content" | /usr/bin/grep -q 'Code Review.*MISSING'
+  ! /usr/bin/grep -q 'Code Review.*MISSING' <<< "$content"
 }
 
 # ---------------------------------------------------------------------------
