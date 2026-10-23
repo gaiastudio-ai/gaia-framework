@@ -104,23 +104,21 @@ exec "$REAL_GIT" "\$@"
 GITSTUB
   chmod +x "$TEST_TMP/bin/git"
 
-  # Stub gh: merge succeeds, PR is OPEN.
+  # Stub gh: merge succeeds, PR is OPEN. Returns JSON for the consolidated
+  # pr view call (state + headRefName + headRefOid + baseRefName).
   cat > "$TEST_TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
   *"pr checks"*)
     echo '[{"bucket":"pass","name":"ci"}]'
     ;;
-  *"pr view"*"baseRefName"*)
-    echo "staging"
-    ;;
   *"pr view"*"headRefName"*)
-    echo "feat/test"
+    printf '{"state":"OPEN","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n'
     ;;
   *"pr view"*"mergeCommit"*)
     echo "OPEN"
     ;;
-  *"pr view"*"--jq"*)
+  *"pr view"*)
     echo "OPEN"
     ;;
   *"pr merge"*)
@@ -308,9 +306,9 @@ _run_timeout_test() {
 #!/usr/bin/env bash
 case "$*" in
   *"pr checks"*) echo '[{"bucket":"pass","name":"ci"}]' ;;
-  *"pr view"*"baseRefName"*) echo "staging" ;;
+  *"pr view"*"headRefName"*) printf '{"state":"OPEN","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n' ;;
   *"pr view"*"mergeCommit"*) echo "OPEN" ;;
-  *"pr view"*"--jq"*) echo "OPEN" ;;
+  *"pr view"*) echo "OPEN" ;;
   *"pr merge"*) echo "merge conflict" >&2; exit 1 ;;
   *) exit 0 ;;
 esac
@@ -327,8 +325,8 @@ STUB
 #!/usr/bin/env bash
 case "$*" in
   *"pr checks"*) echo '[{"bucket":"pass","name":"ci"}]' ;;
-  *"pr view"*"baseRefName"*) echo "staging" ;;
-  *"pr view"*"--jq"*) echo "OPEN" ;;
+  *"pr view"*"headRefName"*) printf '{"state":"OPEN","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n' ;;
+  *"pr view"*) echo "OPEN" ;;
   *"pr merge"*) sleep 30 ;;
   *) exit 0 ;;
 esac
@@ -435,8 +433,8 @@ case "$*" in
   *"pr checks"*)
     echo '[{"bucket":"fail","name":"lint"}]'
     ;;
-  *"pr view"*"baseRefName"*) echo "staging" ;;
-  *"pr view"*"--jq"*) echo "OPEN" ;;
+  *"pr view"*"headRefName"*) printf '{"state":"OPEN","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n' ;;
+  *"pr view"*) echo "OPEN" ;;
   *) exit 0 ;;
 esac
 STUB
@@ -538,7 +536,8 @@ STUB
   cat > "$TEST_TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  *"pr view"*"--jq"*) echo "MERGED" ;;
+  *"pr view"*"headRefName"*) printf '{"state":"MERGED","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n' ;;
+  *"pr view"*) echo "MERGED" ;;
   *) exit 0 ;;
 esac
 STUB
@@ -564,18 +563,19 @@ case "\$*" in
   *"pr checks"*)
     echo '[{"bucket":"pass","name":"ci"}]'
     ;;
-  *"pr view"*"mergeCommit"*"--jq"*)
+  *"pr view"*"headRefName"*)
+    # Consolidated pr view: return JSON with OPEN state
+    printf '{"state":"OPEN","headRefName":"feat/test","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefName":"staging"}\n'
+    ;;
+  *"pr view"*"mergeCommit"*)
+    # Post-failure remote_pr_state: the merge actually happened
     echo "MERGED"
     ;;
-  *"pr view"*"--jq .state"*|*"pr view"*"--jq '.state'"*)
-    count=\$(cat "$call_counter" 2>/dev/null || echo "0")
-    echo "\$((count + 1))" > "$call_counter"
-    if [ "\$count" -eq 0 ]; then echo "OPEN"; else echo "MERGED"; fi
+  *"pr view"*)
+    echo "OPEN"
     ;;
-  *"pr view"*"baseRefName"*) echo "staging" ;;
-  *"pr view"*"headRefName"*) echo "feat/test" ;;
   *"pr merge"*) echo "already used by worktree" >&2; exit 1 ;;
-  *"repo view"*"--jq"*) echo "test/repo" ;;
+  *"repo view"*) echo "test/repo" ;;
   *"api -X DELETE"*) exit 0 ;;
   *) exit 0 ;;
 esac

@@ -61,8 +61,12 @@ make_fixture_repo() {
   fixture_git -C "$REPO" remote remove origin 2>/dev/null || true
   fixture_git -C "$REPO" remote add origin "$ORIGIN"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   fixture_git -C "$REPO" fetch -q origin
 
+  # Capture headRefOid for the gh stub.
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"
+  export FIXTURE_HEAD_OID
   export PROJECT_PATH="$REPO"
 }
 
@@ -102,18 +106,17 @@ printf '%s\n' "$*" >> "$GH_ARGS"
 
 scenario="${GH_SCENARIO:-happy}"
 
-# gh pr view
+# gh pr view — single JSON response with all fields
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   case "$*" in
-    *baseRefName*) printf 'staging\n'; exit 0 ;;
-    *headRefName*) printf 'feat/story-branch\n'; exit 0 ;;
-    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;
     *mergeCommit*) printf 'OPEN\n'; exit 0 ;;
+    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;
   esac
+  printf '{"state":"OPEN","headRefName":"feat/story-branch","headRefOid":"%s","baseRefName":"staging"}\n' "${FIXTURE_HEAD_OID:-}"
   exit 0
 fi
 
-# gh pr checks — the new guard queries this
+# gh pr checks
 if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
   if [ -n "${GH_CHECKS_JSON:-}" ]; then
     printf '%s\n' "$GH_CHECKS_JSON"
@@ -130,14 +133,8 @@ fi
 
 # gh pr merge — happy path succeeds
 if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
-  case "$scenario" in
-    happy)
-      printf 'merged\n'
-      exit 0 ;;
-    *)
-      printf 'merged\n'
-      exit 0 ;;
-  esac
+  printf 'merged\n'
+  exit 0
 fi
 
 exit 0
@@ -224,6 +221,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -238,6 +236,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: GitHub Copilot <copilot@github.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -251,6 +250,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nco-authored-by: CLAUDE <claude@example.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -264,6 +264,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "some feature$(printf '\n\nCo-Authored-By: Human Developer <human@example.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -eq 0 ]
@@ -275,6 +276,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "bad commit$(printf '\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   local bad_hash
   bad_hash="$(fixture_git -C "$REPO" rev-parse --short HEAD)"
   make_stub_gh
@@ -341,6 +343,7 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q \
     -m "$(printf 'implement feature X\n\nThis change adds the feature X integration\nwith full backward compatibility.\n\nCo-Authored-By: Claude <noreply@anthropic.com>')"
   fixture_git -C "$REPO" push -q origin feat/story-branch
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"; export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
@@ -357,23 +360,22 @@ STUB
   make_fixture_repo
   # Override the gh stub to make pr checks exit non-zero (network/auth error)
   mkdir -p "$TEST_TMP/bin"
-  cat > "$TEST_TMP/bin/gh" <<'STUB'
+  cat > "$TEST_TMP/bin/gh" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$GH_ARGS"
-if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
-  case "$*" in
-    *baseRefName*) printf 'staging\n'; exit 0 ;;
-    *headRefName*) printf 'feat/story-branch\n'; exit 0 ;;
-    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;
+printf '%s\n' "\$*" >> "\$GH_ARGS"
+if [ "\$1" = "pr" ] && [ "\$2" = "view" ]; then
+  case "\$*" in
     *mergeCommit*) printf 'OPEN\n'; exit 0 ;;
+    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;
   esac
+  printf '{"state":"OPEN","headRefName":"feat/story-branch","headRefOid":"${FIXTURE_HEAD_OID:-}","baseRefName":"staging"}\n'
   exit 0
 fi
-if [ "$1" = "pr" ] && [ "$2" = "checks" ]; then
+if [ "\$1" = "pr" ] && [ "\$2" = "checks" ]; then
   printf 'gh: could not reach api.github.com\n' >&2
   exit 1
 fi
-if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
+if [ "\$1" = "pr" ] && [ "\$2" = "merge" ]; then
   printf 'merged\n'; exit 0
 fi
 exit 0

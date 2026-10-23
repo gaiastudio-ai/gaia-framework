@@ -4,7 +4,7 @@
 # Validates that merge.sh reads headRefName from gh and passes it to
 # assert_branch_not_protected(). Tests are behavioural: they build a bare
 # origin + primary checkout on staging (post-teardown state), stub gh,
-# and run merge.sh, asserting exit codes and stderr messages.
+# and run merge.sh, asserting exit codes, stderr messages, and gh-args log.
 #
 # AC1: guard reads PR head branch, not local HEAD
 # AC2: merge succeeds after worktree teardown (CWD on staging)
@@ -49,16 +49,21 @@ setup() {
     fi
     git -C "$dev" push -q origin feat/story-branch
 
+    # Capture the headRefOid for the stub
+    FIXTURE_HEAD_OID="$(git -C "$dev" rev-parse HEAD)"
+
     # Config for assert_pr_target_from_chain
     mkdir -p "$TEST_TMPDIR/cfg"
     printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
       > "$TEST_TMPDIR/cfg/project-config.yaml"
   }
 
-  # Write a stub gh that returns parameterised headRefName.
+  # Write a stub gh that returns JSON for the single pr view call.
   # GH_STUB_HEAD_REF controls the headRefName response:
-  #   a branch name  → returned as headRefName
-  #   __FAIL__       → gh exits 1
+  #   a branch name  -> returned as headRefName
+  #   __FAIL__       -> gh exits 1
+  #   null           -> returns literal "null" as headRefName
+  # GH_STUB_HEAD_OID controls headRefOid (defaults to FIXTURE_HEAD_OID).
   _write_gh_stub() {
     mkdir -p "$TEST_TMPDIR/bin"
     cat > "$TEST_TMPDIR/bin/gh" << 'STUBEOF'
@@ -67,12 +72,14 @@ set -u
 printf '%s\n' "$*" >> "${GH_ARGS:-/dev/null}"
 case "$1 $2" in
   "pr view")
-    case "$*" in
-      *headRefName*) if [ "${GH_STUB_HEAD_REF:-}" = "__FAIL__" ]; then exit 1; fi
-                     echo "${GH_STUB_HEAD_REF:-}"; exit 0;;
-      *baseRefName*) echo staging; exit 0;;
-      *)             echo OPEN; exit 0;;
-    esac;;
+    if [ "${GH_STUB_HEAD_REF:-}" = "__FAIL__" ]; then exit 1; fi
+    # Single JSON response with all fields
+    local_head="${GH_STUB_HEAD_REF:-feat/story-branch}"
+    local_oid="${GH_STUB_HEAD_OID:-}"
+    printf '{"state":"OPEN","headRefName":"%s","headRefOid":"%s","baseRefName":"staging"}\n' \
+      "$local_head" "$local_oid"
+    exit 0
+    ;;
   "pr checks") echo '[{"bucket":"pass","name":"ci"}]'; exit 0;;
   "pr merge")  echo merged; exit 0;;
   *) exit 0;;
@@ -83,13 +90,15 @@ STUBEOF
 
   # Run merge.sh with the fixture and stub gh.
   # $1 = headRefName value for the stub
-  # Sets MERGE_RC and MERGE_OUT (combined stdout+stderr).
+  # Sets MERGE_RC, MERGE_OUT, and checks GH_ARGS for pr merge call.
   _run_merge_fixture() {
     local head_ref="$1"
     _build_merge_fixture
     _write_gh_stub
+    : > "$TEST_TMPDIR/gh-args"
     local rc=0
     GH_STUB_HEAD_REF="$head_ref" \
+    GH_STUB_HEAD_OID="${FIXTURE_HEAD_OID:-}" \
     GH_ARGS="$TEST_TMPDIR/gh-args" \
     PROJECT_PATH="$TEST_TMPDIR/primary" \
     PROJECT_ROOT="" \
@@ -157,12 +166,13 @@ teardown() {
 # AC1+AC2: merge.sh passes feature-branch PR head to the guard (behavioural)
 # ---------------------------------------------------------------------------
 
-@test "merge.sh with feature-branch PR head passes the guard (local HEAD=staging)" {
+@test "merge.sh with feature-branch PR head completes the merge (local HEAD=staging)" {
   _run_merge_fixture "feat/story-branch"
-  # The guard must not have fired. merge.sh may fail later — we only care
-  # that the protected-branch gate did not trigger.
+  [ "$MERGE_RC" -eq 0 ]
+  # gh pr merge must have been called
+  grep -qF 'pr merge' "$TEST_TMPDIR/gh-args"
+  # The guard must not have fired
   [[ "$MERGE_OUT" != *"protected-branch invariant failed"* ]]
-  [[ "$MERGE_OUT" != *"could not determine PR head branch"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -174,32 +184,34 @@ teardown() {
   [ "$MERGE_RC" -ne 0 ]
   [[ "$MERGE_OUT" == *"protected-branch invariant failed"* ]]
   # gh pr merge must NOT have been called
-  if [ -f "$TEST_TMPDIR/gh-args" ]; then
-    run grep "pr merge" "$TEST_TMPDIR/gh-args"
-    [ "$status" -ne 0 ]
-  fi
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
 }
 
 @test "merge.sh refuses when PR head is staging" {
   _run_merge_fixture "staging"
   [ "$MERGE_RC" -ne 0 ]
   [[ "$MERGE_OUT" == *"protected-branch invariant failed"* ]]
-  if [ -f "$TEST_TMPDIR/gh-args" ]; then
-    run grep "pr merge" "$TEST_TMPDIR/gh-args"
-    [ "$status" -ne 0 ]
-  fi
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
 }
 
-@test "merge.sh refuses when gh fails to return PR head (fail-closed)" {
+@test "merge.sh refuses when gh fails to return PR metadata (fail-closed)" {
   _run_merge_fixture "__FAIL__"
   [ "$MERGE_RC" -ne 0 ]
-  [[ "$MERGE_OUT" == *"could not determine PR head branch"* ]]
+  [[ "$MERGE_OUT" == *"could not query PR"* ]]
 }
 
 @test "merge.sh refuses when gh returns invalid ref name" {
   _run_merge_fixture "GraphQL: Could not resolve"
   [ "$MERGE_RC" -ne 0 ]
   [[ "$MERGE_OUT" == *"not a valid ref"* ]]
+}
+
+@test "merge.sh refuses when headRefName is literal null" {
+  _run_merge_fixture "null"
+  [ "$MERGE_RC" -ne 0 ]
+  [[ "$MERGE_OUT" == *"could not determine PR head branch"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -226,7 +238,6 @@ teardown() {
   git -C "$primary" config user.email "test@test"
   git -C "$primary" config user.name "test"
 
-  # Feature branch
   git -C "$dev" checkout -q -b feat/story-branch
   git -C "$dev" commit --allow-empty -q -m "feat: x"
   git -C "$dev" push -q origin feat/story-branch
@@ -241,14 +252,19 @@ teardown() {
   git -C "$dev" rebase -q staging
   git -C "$dev" push -q -f origin feat/story-branch
 
+  local head_oid
+  head_oid="$(git -C "$dev" rev-parse HEAD)"
+
   mkdir -p "$TEST_TMPDIR/cfg"
   printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
     > "$TEST_TMPDIR/cfg/project-config.yaml"
 
-  _write_gh_stub
+  FIXTURE_HEAD_OID="$head_oid" _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
 
   local rc=0
   GH_STUB_HEAD_REF="feat/story-branch" \
+  GH_STUB_HEAD_OID="$head_oid" \
   GH_ARGS="$TEST_TMPDIR/gh-args" \
   PROJECT_PATH="$primary" \
   PROJECT_ROOT="" \
@@ -261,7 +277,8 @@ teardown() {
   local out
   out="$(cat "$TEST_TMPDIR/merge-out")"
 
-  # Must NOT abort with stale-base error
+  [ "$rc" -eq 0 ]
+  grep -qF 'pr merge' "$TEST_TMPDIR/gh-args"
   [[ "$out" != *"is not based on"* ]]
 }
 
@@ -273,11 +290,135 @@ teardown() {
   FIXTURE_TRAILER=1 _run_merge_fixture "feat/story-branch"
   [ "$MERGE_RC" -ne 0 ]
   [[ "$MERGE_OUT" == *"assistant attribution trailer"* ]]
-  # gh pr merge must NOT have been called
-  if [ -f "$TEST_TMPDIR/gh-args" ]; then
-    run grep "pr merge" "$TEST_TMPDIR/gh-args"
-    [ "$status" -ne 0 ]
-  fi
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# AC3: fail-closed paths
+# ---------------------------------------------------------------------------
+
+@test "merge.sh refuses when PR head fetch fails (fail-closed, no fallback to HEAD)" {
+  # Build a fixture where the feature branch is NOT pushed to origin
+  # and pull/<n>/head also does not exist. merge.sh must refuse.
+  local dev="$TEST_TMPDIR/dev"
+  local origin="$TEST_TMPDIR/origin"
+  local primary="$TEST_TMPDIR/primary"
+
+  git init -q -b staging "$dev"
+  git -C "$dev" config user.email "test@test"
+  git -C "$dev" config user.name "test"
+  git -C "$dev" commit --allow-empty -q -m "base"
+  git clone --bare -q "$dev" "$origin"
+  git clone -q -b staging "$origin" "$primary"
+  git -C "$primary" config user.email "test@test"
+  git -C "$primary" config user.name "test"
+
+  mkdir -p "$TEST_TMPDIR/cfg"
+  printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
+    > "$TEST_TMPDIR/cfg/project-config.yaml"
+
+  # Stub gh returns a branch name that does not exist on origin
+  FIXTURE_HEAD_OID="" _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
+
+  local rc=0
+  GH_STUB_HEAD_REF="feat/nonexistent-branch" \
+  GH_STUB_HEAD_OID="" \
+  GH_ARGS="$TEST_TMPDIR/gh-args" \
+  PROJECT_PATH="$primary" \
+  PROJECT_ROOT="" \
+  CLAUDE_PROJECT_ROOT="" \
+  PROJECT_CONFIG="$TEST_TMPDIR/cfg/project-config.yaml" \
+  PATH="$TEST_TMPDIR/bin:$PATH" \
+    bash "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch \
+      > "$TEST_TMPDIR/merge-out" 2>&1 || rc=$?
+
+  local out
+  out="$(cat "$TEST_TMPDIR/merge-out")"
+  [ "$rc" -ne 0 ]
+  [[ "$out" == *"could not fetch the PR head ref"* ]]
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
+}
+
+@test "merge.sh refuses when commit range is empty (fail-closed trailer scan)" {
+  # Build fixture where origin/staging == origin/feat/story-branch
+  # (no commits in the range). The fail-closed guard must fire.
+  local dev="$TEST_TMPDIR/dev"
+  local origin="$TEST_TMPDIR/origin"
+  local primary="$TEST_TMPDIR/primary"
+
+  git init -q -b staging "$dev"
+  git -C "$dev" config user.email "test@test"
+  git -C "$dev" config user.name "test"
+  git -C "$dev" commit --allow-empty -q -m "base"
+  git clone --bare -q "$dev" "$origin"
+  git clone -q -b staging "$origin" "$primary"
+  git -C "$primary" config user.email "test@test"
+  git -C "$primary" config user.name "test"
+
+  # Feature branch == staging (no new commits)
+  git -C "$dev" remote add origin "$origin" 2>/dev/null ||
+    git -C "$dev" remote set-url origin "$origin"
+  git -C "$dev" checkout -q -b feat/story-branch
+  git -C "$dev" push -q origin feat/story-branch
+
+  local head_oid
+  head_oid="$(git -C "$dev" rev-parse HEAD)"
+
+  mkdir -p "$TEST_TMPDIR/cfg"
+  printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
+    > "$TEST_TMPDIR/cfg/project-config.yaml"
+
+  FIXTURE_HEAD_OID="$head_oid" _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
+
+  local rc=0
+  GH_STUB_HEAD_REF="feat/story-branch" \
+  GH_STUB_HEAD_OID="$head_oid" \
+  GH_ARGS="$TEST_TMPDIR/gh-args" \
+  PROJECT_PATH="$primary" \
+  PROJECT_ROOT="" \
+  CLAUDE_PROJECT_ROOT="" \
+  PROJECT_CONFIG="$TEST_TMPDIR/cfg/project-config.yaml" \
+  PATH="$TEST_TMPDIR/bin:$PATH" \
+    bash "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch \
+      > "$TEST_TMPDIR/merge-out" 2>&1 || rc=$?
+
+  local out
+  out="$(cat "$TEST_TMPDIR/merge-out")"
+  [ "$rc" -ne 0 ]
+  [[ "$out" == *"could not enumerate commits"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# headRefOid mismatch detection
+# ---------------------------------------------------------------------------
+
+@test "merge.sh refuses when fetched commit does not match headRefOid" {
+  _build_merge_fixture
+  _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
+  local rc=0
+  # Pass a bogus OID that won't match the fetched commit
+  GH_STUB_HEAD_REF="feat/story-branch" \
+  GH_STUB_HEAD_OID="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
+  GH_ARGS="$TEST_TMPDIR/gh-args" \
+  PROJECT_PATH="$TEST_TMPDIR/primary" \
+  PROJECT_ROOT="" \
+  CLAUDE_PROJECT_ROOT="" \
+  PROJECT_CONFIG="$TEST_TMPDIR/cfg/project-config.yaml" \
+  PATH="$TEST_TMPDIR/bin:$PATH" \
+    bash "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch \
+      > "$TEST_TMPDIR/merge-out" 2>&1 || rc=$?
+  MERGE_RC=$rc
+  MERGE_OUT="$(cat "$TEST_TMPDIR/merge-out")"
+
+  [ "$MERGE_RC" -ne 0 ]
+  [[ "$MERGE_OUT" == *"does not match the API-reported headRefOid"* ]]
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
 }
 
 @test "guard passes for branch containing protected name as substring" {
@@ -301,13 +442,10 @@ teardown() {
 @test "invariants lib has no bash 4+ features" {
   [ -f "$INVARIANTS_LIB" ]
   local count
-  # Associative array declarations
   count="$(grep -cE 'declare[[:space:]]+-A|local[[:space:]]+-A' "$INVARIANTS_LIB" || true)"
   [ "$count" -eq 0 ]
-  # mapfile / readarray
   count="$(grep -cE '\bmapfile\b|\breadarray\b' "$INVARIANTS_LIB" || true)"
   [ "$count" -eq 0 ]
-  # ${var,,} or ${var^^}
   count="$(grep -cE '\$\{[a-zA-Z_][a-zA-Z_0-9]*,,' "$INVARIANTS_LIB" || true)"
   [ "$count" -eq 0 ]
   count="$(grep -cE '\$\{[a-zA-Z_][a-zA-Z_0-9]*\^\^' "$INVARIANTS_LIB" || true)"
@@ -369,10 +507,8 @@ teardown() {
   local this_file="$BATS_TEST_DIRNAME/merge-pr-head-guard.bats"
   [ -f "$this_file" ]
   local count
-  # No literal plugin-tree write targets
   count="$(grep -cE '>[[:space:]]+("|'"'"')?(/[^ ]*)?plugins/gaia/' "$this_file" || true)"
   [ "$count" -eq 0 ]
-  # No literal .gaia/ write targets (exclude grep pattern strings)
   count="$(grep -cE '>[[:space:]]+("|'"'"')?(/[^ ]*)?\.gaia/' "$this_file" || true)"
   [ "$count" -eq 0 ]
 }

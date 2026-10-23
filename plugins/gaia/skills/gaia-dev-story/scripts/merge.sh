@@ -141,17 +141,41 @@ fi
 
 # remote_pr_state <pr_number> [extra-json-field] — ask the remote for the
 # pull request's authoritative state. Echoes the state verbatim, or UNKNOWN
-# when the query itself is unavailable (network, auth, rate limit). Used at
-# both ends of the merge call: once before it as an idempotency check, and
-# once after a failure to find out whether the merge actually happened.
+# when the query itself is unavailable (network, auth, rate limit). Used
+# after a merge failure to find out whether the merge actually happened.
 remote_pr_state() {
   local pr="$1" extra="${2:-mergedAt}"
   gh pr view "$pr" --json "state,${extra}" --jq '.state' 2>/dev/null || echo "UNKNOWN"
 }
 
-# Idempotency check: is PR already merged? Fires BEFORE L3 acquisition and
-# stays lock-free in both concurrent and single-sprint modes.
-pr_state=$(remote_pr_state "$PR_NUMBER")
+# ---------------------------------------------------------------------------
+# Single gh pr view call: read state, headRefName, headRefOid, baseRefName.
+# Fail closed on query failure.
+# ---------------------------------------------------------------------------
+_pr_json="$(gh pr view "$PR_NUMBER" --json state,headRefName,headRefOid,baseRefName 2>/dev/null)" || _pr_json=""
+if [ -z "$_pr_json" ]; then
+  die "aborting: could not query PR #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
+fi
+
+# Extract fields. Try jq first; fall back to grep for jq-absent environments.
+_extract_field() {
+  local json="$1" field="$2" val=""
+  if command -v jq >/dev/null 2>&1; then
+    val="$(printf '%s' "$json" | jq -r ".$field" 2>/dev/null)" || val=""
+    [ "$val" = "null" ] && val=""
+  fi
+  if [ -z "$val" ]; then
+    val="$(printf '%s' "$json" | sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1)" || val=""
+  fi
+  printf '%s' "$val"
+}
+
+pr_state="$(_extract_field "$_pr_json" state)"
+PR_HEAD_BRANCH="$(_extract_field "$_pr_json" headRefName)"
+PR_HEAD_OID="$(_extract_field "$_pr_json" headRefOid)"
+PR_TARGET="$(_extract_field "$_pr_json" baseRefName)"
+
+# Idempotency check: is PR already merged?
 if [ "$pr_state" = "MERGED" ]; then
   log "PR #${PR_NUMBER} already merged — skipping"
   echo "already_merged"
@@ -161,28 +185,17 @@ fi
 # Enforce security invariants BEFORE any gh pr merge call.
 # All three hard gates run; YOLO mode does not bypass.
 
-# Read the PR head branch from the GitHub API so the protected-branch guard
-# checks the actual PR branch, not the local HEAD. After a story worktree
-# teardown the local checkout is typically on staging (protected), but the
-# PR head is the feature branch that should be merged. Fail closed: when
-# the PR head cannot be determined (network, auth, missing PR), refuse the
-# merge with an actionable message rather than falling back to local HEAD.
-PR_HEAD_BRANCH="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")"
-if [ -z "$PR_HEAD_BRANCH" ]; then
+# Validate headRefName: reject empty, literal "null", and non-branch names.
+if [ -z "$PR_HEAD_BRANCH" ] || [ "$PR_HEAD_BRANCH" = "null" ]; then
   die "aborting: could not determine PR head branch for #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
 fi
-# Validate: reject non-branch output (error text, "null", whitespace).
 if ! git check-ref-format --branch "$PR_HEAD_BRANCH" >/dev/null 2>&1; then
-  die "aborting: PR head branch name '${PR_HEAD_BRANCH}' is not a valid ref. The gh query may have returned an error or 'null'."
+  die "aborting: PR head branch name '${PR_HEAD_BRANCH}' is not a valid ref. The gh query may have returned an error."
 fi
 assert_branch_not_protected "$PR_HEAD_BRANCH" || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
-# Resolve PR target (baseRefName) from gh and verify against the canonical
-# promotion chain. If gh fails to return a target, fall back to the
-# project-config default ("staging") so the assertion still runs. Empty
-# target propagates through assert_pr_target_from_chain as a clear failure.
-PR_TARGET="$(gh pr view "$PR_NUMBER" --json baseRefName --jq '.baseRefName' 2>/dev/null || echo "")"
+# Resolve PR target: fall back to "staging" when absent.
 if [ -z "$PR_TARGET" ]; then
   PR_TARGET="staging"
 fi
@@ -275,6 +288,17 @@ if [ -z "$PR_HEAD_COMMIT" ]; then
   log "aborting: could not fetch the PR head ref (tried origin/${PR_HEAD_BRANCH} and pull/${PR_NUMBER}/head)."
   log "Check network connectivity and that the PR branch exists on the remote, then retry."
   exit 1
+fi
+
+# Verify the fetched commit matches the headRefOid reported by the API.
+# This catches fork PRs whose branch name collides with an origin branch
+# and stale origin/<branch> refs from a narrow fetch refspec.
+if [ -n "$PR_HEAD_OID" ]; then
+  if [ "$PR_HEAD_COMMIT" != "$PR_HEAD_OID" ]; then
+    log "aborting: fetched PR head commit ${PR_HEAD_COMMIT} does not match the API-reported headRefOid ${PR_HEAD_OID}."
+    log "The local origin/${PR_HEAD_BRANCH} may be stale or point to a different commit than the PR. Run 'git fetch origin' and retry."
+    exit 1
+  fi
 fi
 
 # Guard 2: the PR head must be based on the current base tip.
@@ -506,8 +530,13 @@ if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
   _MERGE_L3_WRITER=1
 fi
 
-# Build merge command
+# Build merge command. Pass --match-head-commit when the API reported a
+# headRefOid so GitHub refuses the merge if the PR head moved since we
+# checked it.
 MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
+if [ -n "$PR_HEAD_OID" ]; then
+  MERGE_CMD="$MERGE_CMD --match-head-commit \"${PR_HEAD_OID}\""
+fi
 if [ "$DELETE_BRANCH" = true ]; then
   MERGE_CMD="$MERGE_CMD --delete-branch"
 fi
