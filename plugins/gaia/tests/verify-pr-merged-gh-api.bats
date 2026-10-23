@@ -289,7 +289,7 @@ remove_gh_from_path() {
   [ "$status" -eq 2 ]
 }
 
-@test "prefix collision: key S1 does not match branch feat/E900-S10-slug" {
+@test "branch prefix with trailing dash prevents shorter-key collision" {
   make_fixture_repo E900-S1
 
   make_stub_gh
