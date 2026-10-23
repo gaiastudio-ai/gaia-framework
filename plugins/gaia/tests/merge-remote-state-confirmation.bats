@@ -64,8 +64,11 @@ make_fixture_repo() {
   fixture_git clone --bare -q "$REPO" "$ORIGIN"
   fixture_git -C "$REPO" remote remove origin 2>/dev/null || true
   fixture_git -C "$REPO" remote add origin "$ORIGIN"
+  fixture_git -C "$REPO" push -q origin feat/story-branch
   fixture_git -C "$REPO" fetch -q origin
 
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"
+  export FIXTURE_HEAD_OID
   export PROJECT_PATH="$REPO"
 }
 
@@ -91,15 +94,16 @@ printf '%s\n' "$*" >> "$GH_ARGS"
 
 scenario="${GH_SCENARIO:-merged}"
 
-# `gh pr view` — the state query, used both before the merge attempt and on
-# the failure path.
+# `gh pr view` — consolidated JSON response for pre-merge, plus
+# state-only queries on the post-failure recovery path.
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   case "$*" in
-    *baseRefName*) printf 'staging\n'; exit 0 ;;
-    *headRefName*) printf 'feat/story-branch\n'; exit 0 ;;
-    *mergedAt*)    printf 'OPEN\n'; exit 0 ;;   # pre-merge idempotency probe
-    # The caller asks for state,mergeCommit with --jq '.state', so real gh
-    # emits the bare state string here.
+    *headRefName*)
+      # Consolidated pr view call: return JSON
+      printf '{"state":"OPEN","headRefName":"feat/story-branch","headRefOid":"%s","baseRefName":"staging"}\n' "${FIXTURE_HEAD_OID:-}"
+      exit 0 ;;
+    *mergedAt*)
+      printf 'OPEN\n'; exit 0 ;;
     *mergeCommit*)
       case "$scenario" in
         remote-merged|delete-branch|delete-branch-absent)
@@ -239,12 +243,12 @@ STUB
 }
 
 @test "a pull request already merged before any attempt short-circuits without a merge call" {
-  # The pre-merge idempotency probe reports MERGED, so no merge is attempted.
+  # The consolidated pr view reports MERGED, so no merge is attempted.
   cat > "$TEST_TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_ARGS"
 case "$*" in
-  *mergedAt*) printf 'MERGED\n' ;;
+  *headRefName*) printf '{"state":"MERGED","headRefName":"feat/story-branch","headRefOid":"","baseRefName":"staging"}\n' ;;
 esac
 exit 0
 STUB

@@ -569,7 +569,7 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
     if [ "$DELETE_BRANCH" = true ]; then
       # The merge command aborted before its own branch-deletion step, so
       # finish the cleanup it skipped. An already-absent branch is success.
-      head_branch="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")"
+      head_branch="${PR_HEAD_BRANCH:-}"
       if [ -n "$head_branch" ]; then
         repo_slug="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
         if [ -n "$repo_slug" ]; then
