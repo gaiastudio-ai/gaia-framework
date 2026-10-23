@@ -74,7 +74,7 @@ assert_gitignored() {
   if git -C "$_git_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # git check-ignore needs a concrete path, not a prefix — append a dummy
     # filename so the pattern resolves as a file under the ignored directory.
-    if git -C "$_git_dir" check-ignore -q "${pattern}probe" 2>/dev/null; then
+    if git -C "$_git_dir" check-ignore -q -- "${pattern}probe" 2>/dev/null; then
       return 0
     fi
     printf 'HALT: %s* must be in .gitignore\n' "$pattern" >&2

@@ -106,6 +106,13 @@ _sb_validate_session_id() {
     return 1
   fi
 
+  # Length cap (64 characters, aligned with the statusline runtime limit).
+  if [ "${#sid}" -gt 64 ]; then
+    printf '%s: error: session ID exceeds 64-character limit (%d chars)\n' \
+      "$_SB_SCRIPT_NAME" "${#sid}" >&2
+    return 1
+  fi
+
   # Path separators (/ or \).
   case "$sid" in
     */*|*\\*)
@@ -199,10 +206,16 @@ provision_binding_dir() {
 
   local derived_dir="${project_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME}/${sid}"
 
-  # Create the directory if absent.
+  # Create the directory if absent, detecting failures instead of swallowing them.
   if [ ! -d "$derived_dir" ]; then
     mkdir -p "$derived_dir" 2>/dev/null || true
     chmod 0700 "$derived_dir" 2>/dev/null || true
+    # Post-check: confirm the directory actually exists after mkdir.
+    if [ ! -d "$derived_dir" ]; then
+      printf '%s: error: failed to create binding directory: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
   fi
 
   local derived_real=""

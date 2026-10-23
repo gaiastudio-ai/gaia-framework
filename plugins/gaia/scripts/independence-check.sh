@@ -310,11 +310,11 @@ _ic_batch_resolve_story_files() {
 # ---------------------------------------------------------------------------
 _ic_is_known_key() {
   local key="$1" epics_file="$2" shards_dir="$3"
-  if [ -f "$epics_file" ] && /usr/bin/grep -q "\\b${key}\\b" "$epics_file" 2>/dev/null; then
+  if [ -f "$epics_file" ] && /usr/bin/grep -Fwq -- "$key" "$epics_file" 2>/dev/null; then
     return 0
   fi
   if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
-    if /usr/bin/grep -rq "\\b${key}\\b" "$shards_dir" 2>/dev/null; then
+    if /usr/bin/grep -rFwq -- "$key" "$shards_dir" 2>/dev/null; then
       return 0
     fi
   fi
@@ -801,6 +801,13 @@ _ic_run_rules_cd() {
       _cache_id="$(printf '%s' "$_cf" | md5 2>/dev/null || printf '%s' "$_cf" | md5sum 2>/dev/null | cut -d' ' -f1)"
       local _cache_file="${_ic_cache_dir}/${_cache_id}"
 
+      # Refuse symlinked cache files — a symlink at the cache path could
+      # point outside the cache directory and read arbitrary content.
+      if [ -L "$_cache_file" ]; then
+        rm -f "$_cache_file" 2>/dev/null || true
+        printf '%s\t%s\t%s\n' "$_ck" "$_cs" "$_cf" >> "$uncached_input"
+        continue
+      fi
       if [ -f "$_cache_file" ]; then
         local _cached_stat="" _cached_cksum=""
         _cached_stat="$(sed -n '1p' "$_cache_file")"
@@ -909,7 +916,7 @@ _ic_run_rules_cd() {
       {
         printf '%s\n' "$_stat_key"
         printf '%s\n' "$_content_key"
-        /usr/bin/grep "^${_ck}	" "$fresh_parsed" || true
+        awk -F'\t' -v k="$_ck" '$1==k' "$fresh_parsed" || true
       } > "$_cache_file"
     done < "$parse_needed"
   fi
@@ -980,7 +987,7 @@ _ic_run_rules_cd() {
             entry = entries[ei]
             if (entry == "") continue
 
-            # Denylist check (inline).
+            # Denylist check (inline — mirrors the canonical sanitizer).
             if (index(entry, "`") > 0 || index(entry, "$") > 0 || \
                 index(entry, "(") > 0 || index(entry, ")") > 0 || \
                 index(entry, ";") > 0 || index(entry, "|") > 0 || \
@@ -988,6 +995,21 @@ _ic_run_rules_cd() {
                 index(entry, "<") > 0) {
               printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
               exit 0
+            }
+            # Backslash check: allowed only before glob metacharacters.
+            if (index(entry, "\\") > 0) {
+              elen = length(entry)
+              for (bi = 1; bi <= elen; bi++) {
+                bch = substr(entry, bi, 1)
+                if (bch == "\\") {
+                  nch = (bi < elen) ? substr(entry, bi + 1, 1) : ""
+                  if (nch != "*" && nch != "?" && nch != "[" && nch != "]") {
+                    printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
+                    exit 0
+                  }
+                  bi++
+                }
+              }
             }
 
             # Climb-out check.
