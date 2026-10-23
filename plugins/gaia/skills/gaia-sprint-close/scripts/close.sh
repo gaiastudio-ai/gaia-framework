@@ -249,8 +249,13 @@ if [ -f "$SESSION_BINDING_SH" ]; then
   # Provision the binding directory from the session ID so the resolver
   # can read the binding file written by bind.sh. Without this call,
   # GAIA_BINDING_DIR is unset and the resolver never sees the binding.
-  # Failure is non-fatal (no session ID in non-interactive contexts).
-  provision_binding_dir 2>/dev/null || true
+  # Exit 1 (no session ID) is non-fatal — non-interactive context.
+  # Exit 3 (spoofing detected) is fatal — fail closed.
+  _provision_rc=0
+  provision_binding_dir 2>/dev/null || _provision_rc=$?
+  if [ "$_provision_rc" -eq 3 ]; then
+    die "binding directory validation failed (spoofing detected)"
+  fi
 fi
 
 # Positional/flag conflict detection (before the resolver).

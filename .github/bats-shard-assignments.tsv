@@ -568,7 +568,7 @@
 3	skill-dispatch-brain-load.bats	6
 3	skill-dispatch-memory-load.bats	5
 3	sm-capacity-check-unchanged.bats	3
-3	sprint-close-resolver.bats	18
+3	sprint-close-resolver.bats	20
 3	sprint-close-sentinel-unconditional.bats	8
 3	sprint-review-yolo-fallback.bats	7
 3	sprint-state-goals-and-state-machine.bats	34

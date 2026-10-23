@@ -311,7 +311,7 @@ teardown() {
   run bash "$CLOSE_SH"
 
   [ "$status" -ne 0 ]
-  [[ "$output" == *"sprint-777"* ]] || [[ "$output" == *"not found"* ]]
+  [[ "$output" == *"sprint-777"* ]] || [[ "$output" == *"not found"* ]] || [[ "$output" == *"spoofing"* ]]
   # Per-sprint files must be byte-identical.
   [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
   [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
@@ -353,7 +353,7 @@ teardown() {
 
 # ---------- Resolved-ID vs state-file mismatch ----------
 
-@test "resolver ID vs state-file mismatch is refused" {
+@test "resolver ID vs state-file mismatch is refused with no state change" {
   _build_concurrent_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
@@ -361,12 +361,28 @@ teardown() {
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
   # Corrupt the per-sprint file so its sprint_id disagrees with the filename.
-  yq -i '.sprint_id = "sprint-999"' "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml"
+  # Use sprint-901 (which has valid retro/sentinel/triage) so the mismatch
+  # check is the ONLY guard that stops the close — not a downstream check.
+  yq -i '.sprint_id = "sprint-901"' "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml"
+
+  # Snapshot state files before.
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
 
   run bash "$CLOSE_SH" --sprint sprint-900
 
   [ "$status" -ne 0 ]
   [[ "$output" == *"mismatch"* ]]
+  # Must NOT contain "closed" — the mismatch must die, not warn and continue.
+  [[ "$output" != *"closed at"* ]]
+  # State files must be byte-identical (nothing mutated).
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+  # No archive created.
+  local arc
+  arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$arc" -eq 0 ]
 }
 
 # ---------- Stronger assertions on happy-path ----------
@@ -434,32 +450,25 @@ teardown() {
   [[ "$output" == *"non-empty"* ]]
 }
 
-# ---------- SKILL invocation ----------
+# ---------- SKILL invocation safety ----------
 
-@test "SKILL.md Action line passes arguments through to close.sh" {
+@test "SKILL.md Action section does not splice raw arguments into a shell line" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+  # No !-prefixed shell line may contain $ARGUMENTS or ${ARGUMENTS}.
+  # The safe pattern is an instruction block, not a shell splice.
+  ! /usr/bin/grep -E '^\!.*\$ARGUMENTS|\$\{ARGUMENTS\}' "$skill_md"
+}
+
+@test "close.sh invoked directly with valid --sprint closes the right sprint" {
   _build_concurrent_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
   export PROJECT_PATH="$TEST_TMP"
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
-  # Read the Action line from SKILL.md and verify it contains $ARGUMENTS.
-  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
-  local action_line
-  action_line="$(/usr/bin/grep '^!' "$skill_md" | /usr/bin/grep 'close.sh' | head -1)"
-  [[ "$action_line" == *'$ARGUMENTS'* ]]
-
-  # Simulate what the harness does: substitute CLAUDE_PLUGIN_ROOT and
-  # ARGUMENTS, then run the resulting command.
-  local cmd
-  cmd="$(printf '%s' "$action_line" | sed 's/^!//')"
-  cmd="$(printf '%s' "$cmd" | sed "s|\\\$CLAUDE_PLUGIN_ROOT|$BATS_TEST_DIRNAME/..|g")"
-  cmd="$(printf '%s' "$cmd" | sed "s|\${CLAUDE_PLUGIN_ROOT}|$BATS_TEST_DIRNAME/..|g")"
-  # Substitute $ARGUMENTS with --sprint sprint-900 (quoted for safety).
-  local arguments="--sprint sprint-900"
-  cmd="$(printf '%s' "$cmd" | sed "s|\\\$ARGUMENTS|$arguments|g")"
-
-  run bash -c "$cmd"
+  # Invoke close.sh the way the SKILL instructs the model to: via bash
+  # with each argument single-quoted.
+  run bash "$CLOSE_SH" '--sprint' 'sprint-900'
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"sprint-900"* ]]
@@ -470,9 +479,9 @@ teardown() {
   [ "$s901_status" = "active" ]
 }
 
-# ---------- Injection through SKILL line ----------
+# ---------- Injection payloads rejected by close.sh ----------
 
-@test "shell metacharacters in user argument are not executed" {
+@test "injection payloads are rejected by close.sh and never execute" {
   _build_concurrent_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
@@ -480,13 +489,53 @@ teardown() {
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
   local pwn="$TEST_TMP/pwned"
-  run bash "$CLOSE_SH" "x; touch $pwn"
-  [ "$status" -ne 0 ]
-  [ ! -f "$pwn" ]
 
-  run bash "$CLOSE_SH" "\$(touch $pwn)"
+  # Each payload: close.sh must exit non-zero and the sentinel must not exist.
+  local payload
+  for payload in \
+    "x; touch $pwn" \
+    "\$(touch $pwn)" \
+    "\`touch $pwn\`" \
+    "sprint-900 && touch $pwn"; do
+    run bash "$CLOSE_SH" "$payload"
+    [ "$status" -ne 0 ]
+    [ ! -f "$pwn" ]
+  done
+}
+
+# ---------- Binding spoofing refused ----------
+
+@test "foreign GAIA_BINDING_DIR is refused when provision detects spoofing" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Set up a real binding to sprint-900 via bind.sh.
+  local bind_sh="$BATS_TEST_DIRNAME/../skills/gaia-run-sprint/scripts/bind.sh"
+  [ -f "$bind_sh" ] || skip "bind.sh not found"
+  export CLAUDE_CODE_SESSION_ID="bats-spoof-test-$$"
+  bash "$bind_sh" --sprint sprint-900
+
+  # Now inject a foreign GAIA_BINDING_DIR pointing at a different binding.
+  local foreign_dir="$TEST_TMP/.gaia/state/sessions/foreign"
+  mkdir -p "$foreign_dir"
+  printf 'sprint-901' > "$foreign_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$foreign_dir"
+
+  # Snapshot state.
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  # Must exit non-zero (spoofing detected or ambiguous).
   [ "$status" -ne 0 ]
-  [ ! -f "$pwn" ]
+  # Neither sprint must have been closed.
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
 }
 
 # ---------- AC7: Bash 3.2 compatibility ----------

@@ -214,7 +214,21 @@ The report joins per-step timing and approximate per-step token estimates into p
 
 ## Action
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh $ARGUMENTS
+Run `close.sh` via the Bash tool with validated arguments. Before invoking, split the user's input into words and accept ONLY:
+
+- `--sprint <id>` or `--sprint=<id>` where `<id>` matches `^[A-Za-z0-9][A-Za-z0-9._-]*$`
+- A bare positional `<id>` matching the same pattern
+- `--force`
+- `--force-with-rollover <keys>` where `<keys>` is a comma-separated list of story keys
+- `--help`
+
+Refuse any word containing shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`, `{`, `}`, `<`, `>`, `\`, `!`, `'`, `"`, newlines, or characters outside printable ASCII) with a clear error message naming the rejected word. Then invoke close.sh with each accepted word single-quoted:
+
+```bash
+bash '${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh' '--sprint' '<id>'
+```
+
+Do NOT use a `!` shell line with unsanitized text — the `!` prefix performs textual substitution that allows command injection.
 
 ## Finalize
 
