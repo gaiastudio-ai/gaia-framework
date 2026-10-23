@@ -84,8 +84,13 @@ fi
 # --- Production-path diff slice ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Suppress colour codes, pager, and external diff drivers — a user's
+# color.ui=always / color.diff=always / diff.external must not leak
+# ANSI escapes into the output we parse.
+_git_diff() { git --no-pager diff --no-color --no-ext-diff --no-textconv "$@"; }
+
 # git diff --name-only against the base ref. Filter to production paths.
-PROD_PATHS="$(git diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
+PROD_PATHS="$(_git_diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
   | grep -vE '^(gaia-framework/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|documentation/|\.github/)' \
   | grep -vE '\.bats$' || true)"
 
@@ -96,51 +101,70 @@ fi
 
 # --- Load taxonomy and scan ---
 GREP_FILE="$("$SCRIPT_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels --as-grep-file)"
-trap 'rm -f "$GREP_FILE"' EXIT
 
-# Scan only ADDED lines in the diff (not the entire working-tree file).
-# This prevents false positives from pre-existing sentinel text that the PR
-# did not change. The -w (word-boundary) flag is required so a fixed-string
-# token only matches as a whole word — without it the token matches as a
-# substring and false-positives on mktemp randomization templates (e.g.
-# "...XXXXXX").
-#
-# The diff is parsed with -U0 (zero context) so every hunk line is either a
-# removal (-) or an addition (+). Only + lines are scanned. The +N from the
-# @@ hunk header tracks the destination line number.
-HAS_MATCH=0
-while IFS= read -r path; do
-  [[ -z "$path" ]] && continue
-  # Get the diff for this single file; -U0 suppresses context lines.
-  diff_out="$(git diff -U0 "${BASE_REF}..HEAD" -- "$path" 2>/dev/null || true)"
-  [[ -n "$diff_out" ]] || continue
-  # Parse the diff: extract +N from @@ headers, scan only + lines.
-  cur_line=0
-  while IFS= read -r dline; do
-    # Hunk header: @@ -old[,count] +new[,count] @@
-    if [[ "$dline" == "@@"* ]]; then
-      # Extract the starting line number after the +
-      cur_line="${dline#*+}"       # strip everything up to first +
-      cur_line="${cur_line%% *}"   # strip from first space onward
-      cur_line="${cur_line%%,*}"   # strip ,count if present
-      continue
-    fi
-    # Skip non-added lines and the +++ header
-    [[ "$dline" == "+"* ]] || continue
-    [[ "$dline" != "+++"* ]] || continue
-    # Strip leading + to get the raw added text
-    added_text="${dline#+}"
-    match="$(printf '%s' "$added_text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
-    if [[ -n "$match" ]]; then
-      printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
-        "$match" "$path" "$cur_line" >&2
-      HAS_MATCH=1
-    fi
-    cur_line=$((cur_line + 1))
-  done <<<"$diff_out"
+# Temp file for the extracted added lines (file:lineno:text).
+ADDED_FILE="$(mktemp "${TMPDIR:-/tmp}/fss-added.XXXXXX")"
+trap 'rm -f "$GREP_FILE" "$ADDED_FILE"' EXIT
+
+# Build pathspec array from production paths.
+DIFF_PATHS=()
+while IFS= read -r p; do
+  [[ -z "$p" ]] && continue
+  DIFF_PATHS+=("$p")
 done <<<"$PROD_PATHS"
 
-if [[ "$HAS_MATCH" -ne 0 ]]; then
+# Single-pass scan: one git-diff call piped into awk that extracts added
+# lines as  file:lineno:text , then one grep pass over the collected output.
+# This replaces the prior per-line printf|grep|head subshell which scaled
+# quadratically in wall-clock time with the number of added lines.
+#
+# awk state machine:
+#   - "diff --git" resets in_hunk → next +++ is a header, not content.
+#   - "+++ b/" (when NOT in a hunk) sets the current file path.
+#   - "@@" enters hunk mode and extracts the destination start line.
+#   - "+" lines inside a hunk are added content; even lines starting with
+#     "++" or "+++" are real content at that point (fixing the earlier
+#     false-negative on lines whose text begins with "++").
+# The -w (word-boundary) flag on the final grep prevents false positives
+# from mktemp randomisation templates (e.g. "...XXXXXX").
+_git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
+  | awk '
+    /^diff --git /                 { in_hunk = 0; file = ""; next }
+    /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
+    /^\+\+\+ /    && in_hunk == 0 { file = ""; next }
+    /^@@/ {
+      in_hunk = 1
+      s = $0
+      sub(/^@@ [^ ]+ \+/, "", s)
+      sub(/[,@ ].*/, "", s)
+      cur_line = s + 0
+      next
+    }
+    in_hunk && /^\+/ {
+      print file ":" cur_line ":" substr($0, 2)
+      cur_line++
+    }
+  ' > "$ADDED_FILE"
+
+if [[ ! -s "$ADDED_FILE" ]]; then
+  log "no added lines in production-path diff — scan clean"
+  exit 0
+fi
+
+# One grep pass over the collected added lines.
+matches="$(grep -wFf "$GREP_FILE" "$ADDED_FILE" 2>/dev/null || true)"
+if [[ -n "$matches" ]]; then
+  while IFS= read -r match_line; do
+    # Each line: filepath:lineno:text
+    file="${match_line%%:*}"
+    rest="${match_line#*:}"
+    lineno="${rest%%:*}"
+    text="${rest#*:}"
+    sentinel="$(printf '%s' "$text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
+    [[ -n "$sentinel" ]] || continue
+    printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
+      "$sentinel" "$file" "$lineno" >&2
+  done <<<"$matches"
   exit 1
 fi
 

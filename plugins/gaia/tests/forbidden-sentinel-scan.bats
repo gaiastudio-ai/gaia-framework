@@ -269,9 +269,15 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: add MOCK line" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"MOCK"* ]]
-  # Must NOT report the pre-existing STUB
-  [[ "$output" != *"STUB"* ]]
+  helper_out="$output"
+  echo "$helper_out" | grep -qF "MOCK"
+  # Must NOT report the pre-existing STUB (non-vacuous negative assertion)
+  if echo "$helper_out" | grep -qF "STUB"; then
+    printf 'assert: unexpected STUB in output: %s\n' "$helper_out" >&2
+    return 1
+  fi
+  # Assert exact line number: MOCK is on line 2
+  echo "$helper_out" | grep -qF ":2"
 }
 
 @test "diff-only: modified line that introduces a sentinel is caught" {
@@ -286,7 +292,9 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: modify line to add sentinel" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"FIXME"* ]]
+  echo "$output" | grep -qF "FIXME"
+  # Assert exact line number: replacement is line 1
+  echo "$output" | grep -qF ":1"
 }
 
 @test "diff-only: clean PR with no sentinel in added lines passes" {
@@ -300,4 +308,104 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: clean additions" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
+}
+
+# --- B1: colour / external-diff resilience ---
+
+@test "scan works when user git config has color.diff=always" {
+  # Force colour output globally in the test repo. The scanner must
+  # suppress it with --no-color so @@ / + parsing is not broken.
+  ( cd "$REPO" && git config color.diff always && git config color.ui always )
+  _stage_diff "$FIXTURE_PROD_PATH" 'echo STUB'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "STUB"
+}
+
+@test "colour config does not hide a pre-existing sentinel (no false positive)" {
+  ( cd "$REPO" && git config color.diff always && git config color.ui always )
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # base\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base with stub" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # base\necho clean line\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: clean append" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- B2: added lines whose text starts with ++ must not be skipped ---
+
+@test "added line starting with ++ containing a sentinel is caught" {
+  # An added line like '++ STUB here' shows as '+++ STUB here' in the raw
+  # diff. The scanner must NOT treat it as a +++ header.
+  _stage_diff "$FIXTURE_PROD_PATH" '++ STUB here'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "STUB"
+}
+
+@test "added line starting with +++ containing a sentinel is caught" {
+  _stage_diff "$FIXTURE_PROD_PATH" '+++ MOCK value'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "MOCK"
+}
+
+# --- base-ref pinning: multi-commit branch ---
+
+@test "scan considers all commits from base-ref, not just HEAD~1" {
+  # Two commits on feat: first adds a sentinel, second adds a clean line.
+  # If the scanner mistakenly scoped to HEAD~1..HEAD it would miss the
+  # sentinel from the first commit.
+  _stage_diff "$FIXTURE_PROD_PATH" 'echo FIXME'
+  _stage_diff "$FIXTURE_PROD_OTHER_PATH" 'echo clean'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "FIXME"
+}
+
+# --- line-number accuracy: hunk start is read and counter advances ---
+
+@test "HALT message reports the correct destination line number" {
+  # Add 3 clean lines then a sentinel on line 5. The HALT must say :5.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'line1\nline2\nline3\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 3 lines" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'line1\nline2\nline3\nline4 clean\necho MOCK on line five\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add at line 5" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "MOCK"
+  echo "$output" | grep -qF ":5"
+}
+
+# --- B3: performance on large diffs ---
+
+@test "scan of 2000 added lines completes within 10 seconds" {
+  # Generate a file with 2000 clean lines plus one sentinel at the end.
+  local bigfile="$REPO/$FIXTURE_PROD_PATH"
+  {
+    local i=1
+    while [ "$i" -le 2000 ]; do
+      printf 'echo line_%d\n' "$i"
+      i=$((i + 1))
+    done
+    printf 'echo STUB at the end\n'
+  } > "$bigfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: 2001 lines" )
+  local start end elapsed
+  start="$(date +%s)"
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  end="$(date +%s)"
+  elapsed=$((end - start))
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -qF "STUB"
+  # Generous bound: must complete in under 10 seconds. The single-pass
+  # approach finishes in well under 1 second.
+  if [ "$elapsed" -gt 10 ]; then
+    printf 'perf: scan took %ds (limit 10s)\n' "$elapsed" >&2
+    return 1
+  fi
 }
