@@ -1,15 +1,13 @@
 #!/usr/bin/env bats
-# forbidden-sentinel-scan.bats — E88-S3
+# forbidden-sentinel-scan.bats
 #
-# Covers TC-DPD-11..15:
-#   TC-DPD-11 — production STUB -> HALT
-#   TC-DPD-12 — test-fixture STUB -> PASS (exempt path)
-#   TC-DPD-13 — --allow-stub with valid ID prefix -> PASS + reason emission
-#   TC-DPD-14 — --allow-stub with bare prose -> REJECT
-#   TC-DPD-15 — load-taxonomy.sh enumerates THREE supported taxonomies
+# Tests the forbidden-sentinel pre-PR scanner: production-path diff-only
+# scanning, exempt-path filtering, --allow-stub override, word-boundary
+# matching (mktemp false-positive avoidance), and diff-scope regression
+# (pre-existing sentinel on untouched lines must not trigger a failure).
 #
 # Helper under test:
-#   gaia-public/plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
+#   plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
 #
 # Invocation contract:
 #   forbidden-sentinel-scan.sh --base-ref <branch> [--allow-stub <reason>]
@@ -239,5 +237,67 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   # The scan considers only files in the diff; the pre-existing.sh STUB is
   # not in the feat-test diff, so the helper should pass.
+  [ "$status" -eq 0 ]
+}
+
+# --- diff-only scope: pre-existing sentinel on untouched line in a touched file ---
+
+@test "diff-only: pre-existing sentinel on untouched line in a touched file does not trigger" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends a benign line (line 2). The STUB on line 1 is
+  # not in the diff's added lines, so the scan must pass.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with pre-existing sentinel" && git checkout -q feat-test )
+  # Merge main into feat so the file exists, then append a clean line.
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho clean new line\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: append clean line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "diff-only: newly added line with sentinel in a file with pre-existing sentinel is caught" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends a MOCK on line 2. The added MOCK must be caught
+  # even though the pre-existing STUB is on an untouched line.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with pre-existing sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho MOCK  # newly added\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add MOCK line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"MOCK"* ]]
+  # Must NOT report the pre-existing STUB
+  [[ "$output" != *"STUB"* ]]
+}
+
+@test "diff-only: modified line that introduces a sentinel is caught" {
+  # Base commit: production file has a clean line 1.
+  # Feature commit: replaces line 1 content with something containing FIXME.
+  # The replacement line appears as a + in the diff and must be caught.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo clean content\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: clean file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo FIXME this needs work\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: modify line to add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FIXME"* ]]
+}
+
+@test "diff-only: clean PR with no sentinel in added lines passes" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends only clean lines. Must pass.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel in base" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho all good\necho nothing wrong here\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: clean additions" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
 }
