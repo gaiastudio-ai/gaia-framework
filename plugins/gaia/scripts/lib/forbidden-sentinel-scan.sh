@@ -35,6 +35,10 @@
 set -euo pipefail
 LC_ALL=C
 export LC_ALL
+# Prevent pathspec magic characters (: ! ^) in file paths from being
+# interpreted as exclude/glob operators by git diff.
+GIT_LITERAL_PATHSPECS=1
+export GIT_LITERAL_PATHSPECS
 
 SCRIPT_NAME="forbidden-sentinel-scan.sh"
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -87,7 +91,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Suppress colour codes, pager, and external diff drivers — a user's
 # color.ui=always / color.diff=always / diff.external must not leak
 # ANSI escapes into the output we parse.
-_git_diff() { git --no-pager diff --no-color --no-ext-diff --no-textconv "$@"; }
+# --text forces textual diff even for files marked binary / -diff in
+# .gitattributes, so their added lines are scanned rather than silently
+# skipped as "Binary files differ".
+_git_diff() { git --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
 
 # git diff --name-only against the base ref. Filter to production paths.
 PROD_PATHS="$(_git_diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
@@ -102,9 +109,12 @@ fi
 # --- Load taxonomy and scan ---
 GREP_FILE="$("$SCRIPT_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels --as-grep-file)"
 
-# Temp file for the extracted added lines (file:lineno:text).
-ADDED_FILE="$(mktemp "${TMPDIR:-/tmp}/fss-added.XXXXXX")"
-trap 'rm -f "$GREP_FILE" "$ADDED_FILE"' EXIT
+# Two parallel temp files: text-only lines for grep, metadata for reporting.
+# Grepping the text file (not file:lineno:text) avoids false matches when a
+# sentinel word appears in a file path or when colons in paths break parsing.
+ADDED_TEXT="$(mktemp "${TMPDIR:-/tmp}/fss-text.XXXXXX")"
+ADDED_META="$(mktemp "${TMPDIR:-/tmp}/fss-meta.XXXXXX")"
+trap 'rm -f "$GREP_FILE" "$ADDED_TEXT" "$ADDED_META"' EXIT
 
 # Build pathspec array from production paths.
 DIFF_PATHS=()
@@ -128,7 +138,7 @@ done <<<"$PROD_PATHS"
 # The -w (word-boundary) flag on the final grep prevents false positives
 # from mktemp randomisation templates (e.g. "...XXXXXX").
 _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
-  | awk '
+  | awk -v metafile="$ADDED_META" '
     /^diff --git /                 { in_hunk = 0; file = ""; next }
     /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
     /^\+\+\+ /    && in_hunk == 0 { file = ""; next }
@@ -141,25 +151,26 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
       next
     }
     in_hunk && /^\+/ {
-      print file ":" cur_line ":" substr($0, 2)
+      print substr($0, 2)
+      print file "\t" cur_line > metafile
       cur_line++
     }
-  ' > "$ADDED_FILE"
+  ' > "$ADDED_TEXT"
 
-if [[ ! -s "$ADDED_FILE" ]]; then
+if [[ ! -s "$ADDED_TEXT" ]]; then
   log "no added lines in production-path diff — scan clean"
   exit 0
 fi
 
-# One grep pass over the collected added lines.
-matches="$(grep -wFf "$GREP_FILE" "$ADDED_FILE" 2>/dev/null || true)"
+# Grep the text-only file so sentinels in file paths cannot match.
+# -n gives the line number in ADDED_TEXT, which maps 1:1 to ADDED_META.
+matches="$(grep -nwFf "$GREP_FILE" "$ADDED_TEXT" 2>/dev/null || true)"
 if [[ -n "$matches" ]]; then
-  while IFS= read -r match_line; do
-    # Each line: filepath:lineno:text
-    file="${match_line%%:*}"
-    rest="${match_line#*:}"
-    lineno="${rest%%:*}"
-    text="${rest#*:}"
+  while IFS=: read -r grep_lineno text; do
+    # Look up file path and source line number from the parallel metadata.
+    meta="$(sed -n "${grep_lineno}p" "$ADDED_META")"
+    file="${meta%%	*}"
+    lineno="${meta##*	}"
     sentinel="$(printf '%s' "$text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
     [[ -n "$sentinel" ]] || continue
     printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
