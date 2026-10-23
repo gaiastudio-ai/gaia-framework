@@ -876,9 +876,11 @@ cmd_update() {
       die "report path contains a pipe character ('|') which would corrupt the Review Gate table — refusing update for gate '$gate_name'"
       ;;
   esac
-  if printf '%s' "$report_value" | /usr/bin/grep -qE $'\r|\n'; then
-    die "report path contains a newline or carriage-return which would forge a Review Gate row — refusing update for gate '$gate_name'"
-  fi
+  case "$report_value" in
+    *$'\n'*|*$'\r'*)
+      die "report path contains a newline or carriage-return which would forge a Review Gate row — refusing update for gate '$gate_name'"
+      ;;
+  esac
 
   # Validate the section exists (produces a precise error).
   # We also validate by loading canonical rows.
