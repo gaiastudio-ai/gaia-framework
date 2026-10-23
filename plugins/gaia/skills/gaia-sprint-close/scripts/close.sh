@@ -25,7 +25,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
 # shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
-. "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
+if [ -f "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh"
+fi
 
 # Fail-closed guard: if the shared lib did not load, define an inline
 # fallback that implements the same union-by-key semantics. Without this,

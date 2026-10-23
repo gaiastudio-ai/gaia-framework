@@ -88,7 +88,9 @@ done
 # Source the shared items-to-stories lib for read_stories_or_items_points.
 _TT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/migrate-items-to-stories.sh
-. "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
+if [ -f "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh"
+fi
 
 # Fail-closed guard: if the shared lib did not load, define an inline
 # fallback that implements the same union-by-key semantics for points.
