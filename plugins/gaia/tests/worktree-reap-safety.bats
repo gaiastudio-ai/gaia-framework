@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# worktree-reap-safety.bats — regression tests for the worktree reap heuristic
-# safety threshold.
+# worktree-reap-safety.bats — regression tests for the worktree reap
+# heuristic safety threshold.
 #
 # The reap heuristic must require stronger evidence than a dead owner PID
 # before considering a sibling worktree an orphan.  Claude Code's one-shot
@@ -68,22 +68,41 @@ _wt_count() {
   printf '%s\n' "$out" | grep -c "$2" || true
 }
 
-# _mk_dead_sibling <repo> <key> [slug] — create a worktree with a dead owner
-# PID, simulating a one-shot Bash call that has already exited.
+# _mk_dead_sibling <repo> <key> [slug] — create a worktree in a one-shot
+# subshell (simulating Claude Code's execution model) so the owner PID is
+# dead by the time it returns.  Echoes the worktree path.
 _mk_dead_sibling() {
   local repo="$1" key="$2" slug="${3:-slug}"
-  local wt; wt="$(worktree_create "$repo" "$key" "$slug")"
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  /bin/bash -c '
+    set -euo pipefail
+    . "'"$LIB"'"
+    export GAIA_WORKTREE_MODE=1
+    worktree_create "'"$repo"'" "'"$key"'" "'"$slug"'"
+  ' 2>/dev/null
+}
+
+# _mk_aged_dead_sibling <repo> <key> [slug] — like _mk_dead_sibling but
+# re-locks with a past timestamp so the worktree appears old enough to reap.
+# Uses the REAL _sw_lock_reason writer to build the reason, then overwrites
+# only the ts field.
+_mk_aged_dead_sibling() {
+  local repo="$1" key="$2" slug="${3:-slug}"
+  local wt; wt="$(_mk_dead_sibling "$repo" "$key" "$slug")"
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local old_ts=1000000000  # 2001-09-09, well past any threshold
+  # Build the reason with the real writer, then replace just the ts value.
+  local reason; reason="$(_sw_lock_reason "$key" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
   git -C "$repo" worktree unlock "$wt" 2>/dev/null || true
-  git -C "$repo" worktree lock "$wt" --reason "$(_sw_lock_reason "$key" "$dead_pid")"
+  git -C "$repo" worktree lock "$wt" --reason "$reason"
   printf '%s' "$wt"
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 1 (AC1): live worktree with commits is never reaped
+# Scenario 1: live worktree with unpushed commits is never reaped
 # ---------------------------------------------------------------------------
 
-@test "a sibling with commits ahead of base is not reaped even with a dead owner" {
+@test "a sibling with unpushed commits ahead of base is not reaped even with a dead owner" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(_mk_dead_sibling "$primary" "R1-S1")"
@@ -101,20 +120,57 @@ _mk_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 2 (AC2): aged empty worktree with dead owner IS reaped
+# Scenario 1b: a PUSHED branch with commits ahead of base is never reaped
+# ---------------------------------------------------------------------------
+
+@test "a sibling whose pushed branch is ahead of base is not reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1B-S1")"
+
+  # Commit AND push, so --not --remotes would see 0 unpushed, but the branch
+  # is still ahead of the base.
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -qm "story work"
+  git -C "$wt" push -q -u origin HEAD
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] || { echo "pushed-but-ahead sibling was reaped"; return 1; }
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
+    || { echo "pushed-but-ahead sibling was unregistered"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 1c: a fully merged branch (0 commits ahead) MAY be reaped
+# ---------------------------------------------------------------------------
+
+@test "a fully merged branch with aged dead owner is reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1C-S1")"
+
+  # Commit, push, then merge into the base so the branch is at 0 ahead.
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -qm "story work"
+  git -C "$wt" push -q -u origin HEAD
+  git -C "$primary" merge --no-edit "feat/R1C-S1-slug" -q
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ ! -d "$wt" ] || { echo "fully merged worktree was not reaped"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 2: aged empty worktree with dead owner IS reaped
 # ---------------------------------------------------------------------------
 
 @test "an aged empty clean worktree with dead owner is reaped" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(_mk_dead_sibling "$primary" "R2-S1")"
-
-  # Make the creation look old: re-lock with a timestamp far in the past.
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
-  local old_epoch=1000000000  # 2001-09-09, well past any threshold
-  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
-  git -C "$primary" worktree lock "$wt" \
-    --reason "$(_sw_lock_reason "R2-S1" "$dead_pid") ts $old_epoch"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R2-S1")"
 
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
@@ -124,7 +180,7 @@ _mk_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 3 (AC2): fresh empty worktree with dead owner is NOT reaped
+# Scenario 3: fresh empty worktree with dead owner is NOT reaped
 # ---------------------------------------------------------------------------
 
 @test "a fresh empty clean worktree with dead owner is not reaped" {
@@ -142,7 +198,7 @@ _mk_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 4 (AC3): GAIA_WORKTREE_PRUNE_ON_CREATE=0 disables all reaping
+# Scenario 4: GAIA_WORKTREE_PRUNE_ON_CREATE=0 disables all reaping
 # ---------------------------------------------------------------------------
 
 @test "GAIA_WORKTREE_PRUNE_ON_CREATE=0 prevents any sibling from being reaped" {
@@ -150,12 +206,7 @@ _mk_dead_sibling() {
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
 
   # Create an aged empty orphan that WOULD normally be reaped.
-  local wt; wt="$(_mk_dead_sibling "$primary" "R4-S1")"
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
-  local old_epoch=1000000000
-  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
-  git -C "$primary" worktree lock "$wt" \
-    --reason "$(_sw_lock_reason "R4-S1" "$dead_pid") ts $old_epoch"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R4-S1")"
 
   # With the override, creating a new story must NOT prune the orphan.
   GAIA_WORKTREE_PRUNE_ON_CREATE=0 \
@@ -167,7 +218,7 @@ _mk_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 5 (AC1): _sw_reapable returns non-zero for a sibling with commits
+# Scenario 5: _sw_reapable rejects a worktree with commits
 # ---------------------------------------------------------------------------
 
 @test "_sw_reapable rejects a worktree with unpushed commits" {
@@ -180,7 +231,7 @@ _mk_dead_sibling() {
   git -C "$wt" add work.txt
   git -C "$wt" commit -qm "local work"
 
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   local branch="refs/heads/feat/R5-S1-slug"
   local reason; reason="$(_sw_lock_reason "R5-S1" "$dead_pid")"
 
@@ -190,7 +241,7 @@ _mk_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 6 (AC2): _sw_reapable returns non-zero for a young worktree
+# Scenario 6: _sw_reapable rejects a young worktree
 # ---------------------------------------------------------------------------
 
 @test "_sw_reapable rejects a young worktree even when empty and clean" {
@@ -199,9 +250,8 @@ _mk_dead_sibling() {
   local wt; wt="$(worktree_create "$primary" "R6-S1" "slug")"
   git -C "$wt" push -q -u origin HEAD
 
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   local branch="refs/heads/feat/R6-S1-slug"
-  # Lock reason with a RECENT timestamp (just created).
   local reason; reason="$(_sw_lock_reason "R6-S1" "$dead_pid")"
 
   run _sw_reapable "$primary" "$wt" "$reason" "$branch"
@@ -213,12 +263,16 @@ _mk_dead_sibling() {
 # Timestamp extraction from lock reason
 # ---------------------------------------------------------------------------
 
-@test "_sw_ts_from_reason extracts the creation epoch from a lock reason" {
+@test "_sw_ts_from_reason extracts the creation epoch from a writer-built reason" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
-  local ts
-  ts="$(_sw_ts_from_reason "gaia story K1-S1 pid 12345 ts 1700000000")"
-  [ "$ts" = "1700000000" ] \
-    || { echo "expected 1700000000, got '$ts'"; return 1; }
+  local reason; reason="$(_sw_lock_reason "K1-S1" "12345")"
+  local ts; ts="$(_sw_ts_from_reason "$reason")"
+  [ -n "$ts" ] || { echo "no timestamp extracted from: $reason"; return 1; }
+  # Must be a recent epoch (within 60 seconds of now).
+  local now; now="$(date +%s)"
+  local diff=$(( now - ts ))
+  [ "$diff" -ge 0 ] && [ "$diff" -lt 60 ] \
+    || { echo "timestamp $ts not recent (diff=${diff}s)"; return 1; }
 }
 
 @test "_sw_ts_from_reason returns empty for a legacy lock reason without ts" {
@@ -229,13 +283,12 @@ _mk_dead_sibling() {
     || { echo "expected empty, got '$ts'"; return 1; }
 }
 
-@test "_sw_pid_from_reason still works with the new lock reason format" {
+@test "_sw_pid_from_reason still works with a writer-built reason" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
-  local pid
-  # New format with ts suffix — PID must still be extracted correctly.
-  pid="$(_sw_pid_from_reason "gaia story K1-S1 pid 12345 ts 1700000000")"
+  local reason; reason="$(_sw_lock_reason "K1-S1" "12345")"
+  local pid; pid="$(_sw_pid_from_reason "$reason")"
   [ "$pid" = "12345" ] \
-    || { echo "expected 12345, got '$pid'"; return 1; }
+    || { echo "expected 12345, got '$pid' from reason: $reason"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -273,7 +326,7 @@ _mk_dead_sibling() {
   git -C "$wt" push -q -u origin HEAD
 
   # Replace lock with the old-style reason (no ts).
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
   git -C "$primary" worktree lock "$wt" --reason "gaia story R8-S1 pid $dead_pid"
 
@@ -293,18 +346,56 @@ _mk_dead_sibling() {
   local wt; wt="$(worktree_create "$primary" "R9-S1" "slug")"
   git -C "$wt" push -q -u origin HEAD
 
-  # With a very short threshold (1 second), a just-created worktree should be
-  # old enough to reap after a brief sleep.
+  # Re-lock with a timestamp 3 seconds in the past (via the real writer shape).
   sleep 2
-  local dead_pid; dead_pid="$( bash -c 'echo $$' )"
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local reason; reason="$(_sw_lock_reason "R9-S1" "$dead_pid")"
+  local old_ts=$(( $(date +%s) - 3 ))
+  reason="${reason% ts *} ts $old_ts"
   git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
-  # Re-lock with the timestamp from creation (2 seconds ago).
-  local ts; ts="$(( $(date +%s) - 3 ))"
-  git -C "$primary" worktree lock "$wt" \
-    --reason "$(_sw_lock_reason "R9-S1" "$dead_pid") ts $ts"
+  git -C "$primary" worktree lock "$wt" --reason "$reason"
 
   GAIA_WORKTREE_REAP_AGE_SECONDS=1 run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
   [ ! -d "$wt" ] \
     || { echo "worktree was not reaped with short age threshold"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Non-integer GAIA_WORKTREE_REAP_AGE_SECONDS falls back to default (fail closed)
+# ---------------------------------------------------------------------------
+
+@test "a non-integer reap age threshold falls back to the default and keeps a fresh worktree" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_dead_sibling "$primary" "R10-S1")"
+
+  # "30m" is not an integer -- the age check must not be skipped.
+  GAIA_WORKTREE_REAP_AGE_SECONDS=30m run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] \
+    || { echo "fresh worktree was reaped with non-integer threshold '30m'"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Leading-zero timestamps do not cause an octal arithmetic error
+# ---------------------------------------------------------------------------
+
+@test "a leading-zero timestamp does not abort worktree_create" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "R11-S1" "slug")"
+  git -C "$wt" push -q -u origin HEAD
+
+  # Re-lock with a ts that has a leading zero (octal-hostile).
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local reason; reason="$(_sw_lock_reason "R11-S1" "$dead_pid")"
+  reason="${reason% ts *} ts 0999999999"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "$reason"
+
+  # Must not abort (the old epoch makes it reapable, but the point is no crash).
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ] \
+    || { echo "leading-zero timestamp caused a prune failure (exit $status)"; return 1; }
 }

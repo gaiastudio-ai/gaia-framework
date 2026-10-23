@@ -35,6 +35,14 @@
 #   or untracked files, and that refusal is honoured: the worktree is left in
 #   place with a warning rather than destroying work that was never committed.
 #
+# Environment variables:
+#   GAIA_WORKTREE_MODE            1 to enable worktree isolation (opt-in gate).
+#   GAIA_WORKTREE_PRUNE_ON_CREATE 0 to skip the prune pass at creation time.
+#   GAIA_WORKTREE_REAP_AGE_SECONDS
+#     Minimum age in seconds before a dead-owner worktree with no commits
+#     ahead of the base branch may be reaped.  Default 1800 (30 minutes).
+#     A non-integer value is treated as the default (fail closed).
+#
 # Portability:
 #   Bash 3.2 (no associative arrays, no mapfile/readarray). No GNU-only tools.
 
@@ -331,7 +339,7 @@ _sw_ts_from_reason() {
 # nothing to lose, while one holding uncommitted work is kept (see the caller,
 # which warns and leaves it locked).
 _sw_reapable() {
-  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid unpushed
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid
 
   [ -n "$path" ] || return 1
   [ -n "$reason" ] || return 1
@@ -371,23 +379,45 @@ _sw_reapable() {
   # Default safety threshold: 1800 seconds (30 minutes).  Overridable via
   # GAIA_WORKTREE_REAP_AGE_SECONDS for testing and operator control.
   if [ -e "$path" ]; then
-    local ts now age threshold
+    local ts now age threshold raw_threshold
     ts="$(_sw_ts_from_reason "$reason")"
     if [ -n "$ts" ]; then
       now="$(date +%s)"
-      age=$(( now - ts ))
-      threshold="${GAIA_WORKTREE_REAP_AGE_SECONDS:-1800}"
+      # Force base-10 arithmetic: a leading zero (e.g. ts 09) must not be
+      # interpreted as octal, which would abort the shell under set -e.
+      age=$(( 10#$now - 10#$ts ))
+      raw_threshold="${GAIA_WORKTREE_REAP_AGE_SECONDS:-1800}"
+      # Fail closed: a non-integer threshold (e.g. "30m") must not skip the
+      # age check and silently reap a fresh worktree.  Treat it as the default.
+      case "$raw_threshold" in
+        ''|*[!0-9]*) threshold=1800 ;;
+        *)           threshold="$raw_threshold" ;;
+      esac
       if [ "$age" -lt "$threshold" ]; then
         return 1
       fi
     fi
   fi
 
-  # Work that exists only locally is never destroyed, even when the owner is gone.
+  # A story branch that has any commits the base branch does not have carries
+  # work that would be lost by reaping -- whether those commits are pushed to a
+  # remote or not.  The previous `--not --remotes` check only protected unpushed
+  # commits; a pushed branch in PR/CI/review with a dead owner and age past the
+  # threshold would have been reaped.
+  #
+  # Detect the base branch from the merge-base of the story branch and the
+  # repository's HEAD (which is the primary checkout's branch, typically staging).
   if [ -n "$branch" ]; then
-    unpushed="$(git -C "$repo" rev-list --count "$branch" --not --remotes 2>/dev/null || printf '')"
-    [ -n "$unpushed" ] || return 1
-    [ "$unpushed" = "0" ] || return 1
+    local ahead base
+    base="$(git -C "$repo" merge-base "$branch" HEAD 2>/dev/null || printf '')"
+    if [ -n "$base" ]; then
+      ahead="$(git -C "$repo" rev-list --count "$base".."$branch" 2>/dev/null || printf '')"
+    else
+      # Cannot determine the merge base: fail closed (keep the worktree).
+      ahead=""
+    fi
+    [ -n "$ahead" ] || return 1
+    [ "$ahead" = "0" ] || return 1
   fi
 
   # Directory still present: reap only when the checkout is clean. A dirty one
