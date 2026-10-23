@@ -41,6 +41,8 @@ setup() {
   local repo="$TEST_TMP/repo"
   mkdir -p "$repo"
   git -C "$repo" init -q
+  git -C "$repo" config user.email "test@test.local"
+  git -C "$repo" config user.name "Test"
   printf -- '--version*\n' > "$repo/.gitignore"
   git -C "$repo" add .gitignore
   git -C "$repo" commit -q -m init
