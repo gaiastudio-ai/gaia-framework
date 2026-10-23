@@ -220,6 +220,7 @@ aiw_append_entry() {
 # ---------------------------------------------------------------------------
 aiw_write() {
   local target="" sprint_id="" classification="" text="" ref_key="" ref_value=""
+  local backup=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -281,31 +282,65 @@ aiw_write() {
   local entry
   entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value" "$indent")"
 
-  # Take a backup before append for rollback on verification failure
-  local backup="${target}.pre-append"
-  cp -p "$target" "$backup"
+  # Refuse to write through a symlink (planted-symlink attack surface)
+  if [ -L "$target" ]; then
+    printf 'status=error\nreason=target is a symlink; refusing to write\n'
+    return 1
+  fi
+
+  # Create a secure backup in the target's directory via mktemp.
+  # The backup, append, verify, and cleanup all run inside the lock
+  # so a concurrent writer cannot corrupt the sequence.
+  local target_dir
+  target_dir="$(dirname "$target")"
+  local backup
+  backup="$(mktemp "${target_dir}/.aiw-backup-XXXXXX")" || {
+    printf 'status=error\nreason=failed to create backup tempfile\n'
+    return 1
+  }
+
+  if ! cp -p "$target" "$backup"; then
+    rm -f "$backup" 2>/dev/null
+    printf 'status=error\nreason=failed to copy target to backup\n'
+    return 1
+  fi
 
   # Atomic append
   aiw_append_entry "$target" "$entry"
 
   # Post-append verification: the file must still parse as YAML and
-  # contain the new id on an item line. If either check fails, restore
-  # the backup and fail closed.
+  # contain the exact new id on an item line. If either check fails,
+  # restore the backup and fail closed.
+  local _verify_ok=1
+
+  # YAML parse check (warn if yq is absent so the caller knows)
   if command -v yq >/dev/null 2>&1; then
     if ! yq '.' "$target" >/dev/null 2>&1; then
-      cp -p "$backup" "$target"
-      rm -f "$backup"
-      printf 'status=error\nreason=post-append YAML parse failed; restored backup\n'
-      return 1
+      _verify_ok=0
+    fi
+  else
+    printf 'warn=yq not found; YAML parse check skipped\n' >&2
+  fi
+
+  # Exact id check: the whole id token on an item line, not a prefix
+  if [ "$_verify_ok" -eq 1 ]; then
+    if ! grep -qE '^[[:space:]]*-[[:space:]]+id:[[:space:]]+"?'"${next_id}"'"?[[:space:]]*$' "$target" 2>/dev/null; then
+      _verify_ok=0
     fi
   fi
-  if ! grep -qE '^[[:space:]]*-[[:space:]]+id:.*'"$next_id"'' "$target" 2>/dev/null; then
-    cp -p "$backup" "$target"
-    rm -f "$backup"
-    printf 'status=error\nreason=post-append id verification failed; restored backup\n'
+
+  if [ "$_verify_ok" -eq 0 ]; then
+    if cp -p "$backup" "$target"; then
+      rm -f "$backup" 2>/dev/null
+      printf 'status=error\nreason=post-append verification failed; restored backup\n'
+    else
+      rm -f "$backup" 2>/dev/null
+      printf 'status=error\nreason=post-append verification failed; backup restore ALSO failed\n'
+    fi
     return 1
   fi
-  rm -f "$backup"
+
+  rm -f "$backup" 2>/dev/null
 
   printf 'status=ok\nid=%s\ntarget=%s\n' "$next_id" "$target"
   return 0
