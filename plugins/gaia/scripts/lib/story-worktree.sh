@@ -35,6 +35,14 @@
 #   or untracked files, and that refusal is honoured: the worktree is left in
 #   place with a warning rather than destroying work that was never committed.
 #
+# Environment variables:
+#   GAIA_WORKTREE_MODE            1 to enable worktree isolation (opt-in gate).
+#   GAIA_WORKTREE_PRUNE_ON_CREATE 0 to skip the prune pass at creation time.
+#   GAIA_WORKTREE_REAP_AGE_SECONDS
+#     Minimum age in seconds before a dead-owner worktree with no commits
+#     ahead of the base branch may be reaped.  Default 1800 (30 minutes).
+#     A non-integer value is treated as the default (fail closed).
+#
 # Portability:
 #   Bash 3.2 (no associative arrays, no mapfile/readarray). No GNU-only tools.
 
@@ -249,19 +257,23 @@ EOF
   return 0
 }
 
-# _sw_lock_reason <story_key> — the lock text this library writes and recognises.
-_sw_lock_reason() { printf 'gaia story %s pid %s' "$1" "$2"; }
+# _sw_lock_reason <story_key> <pid> — the lock text this library writes and
+# recognises.  The format includes a creation timestamp so the reap heuristic
+# can distinguish a freshly created worktree from an abandoned one.
+_sw_lock_reason() { printf 'gaia story %s pid %s ts %s' "$1" "$2" "$(date +%s)"; }
 
 # _sw_pid_from_reason <reason> — the pid recorded in one of OUR lock reasons, or
 # empty when the reason is not ours or carries no usable pid.
 #
 # The match is anchored on the exact shape `_sw_lock_reason` writes:
-#   gaia story <story-key> pid <digits>
-# Matching a bare " pid <n> " substring instead would claim another tool's lock
-# whose reason merely mentions a pid, and with intact-directory reaping live that
-# means unlocking, deleting and unregistering a worktree that was never ours.
-# Anything that is not our own shape yields no pid, so every veto downstream
-# treats it as foreign and leaves it strictly alone.
+#   gaia story <story-key> pid <digits>[ ts <digits>]
+# The optional ` ts <digits>` suffix (a creation timestamp) is stripped before
+# the pid is validated.  Matching a bare " pid <n> " substring instead would
+# claim another tool's lock whose reason merely mentions a pid, and with
+# intact-directory reaping live that means unlocking, deleting and unregistering
+# a worktree that was never ours.  Anything that is not our own shape yields no
+# pid, so every veto downstream treats it as foreign and leaves it strictly
+# alone.
 _sw_pid_from_reason() {
   local reason="${1:-}" rest pid key
 
@@ -282,12 +294,38 @@ _sw_pid_from_reason() {
     ''|*" "*) printf ''; return 0 ;;
   esac
 
-  # Exactly one trailing token, all digits.
+  # Extract the pid token.  The new format may carry an optional ` ts <epoch>`
+  # suffix after the pid; strip it before validation.
   pid="${rest#* pid }"
+  case "$pid" in
+    *" ts "*)
+      pid="${pid%% ts *}"
+      ;;
+  esac
   case "$pid" in
     ''|*" "*|*[!0-9]*) printf ''; return 0 ;;
   esac
   printf '%s' "$pid"
+}
+
+# _sw_ts_from_reason <reason> — the creation epoch recorded in one of OUR lock
+# reasons, or empty when the reason carries no timestamp.  Lock reasons created
+# before the timestamp field was added have no ` ts <digits>` suffix; the
+# caller treats that as "old enough to reap".
+_sw_ts_from_reason() {
+  local reason="${1:-}" ts
+
+  # Only our own reasons carry a parseable timestamp.
+  case "$reason" in
+    *" ts "*) ;;
+    *) printf ''; return 0 ;;
+  esac
+
+  ts="${reason##* ts }"
+  case "$ts" in
+    ''|*[!0-9]*) printf ''; return 0 ;;
+  esac
+  printf '%s' "$ts"
 }
 
 # _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
@@ -301,7 +339,7 @@ _sw_pid_from_reason() {
 # nothing to lose, while one holding uncommitted work is kept (see the caller,
 # which warns and leaves it locked).
 _sw_reapable() {
-  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid unpushed
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid
 
   [ -n "$path" ] || return 1
   [ -n "$reason" ] || return 1
@@ -329,11 +367,72 @@ _sw_reapable() {
     _sw_pid_alive "$pid" && return 1
   fi
 
-  # Work that exists only locally is never destroyed, even when the owner is gone.
-  if [ -n "$branch" ]; then
-    unpushed="$(git -C "$repo" rev-list --count "$branch" --not --remotes 2>/dev/null || printf '')"
-    [ -n "$unpushed" ] || return 1
-    [ "$unpushed" = "0" ] || return 1
+  # A dead owner PID alone is not sufficient evidence.  Claude Code's one-shot
+  # Bash calls always exit immediately, so every owner PID is dead by the time
+  # the next worktree_create runs.  A creation timestamp in the lock reason
+  # prevents a freshly created worktree from being mistaken for an orphan.
+  #
+  # When the lock reason carries no timestamp (a worktree created before this
+  # field was added), the worktree is treated as old enough to reap: the field's
+  # absence is itself evidence the record predates the safety window.
+  #
+  # Default safety threshold: 1800 seconds (30 minutes).  Overridable via
+  # GAIA_WORKTREE_REAP_AGE_SECONDS for testing and operator control.
+  if [ -e "$path" ]; then
+    local ts now age threshold raw_threshold
+    ts="$(_sw_ts_from_reason "$reason")"
+    if [ -n "$ts" ]; then
+      now="$(date +%s)"
+      # Force base-10 arithmetic: a leading zero (e.g. ts 09) must not be
+      # interpreted as octal, which would abort the shell under set -e.
+      age=$(( 10#$now - 10#$ts ))
+      raw_threshold="${GAIA_WORKTREE_REAP_AGE_SECONDS:-1800}"
+      # Fail closed: a non-integer threshold (e.g. "30m") must not skip the
+      # age check and silently reap a fresh worktree.  Treat it as the default.
+      case "$raw_threshold" in
+        ''|*[!0-9]*) threshold=1800 ;;
+        *)           threshold="$raw_threshold" ;;
+      esac
+      if [ "$age" -lt "$threshold" ]; then
+        return 1
+      fi
+    fi
+  fi
+
+  # A story branch that has any commits the base branch does not have carries
+  # work that would be lost by reaping -- whether those commits are pushed to a
+  # remote or not.  The previous `--not --remotes` check only protected unpushed
+  # commits; a pushed branch in PR/CI/review with a dead owner and age past the
+  # threshold would have been reaped.
+  #
+  # When the worktree is detached (no branch line in the porcelain listing) --
+  # for example during an interactive rebase or after a `git checkout <sha>` --
+  # the branch parameter is empty.  The worktree still holds commits that would
+  # become unreachable if the directory were removed, so the check falls through
+  # to a HEAD-based comparison using the worktree's own HEAD.
+  #
+  # Detect the base from the merge-base against the repository's HEAD (the
+  # primary checkout's branch, typically staging).
+  if [ -e "$path" ] || [ -n "$branch" ]; then
+    local ahead base wt_head
+    if [ -n "$branch" ]; then
+      wt_head="$branch"
+    elif [ -e "$path" ]; then
+      # Detached: read the worktree's own HEAD commit.
+      wt_head="$(git -C "$path" rev-parse HEAD 2>/dev/null || printf '')"
+      [ -n "$wt_head" ] || return 1   # cannot read HEAD: fail closed
+    fi
+    if [ -n "${wt_head:-}" ]; then
+      base="$(git -C "$repo" merge-base "$wt_head" HEAD 2>/dev/null || printf '')"
+      if [ -n "$base" ]; then
+        ahead="$(git -C "$repo" rev-list --count "$base".."$wt_head" 2>/dev/null || printf '')"
+      else
+        # Cannot determine the merge base: fail closed (keep the worktree).
+        ahead=""
+      fi
+      [ -n "$ahead" ] || return 1
+      [ "$ahead" = "0" ] || return 1
+    fi
   fi
 
   # Directory still present: reap only when the checkout is clean. A dirty one
