@@ -688,7 +688,7 @@ YAML
   # to this function). A missing entry here means close.sh would miss it.
   local out
   out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
-  echo "$out" | grep -q $'^E900-S1\tin-progress$'
+  grep -q $'^E900-S1\tin-progress$' <<< "$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -752,14 +752,14 @@ YAML
   local out
   out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
   # E900-S1 from stories (status=done, not in-progress from items)
-  echo "$out" | grep -q $'^E900-S1\tdone$'
+  grep -q $'^E900-S1\tdone$' <<< "$out"
   # E900-S2 from stories only
-  echo "$out" | grep -q $'^E900-S2\tready-for-dev$'
+  grep -q $'^E900-S2\tready-for-dev$' <<< "$out"
   # E900-S3 from items only (not in stories)
-  echo "$out" | grep -q $'^E900-S3\tready-for-dev$'
+  grep -q $'^E900-S3\tready-for-dev$' <<< "$out"
   # Exactly 3 lines (no duplicates)
   local count
-  count="$(echo "$out" | grep -c '.')"
+  count="$(grep -c '.' <<< "$out")"
   [ "$count" -eq 3 ]
 }
 
@@ -772,11 +772,11 @@ YAML
   local lib="$BATS_TEST_DIRNAME/../scripts/lib/migrate-items-to-stories.sh"
   local out
   out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
-  echo "$out" | grep -q $'^E900-S1\tdone$'
-  echo "$out" | grep -q $'^E900-S2\tready-for-dev$'
-  echo "$out" | grep -q $'^E900-S3\tready-for-dev$'
+  grep -q $'^E900-S1\tdone$' <<< "$out"
+  grep -q $'^E900-S2\tready-for-dev$' <<< "$out"
+  grep -q $'^E900-S3\tready-for-dev$' <<< "$out"
   local count
-  count="$(echo "$out" | grep -c '.')"
+  count="$(grep -c '.' <<< "$out")"
   [ "$count" -eq 3 ]
 }
 
