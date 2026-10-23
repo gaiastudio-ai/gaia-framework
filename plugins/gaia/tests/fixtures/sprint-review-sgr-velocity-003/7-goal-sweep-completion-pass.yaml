@@ -17,22 +17,22 @@ goals:
 stories:
   - key: "T-S1"
     title: "Goal 1 story"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 1
   - key: "T-S2"
     title: "Goal 2 story"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 2
   - key: "T-S3"
     title: "Goal 3 story"
     status: "done"
-    points: 5
+    points: 6
     goal_index: 3
   - key: "T-S4"
     title: "Goal 4 story"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 4
   - key: "T-S5"
@@ -42,11 +42,11 @@ stories:
     goal_index: 5
   - key: "T-S6"
     title: "Goal 6 story"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 6
   - key: "T-S7"
     title: "Goal 7 story"
-    status: "done"
-    points: 2
+    status: "in-progress"
+    points: 1
     goal_index: 7

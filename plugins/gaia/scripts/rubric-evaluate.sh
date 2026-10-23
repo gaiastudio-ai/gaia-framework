@@ -6,9 +6,14 @@
 #      sprint_shape (optional, default 'thrust').
 #   2) Compute per-goal share = sum(stories where goal_index == g).points /
 #      total_points.
-#   3) Compute scaled floor_pct = max(0.10, 0.30 * (4 / max(4, N)))
-#      where N = len(goals).
-#   4) For each below-floor goal, emit a finding:
+#   3) Compute scaled floor_pct = min(1.0/N, max(0.10, 0.30 * (4 / max(4, N))))
+#      where N = len(goals).  The outer min(1.0/N, ...) caps the total of
+#      all per-goal floors at 100%.
+#   4) For each below-floor goal that is NOT fully delivered, emit a
+#      finding.  A goal is fully delivered only when it has at least one
+#      story and every assigned story is done.  A goal with zero stories
+#      is never fully delivered.  Fully delivered goals are exempt — the
+#      team invested enough to complete every assigned story.
 #        - severity = High when (floor_pct - share) > 0.05
 #        - severity = Medium when 0 < (floor_pct - share) <= 0.05
 #                     (intermediate tier per Risk 3 mitigation)
@@ -147,13 +152,22 @@ if total_points <= 0:
     sys.exit(2)
 
 n_goals = len(goals)
-floor_pct = max(0.10, 0.30 * (4.0 / max(4.0, float(n_goals))))
+floor_pct = min(1.0 / n_goals, max(0.10, 0.30 * (4.0 / max(4.0, float(n_goals)))))
 
-# Compute per-goal share.
+# Compute per-goal share and delivery status.
 per_goal_share = {}
+goal_fully_delivered = {}
 for idx in range(1, n_goals + 1):
-    pts = sum(s.get("points", 0) for s in stories if s.get("goal_index") == idx)
+    goal_stories = [s for s in stories if s.get("goal_index") == idx]
+    pts = sum(s.get("points", 0) for s in goal_stories)
     per_goal_share[idx] = float(pts) / float(total_points)
+    # A goal is fully delivered when it has at least one story and every
+    # assigned story has status "done".  Goals with zero stories are NOT
+    # fully delivered (they behave as before — the floor check applies).
+    goal_fully_delivered[idx] = (
+        len(goal_stories) > 0
+        and all(s.get("status") == "done" for s in goal_stories)
+    )
 
 if emit_floor:
     print(json.dumps({"meta": "floor", "floor_pct": round(floor_pct, 4), "n_goals": n_goals}, separators=(',', ':')))
@@ -164,10 +178,17 @@ for idx in range(1, n_goals + 1):
     share = per_goal_share[idx]
     if share >= floor_pct:
         continue
+    # A fully delivered goal is exempt from the incidental-goal floor:
+    # the team invested enough to complete every assigned story, so the
+    # goal is substantive regardless of its share of total capacity.
+    if goal_fully_delivered[idx]:
+        continue
     n_goals_below_floor += 1
     delta = floor_pct - share
     # Severity tiering: HIGH if >5 pp below, MEDIUM if within 5 pp.
-    if delta > 0.05:
+    # Round to 10 decimals to avoid floating-point boundary error
+    # (e.g. 0.20 - 0.15 = 0.050000000000000003 in IEEE 754).
+    if round(delta, 10) > 0.05:
         base_sev = "High"
     else:
         base_sev = "Medium"
