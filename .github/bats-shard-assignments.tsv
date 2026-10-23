@@ -822,3 +822,4 @@
 3	concurrent-sprint-recheck.bats	18
 3	concurrent-sprint-drift.bats	14
 1	git-branch-dedup.bats	9
+2	verdict-resolver-required-false-malformed-json.bats	23
