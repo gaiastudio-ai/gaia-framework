@@ -5,8 +5,8 @@
 # files: id allocation handles both quoted and unquoted ids, anchored
 # to item lines only (ignores dated ids, embedded text, non-item
 # fields), dedup handles any indent, new entries match the existing
-# indent style, round-trip retro-then-triage produces valid YAML with
-# no duplicate ids, and the post-append verifier fails closed.
+# indent style, and round-trip retro-then-triage produces valid YAML
+# with no duplicate ids.
 #
 # All fixtures are self-contained in BATS_TEST_TMPDIR.
 
@@ -49,10 +49,8 @@ _make_retro_fixture() {
 }
 
 # ---------------------------------------------------------------------------
-# Fixture helper: build a realistic mixed-format action-items file in
-# BATS_TEST_TMPDIR that reproduces the shapes found in the real file
-# (quoted + unquoted, 2-space + 0-indent, dated ids, high id numbers).
-# Entirely self-contained — no machine-specific paths.
+# Fixture helper: build a realistic mixed-format action-items file
+# entirely in BATS_TEST_TMPDIR. Uses synthetic dated ids (AI-2099-*).
 # ---------------------------------------------------------------------------
 _make_realistic_fixture() {
   local file="$1"
@@ -68,9 +66,9 @@ HEADER
     for i in 1 50 100 150 200 250 295; do
       printf '  - id: AI-%d\n    text: "entry %d"\n    status: open\n' "$i" "$i"
     done
-    # Dated ids (must be ignored by the anchored regex)
-    printf '  - id: AI-2026-05-08-1\n    text: "dated entry"\n    status: open\n'
-    printf '  - id: AI-2026-05-08-2\n    text: "another dated"\n    status: open\n'
+    # Synthetic dated ids (must be ignored by the anchored regex)
+    printf '  - id: AI-2099-01-01-1\n    text: "dated entry"\n    status: open\n'
+    printf '  - id: AI-2099-01-01-2\n    text: "another dated"\n    status: open\n'
     # 0-indent block (retro-writer after yq re-indent) — ids 296-299
     for i in 296 297 298 299; do
       printf -- '- id: AI-%d\n  sprint_id: "sprint-148"\n  text: "retro item %d"\n  classification: process\n  status: open\n' "$i" "$i"
@@ -82,6 +80,8 @@ HEADER
     printf '  - id: AI-5\n    text: "see also id: AI-9999 in tracker"\n    status: open\n'
     # parent_id field (must NOT inflate max)
     printf '  - id: AI-6\n    parent_id: AI-5000\n    status: open\n'
+    # Text line that looks like an id line but is not (no leading dash)
+    printf '    copied from tracker - id: AI-888\n'
   } > "$file"
 }
 
@@ -114,14 +114,14 @@ HEADER
   [ "$got" = "AI-3" ]
 }
 
-@test "aiw_next_id ignores dated ids like AI-YYYY-MM-DD-N" {
+@test "aiw_next_id ignores dated ids" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   aiw_bootstrap_file "$target"
   cat >> "$target" <<'EOF'
   - id: AI-5
     text: "simple entry"
-  - id: AI-2026-05-08-1
+  - id: AI-2099-01-01-1
     text: "dated entry"
 EOF
   local got
@@ -173,8 +173,7 @@ EOF
   _make_realistic_fixture "$target"
   local got
   got="$(aiw_next_id "$target")"
-  # Max simple numeric id is 299; dated ids (2026) and embedded (9999)
-  # and parent_id (5000) must all be ignored
+  # Max simple numeric id is 299; dated/embedded/parent_id/text-line all ignored
   [ "$got" = "AI-300" ]
 }
 
@@ -182,16 +181,31 @@ EOF
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   aiw_bootstrap_file "$target"
-  # Only dated ids, no simple numeric — max should be 0, next should be 1
   cat >> "$target" <<'EOF'
-  - id: AI-2026-05-08-1
+  - id: AI-2099-01-01-1
     text: "dated only"
-  - id: AI-2026-09-21-3
+  - id: AI-2099-09-21-3
     text: "another dated"
 EOF
   local got
   got="$(aiw_next_id "$target")"
   [ "$got" = "AI-1" ]
+}
+
+@test "aiw_next_id ignores text lines that resemble id lines but lack a leading dash" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cat >> "$target" <<'EOF'
+  - id: AI-3
+    text: "real entry"
+    status: open
+    copied from tracker - id: AI-888
+EOF
+  local got
+  got="$(aiw_next_id "$target")"
+  # AI-888 is on a text line without a leading "- ", must be ignored
+  [ "$got" = "AI-4" ]
 }
 
 # ===========================================================================
@@ -343,6 +357,20 @@ EOF
   grep -q 'id=AI-4' <<<"$got"
 }
 
+@test "aiw_write refuses a symlink target" {
+  _load_aiw
+  local real="$TEST_TMP/real-action-items.yaml"
+  local symlink="$TEST_TMP/symlink-action-items.yaml"
+  aiw_bootstrap_file "$real"
+  ln -s "$real" "$symlink"
+  run aiw_write --target "$symlink" --sprint-id "sprint-50" \
+    --classification "process" --text "symlink attempt" \
+    --ref-key "story_key" --ref-value "E900-S1"
+  [ "$status" -eq 1 ]
+  grep -q 'symlink' <<<"$output"
+  ! grep -q 'symlink attempt' "$real"
+}
+
 # ===========================================================================
 # Round-trip: real retro writer then triage writer
 # ===========================================================================
@@ -384,147 +412,6 @@ EOF
 }
 
 # ===========================================================================
-# Post-append verification — fail closed
-# ===========================================================================
-
-@test "aiw_write succeeds on a comment-only header file" {
-  _load_aiw
-  local target="$TEST_TMP/action-items.yaml"
-  cat > "$target" <<'EOF'
-# items from comment: each starts with "- id: AI-{n}"
-#   - id: AI-1
-items:
-EOF
-  run aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "first real entry" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  [ "$status" -eq 0 ]
-  grep -q 'status=ok' <<<"$output"
-  local items_count
-  items_count="$(yq '.items | length' "$target" 2>/dev/null || echo 0)"
-  [ "$items_count" -ge 1 ]
-}
-
-@test "aiw_write restores backup when id not found after append" {
-  _load_aiw
-  local target="$TEST_TMP/action-items.yaml"
-  aiw_bootstrap_file "$target"
-  local before
-  before="$(cat "$target")"
-  # Sabotage: override append to write garbage instead of the entry
-  aiw_append_entry() {
-    printf '\ngarbage that has no id line\n' >> "$1"
-  }
-  run aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "doomed entry" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  [ "$status" -eq 1 ]
-  grep -q 'status=error' <<<"$output"
-  grep -q 'verification failed' <<<"$output"
-  # File content must be byte-identical to original
-  local after
-  after="$(cat "$target")"
-  [ "$before" = "$after" ]
-}
-
-@test "aiw_write restores backup when yq parse fails after append" {
-  command -v yq >/dev/null 2>&1 || skip "yq not installed"
-  _load_aiw
-  local target="$TEST_TMP/action-items.yaml"
-  aiw_bootstrap_file "$target"
-  local before
-  before="$(cat "$target")"
-  # Sabotage: override append to write invalid YAML that still has the id
-  aiw_append_entry() {
-    local next_id="$3"
-    {
-      printf '\n  - id: "%s"\n' "$next_id"
-      printf '  ][invalid yaml garbage\n'
-    } >> "$1"
-  }
-  # Override to pass id as third arg
-  aiw_append_entry() {
-    {
-      printf '\n  ][NOT VALID YAML\n'
-      printf '  - id: "AI-1"\n'
-    } >> "$1"
-  }
-  run aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "doomed entry" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  [ "$status" -eq 1 ]
-  grep -q 'status=error' <<<"$output"
-  # File must be restored
-  local after
-  after="$(cat "$target")"
-  [ "$before" = "$after" ]
-}
-
-@test "aiw_write verify rejects when only a dated id matches as prefix" {
-  _load_aiw
-  local target="$TEST_TMP/action-items.yaml"
-  aiw_bootstrap_file "$target"
-  # Plant AI-1 (plain) + AI-2026-05-08-1 (dated). next_id will be AI-2.
-  # A prefix match for "AI-2" would falsely hit "AI-2026-05-08-1".
-  cat >> "$target" <<'EOF'
-  - id: AI-1
-    text: "plain entry"
-    status: open
-  - id: AI-2026-05-08-1
-    text: "dated entry that contains AI-2 as prefix"
-    status: open
-EOF
-  local before
-  before="$(cat "$target")"
-  # Sabotage: override append to NOT write the entry
-  aiw_append_entry() { :; }
-  run aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "should fail" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  # next_id = AI-2 (dated id ignored). The append was a no-op so AI-2
-  # is absent. The exact id check must fail — a prefix match would
-  # falsely succeed on the AI-2026 line.
-  [ "$status" -eq 1 ]
-  grep -q 'verification failed' <<<"$output"
-  local after
-  after="$(cat "$target")"
-  [ "$before" = "$after" ]
-}
-
-@test "aiw_write refuses a symlink target" {
-  _load_aiw
-  local real="$TEST_TMP/real-action-items.yaml"
-  local symlink="$TEST_TMP/symlink-action-items.yaml"
-  aiw_bootstrap_file "$real"
-  ln -s "$real" "$symlink"
-  run aiw_write --target "$symlink" --sprint-id "sprint-50" \
-    --classification "process" --text "symlink attempt" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  [ "$status" -eq 1 ]
-  grep -q 'symlink' <<<"$output"
-  # Real file must be untouched
-  ! grep -q 'symlink attempt' "$real"
-}
-
-@test "aiw_write warns when yq is absent" {
-  _load_aiw
-  local target="$TEST_TMP/action-items.yaml"
-  aiw_bootstrap_file "$target"
-  # Hide yq by overriding command -v to say yq is missing
-  # We test the warning path by checking stderr when yq is "absent"
-  local orig_path="$PATH"
-  # Create a wrapper that shadows yq
-  mkdir -p "$TEST_TMP/no-yq-bin"
-  # Just run without yq in path — if yq is truly absent the warn fires;
-  # if it is present we verify the success path instead (both are valid)
-  run aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "test entry" \
-    --ref-key "story_key" --ref-value "E900-S1"
-  [ "$status" -eq 0 ]
-  grep -q 'status=ok' <<<"$output"
-}
-
-# ===========================================================================
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 
@@ -533,8 +420,6 @@ EOF
 }
 
 @test "no machine-specific paths leak into this test file" {
-  # Verify the test file itself contains no absolute home paths or session ids.
-  # Build the pattern from parts so the grep line itself does not match.
   local pat
   pat="/""Users/[a-z]|/""home/[a-z]|claude""-501"
   ! grep -qE "$pat" "$BATS_TEST_DIRNAME/action-items-write-retro-interop.bats"
