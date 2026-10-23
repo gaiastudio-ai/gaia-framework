@@ -144,7 +144,8 @@ epic_list=$(awk '
 # stories whose archive yaml might predate a later transition.
 _parse_sprint_yaml() {
   awk '
-    /^stories:/ { in_stories = 1; next }
+    /^stories:/ { in_stories = 1; saw_stories = 1; next }
+    /^items:/ && !saw_stories { in_stories = 1; next }
     in_stories && /^[a-z_]+:/ { in_stories = 0 }
     in_stories && /^[[:space:]]+- key:/ {
       v = $0

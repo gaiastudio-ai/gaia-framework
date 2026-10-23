@@ -96,7 +96,8 @@ done
 
 # awk that reads a sprint yaml `stories:` block -> "key<TAB>points" rows.
 sprint_points_awk='
-  /^stories:[[:space:]]*$/ { in_stories=1; next }
+  /^stories:[[:space:]]*$/ { in_stories=1; saw_stories=1; next }
+  /^items:[[:space:]]*$/ && !saw_stories { in_stories=1; next }
   in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
     line=$0
     sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", line)

@@ -796,6 +796,11 @@ _render_fallback_dashboard() {
   while IFS= read -r line; do
     if [[ "$line" =~ ^stories: ]]; then
       in_stories=true
+      saw_stories=true
+      continue
+    fi
+    if [[ "$line" =~ ^items: ]] && [ "${saw_stories:-}" != true ]; then
+      in_stories=true
       continue
     fi
     if [[ "$in_stories" == true ]]; then

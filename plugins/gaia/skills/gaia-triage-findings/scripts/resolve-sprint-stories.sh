@@ -72,68 +72,18 @@ if [ "$sprint_status_value" != "active" ]; then
   exit 0
 fi
 
-# ---------- Migrate legacy items: key in-place ----------
-# sprint-state.sh runs its own migration before every subcommand, but this
-# script is invoked independently. Migrate here so the reader below can
-# rely on a single `stories:` key. The migration is idempotent.
-if grep -q '^items[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
-  if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS" 2>/dev/null; then
-    # Empty items: [] — no entries to lose, leave it (stripping would break
-    # byte-identical cmp checks in existing tests).
-    true
-  elif ! grep -q '^stories[[:space:]]*:' "$SPRINT_STATUS" 2>/dev/null; then
-    # items: with entries but no stories: — rename items to stories.
-    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
-    sed 's/^items[[:space:]]*:[[:space:]]*$/stories:/' "$SPRINT_STATUS" > "$_mig_tmp"
-    mv "$_mig_tmp" "$SPRINT_STATUS"
-  else
-    # Both keys present — merge items entries into stories (stories wins on
-    # duplicate key), remove items block. Self-contained awk, no sourcing.
-    _mig_tmp="$(mktemp "${SPRINT_STATUS}.mig.XXXXXX")"
-    if awk '
-      BEGIN { in_items=0; in_stories=0; ic=0; sc=0; oc=0; saw_s=0; saw_i=0 }
-      /^items[[:space:]]*:[[:space:]]*$/ { in_items=1; in_stories=0; saw_i=1; next }
-      /^stories[[:space:]]*:[[:space:]]*$/ { in_stories=1; in_items=0; saw_s=1; next }
-      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_items=0; saw_s=1; next }
-      /^[A-Za-z_]/ { in_items=0; in_stories=0 }
-      in_items {
-        il[ic++]=$0
-        if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-          k=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-          gsub(/["'\''[:space:]]/, "", k); ik[k]=1
-        }
-        next
-      }
-      in_stories {
-        sl[sc++]=$0
-        if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-          k=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-          gsub(/["'\''[:space:]]/, "", k); sk[k]=1
-        }
-        next
-      }
-      { ol[oc++]=$0 }
-      END {
-        for (i=0;i<oc;i++) print ol[i]
-        if (sc>0||ic>0) {
-          print "stories:"
-          for (i=0;i<sc;i++) print sl[i]
-          ck=""; skip=0
-          for (i=0;i<ic;i++) {
-            if (il[i] ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-              ck=il[i]; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", ck)
-              gsub(/["'\''[:space:]]/, "", ck); skip=(ck in sk)?1:0
-            }
-            if (!skip) print il[i]
-          }
-        }
-      }
-    ' "$SPRINT_STATUS" > "$_mig_tmp"; then
-      mv "$_mig_tmp" "$SPRINT_STATUS"
-    else
-      rm -f "$_mig_tmp"
-    fi
-  fi
+# ---------- Migrate legacy items: key via shared library ----------
+# sprint-state.sh runs its own migration at pre-dispatch, but this script is
+# invoked independently. Source the shared lib and call migrate under lock.
+# If the lib is unavailable (stripped install), the both-keys reader below
+# handles the fallback without writing.
+_MIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" 2>/dev/null && pwd 2>/dev/null || echo "")"
+if [ -n "$_MIG_LIB_DIR" ] && [ -f "$_MIG_LIB_DIR/acquire-lock.sh" ] && [ -f "$_MIG_LIB_DIR/migrate-items-to-stories.sh" ]; then
+  # shellcheck source=../../../scripts/lib/acquire-lock.sh
+  . "$_MIG_LIB_DIR/acquire-lock.sh"
+  # shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
+  . "$_MIG_LIB_DIR/migrate-items-to-stories.sh"
+  migrate_items_to_stories "$SPRINT_STATUS" --lock "${SPRINT_STATUS}.lock" || true
 fi
 
 # Committed story keys from the top-level `stories:` sequence (`- key: "…"`).

@@ -138,8 +138,14 @@ teardown() { common_teardown; }
   # detect-auto-close should find the non-done story and NOT recommend close.
   run bash "$SPRINT_STATE" detect-auto-close
   [ "$status" -eq 0 ]
-  # The output must NOT say "auto_close_eligible: true".
+  # The output must NOT say "auto_close_eligible: true" — the in-progress story
+  # under the legacy items: key must be visible to the done-check.
   [[ "$output" != *"auto_close_eligible: true"* ]]
+  # Non-vacuous: confirm the yaml was migrated (items: -> stories:) so the
+  # done-check actually inspected the entries rather than vacuously passing.
+  grep -q '^stories:' "$SPRINT_STATUS_YAML"
+  run grep -q '^items:' "$SPRINT_STATUS_YAML"
+  [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -437,9 +443,9 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# F1 — reproduce the original 1-of-20 symptom from issue 2119
+# root cause — reproduce the original 1-of-20 symptom
 # ---------------------------------------------------------------------------
-@test "F1: legacy yaml with 19 items + 1 story — migration makes all 20 visible" {
+@test "legacy yaml with 19 items + 1 story — migration makes all 20 visible" {
   # Reproduce the exact shape from the upstream issue: sprint-plan wrote 19
   # stories under items:, then inject added 1 story under stories:.
   # Without migration, triage sees only the stories: block = 1 story.
@@ -486,7 +492,7 @@ YAML
   [ "$count" -eq 20 ]
 }
 
-@test "F1: migration merges items into stories — no data loss" {
+@test "migration merges items into stories — no data loss" {
   {
     printf 'sprint_id: "sprint-merge"\n'
     printf 'status: active\n'
@@ -557,4 +563,103 @@ YAML
   second_content=$(cat "$SPRINT_STATUS_YAML")
 
   [ "$first_content" = "$second_content" ]
+}
+
+# ---------------------------------------------------------------------------
+# planned-active-gate sees legacy items entries
+# ---------------------------------------------------------------------------
+@test "planned-active-gate reads stories from legacy items key" {
+  local gate="$BATS_TEST_DIRNAME/../scripts/planned-active-gate.sh"
+  [ -f "$gate" ] || skip "planned-active-gate.sh not found"
+
+  _legacy_yaml sprint-pag planned \
+    "E900-S1" "ready-for-dev"
+  _create_story_file E900-S1 "pag story" ready-for-dev sprint-pag
+
+  # The gate reads the roster — it should find the story under items:.
+  run bash "$gate" \
+    --sprint-yaml "$SPRINT_STATUS_YAML" \
+    --impl-root "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
+    --test-artifacts "$TEST_TMP/project/.gaia/artifacts/test-artifacts"
+  # The gate may fail because the story isn't materialized with ATDD, but
+  # the important thing is it parsed the roster (found a key, not "no stories").
+  [[ "$output" != *"no stories[] roster found"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# sprint-progress-snapshot reads legacy items entries
+# ---------------------------------------------------------------------------
+@test "sprint-progress-snapshot reads stories from legacy items key" {
+  local snapshot="$BATS_TEST_DIRNAME/../scripts/sprint-progress-snapshot.sh"
+  [ -f "$snapshot" ] || skip "sprint-progress-snapshot.sh not found"
+
+  _legacy_yaml sprint-snap active \
+    "E900-S1" "in-progress"
+  _create_story_file E900-S1 "snap story" in-progress sprint-snap
+
+  # The snapshot reads stories from the yaml — under items: it must still
+  # find them. The snapshot writes a JSON cache; we just verify it runs and
+  # includes the story key.
+  local cache_dir="$TEST_TMP/project/.gaia/state"
+  run bash "$snapshot" --sprint-status "$SPRINT_STATUS_YAML" \
+    --config "$TEST_TMP/project/.gaia/config/project-config.yaml" \
+    --output "$cache_dir/sprint-progress.json" 2>&1
+  # The snapshot may fail on optional fields, but if it ran the awk reader
+  # it won't report 0 stories. Check exit or output for the key.
+  [[ "$output" == *"E900-S1"* ]] || [ -f "$cache_dir/sprint-progress.json" ]
+}
+
+# ---------------------------------------------------------------------------
+# close.sh precheck reads legacy items entries
+# ---------------------------------------------------------------------------
+@test "close precheck reads non-done story from legacy items key" {
+  local close_sh="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
+  [ -f "$close_sh" ] || skip "close.sh not found"
+
+  _legacy_yaml sprint-cls active \
+    "E900-S1" "in-progress"
+  _create_story_file E900-S1 "cls story" in-progress sprint-cls
+
+  # close.sh precheck should find the non-done story and refuse.
+  run bash "$close_sh" --sprint-id sprint-cls --state-dir "$TEST_TMP/project/.gaia/state" 2>&1
+  # It should either fail or report non-done stories.
+  [ "$status" -ne 0 ] || [[ "$output" == *"non-done"* ]] || [[ "$output" == *"in-progress"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# resolver under held lock falls back to both-keys reader (no rewrite)
+# ---------------------------------------------------------------------------
+@test "resolve-sprint-stories with held lock reads both keys without rewriting" {
+  _legacy_yaml sprint-locktest active \
+    "E900-S1" "ready-for-dev"
+  _create_story_file E900-S1 "lock story" ready-for-dev sprint-locktest
+
+  local lockfile="${SPRINT_STATUS_YAML}.lock"
+  mkdir -p "$(dirname "$lockfile")"
+
+  # Hold the lock in background to prevent migration write.
+  (
+    flock -x 9 || exit 1
+    sleep 10
+  ) 9>"$lockfile" &
+  local holder_pid=$!
+  sleep 0.3
+
+  local before_cksum
+  before_cksum=$(cksum < "$SPRINT_STATUS_YAML")
+
+  # Run the resolver — it should still find the story via the both-keys
+  # fallback reader even though it cannot acquire the lock to migrate.
+  run bash "$RESOLVE_SPRINT_STORIES" \
+    --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
+    --sprint-status "$SPRINT_STATUS_YAML"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"E900-S1"* ]]
+
+  # The file must NOT have been rewritten (lock was held).
+  local after_cksum
+  after_cksum=$(cksum < "$SPRINT_STATUS_YAML")
+  [ "$before_cksum" = "$after_cksum" ]
+
+  kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null || true
 }

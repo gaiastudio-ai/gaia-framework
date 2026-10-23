@@ -80,9 +80,10 @@ done
 [ -n "$IMPL_ROOT" ] || die "--impl-root <dir> is required (try --help)"
 [ -n "$TEST_ARTIFACTS" ] || die "--test-artifacts <dir> is required (try --help)"
 
-# Roster keys from the sprint yaml stories[] block (the membership list).
+# Roster keys from the sprint yaml stories[] (or legacy items[]) block.
 roster_keys="$(awk '
-  /^stories:[[:space:]]*$/ { in_s=1; next }
+  /^stories:[[:space:]]*$/ { in_s=1; saw_s=1; next }
+  /^items:[[:space:]]*$/ && !saw_s { in_s=1; next }
   in_s && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
     line=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", line); gsub(/"/, "", line); print line
   }

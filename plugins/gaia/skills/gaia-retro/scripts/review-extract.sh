@@ -190,7 +190,7 @@ SPRINT_STORY_KEYS=""
 SPRINT_STATUS_YAML="${GAIA_STATE_DIR:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state}/sprint-status.yaml"
 if [ -f "$SPRINT_STATUS_YAML" ]; then
   if command -v yq >/dev/null 2>&1; then
-    SPRINT_STORY_KEYS="$(yq eval '.stories[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"
+    SPRINT_STORY_KEYS="$(yq eval '(.stories // .items // [])[].key' "$SPRINT_STATUS_YAML" 2>/dev/null | tr '\n' ' ')"
   fi
   # yq-less fallback (also a backstop if the yq query returned nothing): pull
   # E<N>-S<N> tokens from `key:` lines, strip quotes, space-delimit.

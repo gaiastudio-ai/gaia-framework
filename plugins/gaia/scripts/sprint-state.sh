@@ -132,6 +132,8 @@ _SSM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${_SSM_DIR}/lib/story-state-machine.sh"
 # shellcheck source=lib/acquire-lock.sh
 . "${_SSM_DIR}/lib/acquire-lock.sh"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "${_SSM_DIR}/lib/migrate-items-to-stories.sh"
 # Source the concurrent-sprint guard when available (created by the concurrent
 # sprints feature). Conditional so the script loads cleanly in test harnesses
 # that copy only the essential libs.
@@ -859,122 +861,10 @@ _update_compatibility_proxy() {
   ) || true  # Proxy failure is non-fatal (per-sprint file is authoritative).
 }
 
-# _migrate_items_to_stories — one-shot migration of the legacy `items:` key.
-#
-# When sprint-status.yaml was seeded by a pre-alignment init, the story list
-# lives under `items:`. All readers enumerate `stories:` only. This helper
-# merges any `items:` entries into `stories:` (stories wins on duplicate key),
-# removes the `items:` block, and writes atomically via tmpfile+mv.
-#
-# Idempotent: no-op when `items:` is absent or empty. Fails closed when the
-# file cannot be parsed. Callers should hold the sprint-status lock when the
-# write path is reachable concurrently, but the main-dispatch call site runs
-# before any subcommand, so the serialisation point is the subcommand's own
-# lock acquisition.
-_migrate_items_to_stories() {
-  local yaml="$1"
-  [ -f "$yaml" ] || return 0
-
-  # Fast path: no items: key at all — nothing to migrate.
-  grep -q '^items[[:space:]]*:' "$yaml" 2>/dev/null || return 0
-
-  # Fast path: items: [] (empty list, no entries) — leave it. An empty
-  # items: [] causes no data loss (there are no entries to miss), and
-  # stripping it would break byte-identical cmp checks in existing tests.
-  if grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$yaml" 2>/dev/null; then
-    return 0
-  fi
-
-  # Full migration: collect items entries and stories entries, merge, emit.
-  local tmp_mig
-  tmp_mig="$(mktemp "${yaml}.mig.XXXXXX")"
-  awk '
-    BEGIN {
-      in_items = 0; in_stories = 0
-      items_count = 0; stories_count = 0
-      other_count = 0; saw_stories = 0; saw_items = 0
-    }
-    # Detect items: block start (populated list).
-    /^items[[:space:]]*:[[:space:]]*$/ {
-      in_items = 1; in_stories = 0; saw_items = 1; next
-    }
-    # Detect stories: block start (populated or empty list).
-    /^stories[[:space:]]*:[[:space:]]*$/ {
-      in_stories = 1; in_items = 0; saw_stories = 1; next
-    }
-    /^stories[[:space:]]*:[[:space:]]*\[\][[:space:]]*$/ {
-      in_items = 0; saw_stories = 1; next
-    }
-    # A new top-level key ends whichever block we are in.
-    /^[A-Za-z_]/ {
-      in_items = 0; in_stories = 0
-    }
-    in_items {
-      items_lines[items_count++] = $0
-      # Extract keys for dedup.
-      if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-        k = $0
-        sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-        gsub(/["'\''[:space:]]/, "", k)
-        items_keys[k] = 1
-      }
-      next
-    }
-    in_stories {
-      stories_lines[stories_count++] = $0
-      if ($0 ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-        k = $0
-        sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-        gsub(/["'\''[:space:]]/, "", k)
-        stories_keys[k] = 1
-      }
-      next
-    }
-    # Non-block lines: store for output.
-    {
-      other[other_count++] = $0
-    }
-    END {
-      # Emit non-block lines, inserting the merged stories: block where
-      # stories: or items: originally appeared (whichever comes first in
-      # the output, which is the non-block line just before the first
-      # block started — but since we stripped block lines, we emit the
-      # merged block at the end of the non-block content).
-      for (i = 0; i < other_count; i++) {
-        print other[i]
-      }
-      # Emit merged stories: block. Stories entries first (they win on
-      # duplicate key), then items entries whose key is not in stories.
-      if (stories_count > 0 || items_count > 0) {
-        print "stories:"
-        for (i = 0; i < stories_count; i++) {
-          print stories_lines[i]
-        }
-        # Append items entries not already in stories. Walk items lines
-        # and track the current entry key; skip the whole entry if its
-        # key exists in stories_keys.
-        cur_key = ""
-        skip = 0
-        for (i = 0; i < items_count; i++) {
-          ln = items_lines[i]
-          if (ln ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/) {
-            cur_key = ln
-            sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", cur_key)
-            gsub(/["'\''[:space:]]/, "", cur_key)
-            skip = (cur_key in stories_keys) ? 1 : 0
-          }
-          if (!skip) print ln
-        }
-      }
-    }
-  ' "$yaml" > "$tmp_mig" || {
-    rm -f "$tmp_mig"
-    printf '%s: error: failed to migrate items: to stories: in %s (fail-closed)\n' \
-      "${SCRIPT_NAME:-sprint-state.sh}" "$yaml" >&2
-    return 1
-  }
-  mv "$tmp_mig" "$yaml"
-}
+# _migrate_items_to_stories is now in lib/migrate-items-to-stories.sh (sourced
+# above). The shared library provides migrate_items_to_stories() (locked) and
+# read_stories_or_items() (read-only). Sprint-state.sh calls the locked form
+# at pre-dispatch after the concurrent-mode SPRINT_STATUS_YAML repointing.
 
 # Resolve configuration — PROJECT_PATH, IMPLEMENTATION_ARTIFACTS, and yaml path.
 # Honor pre-exported SPRINT_STATUS_YAML so tests can point the script at a
@@ -1561,7 +1451,7 @@ do_transition_locked() {
           # shape (no `.sprints[]` wrapper). Try the canonical top-level shape
           # first, then fall back to the legacy `.sprints[].stories[]` shape
           # for any vestigial multi-sprint roll-ups.
-          _dep_status=$(yq -r ".stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
+          _dep_status=$(yq -r "(.stories // .items // [])[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
           if [ -z "$_dep_status" ] || [ "$_dep_status" = "null" ]; then
             _dep_status=$(yq -r ".sprints[].stories[] | select(.key == \"${_dep}\") | .status" "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}" 2>/dev/null | head -1 || true)
           fi
@@ -2239,9 +2129,11 @@ reconcile_list_yaml_stories() {
       line = $0
       sub(/\r$/, "", line)
     }
-    line ~ /^stories:[[:space:]]*$/ { in_stories = 1; next }
+    line ~ /^stories:[[:space:]]*$/ { in_stories = 1; saw_stories = 1; next }
+    line ~ /^items:[[:space:]]*$/ && !saw_stories { in_stories = 1; next }
     # Stories section ends at an empty list marker or a new top-level key.
-    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { in_stories = 0; next }
+    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { in_stories = 0; saw_stories = 1; next }
+    line ~ /^items:[[:space:]]*\[\][[:space:]]*$/ { next }
     in_stories && line ~ /^[^[:space:]-]/ { in_stories = 0; next }
     !in_stories { next }
     # A new entry starts with "  - key: ...".
@@ -2746,7 +2638,7 @@ cmd_lint_dependencies() {
 
   # Validate basic yaml structure: must contain sprint_id or stories section.
   # A file with neither is treated as malformed (AC-EC8).
-  if ! grep -qE '^(sprint_id:|stories:)' "$SPRINT_STATUS_YAML" 2>/dev/null; then
+  if ! grep -qE '^(sprint_id:|stories:|items:)' "$SPRINT_STATUS_YAML" 2>/dev/null; then
     die "malformed sprint-status.yaml: no sprint_id or stories section found in $SPRINT_STATUS_YAML"
   fi
 
@@ -3061,6 +2953,11 @@ cmd_detect_auto_close() {
 
   while IFS= read -r line; do
     if [[ "$line" =~ ^stories: ]]; then
+      in_stories=true
+      _dac_saw_stories=true
+      continue
+    fi
+    if [[ "$line" =~ ^items: ]] && [ "${_dac_saw_stories:-}" != true ]; then
       in_stories=true
       continue
     fi
@@ -3981,7 +3878,8 @@ _yaml_all_stories_done() {
   local yaml="$1"
   # List all story statuses under stories:; non-done ones short-circuit.
   awk '
-    /^stories:[[:space:]]*$/ { in_stories=1; next }
+    /^stories:[[:space:]]*$/ { in_stories=1; saw_stories=1; next }
+    /^items:[[:space:]]*$/ && !saw_stories { in_stories=1; next }
     in_stories && /^[[:space:]]+status:[[:space:]]*/ {
       sub(/^[[:space:]]+status:[[:space:]]*/, "")
       gsub(/"/, ""); gsub(/[[:space:]]+$/, "")
@@ -4093,7 +3991,8 @@ cmd_transition_sprint() {
         non_done_count=$((non_done_count + 1))
       fi
     done < <(awk '
-      /^stories:[[:space:]]*$/ { in_stories=1; next }
+      /^stories:[[:space:]]*$/ { in_stories=1; saw_stories=1; next }
+      /^items:[[:space:]]*$/ && !saw_stories { in_stories=1; next }
       in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
         sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "")
         gsub(/"/, "")
@@ -4232,7 +4131,8 @@ _holder_sidecar_path() {
 _close_non_done_stories() {
   local yaml="$1"
   awk '
-    /^stories:[[:space:]]*$/ { in_stories=1; next }
+    /^stories:[[:space:]]*$/ { in_stories=1; saw_stories=1; next }
+    /^items:[[:space:]]*$/ && !saw_stories { in_stories=1; next }
     in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
       sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "")
       gsub(/"/, ""); gsub(/'\''/, "")
@@ -5119,24 +5019,6 @@ main() {
   fi
   resolve_paths
 
-  # Migrate legacy `items:` key to `stories:` before any reader/writer runs.
-  # The fast-path grep runs without the lock; only when a populated items:
-  # block is found do we acquire the sprint-status lock, migrate, and release.
-  # A subshell isolates the lock lifecycle from the subcommand's own lock.
-  if [ -f "$SPRINT_STATUS_YAML" ] \
-     && grep -q '^items[[:space:]]*:' "$SPRINT_STATUS_YAML" 2>/dev/null \
-     && ! grep -q '^items:[[:space:]]*\[\][[:space:]]*$' "$SPRINT_STATUS_YAML" 2>/dev/null; then
-    (
-      if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
-        printf '%s: warning: could not acquire lock for items-to-stories migration\n' \
-          "$SCRIPT_NAME" >&2
-        exit 0
-      fi
-      trap 'release_lock 9 2>/dev/null || true' EXIT
-      _migrate_items_to_stories "$SPRINT_STATUS_YAML" || true
-    )
-  fi
-
   # Wire the sprint argument for the resolver. In concurrent mode,
   # override SPRINT_STATUS_YAML to point at the per-sprint file so all
   # existing writers use it automatically.
@@ -5149,6 +5031,18 @@ main() {
       SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
     fi
   fi
+
+  # Migrate legacy `items:` key to `stories:` AFTER the concurrent-mode
+  # repointing so per-sprint files are also migrated. Skip for init/advance
+  # (they create the file). Fail closed on lock timeout or awk error.
+  case "$subcmd" in
+    init|advance) ;;
+    *)
+      if [ -f "$SPRINT_STATUS_YAML" ]; then
+        migrate_items_to_stories "$SPRINT_STATUS_YAML" --lock "$SPRINT_STATUS_LOCK"
+      fi
+      ;;
+  esac
 
   # ---------- Session binding cross-validation ----------
   #

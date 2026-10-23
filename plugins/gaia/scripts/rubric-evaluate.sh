@@ -111,7 +111,7 @@ while i < n:
             goals.append(g)
             i += 1
         continue
-    if re.match(r'^stories:\s*$', line):
+    if re.match(r'^(stories|items):\s*$', line):
         i += 1
         current = None
         while i < n and (lines[i].startswith(' ') or lines[i].startswith('-')):
