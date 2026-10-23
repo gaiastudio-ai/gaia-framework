@@ -60,7 +60,7 @@ To add PostToolUse hooks to another skill:
 | `pr-create.sh` | PR creation via gh CLI (Step 11) |
 | `ci-wait.sh` | CI status polling with timeout (Step 12) |
 | `merge.sh` | PR merge with conflict/protection handling (Step 13) |
-| `verify-pr-merged.sh` | Post-completion gate: verify merge commit on target branch (Step 14) |
+| `verify-pr-merged.sh` | Post-completion gate: verify feature PR merged via GitHub API (Step 14) |
 | `init-review-gate.sh` | Seed canonical 6-row UNVERIFIED Review Gate table (Step 15) |
 | `sprint-state.sh` | Story state machine transitions |
 | `frontmatter-lib.sh` | Shared frontmatter-parsing library |

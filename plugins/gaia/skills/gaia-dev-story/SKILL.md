@@ -838,13 +838,14 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 14 post-completion-gate {story_key}` to record the step-boundary event.
 
-- After the dev-story subagent returns `status=done`, the orchestrator verifies that a merge commit containing the story key actually exists on the target branch before accepting the done transition.
-- Run `scripts/verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is derived from `ci_cd.promotion_chain[0].branch` in global.yaml.
+- After the dev-story subagent returns `status=done`, the orchestrator verifies that the story's feature-branch PR has actually been merged on the target branch before accepting the done transition.
+- Run `scripts/verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is derived from `ci_cd.promotion_chain[0].branch` in global.yaml. The target may include a remote prefix (e.g. `origin/staging`); the script strips it for the API check and keeps it for fallback.
 - If no promotion chain is configured, pass `--no-chain` instead of a branch name. The script exits 3 (skip) and the gate passes silently for backward compatibility.
 - In worktree mode this step runs against the primary checkout: Step 3a's teardown restores `PROJECT_PATH` there after a successful removal, so this gate and the retry it can trigger both act on a real tree.
-- **Exit code 0 (pass):** Merge commit found on target branch. Proceed to Step 15.
-- **Exit code 2 (fail):** No merge commit found. The orchestrator re-runs Steps 10-13 (commit, push, create PR, wait for CI, merge) in the main orchestrator context before advancing the story to done. This handles the case where the subagent completed implementation but failed to push or merge.
-- **Word-boundary matching:** The script uses `\b{story_key}\b` grep patterns to avoid false positives on partial key matches (e.g., a shorter key must not match a longer one sharing the same prefix). Matching is case-insensitive to handle squash-merge message rewrites.
+- **Exit code 0 (pass):** The feature-branch PR is confirmed merged via the GitHub API. Proceed to Step 15.
+- **Exit code 2 (fail):** PR not merged or not found. The orchestrator re-runs Steps 10-13 (commit, push, create PR, wait for CI, merge) in the main orchestrator context before advancing the story to done. This handles the case where the subagent completed implementation but failed to push or merge.
+- **API-first verification:** The script queries `gh pr list` with a head-branch search to find the feature PR, then checks its merge state and target branch via `--jq` filtering. When `gh` is unavailable or the API call fails, it falls back to commit-grep with a WARNING. The fallback is auditable — a WARNING always appears in stderr.
+- **Branch-prefix disambiguation:** The head-branch filter uses a trailing-dash delimiter (`feat/<key>-`) so a shorter key does not match a longer one sharing the same prefix.
 - **Historical failure modes that motivated this gate:**
   - **No push:** Dev-story subagent completed implementation but never pushed commits. Orchestrator accepted `status=done` at face value. Sprint closed with unmerged code.
   - **Reviews without merge:** Dev-story subagent completed all reviews but skipped push/PR/merge steps. Same outcome -- orchestrator trusted the status and sprint closed without the code landing.
