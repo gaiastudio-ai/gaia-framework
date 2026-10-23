@@ -169,8 +169,10 @@ teardown() {
 @test "merge.sh with feature-branch PR head completes the merge (local HEAD=staging)" {
   _run_merge_fixture "feat/story-branch"
   [ "$MERGE_RC" -eq 0 ]
-  # gh pr merge must have been called
+  # gh pr merge must have been called with --match-head-commit
   grep -qF 'pr merge' "$TEST_TMPDIR/gh-args"
+  grep -qF -- "--match-head-commit" "$TEST_TMPDIR/gh-args"
+  grep -qF "$FIXTURE_HEAD_OID" "$TEST_TMPDIR/gh-args"
   # The guard must not have fired
   [[ "$MERGE_OUT" != *"protected-branch invariant failed"* ]]
 }
@@ -318,13 +320,15 @@ teardown() {
   printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
     > "$TEST_TMPDIR/cfg/project-config.yaml"
 
-  # Stub gh returns a branch name that does not exist on origin
-  FIXTURE_HEAD_OID="" _write_gh_stub
+  # Stub gh returns a branch name that does not exist on origin.
+  # OID is valid hex but the branch is unfetchable.
+  local fake_oid="cccccccccccccccccccccccccccccccccccccccc"
+  FIXTURE_HEAD_OID="$fake_oid" _write_gh_stub
   : > "$TEST_TMPDIR/gh-args"
 
   local rc=0
   GH_STUB_HEAD_REF="feat/nonexistent-branch" \
-  GH_STUB_HEAD_OID="" \
+  GH_STUB_HEAD_OID="$fake_oid" \
   GH_ARGS="$TEST_TMPDIR/gh-args" \
   PROJECT_PATH="$primary" \
   PROJECT_ROOT="" \
@@ -419,6 +423,84 @@ teardown() {
   [[ "$MERGE_OUT" == *"does not match the API-reported headRefOid"* ]]
   run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
   [ "$status" -ne 0 ]
+}
+
+@test "merge.sh refuses when headRefOid is missing from API response" {
+  _build_merge_fixture
+  _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
+  local rc=0
+  GH_STUB_HEAD_REF="feat/story-branch" \
+  GH_STUB_HEAD_OID="" \
+  GH_ARGS="$TEST_TMPDIR/gh-args" \
+  PROJECT_PATH="$TEST_TMPDIR/primary" \
+  PROJECT_ROOT="" \
+  CLAUDE_PROJECT_ROOT="" \
+  PROJECT_CONFIG="$TEST_TMPDIR/cfg/project-config.yaml" \
+  PATH="$TEST_TMPDIR/bin:$PATH" \
+    bash "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch \
+      > "$TEST_TMPDIR/merge-out" 2>&1 || rc=$?
+  MERGE_RC=$rc
+  MERGE_OUT="$(cat "$TEST_TMPDIR/merge-out")"
+  [ "$MERGE_RC" -ne 0 ]
+  [[ "$MERGE_OUT" == *"not a valid 40-hex commit SHA"* ]]
+  run grep -F 'pr merge' "$TEST_TMPDIR/gh-args"
+  [ "$status" -ne 0 ]
+}
+
+@test "merge.sh uses FETCH_HEAD when origin/<branch> is absent (pull ref fallback)" {
+  # Build fixture where feat/story-branch is only available via pull/<N>/head
+  local dev="$TEST_TMPDIR/dev"
+  local origin="$TEST_TMPDIR/origin"
+  local primary="$TEST_TMPDIR/primary"
+
+  git init -q -b staging "$dev"
+  git -C "$dev" config user.email "test@test"
+  git -C "$dev" config user.name "test"
+  git -C "$dev" commit --allow-empty -q -m "base"
+
+  git clone --bare -q "$dev" "$origin"
+  git -C "$dev" remote add origin "$origin" 2>/dev/null ||
+    git -C "$dev" remote set-url origin "$origin"
+
+  git clone -q -b staging "$origin" "$primary"
+  git -C "$primary" config user.email "test@test"
+  git -C "$primary" config user.name "test"
+
+  # Create the feature branch and push to pull/<N>/head only
+  git -C "$dev" checkout -q -b feat/story-branch
+  git -C "$dev" commit --allow-empty -q -m "feat: x"
+  git -C "$dev" push -q origin feat/story-branch:refs/pull/42/head
+  # Do NOT push to refs/heads/feat/story-branch — only pull ref exists
+
+  local head_oid
+  head_oid="$(git -C "$dev" rev-parse HEAD)"
+
+  mkdir -p "$TEST_TMPDIR/cfg"
+  printf 'ci_cd:\n  promotion_chain:\n    - branch: staging\n' \
+    > "$TEST_TMPDIR/cfg/project-config.yaml"
+
+  _write_gh_stub
+  : > "$TEST_TMPDIR/gh-args"
+
+  local rc=0
+  GH_STUB_HEAD_REF="feat/story-branch" \
+  GH_STUB_HEAD_OID="$head_oid" \
+  GH_ARGS="$TEST_TMPDIR/gh-args" \
+  PROJECT_PATH="$primary" \
+  PROJECT_ROOT="" \
+  CLAUDE_PROJECT_ROOT="" \
+  PROJECT_CONFIG="$TEST_TMPDIR/cfg/project-config.yaml" \
+  PATH="$TEST_TMPDIR/bin:$PATH" \
+    bash "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch \
+      > "$TEST_TMPDIR/merge-out" 2>&1 || rc=$?
+
+  local out
+  out="$(cat "$TEST_TMPDIR/merge-out")"
+
+  # Should succeed via FETCH_HEAD fallback
+  [ "$rc" -eq 0 ]
+  grep -qF 'pr merge' "$TEST_TMPDIR/gh-args"
 }
 
 @test "guard passes for branch containing protected name as substring" {

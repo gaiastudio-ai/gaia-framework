@@ -175,12 +175,24 @@ PR_HEAD_BRANCH="$(_extract_field "$_pr_json" headRefName)"
 PR_HEAD_OID="$(_extract_field "$_pr_json" headRefOid)"
 PR_TARGET="$(_extract_field "$_pr_json" baseRefName)"
 
-# Idempotency check: is PR already merged?
+# Idempotency check: is PR already merged? Fires before validation so
+# a re-run on an already-merged PR exits cleanly regardless of metadata.
 if [ "$pr_state" = "MERGED" ]; then
   log "PR #${PR_NUMBER} already merged — skipping"
   echo "already_merged"
   exit 0
 fi
+
+# Validate headRefOid: must be a 40-hex SHA. Refuse the merge otherwise
+# (fail closed). An empty, null, or malformed OID means the API response
+# was incomplete or the PR is in an unexpected state.
+case "$PR_HEAD_OID" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    ;; # valid 40-hex SHA
+  *)
+    die "aborting: headRefOid '${PR_HEAD_OID}' from the API is not a valid 40-hex commit SHA. The PR metadata may be incomplete."
+    ;;
+esac
 
 # Enforce security invariants BEFORE any gh pr merge call.
 # All three hard gates run; YOLO mode does not bypass.
@@ -293,12 +305,10 @@ fi
 # Verify the fetched commit matches the headRefOid reported by the API.
 # This catches fork PRs whose branch name collides with an origin branch
 # and stale origin/<branch> refs from a narrow fetch refspec.
-if [ -n "$PR_HEAD_OID" ]; then
-  if [ "$PR_HEAD_COMMIT" != "$PR_HEAD_OID" ]; then
-    log "aborting: fetched PR head commit ${PR_HEAD_COMMIT} does not match the API-reported headRefOid ${PR_HEAD_OID}."
-    log "The local origin/${PR_HEAD_BRANCH} may be stale or point to a different commit than the PR. Run 'git fetch origin' and retry."
-    exit 1
-  fi
+if [ "$PR_HEAD_COMMIT" != "$PR_HEAD_OID" ]; then
+  log "aborting: fetched PR head commit ${PR_HEAD_COMMIT} does not match the API-reported headRefOid ${PR_HEAD_OID}."
+  log "The local origin/${PR_HEAD_BRANCH} may be stale or point to a different commit than the PR. Run 'git fetch origin' and retry."
+  exit 1
 fi
 
 # Guard 2: the PR head must be based on the current base tip.
@@ -530,13 +540,9 @@ if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
   _MERGE_L3_WRITER=1
 fi
 
-# Build merge command. Pass --match-head-commit when the API reported a
-# headRefOid so GitHub refuses the merge if the PR head moved since we
-# checked it.
-MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
-if [ -n "$PR_HEAD_OID" ]; then
-  MERGE_CMD="$MERGE_CMD --match-head-commit \"${PR_HEAD_OID}\""
-fi
+# Build merge command. Always pass --match-head-commit so GitHub refuses
+# the merge if the PR head moved since we checked it.
+MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\""
 if [ "$DELETE_BRANCH" = true ]; then
   MERGE_CMD="$MERGE_CMD --delete-branch"
 fi

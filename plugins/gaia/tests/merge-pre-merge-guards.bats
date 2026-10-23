@@ -322,6 +322,9 @@ STUB
   fixture_git -C "$REPO" commit --allow-empty -q -m "feature work"
   export PROJECT_PATH="$REPO"
 
+  # Use a valid OID from the no-origin repo so OID validation passes.
+  FIXTURE_HEAD_OID="$(fixture_git -C "$REPO" rev-parse HEAD)"
+  export FIXTURE_HEAD_OID
   make_stub_gh
   run "$MERGE_SH" 42 E900-S1 --strategy squash --no-delete-branch
   [ "$status" -ne 0 ]
