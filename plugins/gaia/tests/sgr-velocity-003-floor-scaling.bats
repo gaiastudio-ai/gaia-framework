@@ -15,10 +15,11 @@ setup() { common_setup; }
 teardown() { common_teardown; }
 
 # Helper: generate a sprint-status fixture with N goals where every goal
-# has equal share (fully delivered, balanced). Total points = 10*N.
-# Writes to $1.
+# has equal share (balanced). Total points = 10*N.
+# Args: $1=n_goals, $2=outfile, $3=story_status (default "done").
 _gen_balanced_fixture() {
   local n_goals="$1" outfile="$2"
+  local story_status="${3:-done}"
   local total_pts=$(( 10 * n_goals ))
   {
     printf 'sprint_id: "test-%d-goal"\n' "$n_goals"
@@ -33,7 +34,7 @@ _gen_balanced_fixture() {
     for g in $(seq 1 "$n_goals"); do
       printf '  - key: "E900-S%d"\n' "$g"
       printf '    title: "Story for goal %d"\n' "$g"
-      printf '    status: "done"\n'
+      printf '    status: "%s"\n' "$story_status"
       printf '    points: 10\n'
       printf '    goal_index: %d\n' "$g"
     done
@@ -322,6 +323,74 @@ YAML
   [ "$status" -eq 0 ]
   # Goal 4 has 0 stories / 0% share — not exempt, should fire
   [[ "$output" == *'"goal_index":4'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC2 — mixed-status goal: one done + one in-progress story must fire
+# ---------------------------------------------------------------------------
+@test "below-floor goal with one done and one in-progress story fires" {
+  local fixture="$TEST_TMP/mixed-status.yaml"
+  cat > "$fixture" <<'YAML'
+sprint_id: "test-mixed-status"
+total_points: 50
+status: review
+goals:
+  - "Goal 1"
+  - "Goal 2"
+  - "Goal 3"
+  - "Goal 4"
+stories:
+  - key: "E900-S1"
+    title: "Story 1"
+    status: "done"
+    points: 20
+    goal_index: 1
+  - key: "E900-S2"
+    title: "Story 2"
+    status: "done"
+    points: 15
+    goal_index: 2
+  - key: "E900-S3"
+    title: "Story 3"
+    status: "done"
+    points: 12
+    goal_index: 3
+  - key: "E900-S4a"
+    title: "Story 4a"
+    status: "done"
+    points: 2
+    goal_index: 4
+  - key: "E900-S4b"
+    title: "Story 4b"
+    status: "in-progress"
+    points: 1
+    goal_index: 4
+YAML
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
+  # Goal 4 has 6% share (3/50), below 25% floor.
+  # One story done + one in-progress → NOT fully delivered → fires.
+  [[ "$output" == *'"goal_index":4'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC3 — balanced N=4..12 with in-progress stories also emit 0 findings
+# (proves the >= floor comparison, not just the fully-delivered skip)
+# ---------------------------------------------------------------------------
+@test "parametric N=4 through 12 in-progress balanced all pass (at floor)" {
+  for n_goals in 4 5 6 7 8 9 10 11 12; do
+    local fixture="$TEST_TMP/inprog-${n_goals}.yaml"
+    _gen_balanced_fixture "$n_goals" "$fixture" "in-progress"
+    run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+    [ "$status" -eq 0 ]
+    local finding_count
+    finding_count=$(printf '%s\n' "$output" | /usr/bin/grep -c '"rule_id":"sgr-velocity-003"' || true)
+    if [ "$finding_count" -ne 0 ]; then
+      echo "FAIL: N=$n_goals in-progress balanced but got $finding_count findings" >&2
+      echo "Output: $output" >&2
+      return 1
+    fi
+  done
 }
 
 # ---------------------------------------------------------------------------

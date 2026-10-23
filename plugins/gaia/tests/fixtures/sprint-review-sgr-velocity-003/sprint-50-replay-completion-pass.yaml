@@ -16,11 +16,11 @@ goals:
   - "Fix release-bot .plugin-version drift (E97-S7)"
 stories:
   - key: "E97-S1"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 1
   - key: "E97-S2"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 2
   - key: "E97-S3"
@@ -28,7 +28,7 @@ stories:
     points: 5
     goal_index: 3
   - key: "E97-S4"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 4
   - key: "E97-S5"
@@ -36,10 +36,10 @@ stories:
     points: 5
     goal_index: 5
   - key: "E97-S6"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 6
   - key: "E97-S7"
-    status: "done"
+    status: "in-progress"
     points: 2
     goal_index: 7

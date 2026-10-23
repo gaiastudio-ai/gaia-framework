@@ -65,8 +65,8 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
-# AC5(c) — 5-goal default sprint scales floor to 24%; below-floor goals
-# surface at MEDIUM intermediate severity (not HIGH).
+# AC5(c) — 5-goal default sprint scales floor to 20% (capped at 1/N);
+# below-floor goals surface at MEDIUM intermediate severity (not HIGH).
 # ---------------------------------------------------------------------------
 @test "AC5c: 5-goal default — scaled floor is 20% (capped at 1/N)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC" --emit-floor
@@ -91,7 +91,7 @@ teardown() { common_teardown; }
 @test "AC5c: 5-goal default — goals >5%% below floor emit HIGH" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 5 (10%) is >5% below 24% floor → HIGH
+  # Goal 5 (10%) is >5% below 20% floor → HIGH
   high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
   [ "$high_count" -ge 1 ]
 }
