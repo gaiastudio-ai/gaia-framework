@@ -141,33 +141,73 @@ fi
 
 # remote_pr_state <pr_number> [extra-json-field] — ask the remote for the
 # pull request's authoritative state. Echoes the state verbatim, or UNKNOWN
-# when the query itself is unavailable (network, auth, rate limit). Used at
-# both ends of the merge call: once before it as an idempotency check, and
-# once after a failure to find out whether the merge actually happened.
+# when the query itself is unavailable (network, auth, rate limit). Used
+# after a merge failure to find out whether the merge actually happened.
 remote_pr_state() {
   local pr="$1" extra="${2:-mergedAt}"
   gh pr view "$pr" --json "state,${extra}" --jq '.state' 2>/dev/null || echo "UNKNOWN"
 }
 
-# Idempotency check: is PR already merged? Fires BEFORE L3 acquisition and
-# stays lock-free in both concurrent and single-sprint modes.
-pr_state=$(remote_pr_state "$PR_NUMBER")
+# ---------------------------------------------------------------------------
+# Single gh pr view call: read state, headRefName, headRefOid, baseRefName.
+# Fail closed on query failure.
+# ---------------------------------------------------------------------------
+_pr_json="$(gh pr view "$PR_NUMBER" --json state,headRefName,headRefOid,baseRefName 2>/dev/null)" || _pr_json=""
+if [ -z "$_pr_json" ]; then
+  die "aborting: could not query PR #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
+fi
+
+# Extract fields. Try jq first; fall back to grep for jq-absent environments.
+_extract_field() {
+  local json="$1" field="$2" val=""
+  if command -v jq >/dev/null 2>&1; then
+    val="$(printf '%s' "$json" | jq -r ".$field" 2>/dev/null)" || val=""
+    [ "$val" = "null" ] && val=""
+  fi
+  if [ -z "$val" ]; then
+    val="$(printf '%s' "$json" | sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" | head -1)" || val=""
+  fi
+  printf '%s' "$val"
+}
+
+pr_state="$(_extract_field "$_pr_json" state)"
+PR_HEAD_BRANCH="$(_extract_field "$_pr_json" headRefName)"
+PR_HEAD_OID="$(_extract_field "$_pr_json" headRefOid)"
+PR_TARGET="$(_extract_field "$_pr_json" baseRefName)"
+
+# Idempotency check: is PR already merged? Fires before validation so
+# a re-run on an already-merged PR exits cleanly regardless of metadata.
 if [ "$pr_state" = "MERGED" ]; then
   log "PR #${PR_NUMBER} already merged — skipping"
   echo "already_merged"
   exit 0
 fi
 
+# Validate headRefOid: must be a 40-hex SHA. Refuse the merge otherwise
+# (fail closed). An empty, null, or malformed OID means the API response
+# was incomplete or the PR is in an unexpected state.
+case "$PR_HEAD_OID" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+    ;; # valid 40-hex SHA
+  *)
+    die "aborting: headRefOid '${PR_HEAD_OID}' from the API is not a valid 40-hex commit SHA. The PR metadata may be incomplete."
+    ;;
+esac
+
 # Enforce security invariants BEFORE any gh pr merge call.
 # All three hard gates run; YOLO mode does not bypass.
-assert_branch_not_protected || die "aborting: protected-branch invariant failed"
+
+# Validate headRefName: reject empty, literal "null", and non-branch names.
+if [ -z "$PR_HEAD_BRANCH" ] || [ "$PR_HEAD_BRANCH" = "null" ]; then
+  die "aborting: could not determine PR head branch for #${PR_NUMBER}. Check that the PR exists, gh is authenticated, and the network is reachable."
+fi
+if ! git check-ref-format --branch "$PR_HEAD_BRANCH" >/dev/null 2>&1; then
+  die "aborting: PR head branch name '${PR_HEAD_BRANCH}' is not a valid ref. The gh query may have returned an error."
+fi
+assert_branch_not_protected "$PR_HEAD_BRANCH" || die "aborting: protected-branch invariant failed"
 assert_no_secrets_staged || die "aborting: staged-secrets invariant failed"
 
-# Resolve PR target (baseRefName) from gh and verify against the canonical
-# promotion chain. If gh fails to return a target, fall back to the
-# project-config default ("staging") so the assertion still runs. Empty
-# target propagates through assert_pr_target_from_chain as a clear failure.
-PR_TARGET="$(gh pr view "$PR_NUMBER" --json baseRefName --jq '.baseRefName' 2>/dev/null || echo "")"
+# Resolve PR target: fall back to "staging" when absent.
 if [ -z "$PR_TARGET" ]; then
   PR_TARGET="staging"
 fi
@@ -230,9 +270,10 @@ if [ -n "$bad_checks" ]; then
   exit 1
 fi
 
-# Shared prerequisite for guards 2 and 3: fetch and resolve origin/<base>.
-# A merge gate must fail closed — both a failed fetch and an unresolvable
-# ref exit non-zero with an actionable message.
+# Shared prerequisite for guards 2 and 3: fetch the base and the PR head.
+# After worktree teardown, local HEAD is the primary checkout (staging),
+# not the PR branch, so guards must compare against the fetched PR head
+# commit rather than HEAD. Fail closed on fetch or resolve failure.
 if ! git fetch origin "$PR_TARGET" --quiet 2>/dev/null; then
   log "aborting: 'git fetch origin ${PR_TARGET}' failed."
   log "Check network connectivity and that the remote branch exists, then retry."
@@ -244,17 +285,45 @@ if ! git rev-parse --verify "origin/${PR_TARGET}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Guard 2: the branch must be based on the current base tip.
-# A stale base means the PR was opened against an older revision and needs a
-# rebase before it can land cleanly.
-if ! git merge-base --is-ancestor "origin/${PR_TARGET}" HEAD 2>/dev/null; then
-  head_ref="$(git rev-parse --short HEAD 2>/dev/null || echo "HEAD")"
-  log "aborting: branch head ${head_ref} is not based on origin/${PR_TARGET}."
+# Fetch the PR head ref so guards 2 and 3 work after worktree teardown.
+# Try the named branch first; fall back to the pull-request ref.
+PR_HEAD_COMMIT=""
+if git fetch origin "$PR_HEAD_BRANCH" --quiet 2>/dev/null; then
+  PR_HEAD_COMMIT="$(git rev-parse --verify "origin/${PR_HEAD_BRANCH}" 2>/dev/null || echo "")"
+fi
+if [ -z "$PR_HEAD_COMMIT" ]; then
+  if git fetch origin "pull/${PR_NUMBER}/head" --quiet 2>/dev/null; then
+    PR_HEAD_COMMIT="$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")"
+  fi
+fi
+if [ -z "$PR_HEAD_COMMIT" ]; then
+  log "aborting: could not fetch the PR head ref (tried origin/${PR_HEAD_BRANCH} and pull/${PR_NUMBER}/head)."
+  log "Check network connectivity and that the PR branch exists on the remote, then retry."
+  exit 1
+fi
+
+# Verify the fetched commit matches the headRefOid reported by the API.
+# This catches fork PRs whose branch name collides with an origin branch
+# and stale origin/<branch> refs from a narrow fetch refspec.
+if [ "$PR_HEAD_COMMIT" != "$PR_HEAD_OID" ]; then
+  log "aborting: fetched PR head commit ${PR_HEAD_COMMIT} does not match the API-reported headRefOid ${PR_HEAD_OID}."
+  log "The local origin/${PR_HEAD_BRANCH} may be stale or point to a different commit than the PR. Run 'git fetch origin' and retry."
+  exit 1
+fi
+
+# Guard 2: the PR head must be based on the current base tip.
+# Uses the fetched PR head commit, not local HEAD, so the guard works
+# correctly after worktree teardown.
+if ! git merge-base --is-ancestor "origin/${PR_TARGET}" "$PR_HEAD_COMMIT" 2>/dev/null; then
+  head_short="$(git rev-parse --short "$PR_HEAD_COMMIT" 2>/dev/null || echo "$PR_HEAD_COMMIT")"
+  log "aborting: PR head ${head_short} (${PR_HEAD_BRANCH}) is not based on origin/${PR_TARGET}."
   log "Run 'git rebase origin/${PR_TARGET}' or 'git merge origin/${PR_TARGET}' and push, then retry."
   exit 1
 fi
 
 # Guard 3: no commit in the PR range may carry an assistant attribution trailer.
+# Scans origin/<base>..<pr_head_commit> — the PR's actual commits, not
+# local HEAD (which is the primary checkout after teardown).
 # Maintainable pattern list — extend by adding entries below.
 ASSISTANT_TRAILER_PATTERNS=(
   "noreply@anthropic.com"
@@ -277,10 +346,13 @@ _build_trailer_regex() {
 }
 
 trailer_regex="$(_build_trailer_regex)"
-# Scan every line of every commit body in the PR range for Co-Authored-By
-# trailers that match the assistant pattern list. Uses NUL as the record
-# separator to handle multi-line bodies (including trailers after description
-# paragraphs).
+# Fail closed: if the commit range cannot be enumerated, refuse the merge.
+pr_commit_list="$(git log --format='%H' "origin/${PR_TARGET}..${PR_HEAD_COMMIT}" 2>/dev/null)" || pr_commit_list=""
+if [ -z "$pr_commit_list" ]; then
+  log "aborting: could not enumerate commits in origin/${PR_TARGET}..${PR_HEAD_COMMIT}."
+  log "The PR range may be empty or unreachable. Fetch and retry."
+  exit 1
+fi
 while IFS= read -r commit_hash; do
   [ -z "$commit_hash" ] && continue
   body="$(git log -1 --format='%B' "$commit_hash" 2>/dev/null || true)"
@@ -292,7 +364,7 @@ while IFS= read -r commit_hash; do
     log "Strip it with 'git rebase -i' (edit the commit message) and force-push, then retry."
     exit 1
   fi
-done < <(git log --format='%H' "origin/${PR_TARGET}..HEAD" 2>/dev/null)
+done <<< "$pr_commit_list"
 
 # ---------------------------------------------------------------------------
 # Concurrent-mode promotion-merge lock (L3).
@@ -468,8 +540,9 @@ if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
   _MERGE_L3_WRITER=1
 fi
 
-# Build merge command
-MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\""
+# Build merge command. Always pass --match-head-commit so GitHub refuses
+# the merge if the PR head moved since we checked it.
+MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\""
 if [ "$DELETE_BRANCH" = true ]; then
   MERGE_CMD="$MERGE_CMD --delete-branch"
 fi
@@ -502,7 +575,7 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
     if [ "$DELETE_BRANCH" = true ]; then
       # The merge command aborted before its own branch-deletion step, so
       # finish the cleanup it skipped. An already-absent branch is success.
-      head_branch="$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "")"
+      head_branch="${PR_HEAD_BRANCH:-}"
       if [ -n "$head_branch" ]; then
         repo_slug="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
         if [ -n "$repo_slug" ]; then
