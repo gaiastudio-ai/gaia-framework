@@ -24,12 +24,17 @@ teardown() { common_teardown; }
 # AC5(a) — 7-goal completion-pass sweep yields ZERO HIGH findings + exactly
 # one rubric-applicability LOW advisory.
 # ---------------------------------------------------------------------------
-@test "AC5a: 7-goal completion-pass sweep — zero HIGH sgr-velocity-003 findings" {
+@test "AC5a: 7-goal completion-pass sweep — all sgr-velocity-003 findings are Low" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/7-goal-sweep-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # No HIGH sgr-velocity-003 findings — all are LOW under completion-pass.
-  high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
-  [ "$high_count" -eq 0 ]
+  # At least one finding must be present (not vacuous).
+  local vel_count
+  vel_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$vel_count" -ge 1 ]
+  # Every finding must be Low — zero High or Medium.
+  local non_low
+  non_low=$(printf '%s\n' "$output" | grep '"rule_id":"sgr-velocity-003"' | grep -cv '"severity":"Low"' || true)
+  [ "$non_low" -eq 0 ]
 }
 
 @test "AC5a: 7-goal completion-pass sweep — exactly one sgr-velocity-006 advisory" {
@@ -100,11 +105,15 @@ teardown() { common_teardown; }
 # AC6 — sprint-50 regression replay: zero HIGH findings + one sgr-velocity-006
 # + all per-goal verdicts PASSED.
 # ---------------------------------------------------------------------------
-@test "sprint-50 replay under completion-pass — zero HIGH sgr-velocity-003 findings" {
+@test "sprint-50 replay under completion-pass — all sgr-velocity-003 findings are Low" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/sprint-50-replay-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
-  [ "$high_count" -eq 0 ]
+  local vel_count
+  vel_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$vel_count" -ge 1 ]
+  local non_low
+  non_low=$(printf '%s\n' "$output" | grep '"rule_id":"sgr-velocity-003"' | grep -cv '"severity":"Low"' || true)
+  [ "$non_low" -eq 0 ]
 }
 
 @test "sprint-50 replay under completion-pass — exactly one sgr-velocity-006 advisory" {

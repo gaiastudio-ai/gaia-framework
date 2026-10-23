@@ -9,9 +9,11 @@
 #   3) Compute scaled floor_pct = min(1.0/N, max(0.10, 0.30 * (4 / max(4, N))))
 #      where N = len(goals).  The outer min(1.0/N, ...) caps the total of
 #      all per-goal floors at 100%.
-#   4) For each below-floor goal whose stories are NOT all done, emit a
-#      finding.  A fully delivered goal (every assigned story done) is
-#      exempt — it is substantive regardless of its share of capacity.
+#   4) For each below-floor goal that is NOT fully delivered, emit a
+#      finding.  A goal is fully delivered only when it has at least one
+#      story and every assigned story is done.  A goal with zero stories
+#      is never fully delivered.  Fully delivered goals are exempt — the
+#      team invested enough to complete every assigned story.
 #        - severity = High when (floor_pct - share) > 0.05
 #        - severity = Medium when 0 < (floor_pct - share) <= 0.05
 #                     (intermediate tier per Risk 3 mitigation)

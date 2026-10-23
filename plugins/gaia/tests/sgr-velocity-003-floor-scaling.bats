@@ -368,8 +368,60 @@ stories:
 YAML
   run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 4 has 6% share (3/50), below 25% floor.
-  # One story done + one in-progress → NOT fully delivered → fires.
+  # Goal 3 (24%, all done) is at floor — must NOT appear in findings.
+  local g3_count
+  g3_count=$(printf '%s\n' "$output" | grep -c '"goal_index":3' || true)
+  [ "$g3_count" -eq 0 ]
+  # Goal 4 (6%, one done + one in-progress) is below floor and not
+  # fully delivered — must fire with a severity.
+  local g4_line
+  g4_line=$(printf '%s\n' "$output" | /usr/bin/grep '"goal_index":4')
+  [ -n "$g4_line" ]
+  [[ "$g4_line" == *'"severity":"High"'* ]]
+}
+
+@test "mixed-status goal fires regardless of story order (done last)" {
+  # Same as above but the done story comes AFTER the in-progress one.
+  # Kills a "last story decides" mutant in the all() check.
+  local fixture="$TEST_TMP/mixed-reversed.yaml"
+  cat > "$fixture" <<'YAML'
+sprint_id: "test-mixed-reversed"
+total_points: 50
+status: review
+goals:
+  - "Goal 1"
+  - "Goal 2"
+  - "Goal 3"
+  - "Goal 4"
+stories:
+  - key: "E900-S1"
+    title: "Story 1"
+    status: "done"
+    points: 20
+    goal_index: 1
+  - key: "E900-S2"
+    title: "Story 2"
+    status: "done"
+    points: 15
+    goal_index: 2
+  - key: "E900-S3"
+    title: "Story 3"
+    status: "done"
+    points: 12
+    goal_index: 3
+  - key: "E900-S4b"
+    title: "Story 4b (in-progress listed first)"
+    status: "in-progress"
+    points: 1
+    goal_index: 4
+  - key: "E900-S4a"
+    title: "Story 4a (done listed last)"
+    status: "done"
+    points: 2
+    goal_index: 4
+YAML
+  run bash "$EVAL_SCRIPT" --sprint-status "$fixture" --rubric "$RUBRIC"
+  [ "$status" -eq 0 ]
   [[ "$output" == *'"goal_index":4'* ]]
 }
 
