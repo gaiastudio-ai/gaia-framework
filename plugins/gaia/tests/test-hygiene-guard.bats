@@ -180,9 +180,33 @@ _setup_clears_root_vars() {
 #   (b) every .bats that overrides setup_file calls _litter_snapshot_before,
 #   (c) every .bats that overrides teardown_file calls _litter_check_after.
 
-# Every suite must load test_helper.bash — the cap is 0 and any omission
-# fails CI immediately.
+# Every suite must load test_helper.bash (directly or via a local helper
+# that sources it) — the cap is 0 and any omission fails CI immediately.
 _LEGACY_NO_LOAD_CAP=0
+
+# _loads_shared_helper FILE — true when FILE loads the shared test_helper
+# directly (load 'test_helper' / load '../test_helper') or via a local
+# helper that sources it (e.g. parity_helpers.bash).
+_loads_shared_helper() {
+  local f="$1"
+  # Direct load: test_helper or relative ../test_helper variants
+  if /usr/bin/grep -qE "^load ['\"]?(\\.\\./)*test_helper(\\.bash)?['\"]?\$" "$f"; then
+    return 0
+  fi
+  # Indirect: file loads a local helper that sources the shared one
+  local dir helper
+  dir="$(dirname "$f")"
+  while IFS= read -r helper; do
+    local hfile="$dir/${helper}.bash"
+    [ -f "$hfile" ] || hfile="$dir/${helper}"
+    [ -f "$hfile" ] || continue
+    if /usr/bin/grep -qE '\. .*/tests/test_helper\.bash|source .*/tests/test_helper\.bash' "$hfile"; then
+      return 0
+    fi
+  done < <(/usr/bin/grep -oE "^load ['\"]?[^'\"]+['\"]?" "$f" \
+    | sed "s/^load ['\"]*//" | sed "s/['\"]$//" || true)
+  return 1
+}
 
 @test "every bats file loads test_helper (litter detection coverage)" {
   local missing=()
@@ -190,10 +214,10 @@ _LEGACY_NO_LOAD_CAP=0
 
   while IFS= read -r f; do
     scanned=$((scanned + 1))
-    if ! /usr/bin/grep -qE "^load ['\"]?test_helper" "$f"; then
-      missing+=("$(basename "$f")")
+    if ! _loads_shared_helper "$f"; then
+      missing+=("${f#"$TESTS_DIR"/}")
     fi
-  done < <(find "$TESTS_DIR" -maxdepth 1 -name '*.bats' | LC_ALL=C sort)
+  done < <(find "$TESTS_DIR" -name '*.bats' | LC_ALL=C sort)
 
   [ "$scanned" -gt 0 ] || {
     printf 'no .bats files found (expected >0)\n' >&2
@@ -202,20 +226,16 @@ _LEGACY_NO_LOAD_CAP=0
 
   local count="${#missing[@]}"
   if [ "$count" -gt "$_LEGACY_NO_LOAD_CAP" ]; then
-    # Only show the files ABOVE the cap (the new violators).
-    printf 'FAIL: %d file(s) do not load test_helper.bash (cap=%d, count=%d — new files added without test_helper):\n' \
+    printf 'FAIL: %d file(s) do not load test_helper.bash (cap=%d, count=%d):\n' \
       "$((count - _LEGACY_NO_LOAD_CAP))" "$_LEGACY_NO_LOAD_CAP" "$count" >&2
-    # Print the last N entries (newest = most likely the new ones).
-    local i=0
     for v in "${missing[@]}"; do
-      i=$((i + 1))
-      [ "$i" -gt "$_LEGACY_NO_LOAD_CAP" ] && printf '  - %s\n' "$v" >&2
+      printf '  - %s\n' "$v" >&2
     done
     printf '\nFix: add `load '\''test_helper.bash'\''` near the top of each new file.\n' >&2
     return 1
   fi
 
-  printf 'test_helper coverage: %d/%d files load it (%d legacy gap, cap=%d)\n' \
+  printf 'test_helper coverage: %d/%d files load it (%d uncovered, cap=%d)\n' \
     "$((scanned - count))" "$scanned" "$count" "$_LEGACY_NO_LOAD_CAP" >&2
 }
 
@@ -370,7 +390,11 @@ _LEGACY_NO_LOAD_CAP=0
 # Guard 4 — Teardown safety: no suite removes shared bats runtime tmp dirs
 # ---------------------------------------------------------------------------
 
-@test "no teardown removes BATS_RUN_TMPDIR or BATS_SUITE_TMPDIR" {
+# _check_teardown_safety DIR — scan .bats under DIR for teardown functions
+# that remove or alias the shared bats runtime tmp dirs.  Returns non-zero
+# when violations are found.  Used by the real guard and by self-tests.
+_check_teardown_safety() {
+  local scan_dir="$1"
   local violations=()
   local scanned=0
 
@@ -392,12 +416,11 @@ _LEGACY_NO_LOAD_CAP=0
 
     # Indirection: assigning BATS_RUN_TMPDIR or BATS_SUITE_TMPDIR to a
     # variable and then removing that variable evades the direct check.
-    # Detect the assignment pattern inside teardown bodies.
     if /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"; then
       violations+=("$(basename "$f")")
       continue
     fi
-  done < <(find "$TESTS_DIR" -maxdepth 1 -name '*.bats' | LC_ALL=C sort)
+  done < <(find "$scan_dir" -name '*.bats' | LC_ALL=C sort)
 
   [ "$scanned" -gt 0 ] || {
     printf 'no .bats files found (expected >0)\n' >&2
@@ -412,6 +435,31 @@ _LEGACY_NO_LOAD_CAP=0
     printf '\nFix: teardown should only remove TEST_TMP or BATS_TEST_TMPDIR, never the shared runtime dirs (even via a local alias).\n' >&2
     return 1
   fi
+}
+
+@test "no teardown removes BATS_RUN_TMPDIR or BATS_SUITE_TMPDIR" {
+  _check_teardown_safety "$TESTS_DIR"
+}
+
+@test "strict mode (pipefail + nounset) stays on after loading test_helper" {
+  local d="$BATS_TEST_TMPDIR/strict-pin-$$"
+  mkdir -p "$d"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'load "%s/test_helper.bash"\n' "$TESTS_DIR"
+    printf '%s "%s" {\n' '@test' 'pipefail is on'
+    printf '  set -o | /usr/bin/grep -q "pipefail.*on"\n'
+    printf '}\n'
+    printf '%s "%s" {\n' '@test' 'nounset is on'
+    printf '  set -o | /usr/bin/grep -q "nounset.*on"\n'
+    printf '}\n'
+  } > "$d/strict-pin.bats"
+
+  run bats "$d/strict-pin.bats"
+  [ "$status" -eq 0 ] || {
+    printf 'Strict mode must stay on after loading helper.\noutput:\n%s\n' "$output" >&2
+    return 1
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -481,49 +529,48 @@ BATS
 }
 
 @test "per-file litter guard catches modification of a tracked file" {
-  cd "$REPO_ROOT"
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || skip "not in a git worktree"
+  # Use a scratch git repo so parallel suites cannot see false LITTER.
+  local scratch="$BATS_TEST_TMPDIR/scratch-repo-$$"
+  mkdir -p "$scratch/plugins/gaia/tests"
+  printf 'tracked content\n' > "$scratch/plugins/gaia/tests/sample.txt"
+  git -C "$scratch" init -q
+  git -C "$scratch" config user.email "test@test"
+  git -C "$scratch" config user.name "test"
+  git -C "$scratch" add -A
+  git -C "$scratch" commit -q -m "init"
 
-  # Pick a tracked file under the plugin tree that is clean (no pending
-  # modifications).  BOUNDARIES.md is a small, stable file.
-  local target="$PLUGIN_DIR/scripts/adapters/BOUNDARIES.md"
-  [ -f "$target" ] || skip "BOUNDARIES.md not found"
-  # Guard: the file must start clean — skip when it is already dirty so
-  # the test does not produce a false negative.
-  if git -C "$REPO_ROOT" status --porcelain -- "$target" | /usr/bin/grep -q .; then
-    skip "target file already dirty"
-  fi
+  # Copy the shared test_helper into the scratch repo.
+  cp "$TESTS_DIR/test_helper.bash" "$scratch/plugins/gaia/tests/"
 
   local d="$BATS_TEST_TMPDIR/perfile-modify-$$"
   mkdir -p "$d"
 
-  # The synthetic suite loads test_helper (gets setup_file/teardown_file)
-  # and appends a harmless byte to a tracked file.
-  cat > "$d/modify-tracked.bats" <<BATS
-#!/usr/bin/env bats
-load '$TESTS_DIR/test_helper.bash'
-BATS
+  # The synthetic suite loads the scratch-repo helper, overrides the repo
+  # root, and modifies the tracked file.
+  local target="$scratch/plugins/gaia/tests/sample.txt"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'load "%s/plugins/gaia/tests/test_helper.bash"\n' "$scratch"
+    printf '_LITTER_REPO_ROOT="%s"\n' "$scratch"
+  } > "$d/modify-tracked.bats"
   printf '%s "%s" {\n' '@test' 'modify tracked file' >> "$d/modify-tracked.bats"
-  printf '  printf "\\n" >> "%s"\n' "$target" >> "$d/modify-tracked.bats"
+  printf '  printf "extra\\n" >> "%s"\n' "$target" >> "$d/modify-tracked.bats"
   printf '}\n' >> "$d/modify-tracked.bats"
 
   run bats "$d/modify-tracked.bats"
 
-  # Revert the modification regardless of result.
-  git -C "$REPO_ROOT" checkout -- "$target" 2>/dev/null || true
-
-  # The bats run should have failed (teardown_file caught the modification).
   [ "$status" -ne 0 ] || {
     printf 'Expected teardown_file to fail on modified tracked file, but bats exited 0\n' >&2
     return 1
   }
-  case "$output" in
-    *LITTER*) : ;;
-    *)
-      printf 'teardown_file output does not report the modification.\noutput:\n%s\n' "$output" >&2
-      return 1
-      ;;
-  esac
+  [[ "$output" == *"LITTER"* ]] || {
+    printf 'teardown_file output does not report the modification.\noutput:\n%s\n' "$output" >&2
+    return 1
+  }
+  [[ "$output" == *"sample.txt"* ]] || {
+    printf 'teardown_file output does not name the modified file.\noutput:\n%s\n' "$output" >&2
+    return 1
+  }
 }
 
 @test "indirect sourcing guard catches a helper chain to a root-resolver" {
@@ -645,7 +692,7 @@ HELPER
   [ "$status" -ne 0 ]
 }
 
-@test "teardown guard detects removal of BATS_RUN_TMPDIR" {
+@test "teardown guard detects removal of BATS_RUN_TMPDIR via real guard" {
   local d="$BATS_TEST_TMPDIR/teardown-$$"
   mkdir -p "$d"
   {
@@ -654,14 +701,9 @@ HELPER
     printf '%s "%s" { true; }\n' '@test' 'x'
   } > "$d/violator.bats"
 
-  local body
-  body="$(awk '
-    /^teardown(_file)?\s*\(\)/ { inside=1 }
-    inside { print }
-    inside && /^}/ { inside=0 }
-  ' "$d/violator.bats")"
-
-  /usr/bin/grep -qE 'rm[[:space:]].*(\$\{?BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR\}?)' <<<"$body"
+  run _check_teardown_safety "$d"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"violator.bats"* ]]
 }
 
 @test "teardown guard accepts removal of TEST_TMP only" {
@@ -673,20 +715,10 @@ HELPER
     printf '%s "%s" { true; }\n' '@test' 'x'
   } > "$d/safe.bats"
 
-  local body
-  body="$(awk '
-    /^teardown(_file)?\s*\(\)/ { inside=1 }
-    inside { print }
-    inside && /^}/ { inside=0 }
-  ' "$d/safe.bats")"
-
-  if /usr/bin/grep -qE 'rm[[:space:]].*(\$\{?BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR\}?)' <<<"$body"; then
-    printf 'False positive: safe teardown incorrectly matched\n' >&2
-    return 1
-  fi
+  _check_teardown_safety "$d"
 }
 
-@test "teardown guard detects variable indirection for BATS_RUN_TMPDIR" {
+@test "teardown guard detects variable indirection via real guard" {
   local d="$BATS_TEST_TMPDIR/indirect-$$"
   mkdir -p "$d"
   {
@@ -698,15 +730,9 @@ HELPER
     printf '%s "%s" { true; }\n' '@test' 'x'
   } > "$d/indirect.bats"
 
-  local body
-  body="$(awk '
-    /^teardown(_file)?\s*\(\)/ { inside=1 }
-    inside { print }
-    inside && /^}/ { inside=0 }
-  ' "$d/indirect.bats")"
-
-  # The indirection check should match the assignment.
-  /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"
+  run _check_teardown_safety "$d"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"indirect.bats"* ]]
 }
 
 @test "teardown guard indirection check does not match TEST_TMP assignment" {
@@ -721,15 +747,54 @@ HELPER
     printf '%s "%s" { true; }\n' '@test' 'x'
   } > "$d/safe-indirect.bats"
 
-  local body
-  body="$(awk '
-    /^teardown(_file)?\s*\(\)/ { inside=1 }
-    inside { print }
-    inside && /^}/ { inside=0 }
-  ' "$d/safe-indirect.bats")"
+  _check_teardown_safety "$d"
+}
 
-  if /usr/bin/grep -qE '=.*\$\{?(BATS_RUN_TMPDIR|BATS_SUITE_TMPDIR)\}?' <<<"$body"; then
-    printf 'False positive: TEST_TMP assignment incorrectly matched indirection check\n' >&2
+# ---------------------------------------------------------------------------
+# diff-select-tests.sh rule 6 coverage
+# ---------------------------------------------------------------------------
+
+@test "diff-select rule 6 selects suites when test_helper.bash changes" {
+  # Build a scratch git repo that mimics the plugin layout with a
+  # test_helper.bash and suites in top-level + subdirectory.
+  local scratch="$BATS_TEST_TMPDIR/ds-scratch-$$"
+  mkdir -p "$scratch/.github/scripts"
+  mkdir -p "$scratch/plugins/gaia/tests/subdir"
+
+  printf '# shared helper\n' > "$scratch/plugins/gaia/tests/test_helper.bash"
+
+  # Top-level suite that loads test_helper
+  printf '#!/usr/bin/env bats\nload '\''test_helper.bash'\''\n' > "$scratch/plugins/gaia/tests/top.bats"
+  printf '%s "%s" { true; }\n' '@test' 'x' >> "$scratch/plugins/gaia/tests/top.bats"
+
+  # Subdirectory suite with relative load
+  printf '#!/usr/bin/env bats\nload '\''../test_helper.bash'\''\n' > "$scratch/plugins/gaia/tests/subdir/deep.bats"
+  printf '%s "%s" { true; }\n' '@test' 'x' >> "$scratch/plugins/gaia/tests/subdir/deep.bats"
+
+  # Copy the real diff-select script
+  cp "$REPO_ROOT/.github/scripts/diff-select-tests.sh" "$scratch/.github/scripts/"
+
+  git -C "$scratch" init -q
+  git -C "$scratch" config user.email "test@test"
+  git -C "$scratch" config user.name "test"
+  git -C "$scratch" add -A
+  git -C "$scratch" commit -q -m "init"
+
+  # Create a second commit that touches test_helper.bash
+  printf '\n# changed\n' >> "$scratch/plugins/gaia/tests/test_helper.bash"
+  git -C "$scratch" add -A
+  git -C "$scratch" commit -q -m "touch helper"
+
+  local out
+  out="$(cd "$scratch" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>/dev/null || true)"
+
+  [ -n "$out" ] || {
+    printf 'diff-select produced no output for test_helper.bash change\n' >&2
     return 1
-  fi
+  }
+  # Must include the subdirectory suite
+  /usr/bin/grep -q "subdir/" <<< "$out" || {
+    printf 'diff-select did not select subdirectory suite:\n%s\n' "$out" >&2
+    return 1
+  }
 }

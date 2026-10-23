@@ -96,11 +96,28 @@ while IFS= read -r f; do
     continue
   fi
 
-  # Rule 6: changed test_helper.bash -> all suites that load it
+  # Rule 6: changed test_helper.bash -> all suites that load it (directly
+  # or via a local helper that sources it).  Search recursively so
+  # subdirectory suites are included.
   if [[ "$f" == plugins/gaia/tests/test_helper.bash ]]; then
+    # Direct loaders (recursive): load 'test_helper' / load '../test_helper'
     while IFS= read -r bt; do
       selected+=("$bt")
-    done < <(/usr/bin/grep -rlE "^load ['\"]?test_helper" "$TESTS_DIR"/*.bats 2>/dev/null)
+    done < <(find "$TESTS_DIR" -name '*.bats' -exec \
+      /usr/bin/grep -lE "^load ['\"]?(\\.\\./)*test_helper" {} + 2>/dev/null || true)
+    # Indirect loaders: .bash helpers that source the shared helper
+    _ih_list="$(find "$TESTS_DIR" -name '*.bash' -exec \
+      /usr/bin/grep -lE '\. .*/tests/test_helper\.bash|source .*/tests/test_helper\.bash' {} + 2>/dev/null || true)"
+    if [ -n "$_ih_list" ]; then
+      while IFS= read -r _ih; do
+        _ih_base="$(basename "$_ih" .bash)"
+        _ih_dir="$(dirname "$_ih")"
+        while IFS= read -r bt; do
+          selected+=("$bt")
+        done < <(find "$_ih_dir" -name '*.bats' -exec \
+          /usr/bin/grep -lE "^load ['\"]?${_ih_base}" {} + 2>/dev/null || true)
+      done <<< "$_ih_list"
+    fi
     continue
   fi
 done <<< "$changed"
