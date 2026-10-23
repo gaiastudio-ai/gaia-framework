@@ -930,6 +930,25 @@ _ic_run_rules_cd() {
     cp "$fresh_parsed" "$all_parsed"
   fi
 
+  # Pre-validate all TS entries through the canonical denylist before the
+  # processing awk. The inline awk denylist is a fast pre-filter; this pass
+  # catches anything it misses (e.g. bare backslashes) and fails closed.
+  local _ts_deny_fail=""
+  while IFS=$'\t' read -r _dk _dt _dv; do
+    [ "$_dt" = "TS" ] || continue
+    if ! touch_set_denylist_check "$_dv" 2>/dev/null; then
+      local _dk_sf=""
+      _dk_sf="$(awk -F'\t' -v k="$_dk" '$1==k { print $3; exit }' "$parse_input" 2>/dev/null || true)"
+      _ts_deny_fail="FAIL indeterminate: denylist rejected: ${_dv} in ${_dk_sf:-$_dk}"
+      break
+    fi
+  done < "$all_parsed"
+  if [ -n "$_ts_deny_fail" ]; then
+    printf '%s\n' "$_ts_deny_fail"
+    printf '%s\n' "$_ts_deny_fail" >&2
+    return 1
+  fi
+
   # Process ALL parsed data in a single awk pass: check field presence,
   # classify entries, write per-story type files, config section files,
   # and metadata. This replaces the per-story bash loop.
@@ -1834,8 +1853,14 @@ main() {
       ' "$_ov_file")" || true
       [ -n "$_ov_key" ] || _ic_die "overlay file has no key: $_ov_file"
 
-      # Check if key exists in resolved_f.
-      if /usr/bin/grep -q "^${_ov_key}	" "$resolved_f" 2>/dev/null; then
+      # Validate overlay key format (reject regex metacharacters).
+      case "$_ov_key" in
+        *"."*|*"^"*|*'$'*|*"["*|*"]"*|*"+"*|*"?"*|*"{"*|*"}"*|*"\\"*|*"|"*)
+          _ic_die "overlay key contains invalid characters: $_ov_key" ;;
+      esac
+
+      # Check if key exists in resolved_f (exact first-field match).
+      if awk -F'\t' -v k="$_ov_key" '$1==k { found=1; exit } END { exit !found }' "$resolved_f" 2>/dev/null; then
         # Replace the resolved path with the overlay path.
         local _ov_tmp="${resolved_f}.ovtmp"
         awk -F'\t' -v k="$_ov_key" -v p="$_ov_file" \

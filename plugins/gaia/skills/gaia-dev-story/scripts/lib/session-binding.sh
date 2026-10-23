@@ -208,12 +208,27 @@ provision_binding_dir() {
 
   # Create the directory if absent, detecting failures instead of swallowing them.
   if [ ! -d "$derived_dir" ]; then
-    mkdir -p "$derived_dir" 2>/dev/null || true
-    chmod 0700 "$derived_dir" 2>/dev/null || true
-    # Post-check: confirm the directory actually exists after mkdir.
-    if [ ! -d "$derived_dir" ]; then
-      printf '%s: error: failed to create binding directory: %s\n' \
+    if ! mkdir -p "$derived_dir" 2>/dev/null; then
+      printf '%s: error: mkdir failed for binding directory: %s\n' \
         "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    if ! chmod 0700 "$derived_dir" 2>/dev/null; then
+      printf '%s: error: chmod 0700 failed for binding directory: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    # Post-check: confirm the directory exists with the correct mode.
+    if [ ! -d "$derived_dir" ]; then
+      printf '%s: error: binding directory absent after creation: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    local _sb_mode=""
+    _sb_mode="$(stat -f '%Lp' "$derived_dir" 2>/dev/null || stat -c '%a' "$derived_dir" 2>/dev/null || echo "")"
+    if [ "$_sb_mode" != "700" ]; then
+      printf '%s: error: binding directory mode is %s, expected 700: %s\n' \
+        "$_SB_SCRIPT_NAME" "$_sb_mode" "$derived_dir" >&2
       return 1
     fi
   fi
