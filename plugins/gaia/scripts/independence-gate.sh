@@ -31,6 +31,8 @@ _IG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source touch-set sanitizer for edit mode pre-write validation.
 # shellcheck source=lib/touch-set-sanitizer.sh
 . "${_IG_SCRIPT_DIR}/lib/touch-set-sanitizer.sh"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "${_IG_SCRIPT_DIR}/lib/migrate-items-to-stories.sh"
 
 # Path constants — no bare .gaia/ literal in executable code.
 _IG_GAIA_DIR=".gaia"
@@ -159,18 +161,8 @@ _ig_find_key_in_other_sprints() {
         print v; exit
       }' "$f" 2>/dev/null)" || continue
     [ "$st" = "active" ] || continue
-    # Check if key appears in stories list.
-    if awk -v k="$key" '
-      /^stories:/ { in_s=1; saw_s=1; next }
-      /^items:/ && !saw_s { in_s=1; next }
-      in_s && /^[^[:space:]-]/ { in_s=0 }
-      in_s && /key:/ {
-        v=$0; sub(/.*key:[[:space:]]*/, "", v)
-        gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", v)
-        if (v == k) { found=1; exit }
-      }
-      END { exit (found ? 0 : 1) }
-    ' "$f" 2>/dev/null; then
+    # Check if key appears in stories list (union of stories: and items:).
+    if read_stories_or_items "$f" | cut -f1 | grep -qxF "$key" 2>/dev/null; then
       printf '%s' "$sid"
       return 0
     fi

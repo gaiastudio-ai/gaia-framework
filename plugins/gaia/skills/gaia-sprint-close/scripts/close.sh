@@ -24,6 +24,8 @@ SCRIPT_NAME="gaia-sprint-close/close.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
+# shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
+. "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
 
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
@@ -88,47 +90,13 @@ yaml_top_scalar() {
 }
 
 # Enumerate stories[] from sprint-status.yaml as "key=status" pairs on stdout.
-# Uses the same bash-regex pattern that sprint-state.sh cmd_detect_auto_close
-# uses (lines 2095-2120) — no yq dependency for the parse path.
+# Union of stories: and items: (stories wins on duplicate key).
+# Uses the shared lib's read_stories_or_items for consistent semantics.
 parse_stories() {
   local path="$1"
-  local in_stories=false
-  local s_key="" s_status=""
-  _flush() {
-    if [ -n "$s_key" ]; then
-      printf '%s=%s\n' "$s_key" "$s_status"
-    fi
-    s_key=""; s_status=""
-  }
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^stories: ]]; then
-      in_stories=true
-      _saw_stories=true
-      continue
-    fi
-    if [[ "$line" =~ ^items: ]] && [ "${_saw_stories:-}" != true ]; then
-      in_stories=true
-      continue
-    fi
-    if [ "$in_stories" = true ]; then
-      if [[ "$line" =~ ^[a-z_] ]]; then
-        in_stories=false
-        _flush
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
-        _flush
-        s_key=$(printf '%s' "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
-        s_status=$(printf '%s' "$line" | sed 's/.*status:[[:space:]]*//' | tr -d '"')
-      fi
-    fi
-  done < "$path"
-  if [ "$in_stories" = true ]; then
-    _flush
-  fi
+  read_stories_or_items "$path" | while IFS=$'\t' read -r k s; do
+    [ -n "$k" ] && printf '%s=%s\n' "$k" "$s"
+  done
 }
 
 # ISO 8601 UTC timestamp with seconds precision.

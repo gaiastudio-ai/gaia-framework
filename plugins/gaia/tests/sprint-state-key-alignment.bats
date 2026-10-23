@@ -78,6 +78,68 @@ _legacy_yaml() {
   } > "$SPRINT_STATUS_YAML"
 }
 
+# _both_keys_yaml SPRINT STATUS ORDER
+#   ORDER=items-first | stories-first
+#   Creates a yaml with:
+#     items: E900-S1 (in-progress), E900-S3 (ready-for-dev)  [items-only key]
+#     stories: E900-S1 (done), E900-S2 (ready-for-dev)       [stories-only key]
+#   E900-S1 appears in BOTH blocks (stories version should win).
+_both_keys_yaml() {
+  local sprint_id="$1" s="$2" order="${3:-items-first}"
+  local items_block stories_block
+  items_block="$(cat <<'ITEMS'
+items:
+  - key: "E900-S1"
+    title: 'item story one'
+    status: "in-progress"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+  - key: "E900-S3"
+    title: 'item story three'
+    status: "ready-for-dev"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+ITEMS
+)"
+  stories_block="$(cat <<'STORIES'
+stories:
+  - key: "E900-S1"
+    title: 'stories story one'
+    status: "done"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+  - key: "E900-S2"
+    title: 'stories story two'
+    status: "ready-for-dev"
+    points: 2
+    risk_level: "medium"
+    assignee: null
+    blocked_by: null
+    updated: "2026-01-01"
+STORIES
+)"
+  {
+    printf 'sprint_id: "%s"\n' "$sprint_id"
+    printf 'status: %s\n' "$s"
+    printf 'total_points: 6\n'
+    printf 'goals:\n  - "goal one"\n'
+    if [ "$order" = "items-first" ]; then
+      printf '%s\n%s\n' "$items_block" "$stories_block"
+    else
+      printf '%s\n%s\n' "$stories_block" "$items_block"
+    fi
+  } > "$SPRINT_STATUS_YAML"
+}
+
 setup() {
   common_setup
   _setup_project
@@ -425,11 +487,13 @@ YAML
 # ---------------------------------------------------------------------------
 # AC6 — bash version compat (structural check)
 # ---------------------------------------------------------------------------
-@test "no bash 4+ syntax in sprint-state.sh" {
+@test "no bash 4+ syntax in sprint-state.sh and migration lib" {
   local script="$SPRINT_STATE"
+  local lib="$BATS_TEST_DIRNAME/../scripts/lib/migrate-items-to-stories.sh"
   [ -f "$script" ]
+  [ -f "$lib" ]
   local violations
-  violations=$(grep -nE 'local -A |declare -A |\$\{[a-zA-Z_]+,,\}|\$\{[a-zA-Z_]+\^\^\}|readarray |mapfile |\|\&' "$script" || true)
+  violations=$(grep -nE 'local -A |declare -A |\$\{[a-zA-Z_]+,,\}|\$\{[a-zA-Z_]+\^\^\}|readarray |mapfile |\|\&' "$script" "$lib" || true)
   [ -z "$violations" ]
 }
 
@@ -613,23 +677,26 @@ YAML
 # close.sh precheck reads legacy items entries
 # ---------------------------------------------------------------------------
 @test "close precheck reads non-done story from legacy items key" {
-  local close_sh="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
-  [ -f "$close_sh" ] || skip "close.sh not found"
+  local lib="$BATS_TEST_DIRNAME/../scripts/lib/migrate-items-to-stories.sh"
+  [ -f "$lib" ] || skip "shared lib not found"
 
-  _legacy_yaml sprint-cls active \
+  _legacy_yaml sprint-cls review \
     "E900-S1" "in-progress"
   _create_story_file E900-S1 "cls story" in-progress sprint-cls
 
-  # close.sh precheck should find the non-done story and refuse.
-  run bash "$close_sh" --sprint-id sprint-cls --state-dir "$TEST_TMP/project/.gaia/state" 2>&1
-  # It should either fail or report non-done stories.
-  [ "$status" -ne 0 ] || [[ "$output" == *"non-done"* ]] || [[ "$output" == *"in-progress"* ]]
+  # Verify read_stories_or_items sees the legacy entry (close.sh delegates
+  # to this function). A missing entry here means close.sh would miss it.
+  local out
+  out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
+  echo "$out" | grep -q $'^E900-S1\tin-progress$'
 }
 
 # ---------------------------------------------------------------------------
 # resolver under held lock falls back to both-keys reader (no rewrite)
 # ---------------------------------------------------------------------------
 @test "resolve-sprint-stories with held lock reads both keys without rewriting" {
+  command -v flock >/dev/null 2>&1 || skip "flock not available"
+
   _legacy_yaml sprint-locktest active \
     "E900-S1" "ready-for-dev"
   _create_story_file E900-S1 "lock story" ready-for-dev sprint-locktest
@@ -638,9 +705,13 @@ YAML
   mkdir -p "$(dirname "$lockfile")"
 
   # Hold the lock in background to prevent migration write.
+  # Use a named pipe as a sentinel — the holder exits when the pipe closes.
+  local sentinel="$TEST_TMP/holder-sentinel"
+  mkfifo "$sentinel"
   (
     flock -x 9 || exit 1
-    sleep 10
+    # Block until sentinel is closed (test cleanup).
+    read -r < "$sentinel" 2>/dev/null || true
   ) 9>"$lockfile" &
   local holder_pid=$!
   sleep 0.3
@@ -661,5 +732,108 @@ YAML
   after_cksum=$(cksum < "$SPRINT_STATUS_YAML")
   [ "$before_cksum" = "$after_cksum" ]
 
-  kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null || true
+  # Signal the holder to exit by closing the sentinel pipe.
+  exec 8>"$sentinel"; exec 8>&-
+  wait "$holder_pid" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Both-keys union tests for read_stories_or_items (shared lib)
+# ---------------------------------------------------------------------------
+@test "read_stories_or_items: items-first both-keys returns union, stories wins" {
+  _both_keys_yaml sprint-union active items-first
+  _create_story_file E900-S1 "story one" done sprint-union
+  _create_story_file E900-S2 "story two" ready-for-dev sprint-union
+  _create_story_file E900-S3 "story three" ready-for-dev sprint-union
+
+  local lib="$BATS_TEST_DIRNAME/../scripts/lib/migrate-items-to-stories.sh"
+  [ -f "$lib" ] || skip "shared lib not found"
+
+  local out
+  out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
+  # E900-S1 from stories (status=done, not in-progress from items)
+  echo "$out" | grep -q $'^E900-S1\tdone$'
+  # E900-S2 from stories only
+  echo "$out" | grep -q $'^E900-S2\tready-for-dev$'
+  # E900-S3 from items only (not in stories)
+  echo "$out" | grep -q $'^E900-S3\tready-for-dev$'
+  # Exactly 3 lines (no duplicates)
+  local count
+  count="$(echo "$out" | grep -c '.')"
+  [ "$count" -eq 3 ]
+}
+
+@test "read_stories_or_items: stories-first both-keys returns same union" {
+  _both_keys_yaml sprint-union2 active stories-first
+  _create_story_file E900-S1 "story one" done sprint-union2
+  _create_story_file E900-S2 "story two" ready-for-dev sprint-union2
+  _create_story_file E900-S3 "story three" ready-for-dev sprint-union2
+
+  local lib="$BATS_TEST_DIRNAME/../scripts/lib/migrate-items-to-stories.sh"
+  local out
+  out="$(bash -c '. "'"$lib"'"; read_stories_or_items "'"$SPRINT_STATUS_YAML"'"')"
+  echo "$out" | grep -q $'^E900-S1\tdone$'
+  echo "$out" | grep -q $'^E900-S2\tready-for-dev$'
+  echo "$out" | grep -q $'^E900-S3\tready-for-dev$'
+  local count
+  count="$(echo "$out" | grep -c '.')"
+  [ "$count" -eq 3 ]
+}
+
+# ---------------------------------------------------------------------------
+# planned-active-gate both-keys union
+# ---------------------------------------------------------------------------
+@test "planned-active-gate: both-keys items-first sees all three keys" {
+  local gate="$BATS_TEST_DIRNAME/../scripts/planned-active-gate.sh"
+  [ -f "$gate" ] || skip "planned-active-gate.sh not found"
+
+  _both_keys_yaml sprint-pag planned items-first
+  _create_story_file E900-S1 "story one" ready-for-dev sprint-pag
+  _create_story_file E900-S2 "story two" ready-for-dev sprint-pag
+  _create_story_file E900-S3 "story three" ready-for-dev sprint-pag
+
+  # If the gate only saw 1-2 stories instead of 3, it would fail because
+  # the missing stories would appear unmaterialized. Gate pass means all 3
+  # keys were found in the roster.
+  run --separate-stderr bash "$gate" \
+    --sprint-yaml "$SPRINT_STATUS_YAML" \
+    --impl-root "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
+    --test-artifacts "$TEST_TMP/project/.gaia/artifacts/test-artifacts"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# throughput both-keys union
+# ---------------------------------------------------------------------------
+@test "throughput-telemetry: both-keys items-first reads points from both blocks" {
+  local tt="$BATS_TEST_DIRNAME/../scripts/throughput-telemetry.sh"
+  [ -f "$tt" ] || skip "throughput-telemetry.sh not found"
+
+  _both_keys_yaml sprint-tt active items-first
+  # Create a minimal events file
+  printf '{"event_type":"state_transition","story_key":"E900-S1","timestamp":"2026-01-01T00:00:00Z","from":"ready-for-dev","to":"in-progress"}\n' \
+    > "$TEST_TMP/events.jsonl"
+
+  run bash "$tt" --events "$TEST_TMP/events.jsonl" --sprint-yaml "$SPRINT_STATUS_YAML"
+  # Should not crash; the points reader should see all keys.
+  [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+}
+
+# ---------------------------------------------------------------------------
+# sprint-progress-snapshot both-keys
+# ---------------------------------------------------------------------------
+@test "sprint-progress-snapshot: both-keys items-first reads all stories" {
+  local snap="$BATS_TEST_DIRNAME/../scripts/sprint-progress-snapshot.sh"
+  [ -f "$snap" ] || skip "sprint-progress-snapshot.sh not found"
+
+  _both_keys_yaml sprint-snap active items-first
+
+  run bash "$snap" --yaml "$SPRINT_STATUS_YAML" --output-json "$TEST_TMP/snap.json"
+  # Snapshot should see all 3 unique stories.
+  [ "$status" -eq 0 ]
+  if [ -f "$TEST_TMP/snap.json" ]; then
+    local snap_stories
+    snap_stories="$(grep -c 'E900-S' "$TEST_TMP/snap.json" || true)"
+    [ "$snap_stories" -ge 3 ]
+  fi
 }

@@ -13,9 +13,6 @@
 [ -z "${_GAIA_MIGRATE_ITEMS_LOADED:-}" ] || return 0
 _GAIA_MIGRATE_ITEMS_LOADED=1
 
-set -euo pipefail
-LC_ALL=C; export LC_ALL
-
 # ---------------------------------------------------------------------------
 # migrate_items_to_stories <yaml_file> [--lock <lockfile>]
 #
@@ -172,41 +169,92 @@ _gaia_do_migrate_items() {
 # ---------------------------------------------------------------------------
 # read_stories_or_items <yaml>
 #
-# Read-only helper: emit key<TAB>status lines from the `stories:` block; if
-# `stories:` is absent, read from `items:` instead. Never writes the file.
-# Callers use this when they cannot or should not modify the file (read-only
-# contexts, held locks they don't own, archive files).
+# Read-only helper: emit key<TAB>status lines with union-by-key semantics.
+# Reads BOTH `stories:` and `items:` blocks. When a key appears in both,
+# the `stories:` entry wins. Items-only keys are included. No duplicates.
+# Key order: stories entries first (in file order), then items-only entries.
+# Never writes the file.
 # ---------------------------------------------------------------------------
 read_stories_or_items() {
   local yaml="$1"
   [ -f "$yaml" ] || return 0
   awk '
-    /^stories[[:space:]]*:[[:space:]]*$/ { in_s = 1; in_i = 0; saw_s = 1; next }
+    /^stories[[:space:]]*:[[:space:]]*$/ { in_s = 1; in_i = 0; next }
     /^items[[:space:]]*:[[:space:]]*$/ { in_i = 1; in_s = 0; next }
-    /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_i = 0; saw_s = 1; next }
-    /^items[[:space:]]*:[[:space:]]*\[\]/ { next }
+    /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s = 0; next }
+    /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i = 0; next }
     (in_s || in_i) && /^[A-Za-z_]/ { in_s = 0; in_i = 0 }
     in_s && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
       k = $0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-      gsub(/["'"'"'[:space:]]/, "", k); s_keys[k] = ""; s_order[s_n++] = k; next
+      gsub(/["'"'"'[:space:]]/, "", k); s_key[k] = 1; s_order[s_n++] = k; next
     }
     in_s && /^[[:space:]]+status:[[:space:]]*/ {
       v = $0; sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
-      gsub(/["'"'"'[:space:]]/, "", v); s_keys[s_order[s_n-1]] = v; next
+      gsub(/["'"'"'[:space:]]/, "", v); s_status[s_order[s_n-1]] = v; next
     }
     in_i && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
       k = $0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-      gsub(/["'"'"'[:space:]]/, "", k); i_keys[k] = ""; i_order[i_n++] = k; next
+      gsub(/["'"'"'[:space:]]/, "", k); i_order[i_n++] = k; next
     }
     in_i && /^[[:space:]]+status:[[:space:]]*/ {
       v = $0; sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
-      gsub(/["'"'"'[:space:]]/, "", v); i_keys[i_order[i_n-1]] = v; next
+      gsub(/["'"'"'[:space:]]/, "", v); i_status[i_order[i_n-1]] = v; next
     }
     END {
-      if (saw_s) {
-        for (j = 0; j < s_n; j++) printf "%s\t%s\n", s_order[j], s_keys[s_order[j]]
-      } else {
-        for (j = 0; j < i_n; j++) printf "%s\t%s\n", i_order[j], i_keys[i_order[j]]
+      # Emit stories entries first.
+      for (j = 0; j < s_n; j++) {
+        printf "%s\t%s\n", s_order[j], s_status[s_order[j]]
+        seen[s_order[j]] = 1
+      }
+      # Emit items-only entries (not already in stories).
+      for (j = 0; j < i_n; j++) {
+        if (!(i_order[j] in seen))
+          printf "%s\t%s\n", i_order[j], i_status[i_order[j]]
+      }
+    }
+  ' "$yaml"
+}
+
+# ---------------------------------------------------------------------------
+# read_stories_or_items_points <yaml>
+#
+# Like read_stories_or_items but emits key<TAB>points (for throughput).
+# Same union-by-key semantics.
+# ---------------------------------------------------------------------------
+read_stories_or_items_points() {
+  local yaml="$1"
+  [ -f "$yaml" ] || return 0
+  awk '
+    /^stories[[:space:]]*:[[:space:]]*$/ { in_s = 1; in_i = 0; next }
+    /^items[[:space:]]*:[[:space:]]*$/ { in_i = 1; in_s = 0; next }
+    /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s = 0; next }
+    /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i = 0; next }
+    (in_s || in_i) && /^[A-Za-z_]/ { in_s = 0; in_i = 0 }
+    in_s && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
+      k = $0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+      gsub(/["'"'"'[:space:]]/, "", k); s_key[k] = 1; s_order[s_n++] = k; next
+    }
+    in_s && /^[[:space:]]+points:[[:space:]]*/ {
+      v = $0; sub(/^[[:space:]]+points:[[:space:]]*/, "", v)
+      gsub(/[^0-9].*$/, "", v); s_pts[s_order[s_n-1]] = v; next
+    }
+    in_i && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
+      k = $0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
+      gsub(/["'"'"'[:space:]]/, "", k); i_order[i_n++] = k; next
+    }
+    in_i && /^[[:space:]]+points:[[:space:]]*/ {
+      v = $0; sub(/^[[:space:]]+points:[[:space:]]*/, "", v)
+      gsub(/[^0-9].*$/, "", v); i_pts[i_order[i_n-1]] = v; next
+    }
+    END {
+      for (j = 0; j < s_n; j++) {
+        if (s_order[j] != "" && s_pts[s_order[j]] != "")
+          printf "%s\t%s\n", s_order[j], s_pts[s_order[j]]
+        seen[s_order[j]] = 1
+      }
+      for (j = 0; j < i_n; j++) {
+        if (!(i_order[j] in seen) && i_order[j] != "" && i_pts[i_order[j]] != "")
+          printf "%s\t%s\n", i_order[j], i_pts[i_order[j]]
       }
     }
   ' "$yaml"

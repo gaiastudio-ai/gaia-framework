@@ -36,6 +36,8 @@ _IC_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source catch-all flag parser (exposes catch_all_epics).
 # shellcheck source=lib/catch-all-flag.sh
 . "${_IC_SCRIPT_DIR}/lib/catch-all-flag.sh"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "${_IC_SCRIPT_DIR}/lib/migrate-items-to-stories.sh"
 
 # Source story file resolver (exposes resolve_story_file).
 # shellcheck source=resolve-story-file.sh
@@ -181,22 +183,7 @@ _ic_read_sprint_keys() {
   if [ ! -r "$state_file" ]; then
     _ic_die "unable to read dependency structure"
   fi
-  awk '
-    BEGIN { in_s = 0 }
-    { line = $0; sub(/\r$/, "", line) }
-    line ~ /^stories:[[:space:]]*$/ { in_s = 1; saw_s = 1; next }
-    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { saw_s = 1; next }
-    line ~ /^items:[[:space:]]*$/ && !saw_s { in_s = 1; next }
-    line ~ /^items:[[:space:]]*\[\][[:space:]]*$/ { next }
-    in_s && line ~ /^[^[:space:]-]/ { in_s = 0; next }
-    !in_s { next }
-    line ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
-      k = line
-      sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", k)
-      if (k != "") print k
-    }
-  ' "$state_file"
+  read_stories_or_items "$state_file" | cut -f1
 }
 
 # ---------------------------------------------------------------------------

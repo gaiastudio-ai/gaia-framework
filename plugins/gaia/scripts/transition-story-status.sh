@@ -621,9 +621,8 @@ legacy_flat_index_lookup() {
 
   local block
   block=$(awk -v target="$key" '
-    BEGIN { in_entry = 0; in_stories = 0; saw_stories = 0 }
-    /^stories:[[:space:]]*$/ { in_stories = 1; saw_stories = 1; next }
-    /^items:[[:space:]]*$/ && !saw_stories { in_stories = 1; next }
+    BEGIN { in_entry = 0; in_stories = 0 }
+    /^stories:[[:space:]]*$/ { in_stories = 1; next }
     in_stories && /^[A-Za-z]/ { in_stories = 0; in_entry = 0 }
     in_stories && /^  [A-Za-z][A-Za-z0-9_-]*:[[:space:]]*$/ {
       k = $0; sub(/^  /, "", k); sub(/:[[:space:]]*$/, "", k)
