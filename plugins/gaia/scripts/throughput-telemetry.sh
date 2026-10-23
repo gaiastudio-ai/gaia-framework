@@ -85,6 +85,11 @@ done
 [ -e "$EVENTS" ] || die "events file not found: $EVENTS"
 [ -r "$EVENTS" ] || die "events file not readable: $EVENTS"
 
+# Source the shared items-to-stories lib for read_stories_or_items_points.
+_TT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
+
 # ---------- Points join (story_key -> points) ----------
 # Note: the active sprint-status.yaml only carries the CURRENT sprint's stories,
 # so closed-sprint medians need points from elsewhere.
@@ -94,26 +99,8 @@ done
 #   3. an optional --story-dir scanned for story-file frontmatter `points:`.
 # The story's T2 explicitly allows "sprint-status.yaml / story frontmatter".
 
-# awk that reads a sprint yaml `stories:` block -> "key<TAB>points" rows.
-sprint_points_awk='
-  /^stories:[[:space:]]*$/ { in_stories=1; saw_stories=1; next }
-  /^items:[[:space:]]*$/ && !saw_stories { in_stories=1; next }
-  in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
-    line=$0
-    sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", line)
-    gsub(/"/, "", line)
-    cur=line
-    next
-  }
-  in_stories && /^[[:space:]]+points:[[:space:]]*/ {
-    line=$0
-    sub(/^[[:space:]]+points:[[:space:]]*/, "", line)
-    gsub(/[^0-9].*$/, "", line)
-    if (cur != "" && line != "") printf "%s\t%s\n", cur, line
-    next
-  }
-  in_stories && /^[^[:space:]]/ { in_stories=0 }
-'
+# read_stories_or_items_points (from the shared lib) reads both stories:
+# and items: blocks with union-by-key semantics -> "key<TAB>points" rows.
 
 POINTS_TSV=""
 
@@ -132,7 +119,7 @@ fi
 if [ -n "$YAML_LIST" ]; then
   while IFS= read -r y; do
     [ -n "$y" ] && [ -r "$y" ] || continue
-    rows="$(awk "$sprint_points_awk" "$y")"
+    rows="$(read_stories_or_items_points "$y")"
     [ -n "$rows" ] && POINTS_TSV="${POINTS_TSV}${rows}
 "
   done <<EOF

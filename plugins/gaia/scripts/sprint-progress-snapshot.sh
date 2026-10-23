@@ -791,10 +791,10 @@ _read_sprint_yaml() {
   /^goals:/ { in_goals=1; in_stories=0; rest=$0; sub(/^goals:[[:space:]]*/, "", rest); if (rest ~ /^\[\]/) in_goals=0; next }
   in_goals && /^[[:space:]]+-/ { g=$0; gsub(/^[[:space:]]+-[[:space:]]*"?|"?[[:space:]]*$/, "", g); gsub(/[\037\r]/, "", g); if (gi==0) print "Z\037goal\037" g; gi++; next }
   in_goals && /^[^[:space:]]/ { in_goals=0 }
-  /^stories:/ { in_stories=1; in_goals=0; saw_stories=1; next }
-  /^items:/ && !saw_stories { in_stories=1; in_goals=0; next }
+  /^stories:/ { in_stories=1; in_goals=0; cur_block="s"; next }
+  /^items:/ { in_stories=1; in_goals=0; cur_block="i"; next }
   in_stories && /^[^[:space:]]/ && !/^stories:/ && !/^items:/ { in_stories=0; next }
-  in_stories && /^[[:space:]]+-[[:space:]]+key:/ { si++; ck=v($0, "key"); key[si]=ck; next }
+  in_stories && /^[[:space:]]+-[[:space:]]+key:/ { si++; ck=v($0, "key"); key[si]=ck; src[si]=cur_block; next }
   in_stories && ck != "" {
     if (/^[[:space:]]+status:/)     { yst[si]=v($0, "status"); next }
     if (/^[[:space:]]+points:/)     { ypt[si]=v($0, "points"); next }
@@ -802,7 +802,11 @@ _read_sprint_yaml() {
     if (/^[[:space:]]+blocked_by:/) { ybl[si]=v($0, "blocked_by"); next }
     if (/^[[:space:]]+phase:/)      { yph[si]=v($0, "phase"); next }
   }
-  END { for (i=1; i<=si; i++) { if (key[i] in emitted) continue; emitted[key[i]]=1; print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] } }
+  END {
+    # Two passes: stories entries first (they win on duplicate key), then items-only.
+    for (i=1; i<=si; i++) { if (src[i]=="s" && !(key[i] in emitted)) { emitted[key[i]]=1; print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] } }
+    for (i=1; i<=si; i++) { if (src[i]=="i" && !(key[i] in emitted)) { emitted[key[i]]=1; print "K\037" i "\037" key[i] "\037" yst[i] "\037" ypt[i] "\037" yrk[i] "\037" ybl[i] "\037" yph[i] } }
+  }
   ' "$yaml_file"
 }
 

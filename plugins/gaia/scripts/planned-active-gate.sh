@@ -33,6 +33,8 @@ SCRIPT_NAME="planned-active-gate.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESOLVE_STORY="$SCRIPT_DIR/resolve-story-file.sh"
 CAPACITY="$SCRIPT_DIR/sm-capacity-check.sh"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "$SCRIPT_DIR/lib/migrate-items-to-stories.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die() { log "$*"; exit 1; }
@@ -80,15 +82,8 @@ done
 [ -n "$IMPL_ROOT" ] || die "--impl-root <dir> is required (try --help)"
 [ -n "$TEST_ARTIFACTS" ] || die "--test-artifacts <dir> is required (try --help)"
 
-# Roster keys from the sprint yaml stories[] (or legacy items[]) block.
-roster_keys="$(awk '
-  /^stories:[[:space:]]*$/ { in_s=1; saw_s=1; next }
-  /^items:[[:space:]]*$/ && !saw_s { in_s=1; next }
-  in_s && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
-    line=$0; sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", line); gsub(/"/, "", line); print line
-  }
-  in_s && /^[^[:space:]]/ { in_s=0 }
-' "$SPRINT_YAML")"
+# Roster keys from the sprint yaml (union of stories: and legacy items:).
+roster_keys="$(read_stories_or_items "$SPRINT_YAML" | cut -f1)"
 [ -n "$roster_keys" ] || die "no stories[] roster found in $SPRINT_YAML"
 
 unmaterialized=""

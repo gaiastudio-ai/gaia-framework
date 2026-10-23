@@ -175,6 +175,8 @@ fi
 
 # Mitigation catalog path.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "$SCRIPT_DIR/lib/migrate-items-to-stories.sh" 2>/dev/null || true
 MITIGATION_CATALOG="${MITIGATION_CATALOG:-$SCRIPT_DIR/../skills/gaia-sprint-status/mitigation-catalog.yaml}"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -792,14 +794,12 @@ _render_fallback_dashboard() {
   s_key="" s_title="" s_status="" s_points=""
   high_risk_story_count=0
 
+  # Track seen keys to deduplicate when both stories: and items: exist.
+  local _seen_key_list=""
+
   local line
   while IFS= read -r line; do
-    if [[ "$line" =~ ^stories: ]]; then
-      in_stories=true
-      saw_stories=true
-      continue
-    fi
-    if [[ "$line" =~ ^items: ]] && [ "${saw_stories:-}" != true ]; then
+    if [[ "$line" =~ ^stories: ]] || [[ "$line" =~ ^items: ]]; then
       in_stories=true
       continue
     fi
@@ -812,8 +812,14 @@ _render_fallback_dashboard() {
       if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
         flush_story
         s_key=$(echo "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
+        # Dedup: skip this entry if key already seen (both-keys union).
+        case "$_seen_key_list" in
+          *"|${s_key}|"*) s_key="" ;;
+          *) _seen_key_list="${_seen_key_list}|${s_key}|" ;;
+        esac
         continue
       fi
+      if [ -z "$s_key" ]; then continue; fi
       if [[ "$line" =~ ^[[:space:]]+title:[[:space:]]* ]]; then
         s_title=$(echo "$line" | sed 's/.*title:[[:space:]]*//' | tr -d '"')
       elif [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
