@@ -74,7 +74,7 @@ _stage_diff() {
   ( cd "$REPO" && mkdir -p "$(dirname "$path")" && printf '%s\n' "$content" > "$path" && git add -A && git commit -q -m "fixture: stage diff" )
 }
 
-# ---------------- TC-DPD-11: production STUB -> HALT ----------------
+# --- production-path sentinel detection ---
 @test "production-path STUB triggers HALT with canonical stderr" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # placeholder'
@@ -85,7 +85,7 @@ _stage_diff() {
   [[ "$output" == *"$FIXTURE_PROD_PATH"* ]]
 }
 
-# ---------------- TC-DPD-12: test-fixture STUB -> PASS ----------------
+# --- test-fixture exemption ---
 @test "test-fixture path STUB does NOT trigger HALT (exempt)" {
   _stage_diff "$FIXTURE_FIXTURES_PATH" \
     'echo STUB  # legitimate fixture stub'
@@ -93,25 +93,25 @@ _stage_diff() {
   [ "$status" -eq 0 ]
 }
 
-# ---------------- TC-DPD-13: --allow-stub with valid ID prefix -> PASS ----------------
+# --- allow-stub with valid ID prefix ---
 @test "allow-stub with valid story-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # contract-only dispatch'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10: contract-only dispatch"; cd "$OLDPWD"
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E900-S1: contract-only dispatch"; cd "$OLDPWD"
   [ "$status" -eq 0 ]
   # The accepted reason MUST be echoed on stdout so the caller can pipe it
   # forward to pr-body.sh.
-  [[ "$output" == *"E76-S10: contract-only dispatch"* ]]
+  [[ "$output" == *"E900-S1: contract-only dispatch"* ]]
 }
 
 @test "allow-stub with valid AI-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
-    'echo STUB  # AI-tracked'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "AI-2026-05-14-6: contract-only"; cd "$OLDPWD"
+    'echo STUB  # tracked'
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "AI-9999-01-01-1: contract-only"; cd "$OLDPWD"
   [ "$status" -eq 0 ]
 }
 
-# ---------------- TC-DPD-14: --allow-stub with bare prose -> REJECT ----------------
+# --- allow-stub with bare prose ---
 @test "allow-stub with bare prose is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
@@ -123,12 +123,12 @@ _stage_diff() {
 @test "allow-stub with story ID lacking trailing colon is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10 contract-only"; cd "$OLDPWD"
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E900-S1 contract-only"; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   [[ "$output" == *"must cite a story ID"* ]]
 }
 
-# ---------------- TC-DPD-15: load-taxonomy enumerates 3 names ----------------
+# --- load-taxonomy enumeration ---
 @test "load-taxonomy.sh --taxonomy unknown enumerates THREE supported names" {
   run bash -c '"$0" --taxonomy frobnicate 2>&1' "$LIB_DIR/load-taxonomy.sh"
   [ "$status" -eq 1 ]
@@ -137,7 +137,7 @@ _stage_diff() {
   [[ "$output" == *forbidden-sentinels* ]]
 }
 
-# ---------------- TC-DPD-15b: load-taxonomy forbidden-sentinels works ----------------
+# --- load-taxonomy forbidden-sentinels ---
 @test "load-taxonomy --taxonomy forbidden-sentinels emits entries" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels
   [ "$status" -eq 0 ]
@@ -310,7 +310,7 @@ _stage_diff() {
   [ "$status" -eq 0 ]
 }
 
-# --- B1: colour / external-diff resilience ---
+# --- colour / external-diff resilience ---
 
 @test "scan works when user git config has color.diff=always" {
   # Force colour output globally in the test repo. The scanner must
@@ -334,7 +334,7 @@ _stage_diff() {
   [ "$status" -eq 0 ]
 }
 
-# --- B2: added lines whose text starts with ++ must not be skipped ---
+# --- added lines whose text starts with ++ must not be skipped ---
 
 @test "added line starting with ++ containing a sentinel is caught" {
   # An added line like '++ STUB here' shows as '+++ STUB here' in the raw
@@ -381,7 +381,7 @@ _stage_diff() {
   grep -qF ":5" <<<"$output"
 }
 
-# --- B3: performance on large diffs ---
+# --- performance on large diffs ---
 
 @test "scan of 2000 added lines completes within 10 seconds" {
   # Generate a file with 2000 clean lines plus one sentinel at the end.
@@ -408,4 +408,110 @@ _stage_diff() {
     printf 'perf: scan took %ds (limit 10s)\n' "$elapsed" >&2
     return 1
   fi
+}
+
+# --- git-attributes: files marked binary or -diff must still be scanned ---
+
+@test "file marked -diff in .gitattributes is still scanned for sentinels" {
+  local lockfile="gaia-public/plugins/gaia/deps.lock"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && printf '*.lock -diff\n' > .gitattributes \
+      && mkdir -p "$(dirname "$lockfile")" && printf 'x\n' > "$lockfile" \
+      && git add -A && git commit -q -m "base: lock file with -diff attr" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nSTUB\n' > "$REPO/$lockfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel to lock file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "deps.lock" <<<"$output"
+}
+
+@test "file marked binary in .gitattributes is still scanned for sentinels" {
+  local binfile="gaia-public/plugins/gaia/data.bin"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && printf '*.bin binary\n' > .gitattributes \
+      && mkdir -p "$(dirname "$binfile")" && printf 'x\n' > "$binfile" \
+      && git add -A && git commit -q -m "base: binary-attr file" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nMOCK\n' > "$REPO/$binfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel to binary file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+}
+
+@test "file marked -diff in .git/info/attributes is still scanned" {
+  local lockfile="gaia-public/plugins/gaia/deps.lock"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && mkdir -p .git/info && printf '* -diff\n' > .git/info/attributes \
+      && mkdir -p "$(dirname "$lockfile")" && printf 'x\n' > "$lockfile" \
+      && git add -A && git commit -q -m "base: lock file" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nFIXME\n' > "$REPO/$lockfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+}
+
+@test "attributes file added in the same change does not hide sentinels" {
+  local prodfile="$FIXTURE_PROD_PATH"
+  # The change itself adds a .gitattributes marking .sh as -diff,
+  # alongside a .sh file with a sentinel. Both are new in this diff.
+  printf '*.sh -diff\n' > "$REPO/.gitattributes"
+  printf 'echo STUB\n' > "$REPO/$prodfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: attr + sentinel in same commit" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+# --- pathspec magic characters in file paths must not be interpreted ---
+
+@test "file path containing pathspec-magic colon prefix does not hide other sentinels" {
+  # A file named ':(exclude)gaia-public' at the repo root, if passed to
+  # git-diff as a pathspec, makes git interpret it as an exclude operator
+  # and silently drop all gaia-public/* paths from the diff output.
+  # GIT_LITERAL_PATHSPECS prevents this.
+  local trickname=':(exclude)gaia-public'
+  printf 'clean\n' > "$REPO/$trickname"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: trick path + sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+# --- match parsing: sentinel in path must not false-positive ---
+
+@test "sentinel word in directory name does not trigger a false HALT" {
+  # A file at plugins/gaia/MOCK/clean.sh with clean content must pass.
+  local mockdir="gaia-public/plugins/gaia/MOCK"
+  ( cd "$REPO" && mkdir -p "$mockdir" )
+  local mockfile="$mockdir/clean.sh"
+  _stage_diff "$mockfile" 'echo perfectly fine'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "colon in file name does not corrupt line-number reporting" {
+  # A file named 'a:b.sh' should not split incorrectly.
+  local colonfile="gaia-public/plugins/gaia/scripts/a:b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$colonfile")" )
+  _stage_diff "$colonfile" 'echo FIXME'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+  # The path in the HALT message must contain the full colon-bearing name
+  grep -qF "a:b.sh" <<<"$output"
+}
+
+@test "clean file whose name resembles a sentinel record does not false-positive" {
+  # A file named 'a:9:STUB.sh' with clean content must not trigger.
+  local trickname="gaia-public/plugins/gaia/scripts/a:9:STUB.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$trickname")" )
+  _stage_diff "$trickname" 'echo all clear'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
 }
