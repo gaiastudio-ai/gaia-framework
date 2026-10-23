@@ -190,7 +190,7 @@ run_verdict() {
 # AC2 -- Malformed LLM-findings JSON yields BLOCKED with diagnostic
 # =====================================================================
 
-@test "malformed llm-findings JSON triggers BLOCKED with jq parse detail" {
+@test "malformed llm-findings JSON triggers BLOCKED with jq parse detail and file path" {
   printf '{not valid json!!!' > "$TEST_TMP/bad-llm.json"
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
 
@@ -198,12 +198,13 @@ run_verdict() {
     --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/bad-llm.json"
   [ "$VERDICT" = "BLOCKED" ]
-  # diagnostic must include the actual jq parse error, not just a fixed label
+  # diagnostic must include the actual jq parse error and the file path
   grep -q "malformed LLM-findings JSON" "$STDERR_OUT"
   grep -qi "parse error" "$STDERR_OUT"
+  grep -qF "$TEST_TMP/bad-llm.json" "$STDERR_OUT"
 }
 
-@test "empty llm-findings file (zero bytes) triggers BLOCKED with empty diagnostic" {
+@test "empty llm-findings file (zero bytes) triggers BLOCKED with file path in diagnostic" {
   : > "$TEST_TMP/empty-llm.json"
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
 
@@ -212,6 +213,7 @@ run_verdict() {
     --llm-findings "$TEST_TMP/empty-llm.json"
   [ "$VERDICT" = "BLOCKED" ]
   grep -q "file is empty" "$STDERR_OUT"
+  grep -qF "$TEST_TMP/empty-llm.json" "$STDERR_OUT"
 }
 
 @test "valid llm-findings with empty findings array yields APPROVE" {
@@ -251,7 +253,7 @@ run_verdict() {
 # AC3 -- Truncated-mid-object LLM JSON treated as malformed
 # =====================================================================
 
-@test "truncated mid-object llm-findings triggers BLOCKED with parse detail" {
+@test "truncated mid-object llm-findings triggers BLOCKED with parse detail and file path" {
   printf '{"findings": [{"severity": "cri' > "$TEST_TMP/trunc-obj.json"
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
 
@@ -261,9 +263,10 @@ run_verdict() {
   [ "$VERDICT" = "BLOCKED" ]
   grep -q "malformed LLM-findings JSON" "$STDERR_OUT"
   grep -qi "parse error" "$STDERR_OUT"
+  grep -qF "$TEST_TMP/trunc-obj.json" "$STDERR_OUT"
 }
 
-@test "truncated mid-array llm-findings triggers BLOCKED with parse detail" {
+@test "truncated mid-array llm-findings triggers BLOCKED with parse detail and file path" {
   printf '{"findings": [' > "$TEST_TMP/trunc-arr.json"
   write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
 
@@ -273,6 +276,7 @@ run_verdict() {
   [ "$VERDICT" = "BLOCKED" ]
   grep -q "malformed LLM-findings JSON" "$STDERR_OUT"
   grep -qi "parse error\|unexpected" "$STDERR_OUT"
+  grep -qF "$TEST_TMP/trunc-arr.json" "$STDERR_OUT"
 }
 
 # =====================================================================
@@ -330,6 +334,18 @@ run_verdict() {
   run_verdict \
     --analysis-results "$TEST_TMP/a.json" \
     --llm-findings "$TEST_TMP/no-findings.json"
+  [ "$VERDICT" = "BLOCKED" ]
+  grep -q "wrong shape" "$STDERR_OUT"
+}
+
+@test "llm-findings with findings as nested object (not array) triggers BLOCKED" {
+  # findings is an object of keyed entries instead of an array
+  printf '{"findings":{"a":{"severity":"low"}}}' > "$TEST_TMP/findings-obj.json"
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+
+  run_verdict \
+    --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/findings-obj.json"
   [ "$VERDICT" = "BLOCKED" ]
   grep -q "wrong shape" "$STDERR_OUT"
 }
