@@ -225,7 +225,9 @@ provision_binding_dir() {
       return 1
     fi
     local _sb_mode=""
-    _sb_mode="$(stat -f '%Lp' "$derived_dir" 2>/dev/null || stat -c '%a' "$derived_dir" 2>/dev/null || echo "")"
+    # GNU stat first (-c), then BSD stat (-f). GNU `stat -f` means filesystem
+    # stat (not format), so it must come second.
+    _sb_mode="$(stat -c '%a' "$derived_dir" 2>/dev/null || stat -f '%Lp' "$derived_dir" 2>/dev/null || echo "")"
     if [ "$_sb_mode" != "700" ]; then
       printf '%s: error: binding directory mode is %s, expected 700: %s\n' \
         "$_SB_SCRIPT_NAME" "$_sb_mode" "$derived_dir" >&2
