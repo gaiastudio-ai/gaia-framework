@@ -223,18 +223,48 @@ _extract_code_review_link() {
   [[ "$output" == *"pipe character"* ]]
 }
 
-@test "report path containing newline is refused" {
+@test "report path containing newline is refused and table unchanged" {
+  # Snapshot the table before the attempt
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  # Use UNVERIFIED so proof-of-execution is not involved — the guard is the
+  # only thing that can refuse.
   local report
   report="$(printf '%s/rep\nforged.md' "$TEST_TMP")"
-  printf '# r\n' > "$TEST_TMP/rep"  # in case it creates a partial file
 
   run bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "Code Review" \
-    --verdict PASSED \
+    --verdict UNVERIFIED \
     --report "$report"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"newline"* ]]
+  [[ "$output" == *"would forge a Review Gate row"* ]]
+
+  # Table must be byte-unchanged
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+@test "report path containing carriage-return is refused and table unchanged" {
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  local report
+  report="$(printf '%s/rep\rforged.md' "$TEST_TMP")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict UNVERIFIED \
+    --report "$report"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"would forge a Review Gate row"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -473,6 +503,22 @@ _extract_code_review_link() {
     --execution-evidence "$ev_file"
   [ "$status" -ne 0 ]
   [[ "$output" == *"not valid JSON or is not an object"* ]]
+}
+
+@test "suites entry that is a string blocks PASSED with diagnostic" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":["not-an-object"]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"malformed JSON structure"* ]]
 }
 
 @test "empty suites array allows PASSED (no suites to fail)" {
