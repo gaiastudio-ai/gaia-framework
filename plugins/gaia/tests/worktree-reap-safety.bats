@@ -99,13 +99,14 @@ _mk_aged_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
-# Scenario 1: live worktree with unpushed commits is never reaped
+# Scenario 1: worktree with unpushed commits is never reaped
+# (aged so the age check does NOT short-circuit — exercises commits-ahead)
 # ---------------------------------------------------------------------------
 
 @test "a sibling with unpushed commits ahead of base is not reaped even with a dead owner" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(_mk_dead_sibling "$primary" "R1-S1")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1-S1")"
 
   # Add a commit so the worktree has unpushed work.
   printf 'work\n' > "$wt/work.txt"
@@ -164,6 +165,80 @@ _mk_aged_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
+# Scenario 1d: a DETACHED worktree with commits is never reaped
+# ---------------------------------------------------------------------------
+
+@test "a detached worktree with commits ahead of base is not reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1D-S1")"
+
+  # Commit, then detach HEAD so the porcelain listing has no branch line.
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -qm "story work"
+  git -C "$wt" checkout --detach HEAD 2>/dev/null
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] || { echo "detached worktree with commits was reaped"; return 1; }
+  [ "$(_wt_count "$primary" "$wt")" -ge 1 ] \
+    || { echo "detached worktree was unregistered"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 1e: a worktree paused mid-rebase is never reaped
+# ---------------------------------------------------------------------------
+
+@test "a worktree paused mid-rebase is not reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1E-S1")"
+
+  # Create two commits so we can pause a rebase between them.
+  printf 'A\n' > "$wt/a.txt"
+  git -C "$wt" add a.txt
+  git -C "$wt" commit -qm "commit A"
+  printf 'B\n' > "$wt/b.txt"
+  git -C "$wt" add b.txt
+  git -C "$wt" commit -qm "commit B"
+
+  # Start an interactive rebase that pauses on edit at the first commit.
+  # Use GIT_SEQUENCE_EDITOR to rewrite the todo list.
+  GIT_SEQUENCE_EDITOR="sed -i.bak 's/^pick/edit/' " \
+    git -C "$wt" rebase -i HEAD~2 2>/dev/null || true
+
+  # The worktree should be in a rebase state (detached HEAD).
+  [ -d "$wt/.git/rebase-merge" ] || [ -d "$wt/.git/rebase-apply" ] \
+    || [ -f "$wt/.git" ] \
+    || { echo "rebase did not start; test fixture is broken"; return 1; }
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] || { echo "mid-rebase worktree was reaped"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario 1f: missing merge-base keeps the worktree (fail closed)
+# ---------------------------------------------------------------------------
+
+@test "a worktree whose merge-base cannot be determined is kept" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "R1F-S1")"
+
+  # Create a commit on an orphan branch (no common ancestor with staging).
+  git -C "$wt" checkout --orphan orphan-branch 2>/dev/null
+  printf 'orphan\n' > "$wt/orphan.txt"
+  git -C "$wt" add orphan.txt
+  git -C "$wt" commit -qm "orphan commit"
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+  [ -d "$wt" ] || { echo "worktree with no merge-base was reaped"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
 # Scenario 2: aged empty worktree with dead owner IS reaped
 # ---------------------------------------------------------------------------
 
@@ -188,8 +263,6 @@ _mk_aged_dead_sibling() {
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(_mk_dead_sibling "$primary" "R3-S1")"
 
-  # The worktree was just created (the lock reason carries a recent timestamp),
-  # so it should survive even though its owner PID is dead and it has no commits.
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
   [ -d "$wt" ] || { echo "fresh empty worktree was reaped"; return 1; }
@@ -205,10 +278,8 @@ _mk_aged_dead_sibling() {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
 
-  # Create an aged empty orphan that WOULD normally be reaped.
   local wt; wt="$(_mk_aged_dead_sibling "$primary" "R4-S1")"
 
-  # With the override, creating a new story must NOT prune the orphan.
   GAIA_WORKTREE_PRUNE_ON_CREATE=0 \
     run worktree_create "$primary" "R4-S2" "slug"
   [ "$status" -eq 0 ]
@@ -226,7 +297,6 @@ _mk_aged_dead_sibling() {
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(worktree_create "$primary" "R5-S1" "slug")"
 
-  # Add a commit.
   printf 'work\n' > "$wt/work.txt"
   git -C "$wt" add work.txt
   git -C "$wt" commit -qm "local work"
@@ -260,6 +330,31 @@ _mk_aged_dead_sibling() {
 }
 
 # ---------------------------------------------------------------------------
+# Scenario 7: _sw_reapable rejects a worktree with commits (aged, direct)
+# (aged so the age check does NOT short-circuit — exercises commits-ahead)
+# ---------------------------------------------------------------------------
+
+@test "_sw_reapable rejects an aged worktree with commits ahead" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "R7-S1" "slug")"
+
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -qm "local work"
+
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local branch="refs/heads/feat/R7-S1-slug"
+  local old_ts=1000000000
+  local reason; reason="$(_sw_lock_reason "R7-S1" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
+
+  run _sw_reapable "$primary" "$wt" "$reason" "$branch"
+  [ "$status" -ne 0 ] \
+    || { echo "_sw_reapable accepted an aged worktree with commits"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
 # Timestamp extraction from lock reason
 # ---------------------------------------------------------------------------
 
@@ -268,7 +363,6 @@ _mk_aged_dead_sibling() {
   local reason; reason="$(_sw_lock_reason "K1-S1" "12345")"
   local ts; ts="$(_sw_ts_from_reason "$reason")"
   [ -n "$ts" ] || { echo "no timestamp extracted from: $reason"; return 1; }
-  # Must be a recent epoch (within 60 seconds of now).
   local now; now="$(date +%s)"
   local diff=$(( now - ts ))
   [ "$diff" -ge 0 ] && [ "$diff" -lt 60 ] \
@@ -298,7 +392,7 @@ _mk_aged_dead_sibling() {
 @test "worktree_create writes a lock reason that includes a creation timestamp" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(worktree_create "$primary" "R7-S1" "slug")"
+  local wt; wt="$(worktree_create "$primary" "R8-S1" "slug")"
 
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A4 -F "$wt" || true)"
   local reason; reason="$(printf '%s\n' "$rec" | grep '^locked ' || true)"
@@ -306,7 +400,6 @@ _mk_aged_dead_sibling() {
   [[ "$reason" == *" ts "* ]] \
     || { echo "lock reason does not contain a timestamp: $reason"; return 1; }
 
-  # Extract and validate the timestamp is a recent epoch.
   local ts; ts="$(_sw_ts_from_reason "$reason")"
   [ -n "$ts" ] || { echo "no timestamp parsed from reason: $reason"; return 1; }
   local now; now="$(date +%s)"
@@ -322,13 +415,12 @@ _mk_aged_dead_sibling() {
 @test "a worktree with a legacy lock reason and no commits is reaped" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(worktree_create "$primary" "R8-S1" "slug")"
+  local wt; wt="$(worktree_create "$primary" "R9-S1" "slug")"
   git -C "$wt" push -q -u origin HEAD
 
-  # Replace lock with the old-style reason (no ts).
   local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
-  git -C "$primary" worktree lock "$wt" --reason "gaia story R8-S1 pid $dead_pid"
+  git -C "$primary" worktree lock "$wt" --reason "gaia story R9-S1 pid $dead_pid"
 
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
@@ -343,13 +435,12 @@ _mk_aged_dead_sibling() {
 @test "GAIA_WORKTREE_REAP_AGE_SECONDS overrides the default age threshold" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(worktree_create "$primary" "R9-S1" "slug")"
+  local wt; wt="$(worktree_create "$primary" "R10-S1" "slug")"
   git -C "$wt" push -q -u origin HEAD
 
-  # Re-lock with a timestamp 3 seconds in the past (via the real writer shape).
-  sleep 2
+  # Re-lock with a timestamp a few seconds in the past.
   local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
-  local reason; reason="$(_sw_lock_reason "R9-S1" "$dead_pid")"
+  local reason; reason="$(_sw_lock_reason "R10-S1" "$dead_pid")"
   local old_ts=$(( $(date +%s) - 3 ))
   reason="${reason% ts *} ts $old_ts"
   git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
@@ -368,9 +459,8 @@ _mk_aged_dead_sibling() {
 @test "a non-integer reap age threshold falls back to the default and keeps a fresh worktree" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(_mk_dead_sibling "$primary" "R10-S1")"
+  local wt; wt="$(_mk_dead_sibling "$primary" "R11-S1")"
 
-  # "30m" is not an integer -- the age check must not be skipped.
   GAIA_WORKTREE_REAP_AGE_SECONDS=30m run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ]
   [ -d "$wt" ] \
@@ -384,17 +474,15 @@ _mk_aged_dead_sibling() {
 @test "a leading-zero timestamp does not abort worktree_create" {
   _source_lib || { echo "library not implemented: $LIB"; return 1; }
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
-  local wt; wt="$(worktree_create "$primary" "R11-S1" "slug")"
+  local wt; wt="$(worktree_create "$primary" "R12-S1" "slug")"
   git -C "$wt" push -q -u origin HEAD
 
-  # Re-lock with a ts that has a leading zero (octal-hostile).
   local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
-  local reason; reason="$(_sw_lock_reason "R11-S1" "$dead_pid")"
+  local reason; reason="$(_sw_lock_reason "R12-S1" "$dead_pid")"
   reason="${reason% ts *} ts 0999999999"
   git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
   git -C "$primary" worktree lock "$wt" --reason "$reason"
 
-  # Must not abort (the old epoch makes it reapable, but the point is no crash).
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ] \
     || { echo "leading-zero timestamp caused a prune failure (exit $status)"; return 1; }

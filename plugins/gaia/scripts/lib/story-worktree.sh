@@ -405,19 +405,34 @@ _sw_reapable() {
   # commits; a pushed branch in PR/CI/review with a dead owner and age past the
   # threshold would have been reaped.
   #
-  # Detect the base branch from the merge-base of the story branch and the
-  # repository's HEAD (which is the primary checkout's branch, typically staging).
-  if [ -n "$branch" ]; then
-    local ahead base
-    base="$(git -C "$repo" merge-base "$branch" HEAD 2>/dev/null || printf '')"
-    if [ -n "$base" ]; then
-      ahead="$(git -C "$repo" rev-list --count "$base".."$branch" 2>/dev/null || printf '')"
-    else
-      # Cannot determine the merge base: fail closed (keep the worktree).
-      ahead=""
+  # When the worktree is detached (no branch line in the porcelain listing) --
+  # for example during an interactive rebase or after a `git checkout <sha>` --
+  # the branch parameter is empty.  The worktree still holds commits that would
+  # become unreachable if the directory were removed, so the check falls through
+  # to a HEAD-based comparison using the worktree's own HEAD.
+  #
+  # Detect the base from the merge-base against the repository's HEAD (the
+  # primary checkout's branch, typically staging).
+  if [ -e "$path" ] || [ -n "$branch" ]; then
+    local ahead base wt_head
+    if [ -n "$branch" ]; then
+      wt_head="$branch"
+    elif [ -e "$path" ]; then
+      # Detached: read the worktree's own HEAD commit.
+      wt_head="$(git -C "$path" rev-parse HEAD 2>/dev/null || printf '')"
+      [ -n "$wt_head" ] || return 1   # cannot read HEAD: fail closed
     fi
-    [ -n "$ahead" ] || return 1
-    [ "$ahead" = "0" ] || return 1
+    if [ -n "${wt_head:-}" ]; then
+      base="$(git -C "$repo" merge-base "$wt_head" HEAD 2>/dev/null || printf '')"
+      if [ -n "$base" ]; then
+        ahead="$(git -C "$repo" rev-list --count "$base".."$wt_head" 2>/dev/null || printf '')"
+      else
+        # Cannot determine the merge base: fail closed (keep the worktree).
+        ahead=""
+      fi
+      [ -n "$ahead" ] || return 1
+      [ "$ahead" = "0" ] || return 1
+    fi
   fi
 
   # Directory still present: reap only when the checkout is clean. A dirty one
