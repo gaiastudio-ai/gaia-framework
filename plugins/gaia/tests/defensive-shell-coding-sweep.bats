@@ -107,7 +107,7 @@ setup() {
   [[ "$output" == *"PASS"* ]]
 }
 
-@test "independence-check: _ic_is_known_key tells E900-S1 from E900-S10" {
+@test "independence-check: _ic_is_known_key whole-word match rejects substring" {
   local ic="$SCRIPTS_DIR/independence-check.sh"
   [ -f "$ic" ] || skip "independence-check.sh not found"
   local epics_file="$TEST_TMP/epics.md"
