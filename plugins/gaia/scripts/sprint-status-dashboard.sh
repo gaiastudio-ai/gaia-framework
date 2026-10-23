@@ -795,13 +795,18 @@ _render_fallback_dashboard() {
   high_risk_story_count=0
 
   # Track seen keys to deduplicate when both stories: and items: exist.
+  # Union semantics: stories: entries win on duplicate key.
   local _seen_key_list=""
+  local _seen_stories_list=""
+  local _cur_block=""
 
   local line
   while IFS= read -r line; do
-    if [[ "$line" =~ ^stories: ]] || [[ "$line" =~ ^items: ]]; then
-      in_stories=true
-      continue
+    if [[ "$line" =~ ^stories: ]]; then
+      in_stories=true; _cur_block="stories"; continue
+    fi
+    if [[ "$line" =~ ^items: ]]; then
+      in_stories=true; _cur_block="items"; continue
     fi
     if [[ "$in_stories" == true ]]; then
       if [[ "$line" =~ ^[a-z_] ]]; then
@@ -812,10 +817,19 @@ _render_fallback_dashboard() {
       if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
         flush_story
         s_key=$(echo "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
-        # Dedup: skip this entry if key already seen (both-keys union).
-        case "$_seen_key_list" in
-          *"|${s_key}|"*) s_key="" ;;
-          *) _seen_key_list="${_seen_key_list}|${s_key}|" ;;
+        # Dedup: stories wins on duplicate key. An items entry that was
+        # already seen from stories is skipped. A stories entry always wins.
+        case "$_cur_block" in
+          stories)
+            _seen_key_list="${_seen_key_list}|${s_key}|"
+            _seen_stories_list="${_seen_stories_list}|${s_key}|"
+            ;;
+          items)
+            case "$_seen_key_list" in
+              *"|${s_key}|"*) s_key="" ;;
+              *) _seen_key_list="${_seen_key_list}|${s_key}|" ;;
+            esac
+            ;;
         esac
         continue
       fi
