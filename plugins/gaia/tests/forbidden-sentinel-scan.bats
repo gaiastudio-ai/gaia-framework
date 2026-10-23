@@ -270,14 +270,14 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   helper_out="$output"
-  echo "$helper_out" | grep -qF "MOCK"
+  grep -qF "MOCK" <<<"$helper_out"
   # Must NOT report the pre-existing STUB (non-vacuous negative assertion)
-  if echo "$helper_out" | grep -qF "STUB"; then
+  if grep -qF "STUB" <<<"$helper_out"; then
     printf 'assert: unexpected STUB in output: %s\n' "$helper_out" >&2
     return 1
   fi
   # Assert exact line number: MOCK is on line 2
-  echo "$helper_out" | grep -qF ":2"
+  grep -qF ":2" <<<"$helper_out"
 }
 
 @test "diff-only: modified line that introduces a sentinel is caught" {
@@ -292,9 +292,9 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: modify line to add sentinel" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "FIXME"
+  grep -qF "FIXME" <<<"$output"
   # Assert exact line number: replacement is line 1
-  echo "$output" | grep -qF ":1"
+  grep -qF ":1" <<<"$output"
 }
 
 @test "diff-only: clean PR with no sentinel in added lines passes" {
@@ -319,7 +319,7 @@ _stage_diff() {
   _stage_diff "$FIXTURE_PROD_PATH" 'echo STUB'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "STUB"
+  grep -qF "STUB" <<<"$output"
 }
 
 @test "colour config does not hide a pre-existing sentinel (no false positive)" {
@@ -342,14 +342,14 @@ _stage_diff() {
   _stage_diff "$FIXTURE_PROD_PATH" '++ STUB here'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "STUB"
+  grep -qF "STUB" <<<"$output"
 }
 
 @test "added line starting with +++ containing a sentinel is caught" {
   _stage_diff "$FIXTURE_PROD_PATH" '+++ MOCK value'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "MOCK"
+  grep -qF "MOCK" <<<"$output"
 }
 
 # --- base-ref pinning: multi-commit branch ---
@@ -362,7 +362,7 @@ _stage_diff() {
   _stage_diff "$FIXTURE_PROD_OTHER_PATH" 'echo clean'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "FIXME"
+  grep -qF "FIXME" <<<"$output"
 }
 
 # --- line-number accuracy: hunk start is read and counter advances ---
@@ -377,8 +377,8 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: add at line 5" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "MOCK"
-  echo "$output" | grep -qF ":5"
+  grep -qF "MOCK" <<<"$output"
+  grep -qF ":5" <<<"$output"
 }
 
 # --- B3: performance on large diffs ---
@@ -401,7 +401,7 @@ _stage_diff() {
   end="$(date +%s)"
   elapsed=$((end - start))
   [ "$status" -ne 0 ]
-  echo "$output" | grep -qF "STUB"
+  grep -qF "STUB" <<<"$output"
   # Generous bound: must complete in under 10 seconds. The single-pass
   # approach finishes in well under 1 second.
   if [ "$elapsed" -gt 10 ]; then
