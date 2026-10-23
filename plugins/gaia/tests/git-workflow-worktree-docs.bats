@@ -566,7 +566,9 @@ leak_regex() {
 
 @test "the documented prefix also matches what the worktree library emits (AC2)" {
   grep -qF 'branch="feat/${story_key}-${slug}"' "$LIB"
-  section_slice | grep -qF 'feat/'
+  local _slice
+  _slice="$(section_slice)"
+  grep -qF 'feat/' <<< "$_slice"
 }
 
 @test "the commit-type table is byte-identical to the baseline (AC2)" {
