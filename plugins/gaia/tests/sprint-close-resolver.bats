@@ -156,11 +156,14 @@ teardown() {
   export PROJECT_PATH="$TEST_TMP"
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
-  # Bind session to sprint-900.
-  export GAIA_SESSION_DIR="$TEST_TMP/.gaia/state/sessions/test-session"
-  mkdir -p "$GAIA_SESSION_DIR"
-  printf 'sprint-900' > "$GAIA_SESSION_DIR/bound_sprint_id"
-  export GAIA_BINDING_DIR="$GAIA_SESSION_DIR"
+  # Use the REAL bind.sh writer to bind to sprint-900 (not hand-written files).
+  local bind_sh="$BATS_TEST_DIRNAME/../skills/gaia-run-sprint/scripts/bind.sh"
+  [ -f "$bind_sh" ] || skip "bind.sh not found at $bind_sh"
+  export CLAUDE_CODE_SESSION_ID="bats-close-test-$$"
+  bash "$bind_sh" --sprint sprint-900
+
+  # Unset any pre-exported GAIA_BINDING_DIR so close.sh must provision it.
+  unset GAIA_BINDING_DIR
 
   run bash "$CLOSE_SH"
 
@@ -401,17 +404,62 @@ teardown() {
   ! /usr/bin/grep -q '"sprint-901"' "$event_file"
 }
 
-# ---------- SKILL invocation ----------
+# ---------- Repeated --sprint ----------
 
-@test "close.sh with --sprint as the skill passes it closes the named sprint" {
+@test "repeated --sprint with different values is refused" {
   _build_concurrent_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
   export PROJECT_PATH="$TEST_TMP"
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
-  # Invoke close.sh exactly as the SKILL.md Action line does (with arguments).
-  run bash "$CLOSE_SH" --sprint sprint-900
+  run bash "$CLOSE_SH" --sprint sprint-900 --sprint sprint-901
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"repeated"* ]]
+}
+
+# ---------- --sprint "" (two-arg empty) ----------
+
+@test "--sprint with empty string argument is rejected" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --sprint ""
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"non-empty"* ]]
+}
+
+# ---------- SKILL invocation ----------
+
+@test "SKILL.md Action line passes arguments through to close.sh" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Read the Action line from SKILL.md and verify it contains $ARGUMENTS.
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+  local action_line
+  action_line="$(/usr/bin/grep '^!' "$skill_md" | /usr/bin/grep 'close.sh' | head -1)"
+  [[ "$action_line" == *'$ARGUMENTS'* ]]
+
+  # Simulate what the harness does: substitute CLAUDE_PLUGIN_ROOT and
+  # ARGUMENTS, then run the resulting command.
+  local cmd
+  cmd="$(printf '%s' "$action_line" | sed 's/^!//')"
+  cmd="$(printf '%s' "$cmd" | sed "s|\\\$CLAUDE_PLUGIN_ROOT|$BATS_TEST_DIRNAME/..|g")"
+  cmd="$(printf '%s' "$cmd" | sed "s|\${CLAUDE_PLUGIN_ROOT}|$BATS_TEST_DIRNAME/..|g")"
+  # Substitute $ARGUMENTS with --sprint sprint-900 (quoted for safety).
+  local arguments="--sprint sprint-900"
+  cmd="$(printf '%s' "$cmd" | sed "s|\\\$ARGUMENTS|$arguments|g")"
+
+  run bash -c "$cmd"
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"sprint-900"* ]]
@@ -420,6 +468,25 @@ teardown() {
   local s901_status
   s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
   [ "$s901_status" = "active" ]
+}
+
+# ---------- Injection through SKILL line ----------
+
+@test "shell metacharacters in user argument are not executed" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  local pwn="$TEST_TMP/pwned"
+  run bash "$CLOSE_SH" "x; touch $pwn"
+  [ "$status" -ne 0 ]
+  [ ! -f "$pwn" ]
+
+  run bash "$CLOSE_SH" "\$(touch $pwn)"
+  [ "$status" -ne 0 ]
+  [ ! -f "$pwn" ]
 }
 
 # ---------- AC7: Bash 3.2 compatibility ----------

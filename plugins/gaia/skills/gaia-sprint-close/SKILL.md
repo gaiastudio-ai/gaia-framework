@@ -214,7 +214,7 @@ The report joins per-step timing and approximate per-step token estimates into p
 
 ## Action
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh ${ARGUMENTS}
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/close.sh $ARGUMENTS
 
 ## Finalize
 

@@ -167,7 +167,7 @@ and emits a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl
 
 Sprint resolution (via the shared resolver):
   1. Explicit --sprint <id> (highest priority).
-  2. Session binding (GAIA_BINDING_DIR/bound_sprint_id).
+  2. Session binding (the sprint bound to the current session).
   3. Single-sprint default (one active sprint, no ambiguity).
 
 Pre-conditions:
@@ -201,12 +201,19 @@ while [ "$#" -gt 0 ]; do
     --sprint)
       [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
       [ -n "$2" ] || die "--sprint requires a non-empty sprint ID"
+      if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$2" ]; then
+        die "repeated --sprint: '$_SPRINT_FLAG' and '$2'"
+      fi
       _SPRINT_FLAG="$2"
       shift 2
       ;;
     --sprint=*)
-      _SPRINT_FLAG="${1#--sprint=}"
-      [ -n "$_SPRINT_FLAG" ] || die "--sprint requires a non-empty sprint ID"
+      _SPRINT_FLAG_NEW="${1#--sprint=}"
+      [ -n "$_SPRINT_FLAG_NEW" ] || die "--sprint requires a non-empty sprint ID"
+      if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$_SPRINT_FLAG_NEW" ]; then
+        die "repeated --sprint: '$_SPRINT_FLAG' and '$_SPRINT_FLAG_NEW'"
+      fi
+      _SPRINT_FLAG="$_SPRINT_FLAG_NEW"
       shift
       ;;
     --force-with-rollover)
@@ -238,6 +245,12 @@ SESSION_BINDING_SH="$PLUGIN_SCRIPTS_DIR/lib/session-binding.sh"
 if [ -f "$SESSION_BINDING_SH" ]; then
   # shellcheck source=../../../scripts/lib/session-binding.sh
   . "$SESSION_BINDING_SH"
+
+  # Provision the binding directory from the session ID so the resolver
+  # can read the binding file written by bind.sh. Without this call,
+  # GAIA_BINDING_DIR is unset and the resolver never sees the binding.
+  # Failure is non-fatal (no session ID in non-interactive contexts).
+  provision_binding_dir 2>/dev/null || true
 fi
 
 # Positional/flag conflict detection (before the resolver).
@@ -279,6 +292,7 @@ fi
 # stderr and returns non-zero — close.sh propagates that exit (fail closed).
 if [ "$_use_resolver" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
   _resolver_stderr="$(mktemp)"
+  trap 'rm -f "$_resolver_stderr"' EXIT
   _resolver_rc=0
   RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>"$_resolver_stderr")" || _resolver_rc=$?
   if [ "$_resolver_rc" -ne 0 ]; then
