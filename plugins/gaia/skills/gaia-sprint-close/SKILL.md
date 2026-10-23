@@ -95,14 +95,7 @@ hand-driving the deterministic scripts.
 
 ### Step 0 — Resolve Sprint Argument
 
-When the user passes `--sprint <sprint-id>`, resolve it via the shared sprint-argument resolver:
-
-```bash
-source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/session-binding.sh"
-RESOLVED_SPRINT="$(resolve_sprint_arg --command sprint-close --sprint "<sprint-id>")"
-```
-
-Without `--sprint`, the resolver defaults to the bound sprint or the single active sprint. The `close.sh` argument parser accepts `--sprint <id>`, a positional sprint ID, `--force`, and `--force-with-rollover`; the skill passes all user arguments through to close.sh via the Action line.
+Sprint resolution is handled internally by `close.sh`: it sources `session-binding.sh`, calls `provision_binding_dir`, and runs `resolve_sprint_arg --command sprint-close`. The skill validates and forwards the user's arguments to close.sh (see the Action section for the accepted flags and the allow-list). Do not call the resolver separately.
 
 ### Step 1 — Pre-condition: retro exists
 
@@ -232,7 +225,13 @@ Do NOT use a `!` shell line with unsanitized text — the `!` prefix performs te
 
 ## Finalize
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh
+After close.sh exits 0, run the finalize script to write the checkpoint and emit the workflow_complete lifecycle event:
+
+```bash
+bash '${CLAUDE_PLUGIN_ROOT}/skills/gaia-sprint-close/scripts/finalize.sh'
+```
+
+Do NOT run finalize before close.sh succeeds — the checkpoint and brain reindex must see the archive.
 
 ## Advancing to the next sprint
 

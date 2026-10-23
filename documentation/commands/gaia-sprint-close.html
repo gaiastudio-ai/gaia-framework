@@ -260,7 +260,10 @@
           resolves the target from the session binding or the single
           active sprint. Replace <code>sprint-12</code> with the sprint
           identifier returned in the <code>/gaia-sprint-review</code>
-          handoff message.
+          handoff message. Sprint identifiers must match
+          <code>[A-Za-z0-9][A-Za-z0-9._-]*</code>; words containing
+          shell metacharacters or characters outside this set are
+          refused.
         </p>
       </section>
 

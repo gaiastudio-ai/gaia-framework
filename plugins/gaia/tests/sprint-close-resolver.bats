@@ -452,11 +452,26 @@ teardown() {
 
 # ---------- SKILL invocation safety ----------
 
-@test "SKILL.md Action section does not splice raw arguments into a shell line" {
+@test "SKILL.md Action section is safe: no shell splice, has allow-list and refused metacharacters" {
   local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
-  # No !-prefixed shell line may contain $ARGUMENTS or ${ARGUMENTS}.
-  # The safe pattern is an instruction block, not a shell splice.
-  ! /usr/bin/grep -E '^\!.*\$ARGUMENTS|\$\{ARGUMENTS\}' "$skill_md"
+
+  # No !-prefixed shell line may contain $ARGUMENTS, ${ARGUMENTS}, or
+  # positional placeholders ($0, $1, ${N}) alongside close.sh.
+  run /usr/bin/grep -E '^\!.*(\$ARGUMENTS|\$\{ARGUMENTS\})' "$skill_md"
+  [ "$status" -ne 0 ]
+  run /usr/bin/grep -E '^\!.*close\.sh.*(\$[0-9]|\$\{[0-9])' "$skill_md"
+  [ "$status" -ne 0 ]
+
+  # The refused-metacharacter list must include semicolons.
+  /usr/bin/grep -q '`;`' "$skill_md"
+
+  # The allow-list must name the accepted flags.
+  /usr/bin/grep -q '\-\-sprint' "$skill_md"
+  /usr/bin/grep -q '\-\-force' "$skill_md"
+  /usr/bin/grep -q '\-\-help' "$skill_md"
+
+  # The ID pattern must be documented.
+  /usr/bin/grep -q 'A-Za-z0-9' "$skill_md"
 }
 
 @test "close.sh invoked directly with valid --sprint closes the right sprint" {
