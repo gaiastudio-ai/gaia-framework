@@ -821,3 +821,4 @@
 3	concurrent-sprint-sweep.bats	10
 3	concurrent-sprint-recheck.bats	18
 3	concurrent-sprint-drift.bats	14
+1	git-branch-dedup.bats	9

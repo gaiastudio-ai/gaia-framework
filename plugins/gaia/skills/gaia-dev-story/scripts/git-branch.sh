@@ -18,6 +18,7 @@
 #   1 — error (no git repo, invalid args, etc.)
 
 set -euo pipefail
+_ORIG_LC_ALL="${LC_ALL:-}"
 LC_ALL=C
 export LC_ALL
 
@@ -39,6 +40,15 @@ fi
 
 STORY_KEY="$1"
 SLUG="$2"
+
+# Apply the same slug cap as worktree_create so branch names stay consistent.
+# Source the library and call worktree_slug_cap directly — this keeps the cap
+# value, locale handling, and truncation logic in a single place.
+# The call runs in the caller's original locale so that cut(1) counts
+# characters, matching how worktree_create invokes the same function.
+# shellcheck source=../../../scripts/lib/story-worktree.sh
+. "$GUARD_DIR/../../../scripts/lib/story-worktree.sh"
+SLUG="$(LC_ALL="${_ORIG_LC_ALL:-}" worktree_slug_cap "$SLUG")"
 BRANCH_NAME="feat/${STORY_KEY}-${SLUG}"
 
 WORK_DIR="${PROJECT_PATH:-.}"
@@ -47,6 +57,20 @@ cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 # Non-git CWD detection (post-cd so we check the resolved working directory).
 # Replaces the prior `die` semantics; non-git CWD now exits 0 with a warning.
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+
+# Worktree dedup: if the working directory is a linked worktree that already
+# has a feat/<story-key>-* branch checked out (possibly truncated differently),
+# reuse that branch instead of creating a second one.
+_current_branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+if [ -n "$_current_branch" ] && [ "$_current_branch" != "$BRANCH_NAME" ]; then
+  case "$_current_branch" in
+    "feat/${STORY_KEY}-"*)
+      log "reusing worktree branch '$_current_branch' (matches story key)"
+      echo "already exists: $_current_branch"
+      exit 0
+      ;;
+  esac
+fi
 
 # Check if the branch already exists (local)
 if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
