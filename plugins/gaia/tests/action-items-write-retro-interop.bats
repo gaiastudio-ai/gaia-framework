@@ -224,6 +224,53 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "aiw_check_dedup matches the first of several entries at 0-indent" {
+  _load_aiw
+  local target="$TEST_TMP/.gaia/state/action-items.yaml"
+  _make_retro_fixture "$target" \
+    "sprint-50|retro item one|process" \
+    "sprint-50|retro item two|implementation"
+  # Append two triage entries; dedup should find the FIRST one
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "first triage" \
+    --ref-key "finding_id" --ref-value "F-900" >/dev/null
+  aiw_write --target "$target" --sprint-id "sprint-51" \
+    --classification "process" --text "second triage" \
+    --ref-key "story_key" --ref-value "E900-S1" >/dev/null
+  # The first triage entry (not the last) must be found
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-900"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry at 2-space indent when it is the first entry" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # Two triage entries at 2-space indent; match the first
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "first entry" \
+    --ref-key "finding_id" --ref-value "F-900" >/dev/null
+  aiw_write --target "$target" --sprint-id "sprint-51" \
+    --classification "process" --text "second entry" \
+    --ref-key "story_key" --ref-value "E900-S1" >/dev/null
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-900"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup handles retro-writer dedup_key comment lines between entries" {
+  _load_aiw
+  local target="$TEST_TMP/.gaia/state/action-items.yaml"
+  # Retro writer puts # dedup_key: lines between entries at column 0
+  _make_retro_fixture "$target" \
+    "sprint-50|retro item|process"
+  # Append a triage entry after the retro entries (with dedup_key comments)
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "triage after retro" \
+    --ref-key "finding_id" --ref-value "F-900" >/dev/null
+  # The triage entry follows a # dedup_key: comment; dedup must still find it
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-900"
+  [ "$status" -eq 0 ]
+}
+
 @test "aiw_check_dedup returns no-match for different sprint at 0-indent" {
   _load_aiw
   local target="$TEST_TMP/.gaia/state/action-items.yaml"
