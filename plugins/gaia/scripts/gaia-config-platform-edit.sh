@@ -122,7 +122,7 @@ case "$CMD" in
       err "warning: unknown platform '$ARG' (proceeding)"
     fi
     cur="$(_read_platforms || true)"
-    if printf '%s\n' "$cur" | grep -Fxq "$ARG"; then
+    if printf '%s\n' "$cur" | grep -Fxq -- "$ARG"; then
       # Already present — idempotent no-op.
       exit 0
     fi

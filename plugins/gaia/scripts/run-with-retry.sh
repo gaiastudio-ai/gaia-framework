@@ -65,7 +65,7 @@ is_flaky_test() {
     return 0
   fi
 
-  if grep -qxF "$test_id" "$flaky_list_file" 2>/dev/null; then
+  if grep -qxF -- "$test_id" "$flaky_list_file" 2>/dev/null; then
     printf '1'
   else
     printf '0'
