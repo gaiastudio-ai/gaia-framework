@@ -98,27 +98,50 @@ fi
 GREP_FILE="$("$SCRIPT_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels --as-grep-file)"
 trap 'rm -f "$GREP_FILE"' EXIT
 
-# For each production-path file in the diff, run grep -nwFf against the
-# working-tree copy (existence-checked). The -w (word-boundary) flag is
-# required so a fixed-string token only matches as a whole word — without it
-# the token matches as a substring and false-positives on mktemp
-# randomization templates (e.g. "...XXXXXX"). Deleted files have no working
-# copy and are skipped.
+# Scan only ADDED lines in the diff (not the entire working-tree file).
+# This prevents false positives from pre-existing sentinel text that the PR
+# did not change. The -w (word-boundary) flag is required so a fixed-string
+# token only matches as a whole word — without it the token matches as a
+# substring and false-positives on mktemp randomization templates (e.g.
+# "...XXXXXX").
+#
+# The diff is parsed with -U0 (zero context) so every hunk line is either a
+# removal (-) or an addition (+). Only + lines are scanned. The +N from the
+# @@ hunk header tracks the destination line number.
+HAS_MATCH=0
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
-  [[ -f "$path" ]] || continue
-  matches="$(grep -nwFf "$GREP_FILE" "$path" 2>/dev/null || true)"
-  if [[ -n "$matches" ]]; then
-    # Emit each match as its own HALT line; the canonical substring
-    # 'forbidden sentinel <S> in <path>:<line>' is preserved verbatim so
-    # downstream consumers can grep for it.
-    while IFS=: read -r line text; do
-      sentinel="$(printf '%s' "$text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1)"
+  # Get the diff for this single file; -U0 suppresses context lines.
+  diff_out="$(git diff -U0 "${BASE_REF}..HEAD" -- "$path" 2>/dev/null || true)"
+  [[ -n "$diff_out" ]] || continue
+  # Parse the diff: extract +N from @@ headers, scan only + lines.
+  cur_line=0
+  while IFS= read -r dline; do
+    # Hunk header: @@ -old[,count] +new[,count] @@
+    if [[ "$dline" == "@@"* ]]; then
+      # Extract the starting line number after the +
+      cur_line="${dline#*+}"       # strip everything up to first +
+      cur_line="${cur_line%% *}"   # strip from first space onward
+      cur_line="${cur_line%%,*}"   # strip ,count if present
+      continue
+    fi
+    # Skip non-added lines and the +++ header
+    [[ "$dline" == "+"* ]] || continue
+    [[ "$dline" != "+++"* ]] || continue
+    # Strip leading + to get the raw added text
+    added_text="${dline#+}"
+    match="$(printf '%s' "$added_text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
+    if [[ -n "$match" ]]; then
       printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
-        "$sentinel" "$path" "$line" >&2
-    done <<<"$matches"
-    exit 1
-  fi
+        "$match" "$path" "$cur_line" >&2
+      HAS_MATCH=1
+    fi
+    cur_line=$((cur_line + 1))
+  done <<<"$diff_out"
 done <<<"$PROD_PATHS"
+
+if [[ "$HAS_MATCH" -ne 0 ]]; then
+  exit 1
+fi
 
 exit 0
