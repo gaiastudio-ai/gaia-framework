@@ -827,4 +827,4 @@
 4	worktree-reap-safety.bats	20
 3	defensive-shell-coding-sweep.bats	44
 4	review-gate-hardening.bats	28
-3	worktree-walk-up-isolation.bats	21
+3	worktree-walk-up-isolation.bats	27
