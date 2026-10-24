@@ -12,7 +12,9 @@
 #   - aiw_bootstrap_file         — create file with schema header if absent
 #   - aiw_next_id                — compute next AI-{n} id
 #   - aiw_check_dedup            — idempotent dedup by composite key
+#   - aiw_detect_indent          — detect list-entry indent of existing file
 #   - aiw_validate_classification — enforce explicit classification enum
+#   - _aiw_yaml_escape           — escape a string for double-quoted YAML
 #   - aiw_build_entry            — build a YAML entry string
 #   - aiw_append_entry           — atomic append with flock
 #   - aiw_write                  — top-level orchestrator
@@ -34,7 +36,7 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# aiw_bootstrap_file — create action-items.yaml with §10.28.6 schema header
+# aiw_bootstrap_file — create action-items.yaml with canonical schema header
 # ---------------------------------------------------------------------------
 aiw_bootstrap_file() {
   local target="$1"
@@ -59,6 +61,9 @@ EOF
 
 # ---------------------------------------------------------------------------
 # aiw_next_id — compute next AI-{n} from existing entries
+# Handles both quoted (id: "AI-6") and unquoted (id: AI-6) id values.
+# Anchored to item id lines only: ignores dated ids (AI-YYYY-MM-DD-N),
+# embedded text, and non-item fields like parent_id.
 # ---------------------------------------------------------------------------
 aiw_next_id() {
   local target="$1"
@@ -69,7 +74,7 @@ aiw_next_id() {
       if [ "$n" -gt "$max_n" ] 2>/dev/null; then
         max_n="$n"
       fi
-    done < <(grep -oE 'id: "AI-([0-9]+)"' "$target" | grep -oE '[0-9]+')
+    done < <(grep -E '^[[:space:]]*-[[:space:]]+id:[[:space:]]+"?AI-[0-9]+"?[[:space:]]*$' "$target" | grep -oE 'AI-[0-9]+' | grep -oE '[0-9]+')
   fi
   printf 'AI-%d\n' "$((max_n + 1))"
 }
@@ -86,35 +91,65 @@ aiw_check_dedup() {
   fi
   # Use awk to scan YAML entries for matching composite key.
   # An entry matches when sprint_id, classification, and ref_key=ref_value all match.
+  # Compare against escaped values so dedup works for values containing
+  # quotes, backslashes or newlines. Pass via ENVIRON to avoid awk -v
+  # backslash interpretation.
+  local _esc_sid _esc_rv
+  _esc_sid="$(_aiw_yaml_escape "$sprint_id")"
+  _esc_rv="$(_aiw_yaml_escape "$ref_value")"
   local found
-  found="$(awk -v sid="$sprint_id" -v cls="$classification" -v rk="$ref_key" -v rv="$ref_value" '
-    /^  - id:/ {
-      # Flush previous entry if all three fields matched.
-      if (in_entry && s_match && c_match && r_match) { print "MATCH"; exit }
+  found="$(AIW_SID="$_esc_sid" AIW_CLS="$classification" AIW_RK="$ref_key" AIW_RV="$_esc_rv" \
+    awk '
+    BEGIN { sid=ENVIRON["AIW_SID"]; cls=ENVIRON["AIW_CLS"]; rk=ENVIRON["AIW_RK"]; rv=ENVIRON["AIW_RV"] }
+    /^[[:space:]]*- id:/ {
+      if (in_entry && s_match && c_match && r_match) { matched=1; exit }
       in_entry=1; s_match=0; c_match=0; r_match=0; next
     }
-    in_entry && /^[^ ]/ {
-      if (s_match && c_match && r_match) { print "MATCH"; exit }
+    in_entry && /^[^[:space:]]/ && !/^[[:space:]]*- id:/ {
+      if (s_match && c_match && r_match) { matched=1; exit }
       in_entry=0; next
     }
-    in_entry && /sprint_id:/ {
-      gsub(/.*sprint_id:[[:space:]]*"?/, ""); gsub(/".*/, "");
-      if ($0 == sid) s_match=1
-    }
-    in_entry && /classification:/ {
-      gsub(/.*classification:[[:space:]]*"?/, ""); gsub(/".*/, "");
-      if ($0 == cls) c_match=1
-    }
     in_entry {
-      pat = rk ":[[:space:]]*\"?" rv "\"?"
-      if ($0 ~ pat) r_match=1
+      line = $0; sub(/^[[:space:]]+/, "", line); sub(/\r$/, "", line)
+      colon = index(line, ":")
+      if (colon > 0) {
+        fk = substr(line, 1, colon - 1)
+        fv = substr(line, colon + 1)
+        sub(/^[[:space:]]*"?/, "", fv); sub(/"?[[:space:]]*$/, "", fv)
+        if (fk == "sprint_id" && fv == sid) s_match=1
+        if (fk == "classification" && fv == cls) c_match=1
+        if (fk == rk && fv == rv) r_match=1
+      }
     }
-    END { if (in_entry && s_match && c_match && r_match) print "MATCH" }
+    END {
+      if (!matched && in_entry && s_match && c_match && r_match) matched=1
+      if (matched) print "MATCH"
+    }
   ' "$target")"
   if [ "$found" = "MATCH" ]; then
     return 0
   fi
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# aiw_detect_indent — detect the indent prefix of existing list entries
+# Returns the whitespace before the LAST "- id:" item line (append
+# position). Skips comment lines; defaults to "  " (2-space) when no
+# entries exist.
+# ---------------------------------------------------------------------------
+aiw_detect_indent() {
+  local target="$1"
+  if [ -f "$target" ]; then
+    local line
+    # Match only real item lines (skip comments), take the last one
+    line="$(grep '^[[:space:]]*- id:' "$target" | tail -1)"
+    if [ -n "$line" ]; then
+      printf '%s' "${line%%- id:*}"
+      return
+    fi
+  fi
+  printf '  '
 }
 
 # ---------------------------------------------------------------------------
@@ -134,25 +169,67 @@ aiw_validate_classification() {
 }
 
 # ---------------------------------------------------------------------------
+# _aiw_yaml_escape — escape a string for use inside double-quoted YAML scalar.
+# Escapes backslash, double-quote, newline and carriage return.
+# ---------------------------------------------------------------------------
+_aiw_yaml_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  printf '%s' "$s"
+}
+
+# ---------------------------------------------------------------------------
+# _aiw_has_control_chars — return 0 if string contains C0 control characters
+# (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) or DEL (0x7F). Tab, LF and CR are
+# allowed (escaped by _aiw_yaml_escape). All bytes >= 0x80 (non-ASCII /
+# UTF-8) pass through.
+# Uses LC_ALL=C tr to strip every ALLOWED byte, then checks if anything
+# remains. Fails closed: if tr or grep error, the string is rejected.
+# ---------------------------------------------------------------------------
+_aiw_has_control_chars() {
+  local remainder
+  # Keep only disallowed bytes: delete tab, LF, CR, printable ASCII (0x20-0x7E)
+  # and all high bytes (0x80-0xFF). Anything left is a C0 control or DEL.
+  remainder="$(printf '%s' "$1" | LC_ALL=C tr -d '\011\012\015\040-\176\200-\377')" || return 0
+  if [ -n "$remainder" ]; then
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # aiw_build_entry — build a YAML entry string
-# Args: id sprint_id classification text ref_key ref_value
+# Args: id sprint_id classification text ref_key ref_value [list_prefix]
+# list_prefix defaults to "  " (2-space); pass "" for 0-indent entries.
+# All values are escaped for safe inclusion in double-quoted YAML scalars.
 # ---------------------------------------------------------------------------
 aiw_build_entry() {
   local id="$1" sprint_id="$2" classification="$3" text="$4" ref_key="$5" ref_value="$6"
+  local list_prefix="${7-  }"
+  local field_prefix="${list_prefix}  "
   local timestamp
   timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   local theme_hash
   theme_hash="$(printf '%s' "$text" | shasum -a 256 | awk '{print $1}')"
 
-  printf '  - id: "%s"\n' "$id"
-  printf '    sprint_id: "%s"\n' "$sprint_id"
-  printf '    text: "%s"\n' "$text"
-  printf '    classification: "%s"\n' "$classification"
-  printf '    status: "open"\n'
-  printf '    escalation_count: 0\n'
-  printf '    created_at: "%s"\n' "$timestamp"
-  printf '    theme_hash: "sha256:%s"\n' "$theme_hash"
-  printf '    %s: "%s"\n' "$ref_key" "$ref_value"
+  local safe_text safe_value safe_sprint
+  safe_text="$(_aiw_yaml_escape "$text")"
+  safe_value="$(_aiw_yaml_escape "$ref_value")"
+  safe_sprint="$(_aiw_yaml_escape "$sprint_id")"
+
+  printf '%s' "${list_prefix}"
+  printf -- '- id: "%s"\n' "$id"
+  printf '%ssprint_id: "%s"\n' "$field_prefix" "$safe_sprint"
+  printf '%stext: "%s"\n' "$field_prefix" "$safe_text"
+  printf '%sclassification: "%s"\n' "$field_prefix" "$classification"
+  printf '%sstatus: "open"\n' "$field_prefix"
+  printf '%sescalation_count: 0\n' "$field_prefix"
+  printf '%screated_at: "%s"\n' "$field_prefix" "$timestamp"
+  printf '%stheme_hash: "sha256:%s"\n' "$field_prefix" "$theme_hash"
+  printf '%s%s: "%s"\n' "$field_prefix" "$ref_key" "$safe_value"
 }
 
 # ---------------------------------------------------------------------------
@@ -227,15 +304,40 @@ aiw_write() {
     return 1
   fi
 
-  # Validate classification BEFORE any file writes (scenario 7)
+  # Validate ref_key is a plain identifier (no newlines, spaces, or special chars)
+  case "$ref_key" in
+    ''|*[!A-Za-z0-9_]*)
+      printf 'status=error\nreason=--ref-key must be a plain identifier (letters, digits, underscore)\n'
+      return 1
+      ;;
+  esac
+
+  # Reject ref_key that duplicates a built-in entry field name
+  case "$ref_key" in
+    id|status|sprint_id|classification|text|created_at|escalation_count|theme_hash)
+      printf 'status=error\nreason=--ref-key must not be a built-in field name (%s)\n' "$ref_key"
+      return 1
+      ;;
+  esac
+
+  # Reject control characters (below 0x20 except tab, plus 0x7F) in any value
+  local _val
+  for _val in "$text" "$ref_value" "$sprint_id"; do
+    if _aiw_has_control_chars "$_val"; then
+      printf 'status=error\nreason=value contains disallowed control characters\n'
+      return 1
+    fi
+  done
+
+  # Validate classification before any file writes
   if ! aiw_validate_classification "$classification"; then
     return 1
   fi
 
-  # Bootstrap file if missing (AC3)
+  # Bootstrap file if missing
   aiw_bootstrap_file "$target"
 
-  # Idempotency check (scenarios 5, 6)
+  # Idempotency check
   if aiw_check_dedup "$target" "$sprint_id" "$classification" "$ref_key" "$ref_value"; then
     printf 'status=skipped_idempotent\nreason=entry with matching composite key already exists\n'
     return 0
@@ -245,9 +347,19 @@ aiw_write() {
   local next_id
   next_id="$(aiw_next_id "$target")"
 
+  # Detect indent of existing entries and match it (uses last entry's indent)
+  local indent
+  indent="$(aiw_detect_indent "$target")"
+
   # Build entry
   local entry
-  entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value")"
+  entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value" "$indent")"
+
+  # Refuse to write through a symlink (planted-symlink attack surface)
+  if [ -L "$target" ]; then
+    printf 'status=error\nreason=target is a symlink; refusing to write\n'
+    return 1
+  fi
 
   # Atomic append
   aiw_append_entry "$target" "$entry"
