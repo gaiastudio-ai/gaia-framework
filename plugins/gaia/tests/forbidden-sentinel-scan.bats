@@ -722,11 +722,11 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "base: clean fixture" && git checkout -q feat-test )
   ( cd "$REPO" && git merge -q main --no-edit )
   ( cd "$REPO" && git mv "$FIXTURE_FIXTURES_PATH" "$FIXTURE_PROD_OTHER_PATH" )
-  printf 'echo clean line\necho FIXME added\n' > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  printf 'echo clean line\necho MOCK added\n' > "$REPO/$FIXTURE_PROD_OTHER_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "feat: move fixture + add sentinel" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  grep -qF "FIXME" <<<"$output"
+  grep -qF "MOCK" <<<"$output"
   grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
 }
 
@@ -743,52 +743,35 @@ _stage_diff() {
   grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
 }
 
-# --- copy detection (C records) ---
+# --- copies are treated as new files (scanned in full) ---
 
 @test "fixture copied into production with old sentinel HALTs" {
+  # Without -C, a copy shows as a new file (A record) and is scanned in full.
   ( cd "$REPO" && git checkout -q main )
   printf 'echo STUB  # fixture copy\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "base: fixture" && git checkout -q feat-test )
   ( cd "$REPO" && git merge -q main --no-edit )
   cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "feat: copy fixture to prod" )
-  local ns
-  ns="$(cd "$REPO" && git -c diff.renames=copies diff -C --name-status -z main..HEAD 2>/dev/null | tr '\0' ' ')"
-  [[ "$ns" == C* ]]
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
   grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
 }
 
-@test "copy inside production with no new lines exits 0" {
+@test "copy inside production with an old sentinel HALTs" {
+  # A copy of a production file is treated as a new file, so its old
+  # sentinel is caught (stricter than pairing, consistent with the ruling).
   ( cd "$REPO" && git checkout -q main )
-  printf 'echo clean content only\n' > "$REPO/$FIXTURE_PROD_PATH"
-  ( cd "$REPO" && git add -A && git commit -q -m "base: clean prod file" && git checkout -q feat-test )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file with sentinel" && git checkout -q feat-test )
   ( cd "$REPO" && git merge -q main --no-edit )
   cp "$REPO/$FIXTURE_PROD_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "feat: copy within prod" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
-  [ "$status" -eq 0 ]
-}
-
-@test "copy inside production plus an added sentinel HALTs on the added line only" {
-  ( cd "$REPO" && git checkout -q main )
-  {
-    local _i=1
-    while [ "$_i" -le 10 ]; do printf 'echo clean_%d\n' "$_i"; _i=$((_i + 1)); done
-  } > "$REPO/$FIXTURE_PROD_PATH"
-  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
-  ( cd "$REPO" && git merge -q main --no-edit )
-  cp "$REPO/$FIXTURE_PROD_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
-  printf 'echo MOCK added\n' >> "$REPO/$FIXTURE_PROD_OTHER_PATH"
-  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy + add sentinel" )
-  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  grep -qF "MOCK" <<<"$output"
-  local halt_count
-  halt_count="$(grep -cF "HALT:" <<<"$output")"
-  [ "$halt_count" -eq 1 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
 }
 
 @test "pure rename under caller diff.renames=false still exits 0" {
@@ -799,6 +782,62 @@ _stage_diff() {
   ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename" )
   cd "$REPO"; run env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=false "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
+}
+
+@test "pure rename under caller diff.renames=copies still exits 0" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename" )
+  cd "$REPO"; run env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=copies "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- new file similar to existing must still be scanned (no false pairing) ---
+
+@test "new file similar to existing production file is scanned in full" {
+  # A brand-new file that shares content with an existing one must not be
+  # paired against it (which would hide its sentinel). With -C this fails.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB new\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: new file similar to existing" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "file split into two with a sentinel in the new part is caught" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo line_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Split: keep first 5 lines in original, put last 5 + sentinel in new file
+  head -5 "$REPO/$FIXTURE_PROD_PATH" > "$REPO/$FIXTURE_PROD_PATH.tmp"
+  mv "$REPO/$FIXTURE_PROD_PATH.tmp" "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo line_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo MOCK split\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: split file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
 }
 
 # --- file names with spaces ---
@@ -848,6 +887,9 @@ _stage_diff() {
   ( cd "$REPO" && git add -A && git commit -q -m "feat: newline file + normal" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
+  # The newline-named file's sentinel must also report at line 2
+  grep -qF 'a\nb.sh:2' <<<"$output"
+  # The normal file must still report at line 2
   grep -qF "$FIXTURE_PROD_PATH:2" <<<"$output"
 }
 

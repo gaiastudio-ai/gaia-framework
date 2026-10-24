@@ -97,9 +97,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -c core.quotePath=false emits raw UTF-8 / special-char paths instead of
 # C-quoting them, so filenames with non-ASCII, quotes or backslashes are
 # passed through unchanged.
-# -c diff.renames=copies enables copy detection (C records) regardless of
-# the caller's git config, so copies from exempt into production are caught.
-_git_diff() { git -c core.quotePath=false -c diff.renames=copies --no-pager diff --no-color --no-ext-diff --no-textconv --text -C "$@"; }
+# -c diff.renames=true pins rename detection on (independent of the caller's
+# git config) without --find-copies-harder (-C), which would false-pair new
+# files against similar existing ones and hide their sentinels.
+_git_diff() { git -c core.quotePath=false -c diff.renames=true --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
 
 # git diff --name-status -z: NUL-delimited, includes old paths for renames
 # and copies (R/C entries carry two NUL-separated paths: old then new).
