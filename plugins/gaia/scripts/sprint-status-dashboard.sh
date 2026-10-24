@@ -802,8 +802,9 @@ _render_fallback_dashboard() {
   # duplicate key regardless of block order.
   local _stories_keys=""
   local _cur_block=""
-  local _items_buf=""
-  _items_buf="$(mktemp "${TMPDIR:-/tmp}/dash-items.XXXXXX")"
+  _DASH_ITEMS_BUF="$(mktemp "${TMPDIR:-/tmp}/dash-items.XXXXXX")"
+  local _items_buf="$_DASH_ITEMS_BUF"
+  trap 'rm -f "${_DASH_ITEMS_BUF:-}" 2>/dev/null' EXIT
 
   local _prev_block=""
   local line
@@ -812,7 +813,7 @@ _render_fallback_dashboard() {
       # Flush the pending entry from the previous block before switching.
       if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
       if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
-        printf '%s\t%s\t%s\t%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+        printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
       fi
       s_key="" s_title="" s_status="" s_points=""
       in_stories=true; _cur_block="stories"; continue
@@ -821,7 +822,7 @@ _render_fallback_dashboard() {
       # Flush the pending entry from the previous block before switching.
       if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
       if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
-        printf '%s\t%s\t%s\t%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+        printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
       fi
       s_key="" s_title="" s_status="" s_points=""
       in_stories=true; _cur_block="items"; continue
@@ -831,7 +832,7 @@ _render_fallback_dashboard() {
         in_stories=false
         if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
         if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
-          printf '%s\t%s\t%s\t%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+          printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
         fi
         s_key="" s_title="" s_status="" s_points=""
         continue
@@ -840,7 +841,7 @@ _render_fallback_dashboard() {
         # Flush the previous entry.
         if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
         if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
-          printf '%s\t%s\t%s\t%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+          printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
         fi
         s_key=$(echo "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
         s_title="" s_status="" s_points=""
@@ -863,12 +864,12 @@ _render_fallback_dashboard() {
   if [[ "$in_stories" == true ]]; then
     if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
     if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
-      printf '%s\t%s\t%s\t%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+      printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
     fi
   fi
 
   # Replay buffered items entries, skipping keys already seen from stories.
-  while IFS=$'\t' read -r s_key s_title s_status s_points; do
+  while IFS=$'\037' read -r s_key s_title s_status s_points; do
     [ -n "$s_key" ] || continue
     case "$_stories_keys" in
       *"|${s_key}|"*) ;; # stories: version already rendered
