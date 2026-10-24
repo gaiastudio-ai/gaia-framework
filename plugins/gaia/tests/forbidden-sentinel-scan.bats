@@ -714,6 +714,9 @@ _stage_diff() {
 }
 
 @test "move from fixtures with an added sentinel HALTs on the added line" {
+  # Moving a fixture into production AND adding a new sentinel. The old
+  # clean line must not trigger (it's part of the full scan, but clean),
+  # and the added sentinel must HALT at the right line.
   ( cd "$REPO" && git checkout -q main )
   printf 'echo clean line\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "base: clean fixture" && git checkout -q feat-test )
@@ -724,6 +727,7 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "FIXME" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
 }
 
 # --- LC_ALL=C is required for tr on high bytes ---
@@ -737,4 +741,126 @@ _stage_diff() {
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
   grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
+}
+
+# --- copy detection (C records) ---
+
+@test "fixture copied into production with old sentinel HALTs" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # fixture copy\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: fixture" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy fixture to prod" )
+  local ns
+  ns="$(cd "$REPO" && git -c diff.renames=copies diff -C --name-status -z main..HEAD 2>/dev/null | tr '\0' ' ')"
+  [[ "$ns" == C* ]]
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+}
+
+@test "copy inside production with no new lines exits 0" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo clean content only\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: clean prod file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  cp "$REPO/$FIXTURE_PROD_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy within prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "copy inside production plus an added sentinel HALTs on the added line only" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo clean_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  cp "$REPO/$FIXTURE_PROD_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  printf 'echo MOCK added\n' >> "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy + add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  local halt_count
+  halt_count="$(grep -cF "HALT:" <<<"$output")"
+  [ "$halt_count" -eq 1 ]
+}
+
+@test "pure rename under caller diff.renames=false still exits 0" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename" )
+  cd "$REPO"; run env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=false "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- file names with spaces ---
+
+@test "file with space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local spfile="${prefix}/scripts/a b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$spfile")" )
+  printf 'clean\nSTUB\n' > "$REPO/$spfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "a b.sh:2" <<<"$output"
+}
+
+@test "file with trailing space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local trfile="${prefix}/scripts/x.sh "
+  ( cd "$REPO" && mkdir -p "$(dirname "$trfile")" )
+  printf 'clean\nMOCK\n' > "$REPO/$trfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: trailing space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "x.sh :2" <<<"$output"
+}
+
+@test "file with quote and space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local qsfile="${prefix}/scripts/a \"b c.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$qsfile")" )
+  printf 'clean\nFIXME\n' > "$REPO/$qsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: quote-space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF 'a "b c.sh:2' <<<"$output"
+}
+
+# --- newline in name must not shift later file line numbers ---
+
+@test "file with newline in name does not shift line numbers for later files" {
+  local prefix="gaia-public/plugins/gaia"
+  local nlfile
+  printf -v nlfile '%s/scripts/a\nb.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$nlfile")" )
+  printf 'clean\nSTUB on line 2\n' > "$REPO/$nlfile"
+  printf 'clean\nFIXME on line 2\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: newline file + normal" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "$FIXTURE_PROD_PATH:2" <<<"$output"
+}
+
+# --- leading/trailing-space name ---
+
+@test "file with leading space in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local lsfile="${prefix}/scripts/ leading.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$lsfile")" )
+  printf 'clean\nXXX\n' > "$REPO/$lsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: leading space" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "XXX" <<<"$output"
+  grep -qF " leading.sh:2" <<<"$output"
 }
