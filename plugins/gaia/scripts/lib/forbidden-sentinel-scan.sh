@@ -99,20 +99,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # passed through unchanged.
 _git_diff() { git -c core.quotePath=false --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
 
-# git diff --name-only -z: NUL-delimited output avoids C-quoting of paths
-# with non-ASCII, quotes, backslashes or control characters. The while-read
-# with -d '' is bash 3.2-safe.
+# git diff --name-status -z: NUL-delimited, includes old paths for renames
+# and copies (R/C entries carry two NUL-separated paths: old then new).
+# Including the old path in the pathspec lets git pair the rename so the
+# diff shows only genuinely added lines, not every line as new.
 DIFF_PATHS=()
-while IFS= read -r -d '' p; do
-  # Production-path filter: skip exempt subtrees and .bats files.
-  case "$p" in
-    gaia-framework/plugins/gaia/tests/*) continue ;;
-    */tests/fixtures/*) continue ;;
-    _memory/*|docs/*|documentation/*|.github/*) continue ;;
-    *.bats) continue ;;
+_is_exempt() {
+  case "$1" in
+    gaia-framework/plugins/gaia/tests/*) return 0 ;;
+    */tests/fixtures/*) return 0 ;;
+    _memory/*|docs/*|documentation/*|.github/*) return 0 ;;
+    *.bats) return 0 ;;
   esac
-  DIFF_PATHS+=("$p")
-done < <(_git_diff --name-only -z "${BASE_REF}..HEAD" 2>/dev/null || true)
+  return 1
+}
+{
+  _status=""
+  while IFS= read -r -d '' _field; do
+    if [[ -z "$_status" ]]; then
+      _status="$_field"
+      # Single-path statuses: A, M, D, T, U, X
+      # Two-path statuses: R### or C### (rename/copy with similarity %)
+      case "$_status" in
+        R*|C*)
+          # Next two fields are old-path and new-path
+          IFS= read -r -d '' _old_path || true
+          IFS= read -r -d '' _new_path || true
+          _status=""
+          _is_exempt "$_new_path" && continue
+          # Include both paths so git can pair the rename
+          DIFF_PATHS+=("$_old_path" "$_new_path")
+          ;;
+        D*)
+          # Deleted file: read and skip (no working copy to scan)
+          IFS= read -r -d '' _dpath || true
+          _status=""
+          ;;
+        *)
+          # Single-path status: next field is the path
+          IFS= read -r -d '' _spath || true
+          _status=""
+          _is_exempt "$_spath" && continue
+          DIFF_PATHS+=("$_spath")
+          ;;
+      esac
+    fi
+  done
+} < <(_git_diff --name-status -z "${BASE_REF}..HEAD" 2>/dev/null || true)
 
 if [[ ${#DIFF_PATHS[@]} -eq 0 ]]; then
   log "no production-path changes in $BASE_REF..HEAD — skipping forbidden-sentinel scan"
@@ -151,9 +184,36 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
     /^diff --git /                 { in_hunk = 0; file = ""; next }
     /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
     /^\+\+\+ "b\// && in_hunk == 0 {
-      # Quoted header: strip +++ "b/ prefix and trailing "
+      # Quoted header: strip +++ "b/ prefix and trailing ", decode C-escapes
       file = substr($0, 8)
       sub(/"$/, "", file)
+      # Decode \\, \", \t, \n and octal \NNN sequences
+      decoded = ""
+      i = 1
+      while (i <= length(file)) {
+        c = substr(file, i, 1)
+        if (c == "\\" && i < length(file)) {
+          nc = substr(file, i+1, 1)
+          if (nc == "\\")      { decoded = decoded "\\"; i += 2 }
+          else if (nc == "\"") { decoded = decoded "\""; i += 2 }
+          else if (nc == "t")  { decoded = decoded "\t"; i += 2 }
+          else if (nc == "n")  { decoded = decoded "\n"; i += 2 }
+          else if (nc ~ /[0-3]/ && substr(file, i+1, 3) ~ /^[0-7][0-7][0-7]$/) {
+            # Octal escape \NNN
+            oct = substr(file, i+1, 3)
+            n = 0
+            for (j = 1; j <= 3; j++) {
+              d = substr(oct, j, 1) + 0
+              n = n * 8 + d
+            }
+            decoded = decoded sprintf("%c", n)
+            i += 4
+          }
+          else { decoded = decoded c; i += 1 }
+        }
+        else { decoded = decoded c; i += 1 }
+      }
+      file = decoded
       next
     }
     /^\+\+\+ /    && in_hunk == 0 { file = ""; next }
