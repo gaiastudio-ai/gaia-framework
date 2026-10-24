@@ -551,17 +551,19 @@ _stage_diff() {
 # --- filenames that git C-quotes must still be scanned ---
 
 @test "file with non-ASCII name (UTF-8) is scanned for sentinels" {
-  # Without core.quotePath=false and -z, git quotes this as caf\303\251.sh
-  # and the path goes in as a literal pathspec that matches nothing.
+  # Build the real UTF-8 bytes with printf -v (double-quoted \303 gives
+  # literal backslashes, not octal).
   local prefix="gaia-public/plugins/gaia"
-  local utf8file="${prefix}/scripts/caf\303\251.sh"
+  local utf8file
+  printf -v utf8file '%s/scripts/caf\303\251.sh' "$prefix"
   ( cd "$REPO" && mkdir -p "$(dirname "$utf8file")" )
   printf 'clean\nSTUB\n' > "$REPO/$utf8file"
   ( cd "$REPO" && git add -A && git commit -q -m "feat: utf8 name" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
-  grep -qF "STUB" <<<"$output"
-  grep -qF ":2" <<<"$output"
+  # Assert exact decoded path:line in the HALT message
+  printf -v _expected 'caf\303\251.sh:2'
+  grep -qF "$_expected" <<<"$output"
 }
 
 @test "file with double-quote in name is scanned for sentinels" {
@@ -573,7 +575,8 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "MOCK" <<<"$output"
-  grep -qF ":2" <<<"$output"
+  # Assert decoded path (no escaped quotes)
+  grep -qF 'a"b.sh:2' <<<"$output"
 }
 
 @test "file with backslash in name is scanned for sentinels" {
@@ -585,7 +588,8 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "FIXME" <<<"$output"
-  grep -qF ":2" <<<"$output"
+  # Assert decoded path (no doubled backslash)
+  grep -qF 'back\slash.sh:2' <<<"$output"
 }
 
 @test "file with tab in name is scanned for sentinels" {
@@ -600,14 +604,42 @@ _stage_diff() {
   grep -qF "XXX" <<<"$output"
 }
 
-# --- LC_ALL=C must be set so BSD tr handles high bytes correctly ---
+# --- renamed files must not trigger on pre-existing content ---
 
-@test "high-byte content (non-ASCII) in an added line with a sentinel is caught" {
-  # Without LC_ALL=C, BSD tr on macOS may mishandle bytes > 127.
-  # This test embeds a high byte (\xc3\xa9 = UTF-8 e-acute) alongside STUB.
-  printf 'caf\303\251 STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
-  ( cd "$REPO" && git add -A && git commit -q -m "feat: high-byte sentinel" )
+@test "pure rename of a file with a sentinel does not trigger" {
+  # A git mv with no content change should show zero added lines.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename only" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "rename plus a new sentinel line HALTs on the added line only" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo clean\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: clean file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" )
+  printf 'echo clean\necho MOCK added\n' > "$REPO/$FIXTURE_PROD_ALT_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: rename + add sentinel" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  grep -qF "$FIXTURE_PROD_ALT_PATH:2" <<<"$output"
+}
+
+# --- LC_ALL=C is required for tr on high bytes ---
+
+@test "scan with LC_ALL=en_US.UTF-8 in caller env still catches sentinels with high bytes" {
+  # The script must override the caller's locale with its own LC_ALL=C.
+  # Without it, BSD tr and GNU grep may mishandle bytes > 127.
+  printf '\377\376STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: high-byte content" )
+  cd "$REPO"; LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
 }
