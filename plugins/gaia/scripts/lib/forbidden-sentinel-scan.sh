@@ -127,8 +127,15 @@ _is_exempt() {
           IFS= read -r -d '' _new_path || true
           _status=""
           _is_exempt "$_new_path" && continue
-          # Include both paths so git can pair the rename
-          DIFF_PATHS+=("$_old_path" "$_new_path")
+          if _is_exempt "$_old_path"; then
+            # Moving from an exempt path INTO production: include only
+            # the new path so git treats every line as added (full scan).
+            DIFF_PATHS+=("$_new_path")
+          else
+            # Rename within production: include both paths so git can
+            # pair the rename and show only genuinely added lines.
+            DIFF_PATHS+=("$_old_path" "$_new_path")
+          fi
           ;;
         D*)
           # Deleted file: read and skip (no working copy to scan)
@@ -227,7 +234,14 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
     }
     in_hunk && /^\+/ {
       print substr($0, 2)
-      print file "\t" cur_line > metafile
+      # Escape control chars in file path that would break the
+      # tab-separated, line-based metadata format.
+      safe = file
+      gsub(/\\/, "\\\\", safe)
+      gsub(/\t/, "\\t", safe)
+      gsub(/\n/, "\\n", safe)
+      gsub(/\r/, "\\r", safe)
+      print safe "\t" cur_line > metafile
       cur_line++
     }
   ' > "$ADDED_TEXT"
