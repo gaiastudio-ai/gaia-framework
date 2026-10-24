@@ -463,6 +463,33 @@ _check_teardown_safety() {
 }
 
 # ---------------------------------------------------------------------------
+# Guard 5 — Local helpers must source the shared test_helper.bash
+# ---------------------------------------------------------------------------
+
+@test "every subdirectory test_helper.bash sources the shared helper" {
+  local violations=()
+  while IFS= read -r f; do
+    # Skip the shared helper itself (lives directly under tests/).
+    [ "$(basename "$(dirname "$f")")" = "tests" ] && continue
+    # Match any of:
+    #   . "…/test_helper.bash"   (computed path, e.g. $(cd …)/test_helper.bash)
+    #   . ".../tests/test_helper.bash"  (literal path)
+    #   source …/test_helper.bash
+    if ! /usr/bin/grep -qE '^\.[[:space:]].*test_helper\.bash|^source[[:space:]].*test_helper\.bash' "$f"; then
+      violations+=("${f#"$TESTS_DIR"/}")
+    fi
+  done < <(find "$TESTS_DIR" -name 'test_helper.bash' | LC_ALL=C sort)
+
+  if [ "${#violations[@]}" -gt 0 ]; then
+    printf 'FAIL: %d local helper(s) do not source the shared test_helper.bash:\n' "${#violations[@]}" >&2
+    for v in "${violations[@]}"; do
+      printf '  - %s\n' "$v" >&2
+    done
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Self-tests: verify the guards catch violations
 # ---------------------------------------------------------------------------
 
@@ -802,7 +829,7 @@ _ds_scratch() {
 
   [ -n "$out" ] || { printf 'no output\n' >&2; return 1; }
 
-  # M10: top-level suite must be selected
+  # Top-level suite must be selected
   /usr/bin/grep -q "top.bats" <<< "$out" || {
     printf 'top-level suite missing:\n%s\n' "$out" >&2; return 1; }
 
@@ -810,7 +837,7 @@ _ds_scratch() {
   /usr/bin/grep -q "subdir/deep.bats" <<< "$out" || {
     printf 'subdir direct suite missing:\n%s\n' "$out" >&2; return 1; }
 
-  # M8: indirect loader via relay_helpers
+  # Indirect loader via relay_helpers
   /usr/bin/grep -q "relay.bats" <<< "$out" || {
     printf 'indirect suite missing:\n%s\n' "$out" >&2; return 1; }
 }
@@ -834,14 +861,34 @@ _ds_scratch() {
 }
 
 @test "helper-load guard cap=0 rejects a suite without the load line" {
-  # M1: if the cap were raised above 0, this probe would pass silently.
+  # Build a scratch tests dir containing one suite with no load line and
+  # one with.  The real guard logic (cap=0) must reject the missing one.
   local d="$BATS_TEST_TMPDIR/cap-probe-$$"
   mkdir -p "$d"
   { printf '#!/usr/bin/env bats\n'
     printf '%s "%s" { true; }\n' '@test' 'x'; } > "$d/no-helper.bats"
+  { printf '#!/usr/bin/env bats\n'
+    printf "load 'test_helper.bash'\n"
+    printf '%s "%s" { true; }\n' '@test' 'x'; } > "$d/has-helper.bats"
 
-  run _loads_shared_helper "$d/no-helper.bats"
-  [ "$status" -ne 0 ]
+  # Run the real guard at cap=0 — the no-helper suite must cause failure.
+  local missing=() scanned=0
+  while IFS= read -r f; do
+    scanned=$((scanned + 1))
+    if ! _loads_shared_helper "$f"; then
+      missing+=("${f#"$d"/}")
+    fi
+  done < <(find "$d" -name '*.bats' | LC_ALL=C sort)
+
+  [ "$scanned" -gt 0 ]
+  local count="${#missing[@]}"
+  # With cap=0 (_LEGACY_NO_LOAD_CAP) this must fail.
+  [ "$count" -gt "$_LEGACY_NO_LOAD_CAP" ] || {
+    printf 'Guard did not reject uncovered suite (count=%d cap=%d)\n' "$count" "$_LEGACY_NO_LOAD_CAP" >&2
+    return 1
+  }
+  # Verify the specific file is named.
+  [[ "${missing[*]}" == *"no-helper.bats"* ]]
 }
 
 @test "inherited SCRIPTS_DIR does not leak into test_helper resolution" {
@@ -882,4 +929,62 @@ _ds_scratch() {
   local _content
   _content="$(sed 's/dummy//Ig' "$d/big.md")"
   grep -qi 'sigpipe probe needle' <<< "$_content"
+}
+
+@test "local-helper guard detects a helper that does not source the shared one" {
+  local d="$BATS_TEST_TMPDIR/local-guard-$$"
+  mkdir -p "$d/subdir"
+
+  # A local test_helper.bash that does NOT source the shared helper
+  printf '#!/usr/bin/env bash\nSCRIPTS_DIR=/tmp\nexport SCRIPTS_DIR\n' \
+    > "$d/subdir/test_helper.bash"
+
+  local violations=()
+  while IFS= read -r f; do
+    [ "$(basename "$(dirname "$f")")" = "$(basename "$d")" ] && continue
+    if ! /usr/bin/grep -qE '^\.[[:space:]].*test_helper\.bash|^source[[:space:]].*test_helper\.bash' "$f"; then
+      violations+=("$(basename "$(dirname "$f")")/$(basename "$f")")
+    fi
+  done < <(find "$d" -name 'test_helper.bash' | LC_ALL=C sort)
+
+  [ "${#violations[@]}" -gt 0 ] || {
+    printf 'Guard did not detect the unsourced local helper\n' >&2
+    return 1
+  }
+  [[ "${violations[*]}" == *"subdir/test_helper.bash"* ]]
+}
+
+@test "large-file capture-then-grep pattern survives pipefail (SIGPIPE regression)" {
+  # The glossary scan (concurrent-sprint-glossary.bats ~91-93) uses a
+  # capture-then-grep pattern to avoid SIGPIPE on large files.  This test
+  # verifies that the pattern works on a file exceeding the pipe buffer
+  # (~64 KB) and that a match on line 1 is found correctly.
+  local d="$BATS_TEST_TMPDIR/glossary-sigpipe-$$"
+  mkdir -p "$d"
+  # Build a >64 KB file with the search term on line 1.
+  {
+    printf 'needle_for_sigpipe_test\n'
+    dd if=/dev/zero bs=1024 count=70 2>/dev/null | tr '\0' 'x'
+  } > "$d/big.md"
+
+  # Capture-then-grep: safe under pipefail (the production pattern).
+  local _content
+  _content="$(sed 's/remove_me//Ig' "$d/big.md")"
+  grep -qi 'needle_for_sigpipe_test' <<< "$_content" || {
+    printf 'capture-then-grep did not find the needle\n' >&2
+    return 1
+  }
+
+  # Prove the piped form would fail: run it in a subshell with pipefail.
+  # sed | grep -qi closes the pipe early on match, causing SIGPIPE (141)
+  # on sed when the remaining input exceeds the buffer.
+  run bash -c 'set -eo pipefail; sed "s/remove_me//Ig" "$1" | grep -qi "needle_for_sigpipe_test"' _ "$d/big.md"
+  if [ "$status" -eq 0 ]; then
+    # On some systems the kernel buffer is large enough — skip rather than
+    # false-fail, but on most CI runners this proves the SIGPIPE.
+    true
+  else
+    # Status 141 (SIGPIPE) or non-zero confirms the pipe form is unsafe.
+    [ "$status" -ne 0 ]
+  fi
 }

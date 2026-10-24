@@ -110,7 +110,8 @@ while IFS= read -r f; do
       /usr/bin/grep -lE '\. .*/tests/test_helper\.bash|source .*/tests/test_helper\.bash' {} + 2>/dev/null || true)"
     if [ -n "$_ih_list" ]; then
       while IFS= read -r _ih; do
-        _ih_base="$(basename "$_ih" .bash)"
+        # Escape ERE metacharacters in the helper name.
+        _ih_base="$(basename "$_ih" .bash | sed 's/[.[\(*+?{|^$]/\\&/g')"
         _ih_dir="$(dirname "$_ih")"
         while IFS= read -r bt; do
           selected+=("$bt")
