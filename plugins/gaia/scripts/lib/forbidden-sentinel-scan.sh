@@ -97,7 +97,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # -c core.quotePath=false emits raw UTF-8 / special-char paths instead of
 # C-quoting them, so filenames with non-ASCII, quotes or backslashes are
 # passed through unchanged.
-_git_diff() { git -c core.quotePath=false --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
+# -c diff.renames=copies enables copy detection (C records) regardless of
+# the caller's git config, so copies from exempt into production are caught.
+_git_diff() { git -c core.quotePath=false -c diff.renames=copies --no-pager diff --no-color --no-ext-diff --no-textconv --text -C "$@"; }
 
 # git diff --name-status -z: NUL-delimited, includes old paths for renames
 # and copies (R/C entries carry two NUL-separated paths: old then new).
@@ -188,12 +190,25 @@ trap 'rm -f "$GREP_FILE" "$ADDED_TEXT" "$ADDED_META"' EXIT
 _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
   | tr '\000' ' ' \
   | awk -v metafile="$ADDED_META" '
-    /^diff --git /                 { in_hunk = 0; file = ""; next }
-    /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
+    # escape_safe: compute the metadata-safe form of file once per header
+    function escape_safe() {
+      safe = file
+      gsub(/\\/, "\\\\", safe)
+      gsub(/\t/, "\\t", safe)
+      gsub(/\n/, "\\n", safe)
+      gsub(/\r/, "\\r", safe)
+    }
+    /^diff --git /                 { in_hunk = 0; file = ""; safe = ""; next }
+    /^\+\+\+ b\// && in_hunk == 0 {
+      file = substr($0, 7)
+      sub(/\t$/, "", file)
+      escape_safe()
+      next
+    }
     /^\+\+\+ "b\// && in_hunk == 0 {
       # Quoted header: strip +++ "b/ prefix and trailing ", decode C-escapes
       file = substr($0, 8)
-      sub(/"$/, "", file)
+      sub(/"\t?$/, "", file)
       # Decode \\, \", \t, \n and octal \NNN sequences
       decoded = ""
       i = 1
@@ -206,7 +221,6 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
           else if (nc == "t")  { decoded = decoded "\t"; i += 2 }
           else if (nc == "n")  { decoded = decoded "\n"; i += 2 }
           else if (nc ~ /[0-3]/ && substr(file, i+1, 3) ~ /^[0-7][0-7][0-7]$/) {
-            # Octal escape \NNN
             oct = substr(file, i+1, 3)
             n = 0
             for (j = 1; j <= 3; j++) {
@@ -221,9 +235,10 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
         else { decoded = decoded c; i += 1 }
       }
       file = decoded
+      escape_safe()
       next
     }
-    /^\+\+\+ /    && in_hunk == 0 { file = ""; next }
+    /^\+\+\+ /    && in_hunk == 0 { file = ""; safe = ""; next }
     /^@@/ {
       in_hunk = 1
       s = $0
@@ -234,13 +249,6 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
     }
     in_hunk && /^\+/ {
       print substr($0, 2)
-      # Escape control chars in file path that would break the
-      # tab-separated, line-based metadata format.
-      safe = file
-      gsub(/\\/, "\\\\", safe)
-      gsub(/\t/, "\\t", safe)
-      gsub(/\n/, "\\n", safe)
-      gsub(/\r/, "\\r", safe)
       print safe "\t" cur_line > metafile
       cur_line++
     }
