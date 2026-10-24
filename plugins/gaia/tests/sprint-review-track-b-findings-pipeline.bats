@@ -6,6 +6,8 @@
 # eleven-type action-items pipeline (action-items-writer + type-target-resolver
 # sprint-correction → /gaia-correct-course).
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"

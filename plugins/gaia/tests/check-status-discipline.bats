@@ -13,6 +13,8 @@
 #   - marker_story_key
 #   - story_key_from_path
 
+load 'test_helper.bash'
+
 @test "check-status-discipline: anchor file exists (sentinel)" {
   [ -f "$BATS_TEST_FILENAME" ]
 }

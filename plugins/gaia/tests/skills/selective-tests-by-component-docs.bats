@@ -3,6 +3,8 @@
 # page. Pins its existence, the multi-language worked example, the dependency
 # (cross_refs) section, and that it is linked into the tutorials nav.
 
+load '../test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
   DOC="$REPO_ROOT/documentation/tutorials/selective-tests-by-component.html"

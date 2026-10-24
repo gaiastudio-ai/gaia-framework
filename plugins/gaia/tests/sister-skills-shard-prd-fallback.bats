@@ -18,6 +18,8 @@
 # (a "PRD not found at docs/planning-artifacts/prd.md" string that does NOT
 # also mention `prd/prd.md` on the same line).
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILLS_DIR="$REPO_ROOT/plugins/gaia/skills"

@@ -11,6 +11,8 @@
 # E70-S1 `--input <file-list>` flag form (the ATDD pre-dated E70-S1 finalising
 # the contract; this bats reflects what actually shipped).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 ADAPTERS_DIR="$BATS_TEST_DIRNAME/../scripts/adapters"
@@ -130,7 +132,7 @@ _assert_fragment_shape_in_source() {
 
 @test "story Dev Notes documents one-sprint deprecation window + out-of-scope removal" {
   local story_file
-  story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1)"
+  story_file="$(ls $STORY_FILE_GLOB 2>/dev/null | head -n1 || true)"
   # The story file lives outside the gaia-public/ git tree (in the parent
   # project's docs/). When CI runs against an isolated gaia-public/ checkout
   # the file is absent — skip in that case (mirrors the convention used by

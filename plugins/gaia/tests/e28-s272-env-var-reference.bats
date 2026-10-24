@@ -2,6 +2,8 @@
 # Tests for the env-var reference knowledge document.
 # Verifies the doc exists, covers key variables, and includes a default column.
 
+load 'test_helper.bash'
+
 setup() {
   KNOWLEDGE_DIR="${BATS_TEST_DIRNAME}/../knowledge"
   DOC="${KNOWLEDGE_DIR}/env-var-reference.md"

@@ -13,6 +13,8 @@
 # orchestrator-runtime and is NOT bats-coverable — this suite asserts the
 # static contract text and references only.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

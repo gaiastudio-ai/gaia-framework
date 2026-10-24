@@ -4,6 +4,8 @@
 # targeted, the mutated module must still parse, and the named harness test
 # (and no load error) must be the one that fails.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   HOOKS_DIR="$REPO_ROOT/plugins/gaia/hooks"

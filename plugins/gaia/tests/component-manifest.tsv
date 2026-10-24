@@ -395,6 +395,7 @@ core	taxonomy-ssot-audit.bats
 core	tdd-reviewer-agent-contract.bats
 core	test-automate-adr-051-preservation.bats
 core	test-automate-phase2.bats
+core	test-hygiene-guard.bats
 core	test-manual-evidence.bats
 core	test-manual-surface-docs.bats
 core	test-plan-schema-detection.bats
@@ -794,7 +795,6 @@ scripts-sprint	sprint-state-yaml-quote-stripping.bats
 scripts-sprint	sprint-status-dashboard-auto-close-banner.bats
 scripts-sprint	sprint-status-dashboard-stranded-ready.bats
 scripts-sprint	story-state-path-resolution.bats
-scripts-sprint	test-hygiene-guard.bats
 scripts-sprint	transition-story-status-sweep.bats
 scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats

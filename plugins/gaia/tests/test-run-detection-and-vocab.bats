@@ -15,6 +15,8 @@
 #    leftover vitest.config.js in a vendor dir cannot trump a real bats
 #    suite when only bats is installed.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   CONFIG_TOOL_SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-config-tool/SKILL.md"

@@ -10,6 +10,8 @@
 
 # ---------- Helpers ----------
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"

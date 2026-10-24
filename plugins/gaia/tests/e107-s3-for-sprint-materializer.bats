@@ -16,6 +16,8 @@
 # Maps to AC1-AC5, AC-INT1. Refs: ADR-128, ADR-127/E105-S1, FR-559,
 # feedback_priority_flag_never_auto_set, Test02 F-9 / Test01 E2.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   MAT="$REPO_ROOT/plugins/gaia/scripts/materialize-sprint-stories.sh"

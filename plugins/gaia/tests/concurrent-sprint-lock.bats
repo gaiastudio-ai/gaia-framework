@@ -5,6 +5,8 @@
 # lock constants, close-lock predicate, hardened mkdir, flock/fallback
 # parity, trap chaining, back-compat, and edge cases.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
   LOCK_LIB="${PLUGIN_ROOT}/scripts/lib/acquire-lock.sh"

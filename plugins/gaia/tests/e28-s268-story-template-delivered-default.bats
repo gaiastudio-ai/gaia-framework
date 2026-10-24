@@ -7,6 +7,8 @@
 # template default to match so the two never drift, and confirms the
 # frontmatter validator accepts `delivered: false`.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   TEMPLATE="$PLUGIN_ROOT/skills/gaia-create-story/story-template.md"

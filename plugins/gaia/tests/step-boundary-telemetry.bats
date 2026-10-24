@@ -14,6 +14,8 @@
 # Plus: SKILL.md instrumentation verification (all 16 steps have emission
 # directives) and out-of-scope sub-step documentation.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/throughput-telemetry.sh"

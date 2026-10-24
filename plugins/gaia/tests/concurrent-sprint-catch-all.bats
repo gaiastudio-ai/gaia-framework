@@ -4,6 +4,8 @@
 
 # shellcheck disable=SC2154  # $BATS_TEST_TMPDIR is set by bats
 
+load 'test_helper.bash'
+
 setup() {
   # Locate the plugin root relative to this test file.
   PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"

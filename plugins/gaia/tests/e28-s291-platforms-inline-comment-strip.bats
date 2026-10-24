@@ -9,6 +9,8 @@
 # present. These tests exercise the REAL `--surface api` invocation (exit 0 =
 # CONFIGURED, exit 2 = SKIPPED) plus the block/flow/mixed parse cases.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   ADAPTER="$REPO_ROOT/plugins/gaia/skills/gaia-test-manual/scripts/surface-adapter.sh"

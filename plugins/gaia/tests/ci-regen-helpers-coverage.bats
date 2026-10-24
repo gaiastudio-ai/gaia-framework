@@ -13,6 +13,8 @@
 # The behavioral assertions below exercise the public CLI surface so
 # coverage is not just textual reference — each function actually runs.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

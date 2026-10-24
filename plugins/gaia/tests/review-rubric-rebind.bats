@@ -7,6 +7,8 @@
 # that the review-skill template carries the design-record formulation,
 # and that the base dev persona directs to the project reference.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   # Split-fragment provider literal -- never contiguous in this file
@@ -458,12 +460,12 @@ extract_design_consumption_section() {
     # the mandate.  Line-level grep|grep-v cannot catch same-line co-
     # occurrence; occurrence counting can.
     local total_fb never_fb total_lc never_lc
-    total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
-    never_fb="$(printf '%s' "$block" | grep -oiE 'never[^.]*fall back' | wc -l | tr -d ' ')"
+    total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
+    never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
     [ "$total_fb" -le "$never_fb" ] || \
       { echo "positive fall-back in Phase 4 of $f ($total_fb total, $never_fb negated)" >&2; return 1; }
-    total_lc="$(printf '%s' "$block" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-    never_lc="$(printf '%s' "$block" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+    total_lc="$(printf '%s' "$block" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+    never_lc="$(printf '%s' "$block" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
     [ "$total_lc" -gt 0 ] || \
       { echo "local-copy guard vacuous (0 mentions) in Phase 4 of $f" >&2; return 1; }
     [ "$total_lc" -le "$never_lc" ] || \
@@ -478,12 +480,12 @@ extract_design_consumption_section() {
   block="$(extract_step4b_block "$f")"
   [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
-  never_fb="$(printf '%s' "$block" | grep -oiE 'never[^.]*fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
+  never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Step 4b of $f ($total_fb total, $never_fb negated)" >&2; return 1; }
-  total_lc="$(printf '%s' "$block" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-  never_lc="$(printf '%s' "$block" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+  total_lc="$(printf '%s' "$block" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+  never_lc="$(printf '%s' "$block" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
   [ "$total_lc" -gt 0 ] || \
     { echo "local-copy guard vacuous (0 mentions) in Step 4b of $f" >&2; return 1; }
   [ "$total_lc" -le "$never_lc" ] || \
@@ -497,12 +499,12 @@ extract_design_consumption_section() {
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
-  never_fb="$(printf '%s' "$block" | grep -oiE 'never[^.]*fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
+  never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Phase 4 of template ($total_fb total, $never_fb negated)" >&2; return 1; }
-  total_lc="$(printf '%s' "$block" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-  never_lc="$(printf '%s' "$block" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+  total_lc="$(printf '%s' "$block" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+  never_lc="$(printf '%s' "$block" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
   [ "$total_lc" -gt 0 ] || \
     { echo "local-copy guard vacuous (0 mentions) in template" >&2; return 1; }
   [ "$total_lc" -le "$never_lc" ] || \
@@ -565,12 +567,12 @@ extract_design_consumption_section() {
     { echo "Design Consumption section missing or empty in $f" >&2; return 1; }
   # Occurrence-counting guard — same rationale as the rubric inverse guards.
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$section" | grep -oi 'fall back' | wc -l | tr -d ' ')"
-  never_fb="$(printf '%s' "$section" | grep -oiE 'never[^.]*fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$section" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
+  never_fb="$(printf '%s' "$section" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Design Consumption ($total_fb total, $never_fb negated)" >&2; return 1; }
-  total_lc="$(printf '%s' "$section" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-  never_lc="$(printf '%s' "$section" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+  total_lc="$(printf '%s' "$section" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+  never_lc="$(printf '%s' "$section" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
   [ "$total_lc" -gt 0 ] || \
     { echo "local-copy guard vacuous (0 mentions) in Design Consumption" >&2; return 1; }
   [ "$total_lc" -le "$never_lc" ] || \
@@ -780,7 +782,7 @@ require_section() {
   # Negative control: the brand-style sentence must NOT match the pattern
   local brand_style_sentence="tokens and components come from the design-system project and screens from the product design project"
   local brand_style_hits
-  brand_style_hits="$(printf '%s' "$brand_style_sentence" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
+  brand_style_hits="$(printf '%s' "$brand_style_sentence" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
   [ "$brand_style_hits" -eq 0 ] || { echo "negative control failed: brand-style sentence matches screen-from-DS pattern ($brand_style_hits hits)" >&2; return 1; }
 
   # Check all 9 sections
@@ -790,8 +792,8 @@ require_section() {
   section="$(extract_design_consumption_section "$f")"
   require_section "$section" "Design Consumption (_base-dev)"
   local total_p negated_p
-  total_p="$(printf '%s' "$section" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  negated_p="$(printf '%s' "$section" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  total_p="$(printf '%s' "$section" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  negated_p="$(printf '%s' "$section" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$total_p" -le "$negated_p" ] || \
     { echo "positive screen-from-DS in _base-dev ($total_p total, $negated_p negated)" >&2; return 1; }
   scanned=$((scanned + 1))
@@ -808,8 +810,8 @@ require_section() {
     local block
     block="$(extract_phase4_block "$rf")"
     require_section "$block" "Phase 4 ($(basename "$(dirname "$rf")"))"
-    total_p="$(printf '%s' "$block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-    negated_p="$(printf '%s' "$block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+    total_p="$(printf '%s' "$block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+    negated_p="$(printf '%s' "$block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
     [ "$total_p" -le "$negated_p" ] || \
       { echo "positive screen-from-DS in $rf ($total_p total, $negated_p negated)" >&2; return 1; }
     scanned=$((scanned + 1))
@@ -820,8 +822,8 @@ require_section() {
   local sec_block
   sec_block="$(extract_step4b_block "$sec_f")"
   require_section "$sec_block" "Step 4b (review-security)"
-  total_p="$(printf '%s' "$sec_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  negated_p="$(printf '%s' "$sec_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  total_p="$(printf '%s' "$sec_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  negated_p="$(printf '%s' "$sec_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$total_p" -le "$negated_p" ] || \
     { echo "positive screen-from-DS in review-security ($total_p total, $negated_p negated)" >&2; return 1; }
   scanned=$((scanned + 1))
@@ -831,8 +833,8 @@ require_section() {
   local perf_block
   perf_block="$(extract_reviewperf_step4d_block "$perf_f")"
   require_section "$perf_block" "Step 4d (review-perf)"
-  total_p="$(printf '%s' "$perf_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  negated_p="$(printf '%s' "$perf_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  total_p="$(printf '%s' "$perf_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  negated_p="$(printf '%s' "$perf_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$total_p" -le "$negated_p" ] || \
     { echo "positive screen-from-DS in review-perf Step 4d ($total_p total, $negated_p negated)" >&2; return 1; }
   scanned=$((scanned + 1))
@@ -842,8 +844,8 @@ require_section() {
   local tmpl_block
   tmpl_block="$(extract_template_phase4_block "$tmpl_f")"
   require_section "$tmpl_block" "Phase 4 (template)"
-  total_p="$(printf '%s' "$tmpl_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  negated_p="$(printf '%s' "$tmpl_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  total_p="$(printf '%s' "$tmpl_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  negated_p="$(printf '%s' "$tmpl_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$total_p" -le "$negated_p" ] || \
     { echo "positive screen-from-DS in template ($total_p total, $negated_p negated)" >&2; return 1; }
   scanned=$((scanned + 1))
@@ -860,8 +862,8 @@ require_section() {
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
   local mutant_total mutant_negated
-  mutant_total="$(printf '%s' "$mutant_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  mutant_negated="$(printf '%s' "$mutant_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  mutant_total="$(printf '%s' "$mutant_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  mutant_negated="$(printf '%s' "$mutant_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$mutant_total" -gt "$mutant_negated" ] || \
     { echo "mutant with positive screen-from-DS was not caught ($mutant_total total, $mutant_negated negated)" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
@@ -872,8 +874,8 @@ require_section() {
   sed -i.bak '/^### Phase 4/a\
 - Read screen specifications from `design_system_project.reference` via DesignSync.' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  mutant_total="$(printf '%s' "$mutant_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  mutant_negated="$(printf '%s' "$mutant_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  mutant_total="$(printf '%s' "$mutant_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  mutant_negated="$(printf '%s' "$mutant_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$mutant_total" -gt "$mutant_negated" ] || \
     { echo "field-literal mutant not caught ($mutant_total total, $mutant_negated negated)" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
@@ -884,8 +886,8 @@ require_section() {
   sed -i.bak '/^### Phase 4/a\
 - Take screen layouts out of the design-system project.' "$mutant_f"
   mutant_block="$(extract_phase4_block "$mutant_f")"
-  mutant_total="$(printf '%s' "$mutant_block" | grep -oiE "$screen_ds_pattern" | wc -l | tr -d ' ')"
-  mutant_negated="$(printf '%s' "$mutant_block" | grep -oiE "never[^.]*($screen_ds_pattern)" | wc -l | tr -d ' ')"
+  mutant_total="$(printf '%s' "$mutant_block" | (grep -oiE "$screen_ds_pattern" || true) | wc -l | tr -d ' ')"
+  mutant_negated="$(printf '%s' "$mutant_block" | (grep -oiE "never[^.]*($screen_ds_pattern)" || true) | wc -l | tr -d ' ')"
   [ "$mutant_total" -gt "$mutant_negated" ] || \
     { echo "paraphrase mutant not caught ($mutant_total total, $mutant_negated negated)" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"
@@ -1360,12 +1362,12 @@ require_section() {
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
-  never_fb="$(printf '%s' "$block" | grep -oiE 'never[^.]*fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
+  never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in review-perf Step 4d ($total_fb total, $never_fb negated)" >&2; return 1; }
-  total_lc="$(printf '%s' "$block" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-  never_lc="$(printf '%s' "$block" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+  total_lc="$(printf '%s' "$block" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+  never_lc="$(printf '%s' "$block" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
   [ "$total_lc" -gt 0 ] || \
     { echo "local-copy guard vacuous (0 mentions) in review-perf Step 4d" >&2; return 1; }
   [ "$total_lc" -le "$never_lc" ] || \
@@ -1399,7 +1401,7 @@ require_section() {
     local section="$1" label="$2"
     require_section "$section" "$label"
     local lc
-    lc="$(printf '%s' "$section" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
+    lc="$(printf '%s' "$section" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
     total_lc_sum=$((total_lc_sum + lc))
   }
 
@@ -1430,8 +1432,8 @@ require_section() {
   local mutant_block
   mutant_block="$(extract_phase4_block "$mutant_f")"
   local m_total m_negated
-  m_total="$(printf '%s' "$mutant_block" | grep -oiE 'local[^.]*copy' | wc -l | tr -d ' ')"
-  m_negated="$(printf '%s' "$mutant_block" | grep -oiE '(never|not)[^.]*local[^.]*copy' | wc -l | tr -d ' ')"
+  m_total="$(printf '%s' "$mutant_block" | (grep -oiE 'local[^.]*copy' || true) | wc -l | tr -d ' ')"
+  m_negated="$(printf '%s' "$mutant_block" | (grep -oiE '(never|not)[^.]*local[^.]*copy' || true) | wc -l | tr -d ' ')"
   [ "$m_total" -gt "$m_negated" ] || \
     { echo "insertion mutant not caught by per-section guard ($m_total total, $m_negated negated)" >&2; return 1; }
   rm -f "$mutant_f" "$mutant_f.bak"

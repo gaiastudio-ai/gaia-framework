@@ -13,6 +13,8 @@
 #   - Mixed registered + unregistered  → CRITICAL for unregistered only
 #   - Registry parsing tolerates blank / header rows in the ADR-102 table
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

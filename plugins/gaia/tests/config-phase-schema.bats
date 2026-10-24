@@ -12,6 +12,8 @@
 #      when available. When neither validator is present, validator-dependent
 #      tests skip gracefully.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   SCHEMA="${PLUGIN_ROOT}/schemas/project-config.schema.json"

@@ -8,6 +8,8 @@
 # Drives the REAL schema (jsonschema), the REAL resolver (resolve-config.sh),
 # and asserts the token-name invariant in the published schema + SKILL prose.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

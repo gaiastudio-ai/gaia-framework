@@ -2,6 +2,8 @@
 # e39-s5-merge-structure.bats — TC-STCL-5/6 structural assertions for the
 # tech-debt-phase merge into /gaia-triage-findings.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SKILL="$PLUGIN/skills/gaia-triage-findings/SKILL.md"

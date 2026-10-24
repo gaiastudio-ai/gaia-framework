@@ -2,6 +2,8 @@
 # mod-sanitize.bats -- Sanitize function test vectors via node ESM.
 # One test per mandatory vector, plus edge cases.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   SANITIZE="$REPO_ROOT/plugins/gaia/hooks/sanitize.js"

@@ -3,6 +3,8 @@
 #
 # Story: E93-S4. Traces to AC5, T-SGR-7, SR-65, SR-67.
 
+load 'test_helper.bash'
+
 setup() {
   HELPER="${BATS_TEST_DIRNAME}/../scripts/lib/transcript-writer.sh"
   TMPDIR_TEST="$(mktemp -d)"

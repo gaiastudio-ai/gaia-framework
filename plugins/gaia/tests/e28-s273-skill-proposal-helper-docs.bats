@@ -2,6 +2,8 @@
 # Tests that skill-proposal.sh helpers are documented via a usage() function
 # and that SKILL.md Step 5e cross-references the documented helpers.
 
+load 'test_helper.bash'
+
 setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../skills/gaia-retro/scripts/skill-proposal.sh"
   SKILLMD="${BATS_TEST_DIRNAME}/../skills/gaia-retro/SKILL.md"

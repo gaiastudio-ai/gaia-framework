@@ -9,6 +9,8 @@
 # Story: E70-S5
 # Refs:  FR-RSV2-21, FR-RSV2-10, NFR-RSV2-4
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 PLUGIN_DIR="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"

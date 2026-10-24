@@ -4,6 +4,8 @@
 # Covers the bridge-toggle Step 5 ("Post-Toggle Summary") prose additions:
 # canonical path + generated runners + "edit to fine-tune" prompt.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   SKILL_MD="${PLUGIN_ROOT}/gaia/skills/gaia-bridge-toggle/SKILL.md"

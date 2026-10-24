@@ -12,6 +12,8 @@
 # Maps to AC1-AC5, AC-INT1 and TS1-TS6.
 # Refs: ADR-128, ADR-042, NFR-90, FR-552
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/sm-capacity-check.sh"

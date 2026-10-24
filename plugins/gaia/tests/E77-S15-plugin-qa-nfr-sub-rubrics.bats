@@ -25,6 +25,8 @@
 # Story: E77-S15 (Tier 2 — plugin-qa + plugin-nfr sub-rubrics, FR-417, FR-422)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

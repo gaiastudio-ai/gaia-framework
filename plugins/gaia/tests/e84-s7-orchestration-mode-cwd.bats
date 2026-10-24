@@ -3,6 +3,8 @@
 # detect-orchestration-mode.sh must resolve the project root by walking up to
 # find .gaia/, so Mode B engages regardless of the prelude's CWD.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
