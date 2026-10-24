@@ -75,7 +75,7 @@ HEADER
       printf '# dedup_key: fake%d\n' "$i"
     done
     # Quoted triage entry (written by aiw_write)
-    printf '\n  - id: "AI-290"\n    sprint_id: "sprint-147"\n    text: "triage entry"\n    status: "open"\n'
+    printf '\n  - id: "AI-280"\n    sprint_id: "sprint-147"\n    text: "triage entry"\n    status: "open"\n'
     # Embedded id in text (must NOT inflate max)
     printf '  - id: AI-5\n    text: "see also id: AI-9999 in tracker"\n    status: open\n'
     # parent_id field (must NOT inflate max)
@@ -281,6 +281,154 @@ EOF
     --ref-key "finding_id" --ref-value "F-900" >/dev/null
   run aiw_check_dedup "$target" "sprint-51" "bug" "finding_id" "F-900"
   [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — exact field matching (no regex, no prefix collisions)
+# ===========================================================================
+
+@test "aiw_check_dedup does not prefix-match ref values" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has E900-S368; query E900-S36 must NOT match
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "process"\n  story_key: "E900-S368"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "process" "story_key" "E900-S36"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup does not prefix-match short ref values" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has F-10; query F-1 must NOT match
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "F-10"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup does not match a longer key name" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has xfinding_id; query finding_id must NOT match
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  xfinding_id: "F-1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup does not regex-match metacharacters in ref value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has FX1; query F.1 must NOT match (dot is not a wildcard)
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "FX1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F.1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup does not crash on regex metacharacters in ref value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "FX1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-[1"
+  [ "$status" -eq 1 ]
+  # No awk error in output
+  ! grep -qi 'error\|unterminated' <<<"$output"
+}
+
+@test "aiw_check_dedup ignores ref key embedded in a text line" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  text: "see finding_id: F-1"\n  finding_id: "F-2"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup matches entries with CRLF line endings" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  printf -- '- id: AI-1\r\n  sprint_id: "sprint-50"\r\n  classification: bug\r\n  finding_id: "F-1"\r\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry followed by column-0 comment line" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # Entry followed by a column-0 comment (retro dedup_key), then another entry.
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "F-1"\n# dedup_key: abc\n- id: AI-2\n  sprint_id: "sprint-51"\n  classification: "process"\n  story_key: "E900-S1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup column-0 flush prevents false positive from stray field" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # Entry 1 has sprint_id + classification match but finding_id is F-99.
+  # A column-0 line follows with finding_id: F-1 (not part of any entry).
+  # Without the column-0 flush, awk stays in_entry and the stray field
+  # sets r_match -> false positive.
+  {
+    printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "F-99"\n'
+    printf 'finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# YAML escaping — prevents entry forging via newline/quote injection
+# ===========================================================================
+
+@test "aiw_write escapes quotes and newlines in text to prevent entry forging" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "legit" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  # Attempt to forge an entry via text injection
+  local forge_text
+  forge_text="$(printf 'innocent"\n  - id: "AI-500"\n    text: "forged')"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$forge_text" \
+    --ref-key "finding_id" --ref-value "F-3" >/dev/null
+  # yq must parse the file
+  run yq '.' "$target"
+  [ "$status" -eq 0 ]
+  # The next id must be 3 (not 500+)
+  local next
+  next="$(aiw_next_id "$target")"
+  [ "$next" = "AI-3" ]
+  # A dedup check for the forged F-2 must return no-match
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-2"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_write produces no duplicate ids when text contains injection" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "legit" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  local inject_text
+  inject_text="$(printf 'summary"\n  - id: "AI-1"\n    note: "x')"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$inject_text" \
+    --ref-key "finding_id" --ref-value "F-2" >/dev/null
+  # Each id must appear exactly once
+  local dupes
+  dupes="$(grep -E '^[[:space:]]*-[[:space:]]+id:' "$target" | grep -oE 'AI-[0-9]+' | sort | uniq -d)"
+  [ -z "$dupes" ]
+}
+
+@test "aiw_write round-trips backslash and quote through yq" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text 'has a \\ backslash and a \" quote' \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  run yq '.' "$target"
+  [ "$status" -eq 0 ]
+  # The text field should contain the escaped characters
+  grep -q 'backslash' "$target"
+  grep -q 'quote' "$target"
 }
 
 # ===========================================================================

@@ -14,6 +14,7 @@
 #   - aiw_check_dedup            — idempotent dedup by composite key
 #   - aiw_detect_indent          — detect list-entry indent of existing file
 #   - aiw_validate_classification — enforce explicit classification enum
+#   - _aiw_yaml_escape           — escape a string for double-quoted YAML
 #   - aiw_build_entry            — build a YAML entry string
 #   - aiw_append_entry           — atomic append with flock
 #   - aiw_write                  — top-level orchestrator
@@ -100,17 +101,19 @@ aiw_check_dedup() {
       if (s_match && c_match && r_match) { matched=1; exit }
       in_entry=0; next
     }
-    in_entry && /sprint_id:/ {
-      gsub(/.*sprint_id:[[:space:]]*"?/, ""); gsub(/".*/, "");
-      if ($0 == sid) s_match=1
-    }
-    in_entry && /classification:/ {
-      gsub(/.*classification:[[:space:]]*"?/, ""); gsub(/".*/, "");
-      if ($0 == cls) c_match=1
-    }
     in_entry {
-      pat = rk ":[[:space:]]*\"?" rv "\"?"
-      if ($0 ~ pat) r_match=1
+      # Extract "key: value" from the line, stripping indent, quotes, and CR.
+      line = $0; sub(/^[[:space:]]+/, "", line); sub(/\r$/, "", line)
+      # Split on first ": " or ":" to get field name and value.
+      colon = index(line, ":")
+      if (colon > 0) {
+        fk = substr(line, 1, colon - 1)
+        fv = substr(line, colon + 1)
+        sub(/^[[:space:]]*"?/, "", fv); sub(/"?[[:space:]]*$/, "", fv)
+        if (fk == "sprint_id" && fv == sid) s_match=1
+        if (fk == "classification" && fv == cls) c_match=1
+        if (fk == rk && fv == rv) r_match=1
+      }
     }
     END {
       if (!matched && in_entry && s_match && c_match && r_match) matched=1
@@ -160,9 +163,23 @@ aiw_validate_classification() {
 }
 
 # ---------------------------------------------------------------------------
+# _aiw_yaml_escape — escape a string for use inside double-quoted YAML scalar.
+# Escapes backslash, double-quote, newline and carriage return.
+# ---------------------------------------------------------------------------
+_aiw_yaml_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  printf '%s' "$s"
+}
+
+# ---------------------------------------------------------------------------
 # aiw_build_entry — build a YAML entry string
 # Args: id sprint_id classification text ref_key ref_value [list_prefix]
 # list_prefix defaults to "  " (2-space); pass "" for 0-indent entries.
+# All values are escaped for safe inclusion in double-quoted YAML scalars.
 # ---------------------------------------------------------------------------
 aiw_build_entry() {
   local id="$1" sprint_id="$2" classification="$3" text="$4" ref_key="$5" ref_value="$6"
@@ -173,16 +190,21 @@ aiw_build_entry() {
   local theme_hash
   theme_hash="$(printf '%s' "$text" | shasum -a 256 | awk '{print $1}')"
 
+  local safe_text safe_value safe_sprint
+  safe_text="$(_aiw_yaml_escape "$text")"
+  safe_value="$(_aiw_yaml_escape "$ref_value")"
+  safe_sprint="$(_aiw_yaml_escape "$sprint_id")"
+
   printf '%s' "${list_prefix}"
   printf -- '- id: "%s"\n' "$id"
-  printf '%ssprint_id: "%s"\n' "$field_prefix" "$sprint_id"
-  printf '%stext: "%s"\n' "$field_prefix" "$text"
+  printf '%ssprint_id: "%s"\n' "$field_prefix" "$safe_sprint"
+  printf '%stext: "%s"\n' "$field_prefix" "$safe_text"
   printf '%sclassification: "%s"\n' "$field_prefix" "$classification"
   printf '%sstatus: "open"\n' "$field_prefix"
   printf '%sescalation_count: 0\n' "$field_prefix"
   printf '%screated_at: "%s"\n' "$field_prefix" "$timestamp"
   printf '%stheme_hash: "sha256:%s"\n' "$field_prefix" "$theme_hash"
-  printf '%s%s: "%s"\n' "$field_prefix" "$ref_key" "$ref_value"
+  printf '%s%s: "%s"\n' "$field_prefix" "$ref_key" "$safe_value"
 }
 
 # ---------------------------------------------------------------------------
