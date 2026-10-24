@@ -530,7 +530,7 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
-  grep -qF "$FIXTURE_PROD_PATH" <<<"$output"
+  grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
 }
 
 @test "sentinel after a NUL byte inside an added line is still caught" {
@@ -545,4 +545,69 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "MOCK" <<<"$output"
+  grep -qF "$FIXTURE_PROD_ALT_PATH:1" <<<"$output"
+}
+
+# --- filenames that git C-quotes must still be scanned ---
+
+@test "file with non-ASCII name (UTF-8) is scanned for sentinels" {
+  # Without core.quotePath=false and -z, git quotes this as caf\303\251.sh
+  # and the path goes in as a literal pathspec that matches nothing.
+  local prefix="gaia-public/plugins/gaia"
+  local utf8file="${prefix}/scripts/caf\303\251.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$utf8file")" )
+  printf 'clean\nSTUB\n' > "$REPO/$utf8file"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: utf8 name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF ":2" <<<"$output"
+}
+
+@test "file with double-quote in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local quotefile="${prefix}/scripts/a\"b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$quotefile")" )
+  printf 'clean\nMOCK\n' > "$REPO/$quotefile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: quote name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  grep -qF ":2" <<<"$output"
+}
+
+@test "file with backslash in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local bsfile="${prefix}/scripts/back\\slash.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$bsfile")" )
+  printf 'clean\nFIXME\n' > "$REPO/$bsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: backslash name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+  grep -qF ":2" <<<"$output"
+}
+
+@test "file with tab in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local tabfile
+  printf -v tabfile '%s/scripts/a\tb.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$tabfile")" )
+  printf 'clean\nXXX\n' > "$REPO/$tabfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: tab name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "XXX" <<<"$output"
+}
+
+# --- LC_ALL=C must be set so BSD tr handles high bytes correctly ---
+
+@test "high-byte content (non-ASCII) in an added line with a sentinel is caught" {
+  # Without LC_ALL=C, BSD tr on macOS may mishandle bytes > 127.
+  # This test embeds a high byte (\xc3\xa9 = UTF-8 e-acute) alongside STUB.
+  printf 'caf\303\251 STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: high-byte sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
 }

@@ -94,14 +94,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --text forces textual diff even for files marked binary / -diff in
 # .gitattributes, so their added lines are scanned rather than silently
 # skipped as "Binary files differ".
-_git_diff() { git --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
+# -c core.quotePath=false emits raw UTF-8 / special-char paths instead of
+# C-quoting them, so filenames with non-ASCII, quotes or backslashes are
+# passed through unchanged.
+_git_diff() { git -c core.quotePath=false --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
 
-# git diff --name-only against the base ref. Filter to production paths.
-PROD_PATHS="$(_git_diff --name-only "${BASE_REF}..HEAD" 2>/dev/null \
-  | grep -vE '^(gaia-framework/plugins/gaia/tests/|.*/tests/fixtures/|_memory/|docs/|documentation/|\.github/)' \
-  | grep -vE '\.bats$' || true)"
+# git diff --name-only -z: NUL-delimited output avoids C-quoting of paths
+# with non-ASCII, quotes, backslashes or control characters. The while-read
+# with -d '' is bash 3.2-safe.
+DIFF_PATHS=()
+while IFS= read -r -d '' p; do
+  # Production-path filter: skip exempt subtrees and .bats files.
+  case "$p" in
+    gaia-framework/plugins/gaia/tests/*) continue ;;
+    */tests/fixtures/*) continue ;;
+    _memory/*|docs/*|documentation/*|.github/*) continue ;;
+    *.bats) continue ;;
+  esac
+  DIFF_PATHS+=("$p")
+done < <(_git_diff --name-only -z "${BASE_REF}..HEAD" 2>/dev/null || true)
 
-if [[ -z "$PROD_PATHS" ]]; then
+if [[ ${#DIFF_PATHS[@]} -eq 0 ]]; then
   log "no production-path changes in $BASE_REF..HEAD — skipping forbidden-sentinel scan"
   exit 0
 fi
@@ -115,13 +128,6 @@ GREP_FILE="$("$SCRIPT_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels --as-
 ADDED_TEXT="$(mktemp "${TMPDIR:-/tmp}/fss-text.XXXXXX")"
 ADDED_META="$(mktemp "${TMPDIR:-/tmp}/fss-meta.XXXXXX")"
 trap 'rm -f "$GREP_FILE" "$ADDED_TEXT" "$ADDED_META"' EXIT
-
-# Build pathspec array from production paths.
-DIFF_PATHS=()
-while IFS= read -r p; do
-  [[ -z "$p" ]] && continue
-  DIFF_PATHS+=("$p")
-done <<<"$PROD_PATHS"
 
 # Single-pass scan: one git-diff call, NUL-stripped, piped into awk that
 # extracts added lines into a text file and parallel metadata file, then
@@ -144,6 +150,12 @@ _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
   | awk -v metafile="$ADDED_META" '
     /^diff --git /                 { in_hunk = 0; file = ""; next }
     /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
+    /^\+\+\+ "b\// && in_hunk == 0 {
+      # Quoted header: strip +++ "b/ prefix and trailing "
+      file = substr($0, 8)
+      sub(/"$/, "", file)
+      next
+    }
     /^\+\+\+ /    && in_hunk == 0 { file = ""; next }
     /^@@/ {
       in_hunk = 1
@@ -170,9 +182,11 @@ fi
 # -n gives the line number in ADDED_TEXT, which maps 1:1 to ADDED_META.
 matches="$(grep -anwFf "$GREP_FILE" "$ADDED_TEXT" 2>/dev/null || true)"
 if [[ -n "$matches" ]]; then
-  # Pre-load metadata into a bash array (one read, no fork per match).
+  # Pre-load metadata into a bash array. Use counter-indexed assignment
+  # instead of += to avoid the quadratic realloc cost in bash 3.2.
   _META=()
-  while IFS= read -r _ml; do _META+=("$_ml"); done < "$ADDED_META"
+  _mi=0
+  while IFS= read -r _ml; do _META[_mi]="$_ml"; _mi=$((_mi + 1)); done < "$ADDED_META"
   while IFS=: read -r grep_lineno text; do
     meta="${_META[$((grep_lineno - 1))]}"
     file="${meta%%	*}"
