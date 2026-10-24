@@ -182,17 +182,21 @@ _aiw_yaml_escape() {
 }
 
 # ---------------------------------------------------------------------------
-# _aiw_has_control_chars — return 0 if string contains control characters
-# (anything below 0x20 except tab, plus 0x7F). Uses printf + grep for
-# bash 3.2 compatibility (case bracket expressions with hex escapes are
-# unreliable across bash versions).
+# _aiw_has_control_chars — return 0 if string contains C0 control characters
+# (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) or DEL (0x7F). Tab, LF and CR are
+# allowed (escaped by _aiw_yaml_escape). All bytes >= 0x80 (non-ASCII /
+# UTF-8) pass through.
+# Uses LC_ALL=C tr to strip every ALLOWED byte, then checks if anything
+# remains. Fails closed: if tr or grep error, the string is rejected.
 # ---------------------------------------------------------------------------
 _aiw_has_control_chars() {
-  # Match 0x00-0x08, 0x0B-0x0C, 0x0E-0x1F, 0x7F (everything except \t \n \r).
-  # \n and \r are handled by _aiw_yaml_escape, not rejected.
-  printf '%s' "$1" | grep -qP '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]' 2>/dev/null && return 0
-  # Fallback for systems without grep -P: use LC_ALL=C and tr
-  printf '%s' "$1" | LC_ALL=C tr -d '\011\012\015\040-\176' | grep -q . 2>/dev/null && return 0
+  local remainder
+  # Keep only disallowed bytes: delete tab, LF, CR, printable ASCII (0x20-0x7E)
+  # and all high bytes (0x80-0xFF). Anything left is a C0 control or DEL.
+  remainder="$(printf '%s' "$1" | LC_ALL=C tr -d '\011\012\015\040-\176\200-\377')" || return 0
+  if [ -n "$remainder" ]; then
+    return 0
+  fi
   return 1
 }
 
@@ -304,6 +308,14 @@ aiw_write() {
   case "$ref_key" in
     ''|*[!A-Za-z0-9_]*)
       printf 'status=error\nreason=--ref-key must be a plain identifier (letters, digits, underscore)\n'
+      return 1
+      ;;
+  esac
+
+  # Reject ref_key that duplicates a built-in entry field name
+  case "$ref_key" in
+    id|status|sprint_id|classification|text|created_at|escalation_count|theme_hash)
+      printf 'status=error\nreason=--ref-key must not be a built-in field name (%s)\n' "$ref_key"
       return 1
       ;;
   esac

@@ -543,7 +543,7 @@ EOF
   [ "$status" -eq 1 ]
 }
 
-@test "aiw_write rejects control characters in values" {
+@test "aiw_write rejects control characters in text" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
   local bel_text
@@ -553,6 +553,84 @@ EOF
     --ref-key "finding_id" --ref-value "F-1"
   [ "$status" -eq 1 ]
   grep -q 'control characters' <<<"$output"
+}
+
+@test "aiw_write rejects control characters in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bel_val
+  bel_val="$(printf 'F-\007-1')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bel_val"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'clean' "$target"
+}
+
+@test "aiw_write rejects control characters in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bel_sprint
+  bel_sprint="$(printf 'sprint-\007-50')"
+  run aiw_write --target "$target" --sprint-id "$bel_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+}
+
+@test "aiw_write accepts and round-trips non-ASCII text through yq" {
+  _load_aiw
+  for input in "café résumé" "emoji 🎉 here" "dash — here" "漢字テスト"; do
+    local target="$TEST_TMP/unicode-text.yaml"
+    rm -f "$target"
+    aiw_write --target "$target" --sprint-id "sprint-50" \
+      --classification "bug" --text "$input" \
+      --ref-key "finding_id" --ref-value "F-1" >/dev/null
+    run yq '.' "$target"
+    [ "$status" -eq 0 ]
+    local decoded
+    decoded="$(yq '.items[0].text' "$target")"
+    [ "$decoded" = "$input" ]
+  done
+}
+
+@test "aiw_write accepts and round-trips non-ASCII ref-value through yq" {
+  _load_aiw
+  local target="$TEST_TMP/unicode-refval.yaml"
+  local input="résumé—done"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "$input" >/dev/null
+  local decoded
+  decoded="$(yq '.items[0].finding_id' "$target")"
+  [ "$decoded" = "$input" ]
+}
+
+@test "aiw_write rejects ref-key with space or colon" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "bad key" --ref-value "v"
+  [ "$status" -eq 1 ]
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "bad:key" --ref-value "v"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_write rejects ref-key that is a built-in field name" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  for key in id status sprint_id classification text created_at escalation_count theme_hash; do
+    run aiw_write --target "$target" --sprint-id "sprint-50" \
+      --classification "bug" --text "t" \
+      --ref-key "$key" --ref-value "v"
+    [ "$status" -eq 1 ]
+    grep -q 'built-in field' <<<"$output"
+  done
 }
 
 # ===========================================================================
