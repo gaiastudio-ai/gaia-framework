@@ -326,7 +326,7 @@ while IFS=$'\t' read -r key ref file; do
   [ -z "$n" ] && continue
   # Sed will leave $n equal to $ref when the pattern doesn't match — skip those.
   case "$n" in *[!0-9]*) continue ;; esac
-  if ! grep -qxF "$n" "$REGISTERED_NS"; then
+  if ! grep -qxF -- "$n" "$REGISTERED_NS"; then
     printf 'C\t%s\t%s\t%s\n' "$key" "E$n" "$file" >> "$C_ISSUES"
   fi
 done < "$FILE_EPIC_REFS"

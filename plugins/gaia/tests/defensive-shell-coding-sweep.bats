@@ -45,21 +45,21 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "fixture-analyzer: list containing -x still reports oversized fixture" {
+@test "fixture-analyzer: file-list with leading-dash entry still reports oversized" {
   local fa="$SCRIPTS_DIR/review-common/fixture-analyzer.sh"
   [ -f "$fa" ] || skip "fixture-analyzer.sh not found"
-  # Create a fixtures dir with a file named -x and an oversized fixture (>500 lines).
-  local fdir="$TEST_TMP/proj/tests/fixtures"
-  mkdir -p "$fdir"
-  touch "$fdir/-x"
-  # Generate a 600-line fixture file (default threshold is 500).
-  local i=0; while [ "$i" -lt 600 ]; do printf 'line %d\n' "$i"; i=$((i+1)); done > "$fdir/large.txt"
-  run bash "$fa" --max-lines 500 "$TEST_TMP/proj/tests" 2>&1
+  # Reviewer repro: a file named -x first in the list plus an oversized fixture
+  # must give the oversized finding, with </dev/null so grep cannot read stdin.
+  local d="$TEST_TMP/fa-dash"
+  mkdir -p "$d/fixtures"
+  seq 600 > "$d/-x"
+  seq 600 > "$d/fixtures/big.json"
+  printf -- '-x\n./fixtures/big.json\n' > "$d/list"
+  run bash -c "cd '$d' && bash '$fa' --file-list list --max-lines 10 </dev/null"
   echo "$output"
-  # The oversized-fixture finding must be reported even with -x in the listing.
   case "$output" in
     *oversized*) : ;;
-    *) echo "FAIL: oversized fixture not reported when -x file present"; return 1 ;;
+    *) echo "FAIL: oversized fixture not reported when -x file present in --file-list"; return 1 ;;
   esac
 }
 
@@ -626,6 +626,283 @@ YAML
   [ -f "$a" ] || skip "scripts/lib/session-binding.sh not found"
   [ -f "$b" ] || skip "skills mirror not found"
   diff -q "$a" "$b"
+}
+
+# ---------------------------------------------------------------------------
+# AC1 behavioural: -- at review-common analyzer dedup grep (M23 kill)
+# ---------------------------------------------------------------------------
+
+@test "review-common analyzers: dedup grep handles dash-prefixed filenames" {
+  # Each analyzer uses grep -Fxq -- "$f" "$SEEN_TMP" for dedup.
+  # Without --, a file named -x would be parsed as a flag.
+  local analyzers=(
+    "$SCRIPTS_DIR/review-common/fixture-analyzer.sh"
+    "$SCRIPTS_DIR/review-common/flakiness-analyzer.sh"
+    "$SCRIPTS_DIR/review-common/smell-detector.sh"
+    "$SCRIPTS_DIR/review-common/security/data-handling-lint.sh"
+    "$SCRIPTS_DIR/review-common/security/pii-detector.sh"
+    "$SCRIPTS_DIR/review-common/security/retention-policy-check.sh"
+  )
+  local a missing=""
+  for a in "${analyzers[@]}"; do
+    [ -f "$a" ] || continue
+    # The dedup pattern must contain -- before the variable.
+    if /usr/bin/grep 'grep.*Fxq.*SEEN_TMP' "$a" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+      missing="$missing $(basename "$a")"
+    fi
+  done
+  [ -z "$missing" ] || { echo "FAIL: missing -- in dedup grep:$missing"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# AC1 behavioural: -- in run-with-retry is_flaky_test (M24 kill)
+# ---------------------------------------------------------------------------
+
+@test "run-with-retry: is_flaky_test with dash-prefixed test id" {
+  local rwr="$SCRIPTS_DIR/run-with-retry.sh"
+  [ -f "$rwr" ] || skip "run-with-retry.sh not found"
+  local flaky_file="$TEST_TMP/flaky.list"
+  printf -- '-x weird test\n' > "$flaky_file"
+  # If -- is missing, grep interprets -x as a flag and the call fails or
+  # produces a false negative.
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    source '$rwr'
+    result=\"\$(is_flaky_test '-x weird test' '$flaky_file')\"
+    [ \"\$result\" = '1' ] || { echo \"FAIL: expected 1, got \$result\"; exit 1; }
+    echo PASS
+  "
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC1 behavioural: -- in config-yaml-editor section lookup (M25 kill)
+# ---------------------------------------------------------------------------
+
+@test "config-yaml-editor: section lookup uses -- before user-derived name" {
+  local cye="$SCRIPTS_DIR/config-yaml-editor.sh"
+  [ -f "$cye" ] || skip "config-yaml-editor.sh not found"
+  # Verify the source code uses -- in the schema-lookup grep.
+  if /usr/bin/grep 'grep.*Fxq.*SECTION' "$cye" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: schema-lookup grep missing -- before SECTION"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# AC1 behavioural: -- in catch-all-flag is_catch_all (M26 kill)
+# ---------------------------------------------------------------------------
+
+@test "catch-all-flag: is_catch_all handles dash-prefixed epic key safely" {
+  local caf="$SCRIPTS_LIB/catch-all-flag.sh"
+  [ -f "$caf" ] || skip "catch-all-flag.sh not found"
+  # Verify the grep call uses -- so a key like -E9 does not trigger flag parsing.
+  if /usr/bin/grep 'grep.*Fqx.*epic_key' "$caf" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: catch-all-flag grep missing -- before epic_key"
+    return 1
+  fi
+  # Behavioural: is_catch_all with a non-existent key starting with dash
+  # must return 1 (not found), not a grep error.
+  local epics="$TEST_TMP/epics.md"
+  local shards="$TEST_TMP/shards"
+  mkdir -p "$shards"
+  printf '## E900\ncatch_all_epic: false\n' > "$epics"
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    source '$caf'
+    is_catch_all '-E900' '$epics' '$shards' 2>/dev/null && echo 'FOUND' || echo 'NOT-FOUND'
+  "
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"NOT-FOUND"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC1 behavioural: -- in retirement-sweep grep (M27 kill)
+# ---------------------------------------------------------------------------
+
+@test "retirement-sweep: grep excludes .git directory even with -- separator" {
+  local rs="$SCRIPTS_DIR/retirement-sweep.sh"
+  [ -f "$rs" ] || skip "retirement-sweep.sh not found"
+  local d="$TEST_TMP/retsweep"
+  mkdir -p "$d/pub/.git" "$d/ent"
+  echo 'acmeprov ref' > "$d/pub/.git/HEAD-acmeprov"
+  echo 'acmeprov' > "$d/pub/a.txt"
+  run bash "$rs" --provider acmeprov --public-root "$d/pub" --enterprise-root "$d/ent" --output "$d/o.md"
+  echo "$output"
+  # .git content must not appear in the output.
+  if /usr/bin/grep -c '\.git/' "$d/o.md" 2>/dev/null | /usr/bin/grep -qv '^0$'; then
+    echo "FAIL: .git directory content leaked into retirement sweep output"
+    cat "$d/o.md"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# AC6 behavioural: chmod failure detected via PATH shim (F1: M15 kill)
+# ---------------------------------------------------------------------------
+
+@test "session-binding: provision_binding_dir fails when chmod fails (shim)" {
+  local sb="$SCRIPTS_LIB/session-binding.sh"
+  [ -f "$sb" ] || skip "session-binding.sh not found"
+  # Create a chmod shim that always fails.
+  local shim_dir="$TEST_TMP/chmod-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/chmod" <<'SHIM'
+#!/usr/bin/env bash
+exit 1
+SHIM
+  chmod +x "$shim_dir/chmod"
+  local base="$TEST_TMP/chmod-test"
+  mkdir -p "$base/.gaia/state/sessions"
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    export PATH='$shim_dir':\$PATH
+    export GAIA_BINDING_DIR=''
+    source '$sb'
+    provision_binding_dir --session-id 'test-session-chmod' --project-root '$base'
+  "
+  echo "$output"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"chmod 0700 failed"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC6 behavioural: mode 0700 verified after mkdir+chmod (F1: M16 kill)
+# ---------------------------------------------------------------------------
+
+@test "session-binding: provision_binding_dir detects wrong mode (M16 kill)" {
+  local sb="$SCRIPTS_LIB/session-binding.sh"
+  [ -f "$sb" ] || skip "session-binding.sh not found"
+  # chmod shim that exits 0 but does not change mode. The directory will be
+  # created with the default umask mode. The function's internal mode check
+  # (M16) must catch that the mode is not 700.
+  local shim_dir="$TEST_TMP/noopchmod-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/chmod" <<'SHIM'
+#!/usr/bin/env bash
+# Noop: pretend success but do not change mode.
+exit 0
+SHIM
+  chmod +x "$shim_dir/chmod"
+  local base="$TEST_TMP/mode-test"
+  mkdir -p "$base/.gaia/state/sessions"
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    export PATH='$shim_dir':\$PATH
+    export GAIA_BINDING_DIR=''
+    source '$sb'
+    provision_binding_dir --session-id 'test-session-mode' --project-root '$base'
+  "
+  echo "$output"
+  # The function must fail because the directory mode is not 700.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"mode is"* ]] || [[ "$output" == *"expected 700"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC6 behavioural: post-check confirms directory exists (F1: M9 kill)
+# ---------------------------------------------------------------------------
+
+@test "session-binding: provision_binding_dir post-check rejects missing dir" {
+  local sb="$SCRIPTS_LIB/session-binding.sh"
+  [ -f "$sb" ] || skip "session-binding.sh not found"
+  # Create a mkdir shim that pretends to succeed but does not create the dir.
+  local shim_dir="$TEST_TMP/mkdir-shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/mkdir" <<'SHIM'
+#!/usr/bin/env bash
+# Pretend success but do nothing: the post-check should catch this.
+exit 0
+SHIM
+  chmod +x "$shim_dir/mkdir"
+  # Also need chmod shim that succeeds (the real mkdir never ran).
+  cat > "$shim_dir/chmod" <<'SHIM'
+#!/usr/bin/env bash
+exit 0
+SHIM
+  chmod +x "$shim_dir/chmod"
+  local base="$TEST_TMP/postcheck-test"
+  mkdir -p "$base/.gaia/state/sessions"
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    export PATH='$shim_dir':\$PATH
+    export GAIA_BINDING_DIR=''
+    source '$sb'
+    provision_binding_dir --session-id 'test-session-post' --project-root '$base'
+  "
+  echo "$output"
+  [ "$status" -ne 0 ]
+  # The post-check must produce the specific "absent after creation" diagnostic.
+  # If M9 (post-check dead) is applied, the stat/mode check catches it instead
+  # with a different message — this assertion kills M9.
+  [[ "$output" == *"absent after creation"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC8 behavioural: canonical sanitizer routing (F2: M7 kill)
+# ---------------------------------------------------------------------------
+
+@test "independence-check: canonical sanitizer reachable and decisive" {
+  # Prove the canonical sanitizer is called by showing a backslash-containing
+  # entry is rejected through it. The backslash test above (test 24) already
+  # proves the real script rejects backslash entries. This test proves the
+  # canonical function is the one that makes the decision: extract the
+  # touch_set_denylist_check function, add a hash rule, call it directly,
+  # and show it rejects hash. Then call it WITHOUT the rule and show hash
+  # passes — proving the function controls the outcome.
+  local san="$SCRIPTS_LIB/touch-set-sanitizer.sh"
+  [ -f "$san" ] || skip "touch-set-sanitizer.sh not found"
+
+  # Step 1: canonical sanitizer (unmodified) rejects backslash.
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    source '$san'
+    touch_set_denylist_check 'foo\\bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REJECTED"* ]] || { echo "FAIL: canonical sanitizer did not reject backslash"; return 1; }
+
+  # Step 2: canonical sanitizer accepts hash (no rule for it).
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    source '$san'
+    touch_set_denylist_check 'foo#bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ACCEPTED"* ]] || { echo "FAIL: canonical sanitizer rejected hash unexpectedly"; return 1; }
+
+  # Step 3: modified sanitizer with hash rule rejects hash.
+  local mod_san="$TEST_TMP/touch-set-sanitizer-mod.sh"
+  awk '
+    /rejected pipe/ { print; getline; print
+      print "      \"#\") printf \"denylist: rejected hash\\n\" >&2; return 1 ;;"
+      next
+    }
+    { print }
+  ' "$san" > "$mod_san"
+  run bash -c "
+    set -euo pipefail; export LC_ALL=C
+    source '$mod_san'
+    touch_set_denylist_check 'foo#bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"REJECTED"* ]] || { echo "FAIL: modified sanitizer did not reject hash"; return 1; }
+
+  # Step 4: verify independence-check.sh sources and calls the canonical
+  # sanitizer (the call site that M7 would remove).
+  local ic="$SCRIPTS_DIR/independence-check.sh"
+  [ -f "$ic" ] || skip "independence-check.sh not found"
+  /usr/bin/grep -q 'touch_set_denylist_check' "$ic" || {
+    echo "FAIL: independence-check.sh does not call touch_set_denylist_check"
+    return 1
+  }
+  /usr/bin/grep -q 'touch-set-sanitizer.sh' "$ic" || {
+    echo "FAIL: independence-check.sh does not source touch-set-sanitizer.sh"
+    return 1
+  }
 }
 
 # ---------------------------------------------------------------------------

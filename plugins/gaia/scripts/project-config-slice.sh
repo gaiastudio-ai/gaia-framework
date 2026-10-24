@@ -128,7 +128,7 @@ while : ; do
   additions=""
   while IFS=$'\t' read -r src dst; do
     [ -z "$src" ] && continue
-    if printf '%s\n' "$selected" | grep -qxF "$src"; then
+    if printf '%s\n' "$selected" | grep -qxF -- "$src"; then
       additions="${additions}${dst}"$'\n'
     fi
   done <<EOF

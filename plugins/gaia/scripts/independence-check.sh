@@ -1457,8 +1457,8 @@ _ic_run_rules_cd() {
     if [ -n "$overlap_path" ]; then
       # Find which stories own this path.
       local ck_owner ak_owner
-      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
-      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
       rule_c_fail=1
       rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${overlap_path} (${candidate} -> ${active_id})"
     fi
@@ -1671,7 +1671,7 @@ _ic_run_rules_cd() {
         [ -n "$cfam" ] || continue
         [ "$rule_d_fail" -eq 0 ] || break
         # Check if this family appears in both.
-        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qx "$cfam" 2>/dev/null; then
+        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qxF -- "$cfam" 2>/dev/null; then
           # Config family: check section granularity.
           if [ "$cfam" = "config" ]; then
             # Get candidate and active story keys that touch config.
@@ -1689,8 +1689,8 @@ _ic_run_rules_cd() {
                 # Do both stories have predicted_config_sections?
                 local cck_has_cs=0 ack_has_cs=0
                 if [ -f "$cs_dir/_has_field.txt" ]; then
-                  /usr/bin/grep -qx "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
-                  /usr/bin/grep -qx "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
+                  /usr/bin/grep -qxF -- "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
+                  /usr/bin/grep -qxF -- "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
                 fi
 
                 if [ "$cck_has_cs" -eq 1 ] && [ "$ack_has_cs" -eq 1 ]; then

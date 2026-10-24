@@ -313,7 +313,7 @@ _bq_walk_up() {
     while IFS= read -r node; do
       [ -n "$node" ] || continue
       # Cycle guard: skip an already-visited node.
-      if grep -qxF "$node" "$visited" 2>/dev/null; then
+      if grep -qxF -- "$node" "$visited" 2>/dev/null; then
         continue
       fi
       printf '%s\n' "$node" >> "$visited"

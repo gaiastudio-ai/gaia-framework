@@ -205,7 +205,7 @@ scan_root() {
 
   # Word-bounded, case-insensitive grep excluding .git.
   local hits
-  hits="$(grep -rniIw -- "$provider" "$root" --exclude-dir=.git 2>/dev/null || true)"
+  hits="$(grep -rniIw --exclude-dir=.git -- "$provider" "$root" 2>/dev/null || true)"
 
   if [ -z "$hits" ]; then
     echo "No hits found."

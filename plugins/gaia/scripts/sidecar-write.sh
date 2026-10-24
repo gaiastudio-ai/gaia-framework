@@ -128,7 +128,7 @@ HEADER
   local decision_hash
   decision_hash="$(printf '%s\n%s' "$slug" "$decision_text" | shasum -a 256 | awk '{print $1}')"
   local dedup_marker="<!-- dedup: ${decision_hash} -->"
-  if grep -Fq "$dedup_marker" "$decision_log" 2>/dev/null; then
+  if grep -Fq -- "$dedup_marker" "$decision_log" 2>/dev/null; then
     printf 'status=skipped\nreason=duplicate entry\n'
     return 0
   fi

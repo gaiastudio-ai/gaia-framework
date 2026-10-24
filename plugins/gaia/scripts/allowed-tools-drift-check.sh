@@ -182,7 +182,7 @@ printf '%s\n' "$DECLARED_TOOLS" > "$DECLARED_TMP"
 
 is_declared() {
   local tool="$1"
-  grep -Fxq "$tool" "$DECLARED_TMP"
+  grep -Fxq -- "$tool" "$DECLARED_TMP"
 }
 
 # ---------------------------------------------------------------------------

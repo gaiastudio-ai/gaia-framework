@@ -141,7 +141,7 @@ while IFS=$'\t' read -r skill agent tier; do
   # The pattern is anchored to the literal string so arbitrary whitespace
   # within the file is still matched by the fixed-string grep.
   pattern="memory-loader.sh ${agent} ${tier}"
-  if ! grep -Fq "$pattern" "$skill_md"; then
+  if ! grep -Fq -- "$pattern" "$skill_md"; then
     echo "FAIL: ${skill} — missing canonical invocation: ${pattern}"
     failures=$((failures + 1))
     continue

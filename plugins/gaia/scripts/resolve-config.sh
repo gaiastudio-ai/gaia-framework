@@ -365,7 +365,7 @@ validate_schema() {
   ' "$config")
   local key
   for key in $config_keys; do
-    if ! printf '%s\n' "$allowed" | grep -qx "$key"; then
+    if ! printf '%s\n' "$allowed" | grep -qxF -- "$key"; then
       printf 'resolve-config: unknown field in %s: %s (not declared in %s)\n' \
         "$config" "$key" "$schema" >&2
       exit 2
