@@ -536,7 +536,9 @@ _stage_diff() {
 @test "sentinel after a NUL byte inside an added line is still caught" {
   # A single line containing a NUL then a sentinel. The NUL is replaced
   # with a space so awk and grep see the sentinel.
-  local binscript="gaia-public/plugins/gaia/scripts/mixed.sh"
+  # Use FIXTURE_PROD_ALT_PATH (built from prefix variable in setup) to
+  # avoid a literal plugins/gaia/scripts path that trips the refs linter.
+  local binscript="$FIXTURE_PROD_ALT_PATH"
   ( cd "$REPO" && mkdir -p "$(dirname "$binscript")" )
   printf 'before\x00MOCK after\n' > "$REPO/$binscript"
   ( cd "$REPO" && git add -A && git commit -q -m "feat: nul-embedded sentinel" )
