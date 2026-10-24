@@ -88,7 +88,9 @@ setup() {
       */tests/fixtures/*) continue ;;
       */tests/concurrent-sprint-glossary.bats) continue ;;
     esac
-    if sed 's/phase-parallel//Ig' "$file" | grep -qi 'parallel sprint'; then
+    local _stripped
+    _stripped="$(sed 's/phase-parallel//Ig' "$file")"
+    if grep -qi 'parallel sprint' <<< "$_stripped"; then
       echo "HIT: $file" >&2
       hit_count=$((hit_count + 1))
     fi

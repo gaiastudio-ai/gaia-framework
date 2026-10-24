@@ -19,14 +19,14 @@ export TZ=UTC
 # Suppress the post-mutation snapshot hook during tests
 export GAIA_SNAPSHOT_HOOK_DISABLE=1
 
-# Resolve SCRIPTS_DIR once, unless a local helper already set it (subdirectory
-# suites resolve SCRIPTS_DIR before sourcing this file).
-if [ -z "${SCRIPTS_DIR:-}" ]; then
-  if [ -d "$BATS_TEST_DIRNAME/../scripts" ]; then
-    SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
-  else
-    SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" 2>/dev/null && pwd 2>/dev/null || echo "")"
-  fi
+# Resolve SCRIPTS_DIR from the helper's own location.  Always overwrite any
+# inherited or environment value so a stray SCRIPTS_DIR cannot leak in.
+# Subdirectory local helpers that need a different SCRIPTS_DIR must re-export
+# it AFTER sourcing this file.
+if [ -d "$BATS_TEST_DIRNAME/../scripts" ]; then
+  SCRIPTS_DIR="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)"
+else
+  SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" 2>/dev/null && pwd 2>/dev/null || echo "")"
 fi
 export SCRIPTS_DIR
 

@@ -115,7 +115,7 @@ while IFS= read -r f; do
         while IFS= read -r bt; do
           selected+=("$bt")
         done < <(find "$_ih_dir" -name '*.bats' -exec \
-          /usr/bin/grep -lE "^load ['\"]?${_ih_base}" {} + 2>/dev/null || true)
+          /usr/bin/grep -lE "^load ['\"]?([.][.]/)*${_ih_base}" {} + 2>/dev/null || true)
       done <<< "$_ih_list"
     fi
     continue

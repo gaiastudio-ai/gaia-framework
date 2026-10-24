@@ -460,7 +460,7 @@ extract_design_consumption_section() {
     # the mandate.  Line-level grep|grep-v cannot catch same-line co-
     # occurrence; occurrence counting can.
     local total_fb never_fb total_lc never_lc
-    total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
+    total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
     never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
     [ "$total_fb" -le "$never_fb" ] || \
       { echo "positive fall-back in Phase 4 of $f ($total_fb total, $never_fb negated)" >&2; return 1; }
@@ -480,7 +480,7 @@ extract_design_consumption_section() {
   block="$(extract_step4b_block "$f")"
   [ -n "$block" ] || { echo "Step 4b block empty in $f" >&2; return 1; }
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
   never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Step 4b of $f ($total_fb total, $never_fb negated)" >&2; return 1; }
@@ -499,7 +499,7 @@ extract_design_consumption_section() {
   block="$(extract_template_phase4_block "$f")"
   [ -n "$block" ] || { echo "Phase 4 block empty in template" >&2; return 1; }
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
   never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Phase 4 of template ($total_fb total, $never_fb negated)" >&2; return 1; }
@@ -567,7 +567,7 @@ extract_design_consumption_section() {
     { echo "Design Consumption section missing or empty in $f" >&2; return 1; }
   # Occurrence-counting guard — same rationale as the rubric inverse guards.
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$section" | grep -oi 'fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$section" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
   never_fb="$(printf '%s' "$section" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in Design Consumption ($total_fb total, $never_fb negated)" >&2; return 1; }
@@ -1362,7 +1362,7 @@ require_section() {
   block="$(extract_reviewperf_step4d_block "$f")"
   require_section "$block" "Step 4d (review-perf)"
   local total_fb never_fb total_lc never_lc
-  total_fb="$(printf '%s' "$block" | grep -oi 'fall back' | wc -l | tr -d ' ')"
+  total_fb="$(printf '%s' "$block" | (grep -oi 'fall back' || true) | wc -l | tr -d ' ')"
   never_fb="$(printf '%s' "$block" | (grep -oiE 'never[^.]*fall back' || true) | wc -l | tr -d ' ')"
   [ "$total_fb" -le "$never_fb" ] || \
     { echo "positive fall-back in review-perf Step 4d ($total_fb total, $never_fb negated)" >&2; return 1; }
