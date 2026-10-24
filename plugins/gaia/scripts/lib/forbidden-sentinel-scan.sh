@@ -123,10 +123,12 @@ while IFS= read -r p; do
   DIFF_PATHS+=("$p")
 done <<<"$PROD_PATHS"
 
-# Single-pass scan: one git-diff call piped into awk that extracts added
-# lines as  file:lineno:text , then one grep pass over the collected output.
-# This replaces the prior per-line printf|grep|head subshell which scaled
-# quadratically in wall-clock time with the number of added lines.
+# Single-pass scan: one git-diff call, NUL-stripped, piped into awk that
+# extracts added lines into a text file and parallel metadata file, then
+# one grep pass over the text file.
+#
+# tr strips NUL bytes that --text exposes from binary files; without it
+# GNU grep treats the whole text file as binary and prints nothing.
 #
 # awk state machine:
 #   - "diff --git" resets in_hunk → next +++ is a header, not content.
@@ -138,6 +140,7 @@ done <<<"$PROD_PATHS"
 # The -w (word-boundary) flag on the final grep prevents false positives
 # from mktemp randomisation templates (e.g. "...XXXXXX").
 _git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
+  | tr '\000' ' ' \
   | awk -v metafile="$ADDED_META" '
     /^diff --git /                 { in_hunk = 0; file = ""; next }
     /^\+\+\+ b\// && in_hunk == 0 { file = substr($0, 7); next }
@@ -163,15 +166,18 @@ if [[ ! -s "$ADDED_TEXT" ]]; then
 fi
 
 # Grep the text-only file so sentinels in file paths cannot match.
+# -a treats the file as text even if NUL remnants survive (belt-and-braces).
 # -n gives the line number in ADDED_TEXT, which maps 1:1 to ADDED_META.
-matches="$(grep -nwFf "$GREP_FILE" "$ADDED_TEXT" 2>/dev/null || true)"
+matches="$(grep -anwFf "$GREP_FILE" "$ADDED_TEXT" 2>/dev/null || true)"
 if [[ -n "$matches" ]]; then
+  # Pre-load metadata into a bash array (one read, no fork per match).
+  _META=()
+  while IFS= read -r _ml; do _META+=("$_ml"); done < "$ADDED_META"
   while IFS=: read -r grep_lineno text; do
-    # Look up file path and source line number from the parallel metadata.
-    meta="$(sed -n "${grep_lineno}p" "$ADDED_META")"
+    meta="${_META[$((grep_lineno - 1))]}"
     file="${meta%%	*}"
     lineno="${meta##*	}"
-    sentinel="$(printf '%s' "$text" | grep -owFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
+    sentinel="$(printf '%s' "$text" | grep -aowFf "$GREP_FILE" 2>/dev/null | head -1 || true)"
     [[ -n "$sentinel" ]] || continue
     printf 'HALT: forbidden sentinel %s in %s:%s — add a Finding row or pass --allow-stub=<reason> to /gaia-dev-story\n' \
       "$sentinel" "$file" "$lineno" >&2

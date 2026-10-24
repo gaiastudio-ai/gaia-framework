@@ -503,8 +503,8 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "FIXME" <<<"$output"
-  # The path in the HALT message must contain the full colon-bearing name
-  grep -qF "a:b.sh" <<<"$output"
+  # The path and line number must be correct despite the colon in the name
+  grep -qF "a:b.sh:1" <<<"$output"
 }
 
 @test "clean file whose name resembles a sentinel record does not false-positive" {
@@ -514,4 +514,33 @@ _stage_diff() {
   _stage_diff "$trickname" 'echo all clear'
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
+}
+
+# --- NUL bytes in binary files must not hide sentinels in other files ---
+
+@test "binary file with NUL bytes next to a script sentinel still HALTs" {
+  # A NUL-bearing .png alongside a .sh with a sentinel. Without NUL
+  # stripping, GNU grep treats the collected text file as binary and
+  # silently prints nothing, letting the scan exit 0.
+  local pngfile="gaia-public/plugins/gaia/assets/logo.png"
+  ( cd "$REPO" && mkdir -p "$(dirname "$pngfile")" )
+  printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR' > "$REPO/$pngfile"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: png + sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_PATH" <<<"$output"
+}
+
+@test "sentinel after a NUL byte inside an added line is still caught" {
+  # A single line containing a NUL then a sentinel. The NUL is replaced
+  # with a space so awk and grep see the sentinel.
+  local binscript="gaia-public/plugins/gaia/scripts/mixed.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$binscript")" )
+  printf 'before\x00MOCK after\n' > "$REPO/$binscript"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: nul-embedded sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
 }
