@@ -576,17 +576,83 @@ fi
 # The Claude Code skill harness invokes `!setup.sh` from a CWD that may
 # drift below project root (e.g., the dev runs a command from a nested
 # workspace folder). Walk parent directories from $PWD until we hit a
-# config/project-config.yaml or the filesystem root. Stops at $HOME and /
-# to avoid traversing system paths.
+# config/project-config.yaml or the walk-up boundary. Under HOME the walk
+# stops at $HOME. Outside HOME the walk is bounded by git (the repo
+# top-level or the parent of the main checkout for linked worktrees).
 #
 # Skipped when CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set so unit
 # tests and legacy bats-fixture flows can deterministically exercise the
 # CLAUDE_SKILL_DIR fallback path without leaking the real project config
 # from a bats-runner CWD that happens to live inside a real project tree.
-if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
-  _gaia_walk_dir="$PWD"
-  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "${HOME:-/nonexistent}" ]; do
+# --- Walk-up boundary + exclusion (computed once, reused for shared + local) ---
+# Under HOME: ceiling = HOME. Outside HOME (or HOME unset / "/"): ceiling
+# bounded by git (repo top-level or parent of main checkout for linked
+# worktrees). The main checkout directory is always excluded in linked
+# worktrees.
+_gaia_walk_phys="$(cd "$PWD" 2>/dev/null && pwd -P)" || _gaia_walk_phys="$PWD"
+_gaia_walk_ceiling=""
+_gaia_walk_excluded=""
+if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] \
+   && { [ -z "$SHARED_PATH" ] || [ -z "${CLAUDE_PROJECT_ROOT:-}" ]; }; then
+  _gaia_walk_toplevel=""
+  if command -v git >/dev/null 2>&1; then
+    _gl="$(git rev-parse --git-dir --git-common-dir --show-toplevel 2>/dev/null)" || _gl=""
+    if [ -n "$_gl" ]; then
+      # Parse three lines without forking sed/head/tail.
+      _gd="${_gl%%
+*}"
+      _rest="${_gl#*
+}"
+      _gc="${_rest%%
+*}"
+      _gaia_walk_toplevel="${_rest#*
+}"
+      [ -n "$_gd" ] && _gd="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gd=""
+      [ -n "$_gc" ] && _gc="$(cd "$_gc" 2>/dev/null && pwd -P)" || _gc=""
+      if [ -n "$_gd" ] && [ -n "$_gc" ] && [ "$_gd" != "$_gc" ]; then
+        _gaia_walk_excluded="$(cd "$_gc/.." 2>/dev/null && pwd -P)" || _gaia_walk_excluded=""
+      fi
+    fi
+    unset _gl _gd _gc _rest
+  fi
+  # Ceiling: HOME if under it; otherwise git-bounded.
+  _gaia_walk_home=""
+  if [ -n "${HOME:-}" ] && [ "${HOME:-}" != "/" ]; then
+    _gaia_walk_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || _gaia_walk_home="$HOME"
+  fi
+  if [ -n "$_gaia_walk_home" ]; then
+    case "$_gaia_walk_phys" in
+      "$_gaia_walk_home"|"$_gaia_walk_home"/*) _gaia_walk_ceiling="$_gaia_walk_home" ;;
+    esac
+  fi
+  if [ -z "$_gaia_walk_ceiling" ]; then
+    if [ -n "$_gaia_walk_excluded" ]; then
+      # Linked worktree: walk up to the parent of the main checkout when
+      # it is an ancestor of the CWD; otherwise stay inside the worktree.
+      # When the main checkout IS HOME, dirname(HOME) is not a meaningful
+      # project root.
+      _wt_parent="$(dirname "$_gaia_walk_excluded")"
+      if [ -n "$_gaia_walk_home" ] && [ "$_gaia_walk_excluded" = "$_gaia_walk_home" ]; then
+        _gaia_walk_ceiling="$_gaia_walk_toplevel"
+      else
+        case "$_gaia_walk_phys" in
+          "$_wt_parent"|"$_wt_parent"/*) _gaia_walk_ceiling="$_wt_parent" ;;
+          *) _gaia_walk_ceiling="$_gaia_walk_toplevel" ;;
+        esac
+      fi
+      unset _wt_parent
+    elif [ -n "$_gaia_walk_toplevel" ]; then
+      _gaia_walk_ceiling="$_gaia_walk_toplevel"
+    fi
+  fi
+  unset _gaia_walk_home _gaia_walk_toplevel
+fi
+
+if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] && [ -n "$_gaia_walk_ceiling" ]; then
+  _gaia_walk_dir="$_gaia_walk_phys"
+  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "$_gaia_walk_ceiling" ]; do
     _gaia_walk_dir="$(dirname "$_gaia_walk_dir")"
+    [ "$_gaia_walk_dir" = "$_gaia_walk_excluded" ] && continue
     if [ -f "${_gaia_walk_dir}/.gaia/config/project-config.yaml" ]; then
       SHARED_PATH="${_gaia_walk_dir}/.gaia/config/project-config.yaml"
       break
@@ -610,29 +676,41 @@ fi
 if [ -z "$LOCAL_PATH" ] && [ -n "${GAIA_LOCAL_CONFIG:-}" ]; then
   LOCAL_PATH="$GAIA_LOCAL_CONFIG"
 fi
-if [ -z "$LOCAL_PATH" ] \
-   && [ -n "${CLAUDE_PROJECT_ROOT:-}" ] \
-   && [ -f "${CLAUDE_PROJECT_ROOT}/config/global.yaml" ]; then
-  LOCAL_PATH="${CLAUDE_PROJECT_ROOT}/config/global.yaml"
+if [ -z "$LOCAL_PATH" ] && [ -n "${CLAUDE_PROJECT_ROOT:-}" ]; then
+  if [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/global.yaml" ]; then
+    LOCAL_PATH="${CLAUDE_PROJECT_ROOT}/.gaia/config/global.yaml"
+  elif [ -f "${CLAUDE_PROJECT_ROOT}/config/global.yaml" ]; then
+    LOCAL_PATH="${CLAUDE_PROJECT_ROOT}/config/global.yaml"
+  fi
 fi
-if [ -z "$LOCAL_PATH" ] && [ -f "${PWD}/config/global.yaml" ]; then
-  LOCAL_PATH="${PWD}/config/global.yaml"
+if [ -z "$LOCAL_PATH" ]; then
+  if [ -f "${PWD}/.gaia/config/global.yaml" ]; then
+    LOCAL_PATH="${PWD}/.gaia/config/global.yaml"
+  elif [ -f "${PWD}/config/global.yaml" ]; then
+    LOCAL_PATH="${PWD}/config/global.yaml"
+  fi
 fi
 # Walk-up discovery for global.yaml mirrors the shared-path walk above.
 # Soft-fails if no global.yaml is found — overlay is optional.
 # Skipped when CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set for
 # the same test-isolation reason.
-if [ -z "$LOCAL_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
-  _gaia_walk_dir="$PWD"
-  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "${HOME:-/nonexistent}" ]; do
+# Reuse the ceiling + exclusion computed above for local overlay walk-up.
+if [ -z "$LOCAL_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] && [ -n "$_gaia_walk_ceiling" ]; then
+  _gaia_walk_dir="$_gaia_walk_phys"
+  while [ "$_gaia_walk_dir" != "/" ] && [ "$_gaia_walk_dir" != "$_gaia_walk_ceiling" ]; do
     _gaia_walk_dir="$(dirname "$_gaia_walk_dir")"
-    if [ -f "${_gaia_walk_dir}/config/global.yaml" ]; then
+    [ "$_gaia_walk_dir" = "$_gaia_walk_excluded" ] && continue
+    if [ -f "${_gaia_walk_dir}/.gaia/config/global.yaml" ]; then
+      LOCAL_PATH="${_gaia_walk_dir}/.gaia/config/global.yaml"
+      break
+    elif [ -f "${_gaia_walk_dir}/config/global.yaml" ]; then
       LOCAL_PATH="${_gaia_walk_dir}/config/global.yaml"
       break
     fi
   done
   unset _gaia_walk_dir
 fi
+unset _gaia_walk_ceiling _gaia_walk_phys _gaia_walk_excluded
 if [ -z "$LOCAL_PATH" ] \
    && [ -n "${CLAUDE_SKILL_DIR:-}" ] \
    && [ -f "${CLAUDE_SKILL_DIR}/config/global.yaml" ]; then
