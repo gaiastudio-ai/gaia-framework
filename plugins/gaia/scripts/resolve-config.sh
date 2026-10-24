@@ -592,7 +592,8 @@ fi
 _gaia_walk_phys="$(cd "$PWD" 2>/dev/null && pwd -P)" || _gaia_walk_phys="$PWD"
 _gaia_walk_ceiling=""
 _gaia_walk_excluded=""
-if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
+if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] \
+   && { [ -z "$SHARED_PATH" ] || [ -z "${CLAUDE_PROJECT_ROOT:-}" ]; }; then
   _gaia_walk_toplevel=""
   if command -v git >/dev/null 2>&1; then
     _gl="$(git rev-parse --git-dir --git-common-dir --show-toplevel 2>/dev/null)" || _gl=""
@@ -625,9 +626,7 @@ if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
     esac
   fi
   if [ -z "$_gaia_walk_ceiling" ]; then
-    if [ -n "$_gaia_walk_excluded" ]; then
-      _gaia_walk_ceiling="$(dirname "$_gaia_walk_excluded")"
-    elif [ -n "$_gaia_walk_toplevel" ]; then
+    if [ -n "$_gaia_walk_toplevel" ]; then
       _gaia_walk_ceiling="$_gaia_walk_toplevel"
     fi
   fi
@@ -648,6 +647,21 @@ if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PR
       break
     fi
   done
+  # Linked-worktree bonus: the walk stayed inside the worktree.  Check
+  # the parent of the main checkout (the project root in the standard
+  # sibling layout) as a single point.
+  if [ -z "$SHARED_PATH" ] && [ -n "$_gaia_walk_excluded" ]; then
+    _wt_parent="$(dirname "$_gaia_walk_excluded")"
+    if [ "$_wt_parent" != "/" ]; then
+      if [ -f "${_wt_parent}/.gaia/config/project-config.yaml" ]; then
+        SHARED_PATH="${_wt_parent}/.gaia/config/project-config.yaml"
+      elif [ -f "${_wt_parent}/config/project-config.yaml" ]; then
+        SHARED_PATH="${_wt_parent}/config/project-config.yaml"
+        _gaia_legacy_warn
+      fi
+    fi
+    unset _wt_parent
+  fi
   unset _gaia_walk_dir
 fi
 if [ -z "$SHARED_PATH" ] && [ -n "${CLAUDE_SKILL_DIR:-}" ]; then
@@ -694,6 +708,18 @@ if [ -z "$LOCAL_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PRO
       break
     fi
   done
+  # Linked-worktree bonus for the overlay walk.
+  if [ -z "$LOCAL_PATH" ] && [ -n "$_gaia_walk_excluded" ]; then
+    _wt_parent="$(dirname "$_gaia_walk_excluded")"
+    if [ "$_wt_parent" != "/" ]; then
+      if [ -f "${_wt_parent}/.gaia/config/global.yaml" ]; then
+        LOCAL_PATH="${_wt_parent}/.gaia/config/global.yaml"
+      elif [ -f "${_wt_parent}/config/global.yaml" ]; then
+        LOCAL_PATH="${_wt_parent}/config/global.yaml"
+      fi
+    fi
+    unset _wt_parent
+  fi
   unset _gaia_walk_dir
 fi
 unset _gaia_walk_ceiling _gaia_walk_phys _gaia_walk_excluded

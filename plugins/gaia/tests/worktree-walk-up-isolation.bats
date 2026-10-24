@@ -251,6 +251,7 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   local hc; hc="$(cd "$TEST_TMP/myhome" && pwd -P)"
   run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$TEST_TMP/repo/sub'; bash '$RESOLVE_CONFIG'"
   [ "$status" -eq 0 ]
+  [[ "$output" == *"installed_path='original'"* ]]
 }
 
 @test "resolve-config walk-up does not fire outside HOME without git" {
@@ -347,15 +348,15 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
 }
 
-# Linked worktree outside HOME — planted config above the ceiling is ignored.
-# Ceiling = parent of the main checkout; planted config sits above that.
+# Linked worktree outside HOME — planted config above the worktree is ignored.
+# The walk stays inside the worktree top-level; the bonus check tries
+# only the parent of the main checkout. A planted config anywhere else
+# (even one level above the parent of main) must be invisible.
 @test "linked worktree outside HOME ignores planted config above ceiling" {
-  # Root has NO config — only the planted config above the ceiling exists.
-  # The ceiling (parent of main checkout) must stop the walk before reaching it.
   local fh="$TEST_TMP/home"; mkdir -p "$fh"
   local shared="$TEST_TMP/shared"; local root="$shared/work/root"
-  mkdir -p "$root" "$shared/.gaia/config"
-  printf 'project:\n  n: planted\n' > "$shared/.gaia/config/project-config.yaml"
+  mkdir -p "$root" "$shared/work/.gaia/config"
+  printf 'project:\n  n: planted\n' > "$shared/work/.gaia/config/project-config.yaml"
   local main="$root/gaia-public"
   mkdir -p "$main"
   git -C "$main" init -q 2>/dev/null
@@ -363,15 +364,15 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   local wt="$root/.gaia-worktrees/K1"
   git -C "$main" worktree add "$wt" -b k1 -q 2>/dev/null
   mkdir -p "$wt/src"
-  local sc; sc="$(cd "$shared" && pwd -P)"
+  local pc; pc="$(cd "$shared/work" && pwd -P)"
   local dc; dc="$(cd "$wt/src" && pwd -P)"
   local hc; hc="$(cd "$fh" && pwd -P)"
 
   run bash -c "export HOME='$hc'; $_E cd '$wt/src' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
   [ "$status" -eq 0 ]
-  # CWD fallback — planted config above the ceiling must not be found
+  # CWD fallback — planted config at the parent-of-root must not be found
   [ "$output" = "$dc" ]
-  [ "$output" != "$sc" ]
+  [ "$output" != "$pc" ]
   git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
 }
 
@@ -436,10 +437,11 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
 
 # resolve-config linked-worktree outside HOME: ceiling stops the walk.
 @test "resolve-config linked worktree outside HOME ignores planted config above ceiling" {
+  # Planted config ONE level above the parent of main (shared/work).
   local fh="$TEST_TMP/home"; mkdir -p "$fh"
   local shared="$TEST_TMP/shared"; local root="$shared/work/root"
-  mkdir -p "$root" "$shared/.gaia/config"
-  printf 'project:\n  name: planted\nproject_root: .\ndate: "2026-01-01"\n' > "$shared/.gaia/config/project-config.yaml"
+  mkdir -p "$root" "$shared/work/.gaia/config"
+  printf 'project:\n  name: planted\nproject_root: .\ndate: "2026-01-01"\n' > "$shared/work/.gaia/config/project-config.yaml"
   local main="$root/gaia-public"
   mkdir -p "$main"
   git -C "$main" init -q 2>/dev/null
@@ -447,7 +449,6 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   local wt="$root/.gaia-worktrees/K1"
   git -C "$main" worktree add "$wt" -b k1 -q 2>/dev/null
   mkdir -p "$wt/src"
-  local sc; sc="$(cd "$shared" && pwd -P)"
   local hc; hc="$(cd "$fh" && pwd -P)"
 
   run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG' 2>&1"
@@ -455,6 +456,46 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   [[ "$output" == *"no config path"* ]]
   [[ "$output" != *"planted"* ]]
   git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# Linked worktree placed outside the parent of its main checkout.
+# E.g. `git worktree add /tmp/x` from /work/main. The walk must not
+# escape the worktree's own top-level.
+@test "worktree outside main checkout parent ignores planted config" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/work/main"
+  mkdir -p "$main_dir"
+  git -C "$main_dir" init -q 2>/dev/null
+  git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$TEST_TMP/elsewhere/review-wt"
+  mkdir -p "$TEST_TMP/elsewhere/.gaia/config"
+  printf 'project:\n  n: planted\n' > "$TEST_TMP/elsewhere/.gaia/config/project-config.yaml"
+  git -C "$main_dir" worktree add "$wt" -b q1 -q 2>/dev/null
+  mkdir -p "$wt/src"
+  local dc; dc="$(cd "$wt/src" && pwd -P)"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$wt/src' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "$dc" ]
+  git -C "$main_dir" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+@test "resolve-config worktree outside main checkout parent ignores planted config" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/work/main"
+  mkdir -p "$main_dir"
+  git -C "$main_dir" init -q 2>/dev/null
+  git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$TEST_TMP/elsewhere/review-wt"
+  _write_min_config "$TEST_TMP/elsewhere"
+  git -C "$main_dir" worktree add "$wt" -b q1 -q 2>/dev/null
+  mkdir -p "$wt/src"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG' 2>&1"
+  [[ "$output" == *"no config path"* ]]
+  git -C "$main_dir" worktree remove "$wt" --force 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
