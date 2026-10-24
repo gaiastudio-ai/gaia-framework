@@ -81,8 +81,10 @@ setup() {
 
 # --- AC3: no parallel-sprint synonyms ---
 
-@test "no parallel sprint synonyms after stripping phase-parallel" {
-  hit_count=0
+# _glossary_synonym_scan ROOTS... — scan files under the given directories
+# for "parallel sprint" after stripping "phase-parallel".  Returns the hit
+# count via $hit_count (caller must initialise it).
+_glossary_synonym_scan() {
   while IFS= read -r file; do
     case "$file" in
       */tests/fixtures/*) continue ;;
@@ -94,11 +96,16 @@ setup() {
       echo "HIT: $file" >&2
       hit_count=$((hit_count + 1))
     fi
-  done < <(find "$REPO_ROOT/plugins" "$REPO_ROOT/documentation" -type f \
+  done < <(find "$@" -type f \
     \( -name '*.md' -o -name '*.csv' -o -name '*.html' -o -name '*.sh' \
        -o -name '*.bats' -o -name '*.yaml' -o -name '*.yml' -o -name '*.json' \
        -o -name '*.txt' -o -name '*.js' -o -name '*.ts' -o -name '*.py' \) \
     2>/dev/null)
+}
+
+@test "no parallel sprint synonyms after stripping phase-parallel" {
+  hit_count=0
+  _glossary_synonym_scan "$REPO_ROOT/plugins" "$REPO_ROOT/documentation"
   [ "$hit_count" -eq 0 ]
 }
 

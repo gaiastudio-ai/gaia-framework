@@ -208,16 +208,19 @@ _loads_shared_helper() {
   return 1
 }
 
-@test "every bats file loads test_helper (litter detection coverage)" {
+# _check_helper_load_coverage DIR CAP — scan .bats files under DIR and
+# fail when more than CAP files do not load the shared helper.
+_check_helper_load_coverage() {
+  local scan_dir="$1" cap="$2"
   local missing=()
   local scanned=0
 
   while IFS= read -r f; do
     scanned=$((scanned + 1))
     if ! _loads_shared_helper "$f"; then
-      missing+=("${f#"$TESTS_DIR"/}")
+      missing+=("${f#"$scan_dir"/}")
     fi
-  done < <(find "$TESTS_DIR" -name '*.bats' | LC_ALL=C sort)
+  done < <(find "$scan_dir" -name '*.bats' | LC_ALL=C sort)
 
   [ "$scanned" -gt 0 ] || {
     printf 'no .bats files found (expected >0)\n' >&2
@@ -225,9 +228,9 @@ _loads_shared_helper() {
   }
 
   local count="${#missing[@]}"
-  if [ "$count" -gt "$_LEGACY_NO_LOAD_CAP" ]; then
+  if [ "$count" -gt "$cap" ]; then
     printf 'FAIL: %d file(s) do not load test_helper.bash (cap=%d, count=%d):\n' \
-      "$((count - _LEGACY_NO_LOAD_CAP))" "$_LEGACY_NO_LOAD_CAP" "$count" >&2
+      "$((count - cap))" "$cap" "$count" >&2
     for v in "${missing[@]}"; do
       printf '  - %s\n' "$v" >&2
     done
@@ -236,7 +239,11 @@ _loads_shared_helper() {
   fi
 
   printf 'test_helper coverage: %d/%d files load it (%d uncovered, cap=%d)\n' \
-    "$((scanned - count))" "$scanned" "$count" "$_LEGACY_NO_LOAD_CAP" >&2
+    "$((scanned - count))" "$scanned" "$count" "$cap" >&2
+}
+
+@test "every bats file loads test_helper (litter detection coverage)" {
+  _check_helper_load_coverage "$TESTS_DIR" "$_LEGACY_NO_LOAD_CAP"
 }
 
 @test "suites that override setup_file call _litter_snapshot_before" {
@@ -466,19 +473,24 @@ _check_teardown_safety() {
 # Guard 5 — Local helpers must source the shared test_helper.bash
 # ---------------------------------------------------------------------------
 
-@test "every subdirectory test_helper.bash sources the shared helper" {
+# _check_local_helpers_source_shared DIR ROOT_DIR_NAME — scan test_helper.bash
+# files under DIR, skip the one whose parent is ROOT_DIR_NAME (the shared
+# helper itself), and fail if any local helper lacks a `. …test_helper.bash`
+# or `source …test_helper.bash` line that actually dots (not just mentions
+# in a comment).
+_check_local_helpers_source_shared() {
+  local scan_dir="$1" root_name="$2"
   local violations=()
   while IFS= read -r f; do
-    # Skip the shared helper itself (lives directly under tests/).
-    [ "$(basename "$(dirname "$f")")" = "tests" ] && continue
-    # Match any of:
-    #   . "…/test_helper.bash"   (computed path, e.g. $(cd …)/test_helper.bash)
-    #   . ".../tests/test_helper.bash"  (literal path)
-    #   source …/test_helper.bash
-    if ! /usr/bin/grep -qE '^\.[[:space:]].*test_helper\.bash|^source[[:space:]].*test_helper\.bash' "$f"; then
-      violations+=("${f#"$TESTS_DIR"/}")
+    [ "$(basename "$(dirname "$f")")" = "$root_name" ] && continue
+    # Match a dot-source or source command (not a comment) whose argument
+    # ends in test_helper.bash.  The pattern requires the dot or source
+    # keyword at line start followed by whitespace, filtering out comment-
+    # only mentions like `. /dev/null # test_helper.bash`.
+    if ! /usr/bin/grep -qE '^(\.|source)[[:space:]]+".*test_helper\.bash"' "$f"; then
+      violations+=("${f#"$scan_dir"/}")
     fi
-  done < <(find "$TESTS_DIR" -name 'test_helper.bash' | LC_ALL=C sort)
+  done < <(find "$scan_dir" -name 'test_helper.bash' | LC_ALL=C sort)
 
   if [ "${#violations[@]}" -gt 0 ]; then
     printf 'FAIL: %d local helper(s) do not source the shared test_helper.bash:\n' "${#violations[@]}" >&2
@@ -487,6 +499,10 @@ _check_teardown_safety() {
     done
     return 1
   fi
+}
+
+@test "every subdirectory test_helper.bash sources the shared helper" {
+  _check_local_helpers_source_shared "$TESTS_DIR" "tests"
 }
 
 # ---------------------------------------------------------------------------
@@ -825,9 +841,10 @@ _ds_scratch() {
 @test "diff-select rule 6 selects direct, subdirectory, and indirect suites" {
   _ds_scratch
   local out
-  out="$(cd "$DS_SCRATCH" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>/dev/null || true)"
+  local _ds_err="$BATS_TEST_TMPDIR/ds-err-$$"
+  out="$(cd "$DS_SCRATCH" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>"$_ds_err" || true)"
 
-  [ -n "$out" ] || { printf 'no output\n' >&2; return 1; }
+  [ -n "$out" ] || { printf 'no output; stderr:\n%s\n' "$(cat "$_ds_err")" >&2; return 1; }
 
   # Top-level suite must be selected
   /usr/bin/grep -q "top.bats" <<< "$out" || {
@@ -860,9 +877,7 @@ _ds_scratch() {
   fi
 }
 
-@test "helper-load guard cap=0 rejects a suite without the load line" {
-  # Build a scratch tests dir containing one suite with no load line and
-  # one with.  The real guard logic (cap=0) must reject the missing one.
+@test "helper-load guard rejects a suite without the load line (cap=0)" {
   local d="$BATS_TEST_TMPDIR/cap-probe-$$"
   mkdir -p "$d"
   { printf '#!/usr/bin/env bats\n'
@@ -871,24 +886,9 @@ _ds_scratch() {
     printf "load 'test_helper.bash'\n"
     printf '%s "%s" { true; }\n' '@test' 'x'; } > "$d/has-helper.bats"
 
-  # Run the real guard at cap=0 — the no-helper suite must cause failure.
-  local missing=() scanned=0
-  while IFS= read -r f; do
-    scanned=$((scanned + 1))
-    if ! _loads_shared_helper "$f"; then
-      missing+=("${f#"$d"/}")
-    fi
-  done < <(find "$d" -name '*.bats' | LC_ALL=C sort)
-
-  [ "$scanned" -gt 0 ]
-  local count="${#missing[@]}"
-  # With cap=0 (_LEGACY_NO_LOAD_CAP) this must fail.
-  [ "$count" -gt "$_LEGACY_NO_LOAD_CAP" ] || {
-    printf 'Guard did not reject uncovered suite (count=%d cap=%d)\n' "$count" "$_LEGACY_NO_LOAD_CAP" >&2
-    return 1
-  }
-  # Verify the specific file is named.
-  [[ "${missing[*]}" == *"no-helper.bats"* ]]
+  run _check_helper_load_coverage "$d" "$_LEGACY_NO_LOAD_CAP"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no-helper.bats"* ]]
 }
 
 @test "inherited SCRIPTS_DIR does not leak into test_helper resolution" {
@@ -912,79 +912,118 @@ _ds_scratch() {
   }
 }
 
-@test "large-file SIGPIPE regression: grep -q on big input via pipe" {
-  # Under pipefail, grep -q exits early on a match, causing SIGPIPE on the
-  # producer when the input exceeds the pipe buffer (~64 KB).  This test
-  # verifies the capture-then-grep fix works on large files.
-  local d="$BATS_TEST_TMPDIR/sigpipe-$$"
-  mkdir -p "$d"
-  # Create a ~70 KB file with the search term on line 1.
-  # Use a synthetic probe phrase that does not trip any glossary guard.
-  {
-    printf 'sigpipe probe needle\n'
-    dd if=/dev/zero bs=1024 count=70 2>/dev/null | tr '\0' 'x'
-  } > "$d/big.md"
-
-  # Capture first (safe under pipefail), then grep the variable.
-  local _content
-  _content="$(sed 's/dummy//Ig' "$d/big.md")"
-  grep -qi 'sigpipe probe needle' <<< "$_content"
-}
-
 @test "local-helper guard detects a helper that does not source the shared one" {
   local d="$BATS_TEST_TMPDIR/local-guard-$$"
-  mkdir -p "$d/subdir"
+  mkdir -p "$d/tests" "$d/tests/subdir"
 
-  # A local test_helper.bash that does NOT source the shared helper
+  # The shared helper (root-level) — has the source line.
+  printf '#!/usr/bin/env bash\n. "placeholder"\n' > "$d/tests/test_helper.bash"
+
+  # A local test_helper.bash that does NOT source the shared helper.
   printf '#!/usr/bin/env bash\nSCRIPTS_DIR=/tmp\nexport SCRIPTS_DIR\n' \
-    > "$d/subdir/test_helper.bash"
+    > "$d/tests/subdir/test_helper.bash"
 
-  local violations=()
-  while IFS= read -r f; do
-    [ "$(basename "$(dirname "$f")")" = "$(basename "$d")" ] && continue
-    if ! /usr/bin/grep -qE '^\.[[:space:]].*test_helper\.bash|^source[[:space:]].*test_helper\.bash' "$f"; then
-      violations+=("$(basename "$(dirname "$f")")/$(basename "$f")")
-    fi
-  done < <(find "$d" -name 'test_helper.bash' | LC_ALL=C sort)
-
-  [ "${#violations[@]}" -gt 0 ] || {
-    printf 'Guard did not detect the unsourced local helper\n' >&2
-    return 1
-  }
-  [[ "${violations[*]}" == *"subdir/test_helper.bash"* ]]
+  run _check_local_helpers_source_shared "$d/tests" "tests"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"subdir/test_helper.bash"* ]]
 }
 
-@test "large-file capture-then-grep pattern survives pipefail (SIGPIPE regression)" {
-  # The glossary scan (concurrent-sprint-glossary.bats ~91-93) uses a
-  # capture-then-grep pattern to avoid SIGPIPE on large files.  This test
-  # verifies that the pattern works on a file exceeding the pipe buffer
-  # (~64 KB) and that a match on line 1 is found correctly.
+@test "glossary synonym scan detects a hit in a >64 KB file (SIGPIPE regression)" {
+  # The glossary scan strips a prefix then greps for a banned synonym.
+  # The capture-then-grep pattern avoids SIGPIPE on large files under
+  # pipefail.  This test exercises that pattern on a >64 KB probe file.
   local d="$BATS_TEST_TMPDIR/glossary-sigpipe-$$"
   mkdir -p "$d"
-  # Build a >64 KB file with the search term on line 1.
-  {
-    printf 'needle_for_sigpipe_test\n'
-    dd if=/dev/zero bs=1024 count=70 2>/dev/null | tr '\0' 'x'
-  } > "$d/big.md"
 
-  # Capture-then-grep: safe under pipefail (the production pattern).
-  local _content
-  _content="$(sed 's/remove_me//Ig' "$d/big.md")"
-  grep -qi 'needle_for_sigpipe_test' <<< "$_content" || {
-    printf 'capture-then-grep did not find the needle\n' >&2
+  # Build the probe phrase from fragments so it does not appear as a
+  # contiguous literal in THIS file (the glossary guard scans all .bats).
+  local _word1="parallel"
+  local _word2="sprint"
+  local _probe="${_word1} ${_word2}"
+
+  # A >64 KB .md whose content survives the prefix strip.
+  {
+    printf 'concurrent %s mention\n' "$_probe"
+    dd if=/dev/zero bs=1024 count=70 2>/dev/null | tr '\0' 'x'
+  } > "$d/probe.md"
+
+  # Same capture-then-grep logic the glossary test uses.
+  local _stripped
+  _stripped="$(sed 's/phase-parallel//Ig' "$d/probe.md")"
+  grep -qi "$_probe" <<< "$_stripped" || {
+    printf 'Capture-then-grep missed the synonym in the large file\n' >&2
     return 1
   }
 
-  # Prove the piped form would fail: run it in a subshell with pipefail.
-  # sed | grep -qi closes the pipe early on match, causing SIGPIPE (141)
-  # on sed when the remaining input exceeds the buffer.
-  run bash -c 'set -eo pipefail; sed "s/remove_me//Ig" "$1" | grep -qi "needle_for_sigpipe_test"' _ "$d/big.md"
-  if [ "$status" -eq 0 ]; then
-    # On some systems the kernel buffer is large enough — skip rather than
-    # false-fail, but on most CI runners this proves the SIGPIPE.
-    true
-  else
-    # Status 141 (SIGPIPE) or non-zero confirms the pipe form is unsafe.
-    [ "$status" -ne 0 ]
+  # Verify the glossary test file still uses the safe pattern, not a pipe.
+  local glossary_file="$TESTS_DIR/concurrent-sprint-glossary.bats"
+  # The scan body must use capture-then-grep, not a raw pipe to grep -qi.
+  /usr/bin/grep -q '_stripped="$(sed' "$glossary_file" || {
+    printf 'Glossary test does not use the capture-then-grep pattern\n' >&2
+    return 1
+  }
+  if /usr/bin/grep -qE "sed 's/phase-parallel.*\| grep -qi" "$glossary_file"; then
+    printf 'Glossary test still uses the piped form (SIGPIPE risk)\n' >&2
+    return 1
+  fi
+}
+
+@test "diff-select rule 6 escapes ERE metacharacters in helper basenames" {
+  # Build a scratch repo where the indirect helper has ERE metacharacters
+  # in its name.  The escaped grep must match only the exact name.
+  local scratch="$BATS_TEST_TMPDIR/ere-scratch-$$"
+  mkdir -p "$scratch/.github/scripts"
+  mkdir -p "$scratch/plugins/gaia/tests/metachars/child"
+
+  printf '# shared\n' > "$scratch/plugins/gaia/tests/test_helper.bash"
+
+  # Indirect helper with metacharacters: a.b+c[d(e{f_helpers.bash
+  local hname='a.b+c[d(e{f_helpers'
+  printf '. "%s/plugins/gaia/tests/test_helper.bash"\n' "$scratch" \
+    > "$scratch/plugins/gaia/tests/metachars/${hname}.bash"
+
+  # Suite that loads the helper via a relative path
+  printf '#!/usr/bin/env bats\nload '\''../%s.bash'\''\n' "$hname" \
+    > "$scratch/plugins/gaia/tests/metachars/child/meta.bats"
+  printf '%s "%s" { true; }\n' '@test' 'x' \
+    >> "$scratch/plugins/gaia/tests/metachars/child/meta.bats"
+
+  # Decoy: aXb_helpers does NOT source the shared helper.  If the ERE
+  # were unescaped, `.` would match `X` and this decoy would be falsely
+  # selected as if it were the metachar helper.
+  printf '#!/usr/bin/env bash\n# unrelated helper\n' \
+    > "$scratch/plugins/gaia/tests/metachars/aXb_helpers.bash"
+  printf '#!/usr/bin/env bats\nload '\''../aXb_helpers.bash'\''\n' \
+    > "$scratch/plugins/gaia/tests/metachars/child/decoy.bats"
+  printf '%s "%s" { true; }\n' '@test' 'x' \
+    >> "$scratch/plugins/gaia/tests/metachars/child/decoy.bats"
+
+  # Top-level direct loader (ensures rule 6 fires)
+  printf '#!/usr/bin/env bats\nload '\''test_helper.bash'\''\n' \
+    > "$scratch/plugins/gaia/tests/top.bats"
+  printf '%s "%s" { true; }\n' '@test' 'x' >> "$scratch/plugins/gaia/tests/top.bats"
+
+  cp "$REPO_ROOT/.github/scripts/diff-select-tests.sh" "$scratch/.github/scripts/"
+
+  git -C "$scratch" init -q
+  git -C "$scratch" config user.email "test@test"
+  git -C "$scratch" config user.name "test"
+  git -C "$scratch" add -A
+  git -C "$scratch" commit -q -m "init"
+  printf '\n# changed\n' >> "$scratch/plugins/gaia/tests/test_helper.bash"
+  git -C "$scratch" add -A
+  git -C "$scratch" commit -q -m "touch"
+
+  local out
+  out="$(cd "$scratch" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>/dev/null || true)"
+
+  # The metachar helper's suite must be selected
+  /usr/bin/grep -q "meta.bats" <<< "$out" || {
+    printf 'metachar helper suite not selected:\n%s\n' "$out" >&2; return 1; }
+
+  # The decoy must NOT be selected (it is a different helper)
+  if /usr/bin/grep -q "decoy.bats" <<< "$out"; then
+    printf 'decoy suite incorrectly selected (ERE not escaped):\n%s\n' "$out" >&2
+    return 1
   fi
 }
