@@ -576,8 +576,9 @@ fi
 # The Claude Code skill harness invokes `!setup.sh` from a CWD that may
 # drift below project root (e.g., the dev runs a command from a nested
 # workspace folder). Walk parent directories from $PWD until we hit a
-# config/project-config.yaml or the filesystem root. Stops at $HOME and /
-# to avoid traversing system paths.
+# config/project-config.yaml or the walk-up boundary. Under HOME the walk
+# stops at $HOME. Outside HOME the walk is bounded by git (the repo
+# top-level or the parent of the main checkout for linked worktrees).
 #
 # Skipped when CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set so unit
 # tests and legacy bats-fixture flows can deterministically exercise the
@@ -593,20 +594,25 @@ _gaia_walk_ceiling=""
 _gaia_walk_excluded=""
 if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
   _gaia_walk_toplevel=""
-  if command -v git >/dev/null 2>&1 \
-     && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if command -v git >/dev/null 2>&1; then
     _gl="$(git rev-parse --git-dir --git-common-dir --show-toplevel 2>/dev/null)" || _gl=""
     if [ -n "$_gl" ]; then
-      _gd="$(printf '%s\n' "$_gl" | sed -n '1p')"
-      _gc="$(printf '%s\n' "$_gl" | sed -n '2p')"
-      _gaia_walk_toplevel="$(printf '%s\n' "$_gl" | sed -n '3p')"
+      # Parse three lines without forking sed/head/tail.
+      _gd="${_gl%%
+*}"
+      _rest="${_gl#*
+}"
+      _gc="${_rest%%
+*}"
+      _gaia_walk_toplevel="${_rest#*
+}"
       [ -n "$_gd" ] && _gd="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gd=""
       [ -n "$_gc" ] && _gc="$(cd "$_gc" 2>/dev/null && pwd -P)" || _gc=""
       if [ -n "$_gd" ] && [ -n "$_gc" ] && [ "$_gd" != "$_gc" ]; then
         _gaia_walk_excluded="$(cd "$_gc/.." 2>/dev/null && pwd -P)" || _gaia_walk_excluded=""
       fi
     fi
-    unset _gl _gd _gc
+    unset _gl _gd _gc _rest
   fi
   # Ceiling: HOME if under it; otherwise git-bounded.
   _gaia_walk_home=""
@@ -620,7 +626,7 @@ if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ]; then
   fi
   if [ -z "$_gaia_walk_ceiling" ]; then
     if [ -n "$_gaia_walk_excluded" ]; then
-      _gaia_walk_ceiling="$_gaia_walk_excluded"
+      _gaia_walk_ceiling="$(dirname "$_gaia_walk_excluded")"
     elif [ -n "$_gaia_walk_toplevel" ]; then
       _gaia_walk_ceiling="$_gaia_walk_toplevel"
     fi

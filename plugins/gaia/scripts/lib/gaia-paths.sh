@@ -143,12 +143,14 @@ _gaia_paths_resolve_override() {
 # CWD they were invoked from. Without this walk-up the resolution fell straight
 # to $PWD, so a script run from a subdirectory (or an unrelated CWD) silently
 # failed to find .gaia/config — e.g. detect-orchestration-mode.sh returned Mode
-# A even with orchestration.mode:team set. The bounded walk-up mirrors the
-# pattern in scripts/resolve-config.sh and scripts/load-stack-persona.sh: it
+# A even with orchestration.mode:team set.
+#
+# Walk-up boundaries (mirrors resolve-config.sh and load-stack-persona.sh):
 # Under HOME the walk stops at $HOME. Outside HOME (or when HOME is unset
 # or "/") the walk is bounded by git: the repo top-level for a regular repo,
-# or the parent of the main checkout for a linked worktree. Skipped when
-# CLAUDE_SKILL_DIR or GAIA_NO_PROJECT_WALKUP is set (test-isolation).
+# or the parent of the main checkout for a linked worktree. Without git the
+# walk does not run — CWD is used as-is. Skipped when CLAUDE_SKILL_DIR or
+# GAIA_NO_PROJECT_WALKUP is set (test-isolation).
 
 _gaia_paths_walk_up_root() {
   # Echo the nearest ancestor of $PWD (inclusive) that is the project root, or
@@ -175,17 +177,24 @@ _gaia_paths_walk_up_root() {
     phys_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || phys_home="$HOME"
   fi
 
-  # Detect linked worktree vs regular repo (single git call).
+  # Detect linked worktree vs regular repo.
   _excluded_dir=""
   local _git_toplevel=""
-  if command -v git >/dev/null 2>&1 \
-     && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    local _git_lines _gd _gc
+  if command -v git >/dev/null 2>&1; then
+    local _git_lines _gd _gc _rest
+    # One git call; --show-toplevel fails outside a work tree, giving us the
+    # same guard as the former --is-inside-work-tree pre-check.
     _git_lines="$(git rev-parse --git-dir --git-common-dir --show-toplevel 2>/dev/null)" || _git_lines=""
     if [ -n "$_git_lines" ]; then
-      _gd="$(printf '%s\n' "$_git_lines" | sed -n '1p')"
-      _gc="$(printf '%s\n' "$_git_lines" | sed -n '2p')"
-      _git_toplevel="$(printf '%s\n' "$_git_lines" | sed -n '3p')"
+      # Parse three lines without forking sed/head/tail.
+      _gd="${_git_lines%%
+*}"
+      _rest="${_git_lines#*
+}"
+      _gc="${_rest%%
+*}"
+      _git_toplevel="${_rest#*
+}"
       [ -n "$_gd" ] && _gd="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gd=""
       [ -n "$_gc" ] && _gc="$(cd "$_gc" 2>/dev/null && pwd -P)" || _gc=""
       if [ -n "$_gd" ] && [ -n "$_gc" ] && [ "$_gd" != "$_gc" ]; then
@@ -207,7 +216,7 @@ _gaia_paths_walk_up_root() {
     # Outside HOME (or HOME unset / "/"): bound by git.
     if [ -n "$_excluded_dir" ]; then
       # Linked worktree: walk up to the parent of the main checkout top-level.
-      ceiling="$_excluded_dir"
+      ceiling="$(dirname "$_excluded_dir")"
     elif [ -n "$_git_toplevel" ]; then
       # Regular git repo: walk up to the repo root only.
       ceiling="$_git_toplevel"
