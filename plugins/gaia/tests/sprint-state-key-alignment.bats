@@ -1103,7 +1103,8 @@ YAML
   PROJECT_CONFIG="$TEST_TMP/project/.gaia/config/project-config.yaml" \
     run bash "$ig" "$sf" --candidate sprint-B
   [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS"* ]]
+  [[ "$output" == *"PASS rules (a),(b)"* ]]
+  [[ "$output" != *"FAIL rule (b)"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -1481,11 +1482,11 @@ YAML
 # Additional readers outside the main diff: both-keys union by key
 # ===========================================================================
 
-@test "ppo_read_phases: both-keys file emits each key once with stories phase" {
+@test "ppo_read_phases: items-first both-keys gives stories phase" {
   local ppo="$BATS_TEST_DIRNAME/../scripts/phase-parallel-orchestrator.sh"
   [ -f "$ppo" ] || fail "phase-parallel-orchestrator.sh not found"
 
-  # Both-keys fixture with phases.
+  # items: E900-S1 phase 1; stories: E900-S1 phase 2, E900-S2 phase 1.
   cat > "$SPRINT_STATUS_YAML" << 'YAML'
 sprint_id: "sprint-ppo"
 status: active
@@ -1493,38 +1494,75 @@ total_points: 4
 goals: []
 items:
   - key: "E900-S1"
-    title: 'items version'
+    title: "iv"
     status: "in-progress"
     points: 2
     phase: 1
 stories:
   - key: "E900-S1"
-    title: 'stories version'
+    title: "sv"
     status: "done"
     points: 2
     phase: 2
   - key: "E900-S2"
-    title: 'stories only'
+    title: "so"
     status: "ready-for-dev"
     points: 2
     phase: 1
 YAML
 
-  local out
+  local out s1_count
   out="$(bash -c '. "'"$ppo"'"; ppo_read_phases "'"$SPRINT_STATUS_YAML"'"')"
-  # E900-S1 must appear exactly once (not twice from both blocks).
-  local s1_count
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  # E900-S2 from stories must appear.
-  [[ "$out" == *"E900-S2"* ]]
+  [[ "$out" == *"E900-S1|2"* ]]
+  [[ "$out" == *"E900-S2|1"* ]]
 }
 
-@test "sprint-progress-audit: both-keys file emits each key once with stories status" {
+@test "ppo_read_phases: stories-first both-keys gives stories phase" {
+  local ppo="$BATS_TEST_DIRNAME/../scripts/phase-parallel-orchestrator.sh"
+  [ -f "$ppo" ] || fail "phase-parallel-orchestrator.sh not found"
+
+  cat > "$SPRINT_STATUS_YAML" << 'YAML'
+sprint_id: "sprint-ppo"
+status: active
+total_points: 4
+goals: []
+stories:
+  - key: "E900-S1"
+    title: "sv"
+    status: "done"
+    points: 2
+    phase: 2
+  - key: "E900-S2"
+    title: "so"
+    status: "ready-for-dev"
+    points: 2
+    phase: 1
+items:
+  - key: "E900-S1"
+    title: "iv"
+    status: "in-progress"
+    points: 2
+    phase: 1
+YAML
+
+  local out s1_count
+  out="$(bash -c '. "'"$ppo"'"; ppo_read_phases "'"$SPRINT_STATUS_YAML"'"')"
+  s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
+  [ "$s1_count" -eq 1 ]
+  [[ "$out" == *"E900-S1|2"* ]]
+  [[ "$out" == *"E900-S2|1"* ]]
+}
+
+@test "sprint-progress-audit: items-first both-keys gives stories status" {
   local spa="$BATS_TEST_DIRNAME/../scripts/sprint-progress-audit.sh"
   [ -f "$spa" ] || fail "sprint-progress-audit.sh not found"
 
-  # The audit reads _SPRINT_STATUS. Create a both-keys fixture.
+  # Extract the real _extract_stories from the real script.
+  local fn_file="$TEST_TMP/extract_stories.sh"
+  sed -n '/^_extract_stories()/,/^}/p' "$spa" > "$fn_file"
+
   cat > "$SPRINT_STATUS_YAML" << 'YAML'
 sprint_id: "sprint-spa"
 status: active
@@ -1532,50 +1570,58 @@ total_points: 4
 goals: []
 items:
   - key: "E900-S1"
-    title: 'items version'
+    title: "iv"
     status: "in-progress"
     points: 2
 stories:
   - key: "E900-S1"
-    title: 'stories version'
+    title: "sv"
     status: "done"
     points: 2
   - key: "E900-S2"
-    title: 'stories only'
+    title: "so"
     status: "ready-for-dev"
     points: 2
 YAML
 
-  # Source the script to get access to _extract_stories, but it has set -euo.
-  # Instead, call it and verify the output.
-  local out
-  out="$(_SPRINT_STATUS="$SPRINT_STATUS_YAML" bash -c '
-    _SPRINT_STATUS="'"$SPRINT_STATUS_YAML"'"
-    _extract_stories() {
-      awk '"'"'
-        /^stories[[:space:]]*:/ { cur = "s"; next }
-        /^items[[:space:]]*:/ { cur = "i"; next }
-        /^[A-Za-z_]/ && !/^[[:space:]]/ { cur = "" }
-        /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
-          k = $0; sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
-          gsub(/"/, "", k); gsub(/[[:space:]]*$/, "", k); key = k
-        }
-        /^[[:space:]]+status:[[:space:]]*/ {
-          s = $0; sub(/^[[:space:]]+status:[[:space:]]*/, "", s)
-          gsub(/"/, "", s); gsub(/[[:space:]]*$/, "", s)
-          if (key != "") {
-            if (!(key in seen) || cur == "s") st[key] = s
-            if (!(key in seen)) { order[++n] = key; seen[key] = 1 }
-            key = ""
-          }
-        }
-        END { for (i = 1; i <= n; i++) printf "%s|%s\n", order[i], st[order[i]] }
-      '"'"' "$_SPRINT_STATUS"
-    }
-    _extract_stories
-  ')"
-  # E900-S1 must appear once with status "done" (stories wins).
-  local s1_count
+  local out s1_count
+  out="$(_SPRINT_STATUS="$SPRINT_STATUS_YAML" bash -c '_SPRINT_STATUS="'"$SPRINT_STATUS_YAML"'"; . "'"$fn_file"'"; _extract_stories')"
+  s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
+  [ "$s1_count" -eq 1 ]
+  [[ "$out" == *"E900-S1|done"* ]]
+  [[ "$out" == *"E900-S2|ready-for-dev"* ]]
+}
+
+@test "sprint-progress-audit: stories-first both-keys gives stories status" {
+  local spa="$BATS_TEST_DIRNAME/../scripts/sprint-progress-audit.sh"
+  [ -f "$spa" ] || fail "sprint-progress-audit.sh not found"
+
+  local fn_file="$TEST_TMP/extract_stories.sh"
+  sed -n '/^_extract_stories()/,/^}/p' "$spa" > "$fn_file"
+
+  cat > "$SPRINT_STATUS_YAML" << 'YAML'
+sprint_id: "sprint-spa"
+status: active
+total_points: 4
+goals: []
+stories:
+  - key: "E900-S1"
+    title: "sv"
+    status: "done"
+    points: 2
+  - key: "E900-S2"
+    title: "so"
+    status: "ready-for-dev"
+    points: 2
+items:
+  - key: "E900-S1"
+    title: "iv"
+    status: "in-progress"
+    points: 2
+YAML
+
+  local out s1_count
+  out="$(_SPRINT_STATUS="$SPRINT_STATUS_YAML" bash -c '_SPRINT_STATUS="'"$SPRINT_STATUS_YAML"'"; . "'"$fn_file"'"; _extract_stories')"
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
   [[ "$out" == *"E900-S1|done"* ]]
@@ -1615,6 +1661,19 @@ MD
     run bash "$dash"
   [ "$status" -eq 0 ]
   [[ "$output" == *"E900-S1"* ]]
-  # The status must be "in-progress", not shifted into the title column.
-  [[ "$output" == *"in-progress"* ]]
+  # With tab separator (S1 mutant), the empty title collapses and the status
+  # shifts into the title column. The points value "2" must appear after the
+  # status, not in the status column. Extract the story row and verify the
+  # column layout: status ("in-progress") followed by points ("2").
+  local row
+  row="$(printf '%s\n' "$output" | grep 'E900-S1')"
+  # The dashboard format is: %-12s %-38s %-14s %s
+  # With correct parsing: "  E900-S1      <empty-title>                       in-progress    2"
+  # With S1 collapse:     "  E900-S1      in-progress                         2              "
+  # Assert points "2" appears after "in-progress" (correct column order).
+  [[ "$row" == *"in-progress"*"2"* ]]
+  # Also: the title column (chars 15-52) must NOT contain "in-progress".
+  # In the correct layout, the title is empty so that range is spaces.
+  local title_col="${row:14:38}"
+  [[ "$title_col" != *"in-progress"* ]]
 }

@@ -530,7 +530,7 @@ ppo_read_phases() {
       p = $0
       sub(/^[[:space:]]+phase:[[:space:]]*/, "", p)
       gsub(/[^0-9]/, "", p)
-      if (p != "") ph[key] = p
+      if (p != "" && (!(key in ph) || cur_block == "s")) ph[key] = p
       next
     }
     END {
