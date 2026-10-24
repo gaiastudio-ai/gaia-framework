@@ -144,8 +144,14 @@ teardown() {
 }
 
 @test "runner does NOT invoke AskUserQuestion" {
-  # Strip comment lines, then assert no actual invocation of AskUserQuestion
-  ! grep -v '^[[:space:]]*#' "$RUNNER" | grep -q "AskUserQuestion("
+  # Strip comment lines, then assert no actual invocation of AskUserQuestion.
+  # Capture first to avoid SIGPIPE under pipefail.
+  local _code
+  _code="$(grep -v '^[[:space:]]*#' "$RUNNER")"
+  if grep -q "AskUserQuestion(" <<< "$_code"; then
+    printf 'runner must not invoke AskUserQuestion\n' >&2
+    return 1
+  fi
 }
 
 @test "empty sprint_review section → empty array + stderr warning, exit 0 ( soft-fail preserved)" {

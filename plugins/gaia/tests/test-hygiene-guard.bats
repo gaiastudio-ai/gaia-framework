@@ -754,47 +754,132 @@ HELPER
 # diff-select-tests.sh rule 6 coverage
 # ---------------------------------------------------------------------------
 
-@test "diff-select rule 6 selects suites when test_helper.bash changes" {
-  # Build a scratch git repo that mimics the plugin layout with a
-  # test_helper.bash and suites in top-level + subdirectory.
-  local scratch="$BATS_TEST_TMPDIR/ds-scratch-$$"
-  mkdir -p "$scratch/.github/scripts"
-  mkdir -p "$scratch/plugins/gaia/tests/subdir"
+# _ds_scratch — build a scratch git repo for diff-select rule 6 tests.
+# Sets DS_SCRATCH to the repo path.  The repo contains:
+#   top.bats        — loads test_helper directly
+#   subdir/deep.bats — loads ../test_helper
+#   indirect/child/relay.bats — loads ../relay_helpers which sources the shared helper
+_ds_scratch() {
+  DS_SCRATCH="$BATS_TEST_TMPDIR/ds-scratch-$$"
+  mkdir -p "$DS_SCRATCH/.github/scripts"
+  mkdir -p "$DS_SCRATCH/plugins/gaia/tests/subdir"
+  mkdir -p "$DS_SCRATCH/plugins/gaia/tests/indirect/child"
 
-  printf '# shared helper\n' > "$scratch/plugins/gaia/tests/test_helper.bash"
+  printf '# shared helper\n' > "$DS_SCRATCH/plugins/gaia/tests/test_helper.bash"
 
-  # Top-level suite that loads test_helper
-  printf '#!/usr/bin/env bats\nload '\''test_helper.bash'\''\n' > "$scratch/plugins/gaia/tests/top.bats"
-  printf '%s "%s" { true; }\n' '@test' 'x' >> "$scratch/plugins/gaia/tests/top.bats"
+  # Top-level direct loader
+  { printf '#!/usr/bin/env bats\nload '\''test_helper.bash'\''\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'; } > "$DS_SCRATCH/plugins/gaia/tests/top.bats"
 
-  # Subdirectory suite with relative load
-  printf '#!/usr/bin/env bats\nload '\''../test_helper.bash'\''\n' > "$scratch/plugins/gaia/tests/subdir/deep.bats"
-  printf '%s "%s" { true; }\n' '@test' 'x' >> "$scratch/plugins/gaia/tests/subdir/deep.bats"
+  # Subdirectory direct loader (relative path)
+  { printf '#!/usr/bin/env bats\nload '\''../test_helper.bash'\''\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'; } > "$DS_SCRATCH/plugins/gaia/tests/subdir/deep.bats"
 
-  # Copy the real diff-select script
-  cp "$REPO_ROOT/.github/scripts/diff-select-tests.sh" "$scratch/.github/scripts/"
+  # Indirect loader: relay_helpers.bash sources the shared helper
+  printf '. "%s/plugins/gaia/tests/test_helper.bash"\n' "$DS_SCRATCH" \
+    > "$DS_SCRATCH/plugins/gaia/tests/indirect/relay_helpers.bash"
+  { printf '#!/usr/bin/env bats\nload '\''../relay_helpers.bash'\''\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'; } > "$DS_SCRATCH/plugins/gaia/tests/indirect/child/relay.bats"
 
-  git -C "$scratch" init -q
-  git -C "$scratch" config user.email "test@test"
-  git -C "$scratch" config user.name "test"
-  git -C "$scratch" add -A
-  git -C "$scratch" commit -q -m "init"
+  cp "$REPO_ROOT/.github/scripts/diff-select-tests.sh" "$DS_SCRATCH/.github/scripts/"
 
-  # Create a second commit that touches test_helper.bash
-  printf '\n# changed\n' >> "$scratch/plugins/gaia/tests/test_helper.bash"
-  git -C "$scratch" add -A
-  git -C "$scratch" commit -q -m "touch helper"
+  git -C "$DS_SCRATCH" init -q
+  git -C "$DS_SCRATCH" config user.email "test@test"
+  git -C "$DS_SCRATCH" config user.name "test"
+  git -C "$DS_SCRATCH" add -A
+  git -C "$DS_SCRATCH" commit -q -m "init"
+
+  # Second commit touches only test_helper.bash
+  printf '\n# changed\n' >> "$DS_SCRATCH/plugins/gaia/tests/test_helper.bash"
+  git -C "$DS_SCRATCH" add -A
+  git -C "$DS_SCRATCH" commit -q -m "touch helper"
+}
+
+@test "diff-select rule 6 selects direct, subdirectory, and indirect suites" {
+  _ds_scratch
+  local out
+  out="$(cd "$DS_SCRATCH" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>/dev/null || true)"
+
+  [ -n "$out" ] || { printf 'no output\n' >&2; return 1; }
+
+  # M10: top-level suite must be selected
+  /usr/bin/grep -q "top.bats" <<< "$out" || {
+    printf 'top-level suite missing:\n%s\n' "$out" >&2; return 1; }
+
+  # Subdirectory direct loader
+  /usr/bin/grep -q "subdir/deep.bats" <<< "$out" || {
+    printf 'subdir direct suite missing:\n%s\n' "$out" >&2; return 1; }
+
+  # M8: indirect loader via relay_helpers
+  /usr/bin/grep -q "relay.bats" <<< "$out" || {
+    printf 'indirect suite missing:\n%s\n' "$out" >&2; return 1; }
+}
+
+@test "diff-select rule 6 mutant: deleting indirect block drops relay suite" {
+  _ds_scratch
+  # Remove the indirect-loader block from the script copy
+  sed '/Indirect loaders/,/^[[:space:]]*fi$/d' \
+    "$DS_SCRATCH/.github/scripts/diff-select-tests.sh" \
+    > "$DS_SCRATCH/.github/scripts/diff-select-tests-mutant.sh"
+  chmod +x "$DS_SCRATCH/.github/scripts/diff-select-tests-mutant.sh"
 
   local out
-  out="$(cd "$scratch" && bash .github/scripts/diff-select-tests.sh HEAD~1 2>/dev/null || true)"
+  out="$(cd "$DS_SCRATCH" && bash .github/scripts/diff-select-tests-mutant.sh HEAD~1 2>/dev/null || true)"
 
-  [ -n "$out" ] || {
-    printf 'diff-select produced no output for test_helper.bash change\n' >&2
+  # The mutant must NOT select the indirect suite (proving the block is needed)
+  if /usr/bin/grep -q "relay.bats" <<< "$out"; then
+    printf 'Mutant still selects indirect suite — block deletion not detected\n' >&2
+    return 1
+  fi
+}
+
+@test "helper-load guard cap=0 rejects a suite without the load line" {
+  # M1: if the cap were raised above 0, this probe would pass silently.
+  local d="$BATS_TEST_TMPDIR/cap-probe-$$"
+  mkdir -p "$d"
+  { printf '#!/usr/bin/env bats\n'
+    printf '%s "%s" { true; }\n' '@test' 'x'; } > "$d/no-helper.bats"
+
+  run _loads_shared_helper "$d/no-helper.bats"
+  [ "$status" -ne 0 ]
+}
+
+@test "inherited SCRIPTS_DIR does not leak into test_helper resolution" {
+  # A poisoned SCRIPTS_DIR in the environment must be overridden by the
+  # shared helper so suites always resolve scripts from the repo tree.
+  local d="$BATS_TEST_TMPDIR/env-leak-$$"
+  mkdir -p "$d"
+  {
+    printf '#!/usr/bin/env bats\n'
+    printf 'load "%s/test_helper.bash"\n' "$TESTS_DIR"
+    printf '%s "%s" {\n' '@test' 'SCRIPTS_DIR points at real scripts dir'
+    printf '  [ -d "$SCRIPTS_DIR" ]\n'
+    printf '  [ -f "$SCRIPTS_DIR/resolve-config.sh" ]\n'
+    printf '}\n'
+  } > "$d/env-leak.bats"
+
+  run env SCRIPTS_DIR=/nonexistent bats "$d/env-leak.bats"
+  [ "$status" -eq 0 ] || {
+    printf 'SCRIPTS_DIR leak: poisoned value not overridden.\noutput:\n%s\n' "$output" >&2
     return 1
   }
-  # Must include the subdirectory suite
-  /usr/bin/grep -q "subdir/" <<< "$out" || {
-    printf 'diff-select did not select subdirectory suite:\n%s\n' "$out" >&2
-    return 1
-  }
+}
+
+@test "large-file SIGPIPE regression: grep -q on big input via pipe" {
+  # Under pipefail, grep -q exits early on a match, causing SIGPIPE on the
+  # producer when the input exceeds the pipe buffer (~64 KB).  This test
+  # verifies the capture-then-grep fix works on large files.
+  local d="$BATS_TEST_TMPDIR/sigpipe-$$"
+  mkdir -p "$d"
+  # Create a ~70 KB file with the search term on line 1.
+  # Use a synthetic probe phrase that does not trip any glossary guard.
+  {
+    printf 'sigpipe probe needle\n'
+    dd if=/dev/zero bs=1024 count=70 2>/dev/null | tr '\0' 'x'
+  } > "$d/big.md"
+
+  # Capture first (safe under pipefail), then grep the variable.
+  local _content
+  _content="$(sed 's/dummy//Ig' "$d/big.md")"
+  grep -qi 'sigpipe probe needle' <<< "$_content"
 }

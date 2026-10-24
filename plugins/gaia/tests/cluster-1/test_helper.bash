@@ -8,13 +8,11 @@
 # level but not for subdirectories.
 
 
-# Resolve SCRIPTS_DIR before loading the shared helper so the cd in the
-# shared helper doesn't fail.
-SCRIPTS_DIR="$(cd "${BATS_TEST_DIRNAME}/../../scripts" && pwd)"
-export SCRIPTS_DIR
-
 # Source the shared helper for litter guard, strict mode, and common utilities.
 # shellcheck source=tests/test_helper.bash
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/test_helper.bash"
 
-
+# Override SCRIPTS_DIR for the subdirectory layout (the shared helper
+# resolves relative to tests/, which is wrong for this subdirectory).
+SCRIPTS_DIR="$(cd "${BATS_TEST_DIRNAME}/../../scripts" && pwd)"
+export SCRIPTS_DIR
