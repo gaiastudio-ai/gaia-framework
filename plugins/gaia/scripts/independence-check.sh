@@ -1410,8 +1410,8 @@ _ic_run_rules_cd() {
   local _cand_st="$sprint_types_dir/${candidate}.txt"
   [ -f "$_cand_sp" ] || : > "$_cand_sp"
   [ -f "$_cand_st" ] || : > "$_cand_st"
-  /usr/bin/grep -Fxv "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
-  /usr/bin/grep -Fv "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
+  /usr/bin/grep -Fxv -- "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
+  /usr/bin/grep -Fv -- "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
 
   local cd_overall_rc=0
   local active_id
@@ -1443,8 +1443,8 @@ _ic_run_rules_cd() {
 
     local act_paths_filtered="$tmpdir/act_paths_f_${active_id}.txt"
     local act_types_filtered="$tmpdir/act_types_f_${active_id}.txt"
-    /usr/bin/grep -Fxv "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
-    /usr/bin/grep -Fv "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
+    /usr/bin/grep -Fxv -- "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
+    /usr/bin/grep -Fv -- "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
 
     local cand_all_paths="$cand_paths_filtered"
     local cand_all_types="$cand_types_filtered"
