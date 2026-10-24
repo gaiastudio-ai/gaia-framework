@@ -213,8 +213,25 @@ _gaia_paths_walk_up_root() {
   fi
 
   if [ "$_under_home" -eq 0 ]; then
-    # Outside HOME (or HOME unset / "/"): bound by the current repo/worktree.
-    if [ -n "$_git_toplevel" ]; then
+    # Outside HOME (or HOME unset / "/"): bound by git.
+    if [ -n "$_excluded_dir" ]; then
+      # Linked worktree: walk up to the parent of the main checkout when
+      # it is an ancestor of the CWD.  Otherwise the worktree is placed
+      # outside the main checkout's tree (e.g. `git worktree add /tmp/x`)
+      # and the walk stays inside the worktree's own top-level.
+      # When the main checkout IS HOME, dirname(HOME) is not a meaningful
+      # project root, so the worktree top-level is used.
+      local _wt_parent
+      _wt_parent="$(dirname "$_excluded_dir")"
+      if [ -n "$phys_home" ] && [ "$_excluded_dir" = "$phys_home" ]; then
+        ceiling="$_git_toplevel"
+      else
+        case "$phys_pwd" in
+          "$_wt_parent"|"$_wt_parent"/*) ceiling="$_wt_parent" ;;
+          *) ceiling="$_git_toplevel" ;;
+        esac
+      fi
+    elif [ -n "$_git_toplevel" ]; then
       ceiling="$_git_toplevel"
     else
       return 1  # No git, outside HOME — no walk-up
@@ -244,23 +261,6 @@ _gaia_paths_walk_up_root() {
       printf '%s' "$d"; return 0
     fi
   done
-
-  # Linked-worktree bonus: the walk above stayed inside the worktree.
-  # The standard sibling layout keeps the project root at the parent of
-  # the main checkout — check that single directory so the config there
-  # is found without widening the walk's ceiling.
-  if [ -n "$_excluded_dir" ] && [ "$_under_home" -eq 0 ]; then
-    local _parent_of_main
-    _parent_of_main="$(dirname "$_excluded_dir")"
-    if [ "$_parent_of_main" != "/" ]; then
-      if [ -f "$_parent_of_main/.gaia/config/project-config.yaml" ]; then
-        printf '%s' "$_parent_of_main"; return 0
-      fi
-      if [ -d "$_parent_of_main/.gaia" ]; then
-        printf '%s' "$_parent_of_main"; return 0
-      fi
-    fi
-  fi
   return 1
 }
 

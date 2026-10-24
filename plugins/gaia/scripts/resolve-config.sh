@@ -626,7 +626,22 @@ if [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] \
     esac
   fi
   if [ -z "$_gaia_walk_ceiling" ]; then
-    if [ -n "$_gaia_walk_toplevel" ]; then
+    if [ -n "$_gaia_walk_excluded" ]; then
+      # Linked worktree: walk up to the parent of the main checkout when
+      # it is an ancestor of the CWD; otherwise stay inside the worktree.
+      # When the main checkout IS HOME, dirname(HOME) is not a meaningful
+      # project root.
+      _wt_parent="$(dirname "$_gaia_walk_excluded")"
+      if [ -n "$_gaia_walk_home" ] && [ "$_gaia_walk_excluded" = "$_gaia_walk_home" ]; then
+        _gaia_walk_ceiling="$_gaia_walk_toplevel"
+      else
+        case "$_gaia_walk_phys" in
+          "$_wt_parent"|"$_wt_parent"/*) _gaia_walk_ceiling="$_wt_parent" ;;
+          *) _gaia_walk_ceiling="$_gaia_walk_toplevel" ;;
+        esac
+      fi
+      unset _wt_parent
+    elif [ -n "$_gaia_walk_toplevel" ]; then
       _gaia_walk_ceiling="$_gaia_walk_toplevel"
     fi
   fi
@@ -647,21 +662,6 @@ if [ -z "$SHARED_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PR
       break
     fi
   done
-  # Linked-worktree bonus: the walk stayed inside the worktree.  Check
-  # the parent of the main checkout (the project root in the standard
-  # sibling layout) as a single point.
-  if [ -z "$SHARED_PATH" ] && [ -n "$_gaia_walk_excluded" ]; then
-    _wt_parent="$(dirname "$_gaia_walk_excluded")"
-    if [ "$_wt_parent" != "/" ]; then
-      if [ -f "${_wt_parent}/.gaia/config/project-config.yaml" ]; then
-        SHARED_PATH="${_wt_parent}/.gaia/config/project-config.yaml"
-      elif [ -f "${_wt_parent}/config/project-config.yaml" ]; then
-        SHARED_PATH="${_wt_parent}/config/project-config.yaml"
-        _gaia_legacy_warn
-      fi
-    fi
-    unset _wt_parent
-  fi
   unset _gaia_walk_dir
 fi
 if [ -z "$SHARED_PATH" ] && [ -n "${CLAUDE_SKILL_DIR:-}" ]; then
@@ -708,18 +708,6 @@ if [ -z "$LOCAL_PATH" ] && [ -z "${CLAUDE_SKILL_DIR:-}" ] && [ -z "${GAIA_NO_PRO
       break
     fi
   done
-  # Linked-worktree bonus for the overlay walk.
-  if [ -z "$LOCAL_PATH" ] && [ -n "$_gaia_walk_excluded" ]; then
-    _wt_parent="$(dirname "$_gaia_walk_excluded")"
-    if [ "$_wt_parent" != "/" ]; then
-      if [ -f "${_wt_parent}/.gaia/config/global.yaml" ]; then
-        LOCAL_PATH="${_wt_parent}/.gaia/config/global.yaml"
-      elif [ -f "${_wt_parent}/config/global.yaml" ]; then
-        LOCAL_PATH="${_wt_parent}/config/global.yaml"
-      fi
-    fi
-    unset _wt_parent
-  fi
   unset _gaia_walk_dir
 fi
 unset _gaia_walk_ceiling _gaia_walk_phys _gaia_walk_excluded

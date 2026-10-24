@@ -348,10 +348,9 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
 }
 
-# Linked worktree outside HOME — planted config above the worktree is ignored.
-# The walk stays inside the worktree top-level; the bonus check tries
-# only the parent of the main checkout. A planted config anywhere else
-# (even one level above the parent of main) must be invisible.
+# Linked worktree outside HOME — planted config above the ceiling is ignored.
+# The ceiling is the parent of the main checkout (an ancestor of the CWD).
+# A planted config one level above must be invisible.
 @test "linked worktree outside HOME ignores planted config above ceiling" {
   local fh="$TEST_TMP/home"; mkdir -p "$fh"
   local shared="$TEST_TMP/shared"; local root="$shared/work/root"
@@ -496,6 +495,75 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG' 2>&1"
   [[ "$output" == *"no config path"* ]]
   git -C "$main_dir" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# resolve-config: sibling worktree outside HOME finds the project root's config
+# through the walk-up and never accepts the main checkout's config.
+@test "resolve-config sibling worktree outside HOME finds project root config" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local root="$TEST_TMP/root"; local main="$root/product"
+  _write_min_config "$root"
+  mkdir -p "$main"
+  git -C "$main" init -q 2>/dev/null
+  git -C "$main" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$root/.gaia-worktrees/K1"
+  git -C "$main" worktree add "$wt" -b k1 -q 2>/dev/null
+  mkdir -p "$wt/src"
+  # Add a DIFFERENT config to the main checkout (should be excluded)
+  _write_min_config "$main"
+  local tmp_cfg="$main/.gaia/config/.tmp-cfg"
+  sed 's/installed_path: original/installed_path: main-should-not-appear/' "$main/.gaia/config/project-config.yaml" > "$tmp_cfg"
+  mv "$tmp_cfg" "$main/.gaia/config/project-config.yaml"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"installed_path='original'"* ]]
+  [[ "$output" != *"main-should-not-appear"* ]]
+  git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# resolve-config: overlay discovered in the sibling layout via walk-up.
+@test "resolve-config sibling worktree outside HOME finds overlay via walk-up" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local root="$TEST_TMP/root2"; local main="$root/product"
+  _write_min_config "$root"
+  printf 'installed_path: root-overlay\n' > "$root/.gaia/config/global.yaml"
+  mkdir -p "$main"
+  git -C "$main" init -q 2>/dev/null
+  git -C "$main" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$root/.gaia-worktrees/K1"
+  git -C "$main" worktree add "$wt" -b k1 -q 2>/dev/null
+  mkdir -p "$wt/src"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_LOCAL_CONFIG GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG' --format json"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"root-overlay"* ]]
+  git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# Product repo tracks a file under .gaia/ (like gaia-public's ci-config.yaml).
+# The worktree inherits .gaia/ at its top-level; the walk must still find
+# the project root's config (pass 1) before pass 2 matches the bare .gaia/.
+@test "worktree with tracked .gaia file resolves to project root outside HOME" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local root="$TEST_TMP/s1root"; local main="$root/pub"
+  _write_min_config "$root"
+  mkdir -p "$main/.gaia"
+  git -C "$main" init -q 2>/dev/null
+  printf 'ci: true\n' > "$main/.gaia/ci-config.yaml"
+  git -C "$main" add -A; git -C "$main" -c user.name=t -c user.email=t commit -qm c 2>/dev/null
+  local wt="$root/.gaia-worktrees/K1"
+  git -C "$main" worktree add "$wt" -b k1 -q 2>/dev/null
+  mkdir -p "$wt/src"
+  local rc; rc="$(cd "$root" && pwd -P)"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$wt/src' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "$rc" ]
+  git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
