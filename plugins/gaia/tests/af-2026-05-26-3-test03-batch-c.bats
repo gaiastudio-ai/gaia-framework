@@ -43,7 +43,7 @@ teardown() { common_teardown; }
   yaml="$(find "$out" -name sprint-status.yaml | head -1)"
   [ -n "$yaml" ]
   grep -q 'total_points: 0' "$yaml"
-  grep -q 'items: \[\]' "$yaml"
+  grep -q 'stories: \[\]' "$yaml"
   grep -q 'goals: \[\]' "$yaml"
 }
 

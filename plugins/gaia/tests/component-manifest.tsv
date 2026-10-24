@@ -370,6 +370,7 @@ core	sprint-progress-snapshot-hook.bats
 core	sprint-review-yolo-fallback.bats
 core	sprint-state-goals-root-isolation.bats
 core	sprint-state-inject.bats
+core	sprint-state-key-alignment.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats

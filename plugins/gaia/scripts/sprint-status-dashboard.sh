@@ -175,6 +175,10 @@ fi
 
 # Mitigation catalog path.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/migrate-items-to-stories.sh
+if [ -f "$SCRIPT_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$SCRIPT_DIR/lib/migrate-items-to-stories.sh"
+fi
 MITIGATION_CATALOG="${MITIGATION_CATALOG:-$SCRIPT_DIR/../skills/gaia-sprint-status/mitigation-catalog.yaml}"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -792,23 +796,61 @@ _render_fallback_dashboard() {
   s_key="" s_title="" s_status="" s_points=""
   high_risk_story_count=0
 
+  # Two-pass dedup: stories: entries are rendered on sight; items: entries
+  # are buffered and replayed after the file is read, skipping keys that
+  # appeared in the stories: block. This ensures stories: always wins on
+  # duplicate key regardless of block order.
+  local _stories_keys=""
+  local _cur_block=""
+  _DASH_ITEMS_BUF="$(mktemp "${TMPDIR:-/tmp}/dash-items.XXXXXX")"
+  local _items_buf="$_DASH_ITEMS_BUF"
+  trap 'rm -f "${_DASH_ITEMS_BUF:-}" 2>/dev/null' EXIT
+
+  local _prev_block=""
   local line
   while IFS= read -r line; do
     if [[ "$line" =~ ^stories: ]]; then
-      in_stories=true
-      continue
+      # Flush the pending entry from the previous block before switching.
+      if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
+      if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
+        printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+      fi
+      s_key="" s_title="" s_status="" s_points=""
+      in_stories=true; _cur_block="stories"; continue
+    fi
+    if [[ "$line" =~ ^items: ]]; then
+      # Flush the pending entry from the previous block before switching.
+      if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
+      if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
+        printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+      fi
+      s_key="" s_title="" s_status="" s_points=""
+      in_stories=true; _cur_block="items"; continue
     fi
     if [[ "$in_stories" == true ]]; then
       if [[ "$line" =~ ^[a-z_] ]]; then
         in_stories=false
-        flush_story
+        if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
+        if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
+          printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+        fi
+        s_key="" s_title="" s_status="" s_points=""
         continue
       fi
       if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
-        flush_story
+        # Flush the previous entry.
+        if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
+        if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
+          printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+        fi
         s_key=$(echo "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
+        s_title="" s_status="" s_points=""
+        if [[ "$_cur_block" == "stories" ]]; then
+          _stories_keys="${_stories_keys}|${s_key}|"
+        fi
         continue
       fi
+      if [ -z "$s_key" ]; then continue; fi
       if [[ "$line" =~ ^[[:space:]]+title:[[:space:]]* ]]; then
         s_title=$(echo "$line" | sed 's/.*title:[[:space:]]*//' | tr -d '"')
       elif [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
@@ -818,9 +860,24 @@ _render_fallback_dashboard() {
       fi
     fi
   done < "$YAML_PATH"
+  # Flush the last entry in the file.
   if [[ "$in_stories" == true ]]; then
-    flush_story
+    if [[ "$_cur_block" == "stories" ]]; then flush_story; fi
+    if [[ "$_cur_block" == "items" ]] && [ -n "$s_key" ]; then
+      printf '%s\037%s\037%s\037%s\n' "$s_key" "$s_title" "$s_status" "$s_points" >> "$_items_buf"
+    fi
   fi
+
+  # Replay buffered items entries, skipping keys already seen from stories.
+  while IFS=$'\037' read -r s_key s_title s_status s_points; do
+    [ -n "$s_key" ] || continue
+    case "$_stories_keys" in
+      *"|${s_key}|"*) ;; # stories: version already rendered
+      *) flush_story ;;
+    esac
+  done < "$_items_buf"
+  rm -f "$_items_buf"
+  s_key="" s_title="" s_status="" s_points=""
 
   # Footer
   printf -- '-%.0s' {1..72}; printf '\n'

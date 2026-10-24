@@ -112,7 +112,7 @@ _copy_plugin_tree() {
   # Copy libs needed by sprint-state.sh
   local lib
   for lib in story-state-machine.sh acquire-lock.sh exec-with-timeout.sh \
-             gaia-paths.sh resolve-artifact-path.sh; do
+             gaia-paths.sh resolve-artifact-path.sh migrate-items-to-stories.sh; do
     [ -f "$SCRIPTS_DIR/lib/$lib" ] && cp "$SCRIPTS_DIR/lib/$lib" "$dst/scripts/lib/"
   done
   # Copy sibling scripts used by sprint-state.sh
