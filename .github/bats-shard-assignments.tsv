@@ -828,3 +828,4 @@
 1	verify-pr-merged-gh-api.bats	30
 1	verify-pr-merged-gh-api.bats	30
 4	worktree-reap-safety.bats	20
+4	review-gate-hardening.bats	28
