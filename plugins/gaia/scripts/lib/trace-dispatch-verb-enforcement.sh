@@ -117,7 +117,7 @@ check_current_ac() {
   local ref="${STORY_KEY}:${current_ac}"
   if [[ -f "$MATRIX_FILE" ]]; then
     if grep -qE "test_class:[[:space:]]*integration" "$MATRIX_FILE" \
-        && grep -F "$ref" "$MATRIX_FILE" \
+        && grep -F -- "$ref" "$MATRIX_FILE" \
         | grep -qE "test_class:[[:space:]]*integration"; then
       return 0
     fi

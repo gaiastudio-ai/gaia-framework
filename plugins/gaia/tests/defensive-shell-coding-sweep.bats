@@ -10,7 +10,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC1: -- separator in transcript-writer.sh git check-ignore
+# transcript-writer: -- before user-derived pathspec
 # ---------------------------------------------------------------------------
 
 @test "transcript-writer: git check-ignore uses -- before user-derived pattern" {
@@ -45,11 +45,15 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+# ---------------------------------------------------------------------------
+# fixture-analyzer: dedup grep handles dash-prefixed filenames
+# ---------------------------------------------------------------------------
+
 @test "fixture-analyzer: file-list with leading-dash entry still reports oversized" {
   local fa="$SCRIPTS_DIR/review-common/fixture-analyzer.sh"
   [ -f "$fa" ] || skip "fixture-analyzer.sh not found"
-  # Reviewer repro: a file named -x first in the list plus an oversized fixture
-  # must give the oversized finding, with </dev/null so grep cannot read stdin.
+  # A file named -x first in the --file-list plus an oversized fixture must
+  # give the oversized finding, with </dev/null so grep cannot read stdin.
   local d="$TEST_TMP/fa-dash"
   mkdir -p "$d/fixtures"
   seq 600 > "$d/-x"
@@ -64,7 +68,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC2a: _ic_is_known_key uses grep -Fw (fixed-string, whole-word)
+# _ic_is_known_key: fixed-string, whole-word matching
 # ---------------------------------------------------------------------------
 
 @test "independence-check: _ic_is_known_key uses grep -Fw for epics file" {
@@ -114,7 +118,6 @@ setup() {
   printf 'E900-S10 story title\n' > "$epics_file"
   local func_file="$TEST_TMP/ic_known_key.sh"
   sed -n '/_ic_is_known_key()/,/^}/p' "$ic" > "$func_file"
-  # E900-S1 must NOT match a file that only contains E900-S10 (whole-word).
   run bash -c "
     set -euo pipefail; export LC_ALL=C
     resolve_story_file() { return 1; }
@@ -149,7 +152,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC2b: exact first-field matching in cache-write
+# exact first-field matching in cache-write
 # ---------------------------------------------------------------------------
 
 @test "independence-check: cache-write uses awk not grep on fresh_parsed" {
@@ -176,7 +179,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC3: validate fd parameter in acquire-lock.sh
+# fd validation in acquire-lock.sh
 # ---------------------------------------------------------------------------
 
 @test "acquire-lock: rejects non-numeric fd with exit 1" {
@@ -232,7 +235,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC4: trailing-slash state_dir in close_predicate
+# trailing-slash state_dir in close_predicate
 # ---------------------------------------------------------------------------
 
 @test "acquire-lock: close_predicate no double slash with trailing-slash state_dir" {
@@ -249,7 +252,7 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC5: -C repo in PPO admission-failure cleanup (behavioural via cwd test)
+# -C repo in PPO admission-failure cleanup
 # ---------------------------------------------------------------------------
 
 @test "phase-parallel-orchestrator: admission-failure cleanup uses git -C repo" {
@@ -273,19 +276,14 @@ setup() {
 }
 
 @test "phase-parallel-orchestrator: prune targets repo not cwd (behavioural)" {
-  # Run from /tmp (outside any repo). If prune lacks -C, it targets /tmp.
   local ppo="$SCRIPTS_DIR/phase-parallel-orchestrator.sh"
   [ -f "$ppo" ] || skip "phase-parallel-orchestrator.sh not found"
-  # Extract the 3 cleanup lines and build a test script that runs them
-  # from /tmp with a mock repo.
   local mock_repo="$TEST_TMP/mock-repo"
   mkdir -p "$mock_repo"
   git -C "$mock_repo" init -q
   git -C "$mock_repo" config user.email "test@test.local"
   git -C "$mock_repo" config user.name "Test"
   git -C "$mock_repo" commit -q --allow-empty -m init
-  # Run from /tmp: git -C "$mock_repo" worktree prune should succeed,
-  # while bare "git worktree prune" from /tmp would fail (not a repo).
   run bash -c "
     cd /tmp
     repo='$mock_repo'
@@ -295,13 +293,12 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC6: session-binding provision_binding_dir detects mkdir and chmod failure
+# session-binding: mkdir/chmod failure detection
 # ---------------------------------------------------------------------------
 
 @test "session-binding: provision_binding_dir detects mkdir failure" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # Root can bypass permission checks, so this test only works as non-root.
   [ "$(id -u)" -ne 0 ] || skip "cannot restrict mkdir as root"
   local base="$TEST_TMP/ro-parent"
   mkdir -p "$base/.gaia/state/sessions"
@@ -320,12 +317,10 @@ setup() {
 @test "session-binding: provision_binding_dir chmod error path in source" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # Verify the function checks chmod return value (not || true).
   /usr/bin/grep -q 'if ! chmod 0700' "$sb" || {
     echo "FAIL: chmod error detection not found (still swallowed by || true)"
     return 1
   }
-  # Verify the error message is present.
   /usr/bin/grep -q 'chmod 0700 failed' "$sb" || {
     echo "FAIL: chmod failure diagnostic message not found"
     return 1
@@ -335,14 +330,13 @@ setup() {
 @test "session-binding: provision_binding_dir verifies mode 0700" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # The function checks the mode after mkdir+chmod.
   /usr/bin/grep -q '700' "$sb" || {
     echo "FAIL: 700 mode check not found in provision_binding_dir"; return 1
   }
 }
 
 # ---------------------------------------------------------------------------
-# AC8: session-binding length cap
+# session-binding: length cap
 # ---------------------------------------------------------------------------
 
 @test "session-binding: rejects session ID over 64 characters" {
@@ -373,31 +367,28 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# AC8: hook length cap on session id and bound sprint id
+# hook length cap on session id and bound sprint id
 # ---------------------------------------------------------------------------
 
 @test "hooks index.js: session id length cap at 64 characters" {
   local hook="$BATS_TEST_DIRNAME/../hooks/index.js"
   [ -f "$hook" ] || skip "hooks/index.js not found"
-  # The hook must check sessionId.length <= 64 before using it.
   /usr/bin/grep -q 'sessionId.length <= 64' "$hook" || {
     echo "FAIL: sessionId length cap not found in hook"; return 1
   }
-  # The hook must check boundId.length <= 64 before using it.
   /usr/bin/grep -q 'boundId.length <= 64' "$hook" || {
     echo "FAIL: boundId length cap not found in hook"; return 1
   }
 }
 
 # ---------------------------------------------------------------------------
-# AC8: independence-check cache symlink guard (behavioural)
+# cache symlink guard (behavioural)
 # ---------------------------------------------------------------------------
 
 @test "independence-check: symlinked cache file refused (behavioural)" {
   local ic="$SCRIPTS_DIR/independence-check.sh"
   [ -f "$ic" ] || skip "independence-check.sh not found"
 
-  # Build a minimal project for independence-check.
   local proj="$TEST_TMP/proj"
   local state="$proj/.gaia/state"
   local impl="$proj/.gaia/artifacts/implementation-artifacts"
@@ -418,7 +409,6 @@ YAML
   printf '# Epics\n## E900\n## E901\n' > "$planning/epics-and-stories.md"
   printf 'sprint-900 2026-01-01T00:00:00Z\n' > "$state/.sprint-migration-complete"
 
-  # Two sprints with overlapping touch-sets.
   _mk_sprint() {
     local sid="$1" st="$2"; shift 2
     local f="$state/sprint-status-${sid}.yaml"
@@ -442,14 +432,12 @@ YAML
 
   local cache="$TEST_TMP/iccache"
   mkdir -p "$cache"
-  # Warm the cache.
   run bash -c "
     export PROJECT_ROOT='$proj' PROJECT_PATH='$proj' IMPLEMENTATION_ARTIFACTS='$impl'
     export GAIA_IC_CACHE_DIR='$cache' GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
     bash '$ic' --candidate sprint-901 --active sprint-900
   "
   [ "$status" -eq 1 ]
-  # Now poison the cache with symlinks.
   local poison="$TEST_TMP/poison"
   mkdir -p "$poison"
   local c
@@ -460,7 +448,6 @@ YAML
     rm -f "$c"
     ln -s "$poison/$bn" "$c"
   done
-  # Re-run: symlinks should be refused, real data re-parsed, overlap still found.
   run bash -c "
     export PROJECT_ROOT='$proj' PROJECT_PATH='$proj' IMPLEMENTATION_ARTIFACTS='$impl'
     export GAIA_IC_CACHE_DIR='$cache' GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
@@ -468,7 +455,6 @@ YAML
   "
   echo "$output"
   [ "$status" -eq 1 ]
-  # Symlinks must have been removed.
   local sym_count=0
   for c in "$cache"/*; do
     [ -e "$c" ] || [ -L "$c" ] || continue
@@ -481,7 +467,7 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC8: backslash denylist via canonical sanitizer (behavioural)
+# backslash denylist via canonical sanitizer (behavioural)
 # ---------------------------------------------------------------------------
 
 @test "independence-check: backslash in touch-set entry rejected by real script" {
@@ -506,13 +492,11 @@ YAML
   printf '# Epics\n## E900\n## E901\n' > "$planning/epics-and-stories.md"
   printf 'sprint-900 2026-01-01T00:00:00Z\n' > "$state/.sprint-migration-complete"
 
-  # Sprint with a backslash in touch-set.
   printf 'sprint_id: "sprint-900"\nstatus: active\ntotal_points: 0\ngoals: []\nstories:\n  - key: "E900-S1"\n    title: "t"\n    status: "in-progress"\n    points: 3\n    risk: "medium"\n' > "$state/sprint-status-sprint-900.yaml"
   printf 'sprint_id: "sprint-901"\nstatus: planned\ntotal_points: 0\ngoals: []\nstories:\n  - key: "E901-S1"\n    title: "t"\n    status: "in-progress"\n    points: 3\n    risk: "medium"\n' > "$state/sprint-status-sprint-901.yaml"
 
   local eslug900="e900" eslug901="e901"
   mkdir -p "$impl/epic-${eslug900}/E900-S1-test" "$impl/epic-${eslug901}/E901-S1-test"
-  # E900-S1 has a backslash in touch-set entry.
   printf -- '---\nkey: "E900-S1"\nepic: "E900"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/scripts/foo\\bar.sh"]\n---\n# s\n' > "$impl/epic-${eslug900}/E900-S1-test/story.md"
   printf -- '---\nkey: "E901-S1"\nepic: "E901"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]\n---\n# s\n' > "$impl/epic-${eslug901}/E901-S1-test/story.md"
 
@@ -527,7 +511,7 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC8: overlay key with regex metachar (behavioural)
+# overlay key with regex metachar (behavioural)
 # ---------------------------------------------------------------------------
 
 @test "independence-check: overlay key with regex metachar rejected or overlap detected" {
@@ -561,7 +545,6 @@ YAML
   printf -- '---\nkey: "E900-S1"\nepic: "E900"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]\n---\n# s\n' > "$impl/epic-e900/E900-S1-test/story.md"
   printf -- '---\nkey: "E903-S1"\nepic: "E903"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]\n---\n# s\n' > "$impl/epic-e903/E903-S1-test/story.md"
 
-  # Overlay with a regex-metacharacter key (dot in E90.)
   local ov="$TEST_TMP/overlay.md"
   printf -- '---\nkey: "E90.-S1"\nepic: "E903"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]\n---\n# x\n' > "$ov"
 
@@ -571,12 +554,11 @@ YAML
     bash '$ic' --candidate sprint-903 --active sprint-900 --overlay '$ov'
   "
   echo "$output"
-  # Must fail: either the key is rejected or the overlap is detected.
   [ "$status" -ne 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# AC8: cost-select-tests.sh rejects leading-zero costs (behavioural)
+# cost-select-tests.sh: leading-zero costs
 # ---------------------------------------------------------------------------
 
 @test "cost-select-tests: is_uint rejects leading-zero values" {
@@ -629,12 +611,10 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC1 behavioural: -- at review-common analyzer dedup grep (M23 kill)
+# review-common analyzers: dedup grep handles dash-prefixed filenames
 # ---------------------------------------------------------------------------
 
-@test "review-common analyzers: dedup grep handles dash-prefixed filenames" {
-  # Each analyzer uses grep -Fxq -- "$f" "$SEEN_TMP" for dedup.
-  # Without --, a file named -x would be parsed as a flag.
+@test "review-common analyzers: dedup grep uses -- before variable" {
   local analyzers=(
     "$SCRIPTS_DIR/review-common/fixture-analyzer.sh"
     "$SCRIPTS_DIR/review-common/flakiness-analyzer.sh"
@@ -646,16 +626,18 @@ YAML
   local a missing=""
   for a in "${analyzers[@]}"; do
     [ -f "$a" ] || continue
-    # The dedup pattern must contain -- before the variable.
-    if /usr/bin/grep 'grep.*Fxq.*SEEN_TMP' "$a" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    # The -- must appear BEFORE the "$f" variable, not after it.
+    # Correct:   grep -Fxq -- "$f" "$SEEN_TMP"
+    # Wrong:     grep -Fxq "$f" "$SEEN_TMP" --
+    if /usr/bin/grep 'grep.*Fxq.*SEEN_TMP' "$a" | /usr/bin/grep -v ' -- "' | /usr/bin/grep -q .; then
       missing="$missing $(basename "$a")"
     fi
   done
-  [ -z "$missing" ] || { echo "FAIL: missing -- in dedup grep:$missing"; return 1; }
+  [ -z "$missing" ] || { echo "FAIL: missing or misplaced -- in dedup grep:$missing"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
-# AC1 behavioural: -- in run-with-retry is_flaky_test (M24 kill)
+# run-with-retry: is_flaky_test with dash-prefixed test id
 # ---------------------------------------------------------------------------
 
 @test "run-with-retry: is_flaky_test with dash-prefixed test id" {
@@ -663,8 +645,6 @@ YAML
   [ -f "$rwr" ] || skip "run-with-retry.sh not found"
   local flaky_file="$TEST_TMP/flaky.list"
   printf -- '-x weird test\n' > "$flaky_file"
-  # If -- is missing, grep interprets -x as a flag and the call fails or
-  # produces a false negative.
   run bash -c "
     set -euo pipefail; export LC_ALL=C
     source '$rwr'
@@ -678,41 +658,42 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC1 behavioural: -- in config-yaml-editor section lookup (M25 kill)
+# config-yaml-editor: dash-prefixed section handled safely
 # ---------------------------------------------------------------------------
 
-@test "config-yaml-editor: section lookup uses -- before user-derived name" {
+@test "config-yaml-editor: insert rejects dash-prefixed section name" {
   local cye="$SCRIPTS_DIR/config-yaml-editor.sh"
   [ -f "$cye" ] || skip "config-yaml-editor.sh not found"
-  # Verify the source code uses -- in the schema-lookup grep.
-  if /usr/bin/grep 'grep.*Fxq.*SECTION' "$cye" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
-    echo "FAIL: schema-lookup grep missing -- before SECTION"
-    return 1
-  fi
+  local cfg="$TEST_TMP/cfg.yaml"
+  local newf="$TEST_TMP/newsec.yaml"
+  printf 'project_name: test\n' > "$cfg"
+  printf 'val: 1\n' > "$newf"
+  # With --, the section name -eplatforms is treated as a literal and
+  # rejected by the schema check. Without --, grep parses -e as a flag
+  # and the schema check wrongly succeeds.
+  run bash "$cye" insert "$cfg" '-eplatforms' "$newf" 2>&1
+  echo "$output"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unknown section"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# AC1 behavioural: -- in catch-all-flag is_catch_all (M26 kill)
+# catch-all-flag: dash-prefixed epic key handled safely
 # ---------------------------------------------------------------------------
 
-@test "catch-all-flag: is_catch_all handles dash-prefixed epic key safely" {
+@test "catch-all-flag: dash-prefixed key does not false-match via grep flag" {
   local caf="$SCRIPTS_LIB/catch-all-flag.sh"
   [ -f "$caf" ] || skip "catch-all-flag.sh not found"
-  # Verify the grep call uses -- so a key like -E9 does not trigger flag parsing.
-  if /usr/bin/grep 'grep.*Fqx.*epic_key' "$caf" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
-    echo "FAIL: catch-all-flag grep missing -- before epic_key"
-    return 1
-  fi
-  # Behavioural: is_catch_all with a non-existent key starting with dash
-  # must return 1 (not found), not a grep error.
-  local epics="$TEST_TMP/epics.md"
-  local shards="$TEST_TMP/shards"
+  local epics="$TEST_TMP/epics-ca.md"
+  local shards="$TEST_TMP/shards-ca"
   mkdir -p "$shards"
   printf '## E900\ncatch_all_epic: false\n' > "$epics"
+  # With --, grep -Fqx treats -eE900 as a pattern to match. Without --,
+  # grep interprets -e as a flag and matches E900 (false positive).
   run bash -c "
     set -euo pipefail; export LC_ALL=C
     source '$caf'
-    is_catch_all '-E900' '$epics' '$shards' 2>/dev/null && echo 'FOUND' || echo 'NOT-FOUND'
+    _CATCH_ALL_SET=E900 is_catch_all '-eE900' '$epics' '$shards' 2>/dev/null && echo 'FOUND' || echo 'NOT-FOUND'
   "
   echo "$output"
   [ "$status" -eq 0 ]
@@ -720,10 +701,10 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC1 behavioural: -- in retirement-sweep grep (M27 kill)
+# retirement-sweep: .git exclusion with -- separator
 # ---------------------------------------------------------------------------
 
-@test "retirement-sweep: grep excludes .git directory even with -- separator" {
+@test "retirement-sweep: grep excludes .git directory with separator" {
   local rs="$SCRIPTS_DIR/retirement-sweep.sh"
   [ -f "$rs" ] || skip "retirement-sweep.sh not found"
   local d="$TEST_TMP/retsweep"
@@ -732,7 +713,7 @@ YAML
   echo 'acmeprov' > "$d/pub/a.txt"
   run bash "$rs" --provider acmeprov --public-root "$d/pub" --enterprise-root "$d/ent" --output "$d/o.md"
   echo "$output"
-  # .git content must not appear in the output.
+  [ -f "$d/o.md" ] || { echo "FAIL: output file was never written"; return 1; }
   if /usr/bin/grep -c '\.git/' "$d/o.md" 2>/dev/null | /usr/bin/grep -qv '^0$'; then
     echo "FAIL: .git directory content leaked into retirement sweep output"
     cat "$d/o.md"
@@ -740,14 +721,25 @@ YAML
   fi
 }
 
+@test "retirement-sweep: dash-prefixed provider treated as pattern not flag" {
+  local rs="$SCRIPTS_DIR/retirement-sweep.sh"
+  [ -f "$rs" ] || skip "retirement-sweep.sh not found"
+  local d="$TEST_TMP/retsweep-dash"
+  mkdir -p "$d/pub" "$d/ent"
+  echo '-eprov match' > "$d/pub/a.txt"
+  run bash "$rs" --provider '-eprov' --public-root "$d/pub" --enterprise-root "$d/ent" --output "$d/o.md"
+  [ -f "$d/o.md" ] || { echo "FAIL: output not written"; return 1; }
+  # The output must contain the hit for -eprov (treated as a literal pattern).
+  /usr/bin/grep -q 'a.txt' "$d/o.md" || { echo "FAIL: dash-prefixed provider not found as pattern"; return 1; }
+}
+
 # ---------------------------------------------------------------------------
-# AC6 behavioural: chmod failure detected via PATH shim (F1: M15 kill)
+# chmod failure via PATH shim
 # ---------------------------------------------------------------------------
 
 @test "session-binding: provision_binding_dir fails when chmod fails (shim)" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # Create a chmod shim that always fails.
   local shim_dir="$TEST_TMP/chmod-shim"
   mkdir -p "$shim_dir"
   cat > "$shim_dir/chmod" <<'SHIM'
@@ -770,20 +762,17 @@ SHIM
 }
 
 # ---------------------------------------------------------------------------
-# AC6 behavioural: mode 0700 verified after mkdir+chmod (F1: M16 kill)
+# mode 0700 verified after mkdir+chmod (noop-chmod shim)
 # ---------------------------------------------------------------------------
 
-@test "session-binding: provision_binding_dir detects wrong mode (M16 kill)" {
+@test "session-binding: provision_binding_dir detects wrong mode" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # chmod shim that exits 0 but does not change mode. The directory will be
-  # created with the default umask mode. The function's internal mode check
-  # (M16) must catch that the mode is not 700.
+  # Force a known umask so mkdir creates a non-700 directory.
   local shim_dir="$TEST_TMP/noopchmod-shim"
   mkdir -p "$shim_dir"
   cat > "$shim_dir/chmod" <<'SHIM'
 #!/usr/bin/env bash
-# Noop: pretend success but do not change mode.
 exit 0
 SHIM
   chmod +x "$shim_dir/chmod"
@@ -791,34 +780,31 @@ SHIM
   mkdir -p "$base/.gaia/state/sessions"
   run bash -c "
     set -euo pipefail; export LC_ALL=C
+    umask 022
     export PATH='$shim_dir':\$PATH
     export GAIA_BINDING_DIR=''
     source '$sb'
     provision_binding_dir --session-id 'test-session-mode' --project-root '$base'
   "
   echo "$output"
-  # The function must fail because the directory mode is not 700.
   [ "$status" -ne 0 ]
   [[ "$output" == *"mode is"* ]] || [[ "$output" == *"expected 700"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# AC6 behavioural: post-check confirms directory exists (F1: M9 kill)
+# post-check confirms directory exists
 # ---------------------------------------------------------------------------
 
 @test "session-binding: provision_binding_dir post-check rejects missing dir" {
   local sb="$SCRIPTS_LIB/session-binding.sh"
   [ -f "$sb" ] || skip "session-binding.sh not found"
-  # Create a mkdir shim that pretends to succeed but does not create the dir.
   local shim_dir="$TEST_TMP/mkdir-shim"
   mkdir -p "$shim_dir"
   cat > "$shim_dir/mkdir" <<'SHIM'
 #!/usr/bin/env bash
-# Pretend success but do nothing: the post-check should catch this.
 exit 0
 SHIM
   chmod +x "$shim_dir/mkdir"
-  # Also need chmod shim that succeeds (the real mkdir never ran).
   cat > "$shim_dir/chmod" <<'SHIM'
 #!/usr/bin/env bash
 exit 0
@@ -835,83 +821,174 @@ SHIM
   "
   echo "$output"
   [ "$status" -ne 0 ]
-  # The post-check must produce the specific "absent after creation" diagnostic.
-  # If M9 (post-check dead) is applied, the stat/mode check catches it instead
-  # with a different message — this assertion kills M9.
   [[ "$output" == *"absent after creation"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# AC8 behavioural: canonical sanitizer routing (F2: M7 kill)
+# canonical sanitizer routing: hash rule in modified copy proves routing
 # ---------------------------------------------------------------------------
 
-@test "independence-check: canonical sanitizer reachable and decisive" {
-  # Prove the canonical sanitizer is called by showing a backslash-containing
-  # entry is rejected through it. The backslash test above (test 24) already
-  # proves the real script rejects backslash entries. This test proves the
-  # canonical function is the one that makes the decision: extract the
-  # touch_set_denylist_check function, add a hash rule, call it directly,
-  # and show it rejects hash. Then call it WITHOUT the rule and show hash
-  # passes — proving the function controls the outcome.
+@test "independence-check: canonical sanitizer decides via added hash rule" {
+  local ic="$SCRIPTS_DIR/independence-check.sh"
+  [ -f "$ic" ] || skip "independence-check.sh not found"
   local san="$SCRIPTS_LIB/touch-set-sanitizer.sh"
   [ -f "$san" ] || skip "touch-set-sanitizer.sh not found"
 
-  # Step 1: canonical sanitizer (unmodified) rejects backslash.
-  run bash -c "
-    set -euo pipefail; export LC_ALL=C
-    source '$san'
-    touch_set_denylist_check 'foo\\bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
-  "
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"REJECTED"* ]] || { echo "FAIL: canonical sanitizer did not reject backslash"; return 1; }
-
-  # Step 2: canonical sanitizer accepts hash (no rule for it).
-  run bash -c "
-    set -euo pipefail; export LC_ALL=C
-    source '$san'
-    touch_set_denylist_check 'foo#bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
-  "
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ACCEPTED"* ]] || { echo "FAIL: canonical sanitizer rejected hash unexpectedly"; return 1; }
-
-  # Step 3: modified sanitizer with hash rule rejects hash.
-  local mod_san="$TEST_TMP/touch-set-sanitizer-mod.sh"
+  # Mirror the script directory via symlinks, replacing only the sanitizer.
+  local sd="$TEST_TMP/ic-san-copy"
+  mkdir -p "$sd/lib"
+  # Symlink every file in the scripts dir.
+  local f
+  for f in "$SCRIPTS_DIR"/*; do
+    [ -e "$f" ] || continue
+    ln -sf "$f" "$sd/$(basename "$f")" 2>/dev/null || true
+  done
+  # Symlink every file in lib/.
+  for f in "$SCRIPTS_LIB"/*; do
+    [ -e "$f" ] || continue
+    ln -sf "$f" "$sd/lib/$(basename "$f")" 2>/dev/null || true
+  done
+  # Replace the symlink to the sanitizer with a modified copy.
+  rm -f "$sd/lib/touch-set-sanitizer.sh"
   awk '
     /rejected pipe/ { print; getline; print
       print "      \"#\") printf \"denylist: rejected hash\\n\" >&2; return 1 ;;"
       next
     }
     { print }
-  ' "$san" > "$mod_san"
-  run bash -c "
-    set -euo pipefail; export LC_ALL=C
-    source '$mod_san'
-    touch_set_denylist_check 'foo#bar.sh' 2>/dev/null && echo ACCEPTED || echo REJECTED
-  "
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"REJECTED"* ]] || { echo "FAIL: modified sanitizer did not reject hash"; return 1; }
+  ' "$san" > "$sd/lib/touch-set-sanitizer.sh"
+  # Replace the symlink to independence-check with a copy (we modify it later).
+  rm -f "$sd/independence-check.sh"
+  cp "$ic" "$sd/independence-check.sh"
 
-  # Step 4: verify independence-check.sh sources and calls the canonical
-  # sanitizer (the call site that M7 would remove).
-  local ic="$SCRIPTS_DIR/independence-check.sh"
-  [ -f "$ic" ] || skip "independence-check.sh not found"
-  /usr/bin/grep -q 'touch_set_denylist_check' "$ic" || {
-    echo "FAIL: independence-check.sh does not call touch_set_denylist_check"
-    return 1
-  }
-  /usr/bin/grep -q 'touch-set-sanitizer.sh' "$ic" || {
-    echo "FAIL: independence-check.sh does not source touch-set-sanitizer.sh"
-    return 1
-  }
+  # Build a minimal project with a hash-containing touch-set entry.
+  local proj="$TEST_TMP/projhash"
+  local state="$proj/.gaia/state" impl="$proj/.gaia/artifacts/implementation-artifacts"
+  local config="$proj/.gaia/config" planning="$proj/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$state" "$impl" "$config" "$planning/epics"
+  mkdir -p "$proj/.gaia/artifacts/test-artifacts/strategy"
+  mkdir -p "$proj/gaia-public/plugins/gaia/hooks"
+
+  cat > "$config/project-config.yaml" <<'YAML'
+project_name: "test"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  printf '# Epics\n## E900\n## E901\n' > "$planning/epics-and-stories.md"
+  printf 'sprint-900 2026-01-01T00:00:00Z\n' > "$state/.sprint-migration-complete"
+
+  printf 'sprint_id: "sprint-900"\nstatus: active\ntotal_points: 0\ngoals: []\nstories:\n  - key: "E900-S1"\n    title: "t"\n    status: "in-progress"\n    points: 3\n    risk: "medium"\n' > "$state/sprint-status-sprint-900.yaml"
+  printf 'sprint_id: "sprint-901"\nstatus: planned\ntotal_points: 0\ngoals: []\nstories:\n  - key: "E901-S1"\n    title: "t"\n    status: "in-progress"\n    points: 3\n    risk: "medium"\n' > "$state/sprint-status-sprint-901.yaml"
+
+  mkdir -p "$impl/epic-e900/E900-S1-test" "$impl/epic-e901/E901-S1-test"
+  printf -- '---\nkey: "E900-S1"\nepic: "E900"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/hooks/foo#bar.sh"]\n---\n# s\n' > "$impl/epic-e900/E900-S1-test/story.md"
+  printf -- '---\nkey: "E901-S1"\nepic: "E901"\nstatus: in-progress\npredicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]\n---\n# s\n' > "$impl/epic-e901/E901-S1-test/story.md"
+
+  # Run the copied script with the hash rule: must reject.
+  run bash -c "
+    export PROJECT_ROOT='$proj' PROJECT_PATH='$proj' IMPLEMENTATION_ARTIFACTS='$impl'
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    bash '$sd/independence-check.sh' --candidate sprint-901 --active sprint-900
+  "
+  echo "=== With hash rule ==="
+  echo "$output"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"denylist rejected"* ]]
+
+  # Now disable the canonical sanitizer pass and re-run: hash should be accepted.
+  sed 's/if ! touch_set_denylist_check/if false \&\& touch_set_denylist_check/' \
+    "$sd/independence-check.sh" > "$sd/independence-check-m7b.sh"
+  run bash -c "
+    export PROJECT_ROOT='$proj' PROJECT_PATH='$proj' IMPLEMENTATION_ARTIFACTS='$impl'
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    bash '$sd/independence-check-m7b.sh' --candidate sprint-901 --active sprint-900
+  "
+  echo "=== Without canonical pass ==="
+  echo "$output"
+  # Without the canonical pass, the hash entry must NOT be rejected.
+  case "$output" in
+    *"denylist rejected"*) echo "FAIL: hash still rejected without canonical pass"; return 1 ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
-# AC7: no leaked internal identifiers in any changed file
+# trace-dispatch-verb: dash-prefixed key does not bypass integration gate
+# ---------------------------------------------------------------------------
+
+@test "trace-dispatch-verb: dash-leading key halts instead of bypassing gate" {
+  local S="$SCRIPTS_LIB/trace-dispatch-verb-enforcement.sh"
+  [ -f "$S" ] || skip "trace-dispatch-verb-enforcement.sh not found"
+  local d="$TEST_TMP/tdve"
+  mkdir -p "$d"
+  # A story whose key is -e. Without --, grep -F "-e" parses -e as a flag
+  # and matches any row, letting the gate pass when it should halt.
+  printf -- '---\nkey: "-e"\nrisk: medium\n---\n## Acceptance Criteria\n\n**AC1:** Given x, when the skill spawns the validator, then y.\n\n## Tasks\n' > "$d/story.md"
+  printf '| TC-1 | E900-S1:AC1 | test_class: integration |\n' > "$d/matrix.md"
+  run bash "$S" --story-file "$d/story.md" --matrix-file "$d/matrix.md"
+  echo "$output"
+  # Must halt (rc != 0): the -e key has no matching integration row.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"HALT"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# lint-bats-script-refs: dash-prefixed ignore pattern handled safely
+# ---------------------------------------------------------------------------
+
+@test "lint-bats-script-refs: dash-prefixed ignore pattern works" {
+  local lint="$SCRIPTS_DIR/lint-bats-script-refs.sh"
+  [ -f "$lint" ] || skip "lint-bats-script-refs.sh not found"
+  # Verify the source code uses -- in the ignore-pattern grep.
+  if /usr/bin/grep 'grep.*Eq.*"$pat"' "$lint" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: ignore-pattern grep missing -- before pattern variable"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# independence-check: config-path filter uses --
+# ---------------------------------------------------------------------------
+
+@test "independence-check: config-path filter grep uses -- separator" {
+  local ic="$SCRIPTS_DIR/independence-check.sh"
+  [ -f "$ic" ] || skip "independence-check.sh not found"
+  # The config-path filter greps must use -- before the variable.
+  if /usr/bin/grep 'grep.*Fxv.*_ic_config_path' "$ic" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: config-path filter Fxv grep missing --"
+    return 1
+  fi
+  if /usr/bin/grep 'grep.*Fv.*_ic_config_path' "$ic" | /usr/bin/grep -v 'Fxv' | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: config-path filter Fv grep missing --"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# independence-check: config-section key lookup uses -F --
+# ---------------------------------------------------------------------------
+
+@test "independence-check: config-section key lookup uses fixed-string separator" {
+  local ic="$SCRIPTS_DIR/independence-check.sh"
+  [ -f "$ic" ] || skip "independence-check.sh not found"
+  # The cck/ack lookups in _has_field.txt must use -F -- before the variable.
+  if /usr/bin/grep 'grep.*qx.*_has_field' "$ic" | /usr/bin/grep -v ' -- ' | /usr/bin/grep -q .; then
+    echo "FAIL: config-section key lookup missing -- before variable"
+    return 1
+  fi
+  if /usr/bin/grep 'grep.*qx.*_has_field' "$ic" | /usr/bin/grep -v 'F' | /usr/bin/grep -q .; then
+    echo "FAIL: config-section key lookup missing -F"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# no leaked internal identifiers in any changed file
 # ---------------------------------------------------------------------------
 
 @test "no leaked internal identifiers in changed files" {
-  # Only scan files this story created or substantially changed (not files
-  # that only received a one-character -- insertion which cannot introduce IDs).
   local files=(
     "$SCRIPTS_LIB/acquire-lock.sh"
     "$SCRIPTS_LIB/session-binding.sh"
@@ -925,10 +1002,14 @@ SHIM
   local f
   for f in "${files[@]}"; do
     [ -f "$f" ] || continue
-    # Check for leaked IDs using grep -E (portable).
-    # Match real multi-digit IDs but not single-digit examples.
+    # Requirement/story/test-case/cascade identifiers.
     if /usr/bin/grep -En '(FR-[0-9]|NFR-[0-9]|SR-[0-9]|ADR-[0-9]|E[0-9]{2,}-S[0-9]+|TC-[0-9]|AF-20[0-9]{2}|AI-20[0-9]{2})' "$f" 2>/dev/null | /usr/bin/grep -v 'E9[0-9][0-9]-' | head -3; then
       echo "FAIL: leaked internal ID found in $(basename "$f")"
+      return 1
+    fi
+    # Internal labels (single uppercase letter + digits) and process references.
+    if /usr/bin/grep -nE '\b[MFB][0-9]+[a-z]?\b|\btest [0-9]+\b|[Rr]eviewer' "$f" 2>/dev/null | /usr/bin/grep -v 'E9[0-9][0-9]-' | /usr/bin/grep -v 'test_' | /usr/bin/grep -v '@test' | /usr/bin/grep -v 'BATS_TEST' | /usr/bin/grep -v 'TEST_TMP' | /usr/bin/grep -v 'test.local' | head -3; then
+      echo "FAIL: leaked review label found in $(basename "$f")"
       return 1
     fi
   done

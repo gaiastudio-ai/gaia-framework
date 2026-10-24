@@ -93,7 +93,7 @@ is_ignored() {
   local pat
   for pat in "${IGNORE_PATTERNS[@]:-}"; do
     [ -n "$pat" ] || continue
-    if printf '%s' "$path" | grep -Eq "$pat"; then
+    if printf '%s' "$path" | grep -Eq -- "$pat"; then
       return 0
     fi
   done
