@@ -9,6 +9,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Walk-up path resolution: git-bounded outside HOME (2026-10-24)
+
+#### Changed
+- `gaia-paths.sh` and `resolve-config.sh` walk-up: outside HOME (or when HOME is unset or "/"), the walk is now bounded by the current git repo top-level (regular repos) or the parent of the main checkout (linked worktrees). Previously the walk-up was disabled entirely outside HOME. The main checkout directory is always excluded in linked worktrees.
+- `resolve-config.sh` local overlay discovery now checks the canonical `.gaia/config/global.yaml` path alongside the legacy `config/global.yaml`.
+- HOME is canonicalized (`pwd -P`) alongside PWD for stable comparisons with symlinked HOME directories.
+
 ### Shared findings register and unified blocking rule (2026-10-14)
 
 #### Added

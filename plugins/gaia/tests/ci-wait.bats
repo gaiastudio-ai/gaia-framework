@@ -705,8 +705,10 @@ teardown() {
     - branch: main
       ci_provider: github_actions"
 
-  # Unset everything so only walk-up can find config
+  # Unset everything so only walk-up can find config.
+  # HOME must encompass TEST_TMP so the walk-up boundary allows discovery.
   unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
+  export HOME="$canon_tmp"
   export PROJECT_PATH="$subdir"
 
   _write_fixture required 0 "" 1 "no checks reported on the 'main' branch"
@@ -1196,6 +1198,7 @@ teardown() {
       ci_provider: github_actions"
 
   unset GAIA_SHARED_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_NO_PROJECT_WALKUP
+  export HOME="$canon_tmp"
   export PROJECT_PATH="$child"
   export CI_WAIT_NO_CHECKS_GRACE_SECONDS=0
 
