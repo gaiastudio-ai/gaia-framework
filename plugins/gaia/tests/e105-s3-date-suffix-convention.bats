@@ -9,6 +9,8 @@
 #
 # Maps to AC1-AC5, TS1-TS5. Refs: ADR-127 Pillar 3, ADR-119, FR-555.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   RESOLVER="$REPO_ROOT/plugins/gaia/scripts/lib/resolve-latest-dated.sh"

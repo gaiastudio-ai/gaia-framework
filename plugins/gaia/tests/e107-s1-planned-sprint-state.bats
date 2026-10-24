@@ -12,6 +12,8 @@
 #
 # Maps to AC1-AC5, AC-INT1. Refs: ADR-108 (extended), ADR-128, ADR-095, FR-557.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   export GAIA_SNAPSHOT_HOOK_DISABLE=1

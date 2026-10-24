@@ -9,6 +9,8 @@
 #   E. Backwards-compat (no --tokens = no tokens_snapshot)
 #   F. Privacy guard non-vacuity (string-bearing payload rejected)
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/throughput-telemetry.sh"

@@ -4,6 +4,8 @@
 # proving the reader only ever sees a complete JSON object. A deliberately
 # non-atomic writer proves the reader's check can fail.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   SNAPSHOT="$REPO_ROOT/plugins/gaia/scripts/sprint-progress-snapshot.sh"

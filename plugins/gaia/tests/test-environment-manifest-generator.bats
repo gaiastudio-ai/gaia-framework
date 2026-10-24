@@ -5,6 +5,8 @@
 # manifest-generation logic (FR-496 inline auto-generate, FR-497 populated
 # runners contract; ADR-110).
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."

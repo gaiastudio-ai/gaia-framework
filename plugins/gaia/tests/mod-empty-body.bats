@@ -2,6 +2,8 @@
 # mod-empty-body.bats -- A hooks module whose register body is empty loads
 # without error, and the harness actually loads it.
 
+load 'test_helper.bash'
+
 setup() {
   TMPMOD="$BATS_TEST_TMPDIR/mod-empty-body"
   mkdir -p "$TMPMOD/.claude-plugin" "$TMPMOD/hooks"

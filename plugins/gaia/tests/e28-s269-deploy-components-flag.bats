@@ -8,6 +8,8 @@
 # CLI-flags table, and the deploy-phase invocation, and confirm the underlying
 # dispatch script still accepts it.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SKILL="$PLUGIN_ROOT/skills/gaia-deploy/SKILL.md"

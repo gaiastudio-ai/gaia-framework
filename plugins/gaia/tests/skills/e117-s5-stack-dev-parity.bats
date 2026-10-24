@@ -3,6 +3,8 @@
 # Guard tests for stack-dev documentation parity (bash/embedded knowledge files,
 # namespace-convention docs, and 9-stack SKILL enumeration sweep).
 
+load '../test_helper.bash'
+
 PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 
 # ---------------------------------------------------------------------------

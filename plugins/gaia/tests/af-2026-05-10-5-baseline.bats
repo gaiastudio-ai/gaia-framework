@@ -10,6 +10,8 @@
 # §5/§11/§12/§13/§14 monolith vs shards, and architecture §2/§12/§13/
 # Version-History monolith vs shards — out of scope for AF-2026-05-10-5.
 
+load 'test_helper.bash'
+
 setup() {
   FIXTURE_DIR="$BATS_TEST_DIRNAME/fixtures/af-2026-05-10-5-baseline"
   PRE_FIX_FILE="$FIXTURE_DIR/pre-fix-warnings.txt"

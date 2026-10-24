@@ -5,6 +5,8 @@
 # reference formulation, zero retired-provider hits, all five WCAG
 # finding classes, and fail-closed unreachability handling.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   SKILL_FILE="$REPO_ROOT/skills/gaia-validate-design-a11y/SKILL.md"

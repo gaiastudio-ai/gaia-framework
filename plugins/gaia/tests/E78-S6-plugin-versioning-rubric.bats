@@ -32,6 +32,8 @@
 # enum hygiene, FR-428, FR-429)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

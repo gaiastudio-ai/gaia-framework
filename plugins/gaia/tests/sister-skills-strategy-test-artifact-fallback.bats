@@ -28,6 +28,8 @@
 #   - gaia-add-feature/SKILL.md cascade matrix entries (already mention strategy/ at L487)
 #   - gaia-ci-setup/SKILL.md doc cross-reference to test-plan §
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILLS_DIR="$REPO_ROOT/plugins/gaia/skills"

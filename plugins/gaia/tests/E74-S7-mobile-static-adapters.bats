@@ -5,6 +5,8 @@
 # canonical four-state probe. AC6 is satisfied by the existence of contract.bats
 # under each adapter directory (asserted here).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 ADAPTERS_DIR="$BATS_TEST_DIRNAME/../scripts/adapters"

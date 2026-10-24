@@ -22,6 +22,8 @@
 # Story: E77-S6 (Tier 1 — plugin-security sub-rubric, FR-408)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

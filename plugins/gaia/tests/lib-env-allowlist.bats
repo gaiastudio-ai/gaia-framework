@@ -3,6 +3,8 @@
 #
 # Story: E93-S4. Traces to AC3, T-SGR-1, SR-63, NFR-072.
 
+load 'test_helper.bash'
+
 setup() {
   HELPER="${BATS_TEST_DIRNAME}/../scripts/lib/env-allowlist.sh"
   TMPDIR_TEST="$(mktemp -d)"

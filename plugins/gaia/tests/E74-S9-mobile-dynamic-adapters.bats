@@ -15,6 +15,8 @@
 # manifests for required keys rather than using `yq` (not always installed).
 # This matches the E74-S7 manifest-presence test pattern.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 PLUGIN_ROOT="$BATS_TEST_DIRNAME/.."

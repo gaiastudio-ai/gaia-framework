@@ -16,6 +16,8 @@
 #       validator script being wired into a larger validate-framework entry
 #       point (see plan v4 note: validator check is standalone for E28-S211).
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
   SKILLS_DIR="${PLUGIN_ROOT}/skills"

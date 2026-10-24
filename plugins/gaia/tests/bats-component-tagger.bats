@@ -17,6 +17,8 @@
 # on stable facts about the real script tree (sprint-state.sh exists top-level;
 # finalize.sh does not).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

@@ -4,6 +4,8 @@
 # $.ui.log call and every ui.render handler on its own. Seeded bad copies
 # prove each rule can fail.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   INDEX_JS="$REPO_ROOT/plugins/gaia/hooks/index.js"

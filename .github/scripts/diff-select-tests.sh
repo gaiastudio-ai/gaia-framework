@@ -12,6 +12,7 @@
 #      directory name.
 #   5. A changed workflow file (.github/workflows/*.yml) selects any .bats
 #      file whose name contains "ci" or "workflow".
+#   6. A changed test_helper.bash selects every .bats that loads it.
 #
 # Output: one .bats file path per line (relative to repo root), deduplicated.
 # Exit 0 with empty output means no test files are diff-selected.
@@ -92,6 +93,32 @@ while IFS= read -r f; do
     while IFS= read -r bt; do
       selected+=("$bt")
     done < <(find "$TESTS_DIR" -maxdepth 1 -name '*ci*' -o -name '*workflow*' 2>/dev/null)
+    continue
+  fi
+
+  # Rule 6: changed test_helper.bash -> all suites that load it (directly
+  # or via a local helper that sources it).  Search recursively so
+  # subdirectory suites are included.
+  if [[ "$f" == plugins/gaia/tests/test_helper.bash ]]; then
+    # Direct loaders (recursive): load 'test_helper' / load '../test_helper'
+    while IFS= read -r bt; do
+      selected+=("$bt")
+    done < <(find "$TESTS_DIR" -name '*.bats' -exec \
+      /usr/bin/grep -lE "^load ['\"]?(\\.\\./)*test_helper" {} + 2>/dev/null || true)
+    # Indirect loaders: .bash helpers that source the shared helper
+    _ih_list="$(find "$TESTS_DIR" -name '*.bash' -exec \
+      /usr/bin/grep -lE '\. .*/tests/test_helper\.bash|source .*/tests/test_helper\.bash' {} + 2>/dev/null || true)"
+    if [ -n "$_ih_list" ]; then
+      while IFS= read -r _ih; do
+        # Escape ERE metacharacters in the helper name (BSD/GNU safe).
+        _ih_base="$(basename "$_ih" .bash | sed -e 's/\\/\\\\/g' -e 's/\./\\./g' -e 's/\[/\\[/g' -e 's/\]/\\]/g' -e 's/(/\\(/g' -e 's/)/\\)/g' -e 's/{/\\{/g' -e 's/}/\\}/g' -e 's/\*/\\*/g' -e 's/+/\\+/g' -e 's/?/\\?/g' -e 's/|/\\|/g' -e 's/\^/\\^/g' -e 's/\$/\\$/g')"
+        _ih_dir="$(dirname "$_ih")"
+        while IFS= read -r bt; do
+          selected+=("$bt")
+        done < <(find "$_ih_dir" -name '*.bats' -exec \
+          /usr/bin/grep -lE "^load ['\"]?([.][.]/)*${_ih_base}" {} + 2>/dev/null || true)
+      done <<< "$_ih_list"
+    fi
     continue
   fi
 done <<< "$changed"

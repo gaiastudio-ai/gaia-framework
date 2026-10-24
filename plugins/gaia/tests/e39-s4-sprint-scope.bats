@@ -2,6 +2,8 @@
 # e39-s4-sprint-scope.bats — sprint-scoped triage default vs --all opt-in.
 # TC-STCL-1 (sprint-scoped default), TC-STCL-2 (--all full sweep).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

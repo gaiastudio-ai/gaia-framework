@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # Tests for dormant-environment handling in the script-deploy adapter.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

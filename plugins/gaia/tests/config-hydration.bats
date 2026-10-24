@@ -9,6 +9,8 @@
 # the 4 bats-only edge cases from AC13 (empty payload, missing config,
 # read-only filesystem, concurrent-write serialization).
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   LIB="${PLUGIN_ROOT}/scripts/lib/config-hydration.sh"

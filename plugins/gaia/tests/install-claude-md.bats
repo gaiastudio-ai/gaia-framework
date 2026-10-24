@@ -19,6 +19,8 @@
 #
 # Filesystem-only; no network.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/install-claude-md.sh"

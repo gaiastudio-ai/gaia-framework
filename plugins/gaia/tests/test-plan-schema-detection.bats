@@ -14,6 +14,8 @@
 # logic is asserted here; the matching-logic redesign is deferred to a
 # follow-on AF/epic.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SKILL_MD="$REPO_ROOT/plugins/gaia/skills/gaia-test-gap-analysis/SKILL.md"

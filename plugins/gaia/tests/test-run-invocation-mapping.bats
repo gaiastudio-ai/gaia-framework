@@ -13,6 +13,8 @@
 # C) Empty TARGET_ARGS invoked the runner bare. bats prints help; go
 #    needs ./... . Vitest/pytest auto-discover at PWD so they tolerate.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/skills/gaia-test-run/scripts/run-tests.sh"
