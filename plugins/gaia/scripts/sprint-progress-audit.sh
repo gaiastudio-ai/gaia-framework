@@ -116,7 +116,12 @@ fi
 # ---------- Extract story keys and statuses from sprint-status.yaml ----------
 # Produces lines like: EX-S1|in-progress
 _extract_stories() {
+  # Union of stories: and items: blocks. When a key appears in both,
+  # the stories: entry wins. Items-only keys are included.
   awk '
+    /^stories[[:space:]]*:/ { cur = "s"; next }
+    /^items[[:space:]]*:/ { cur = "i"; next }
+    /^[A-Za-z_]/ && !/^[[:space:]]/ { cur = "" }
     /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
       k = $0
       sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
@@ -129,8 +134,13 @@ _extract_stories() {
       sub(/^[[:space:]]+status:[[:space:]]*/, "", s)
       gsub(/"/, "", s)
       gsub(/[[:space:]]*$/, "", s)
-      if (key != "") { printf "%s|%s\n", key, s; key="" }
+      if (key != "") {
+        if (!(key in seen) || cur == "s") st[key] = s
+        if (!(key in seen)) { order[++n] = key; seen[key] = 1 }
+        key = ""
+      }
     }
+    END { for (i = 1; i <= n; i++) printf "%s|%s\n", order[i], st[order[i]] }
   ' "$_SPRINT_STATUS"
 }
 
