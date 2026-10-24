@@ -91,8 +91,16 @@ aiw_check_dedup() {
   fi
   # Use awk to scan YAML entries for matching composite key.
   # An entry matches when sprint_id, classification, and ref_key=ref_value all match.
+  # Compare against escaped values so dedup works for values containing
+  # quotes, backslashes or newlines. Pass via ENVIRON to avoid awk -v
+  # backslash interpretation.
+  local _esc_sid _esc_rv
+  _esc_sid="$(_aiw_yaml_escape "$sprint_id")"
+  _esc_rv="$(_aiw_yaml_escape "$ref_value")"
   local found
-  found="$(awk -v sid="$sprint_id" -v cls="$classification" -v rk="$ref_key" -v rv="$ref_value" '
+  found="$(AIW_SID="$_esc_sid" AIW_CLS="$classification" AIW_RK="$ref_key" AIW_RV="$_esc_rv" \
+    awk '
+    BEGIN { sid=ENVIRON["AIW_SID"]; cls=ENVIRON["AIW_CLS"]; rk=ENVIRON["AIW_RK"]; rv=ENVIRON["AIW_RV"] }
     /^[[:space:]]*- id:/ {
       if (in_entry && s_match && c_match && r_match) { matched=1; exit }
       in_entry=1; s_match=0; c_match=0; r_match=0; next
@@ -102,9 +110,7 @@ aiw_check_dedup() {
       in_entry=0; next
     }
     in_entry {
-      # Extract "key: value" from the line, stripping indent, quotes, and CR.
       line = $0; sub(/^[[:space:]]+/, "", line); sub(/\r$/, "", line)
-      # Split on first ": " or ":" to get field name and value.
       colon = index(line, ":")
       if (colon > 0) {
         fk = substr(line, 1, colon - 1)
@@ -173,6 +179,21 @@ _aiw_yaml_escape() {
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   printf '%s' "$s"
+}
+
+# ---------------------------------------------------------------------------
+# _aiw_has_control_chars — return 0 if string contains control characters
+# (anything below 0x20 except tab, plus 0x7F). Uses printf + grep for
+# bash 3.2 compatibility (case bracket expressions with hex escapes are
+# unreliable across bash versions).
+# ---------------------------------------------------------------------------
+_aiw_has_control_chars() {
+  # Match 0x00-0x08, 0x0B-0x0C, 0x0E-0x1F, 0x7F (everything except \t \n \r).
+  # \n and \r are handled by _aiw_yaml_escape, not rejected.
+  printf '%s' "$1" | grep -qP '[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]' 2>/dev/null && return 0
+  # Fallback for systems without grep -P: use LC_ALL=C and tr
+  printf '%s' "$1" | LC_ALL=C tr -d '\011\012\015\040-\176' | grep -q . 2>/dev/null && return 0
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -278,6 +299,23 @@ aiw_write() {
     printf 'status=error\nreason=--ref-value is required\n'
     return 1
   fi
+
+  # Validate ref_key is a plain identifier (no newlines, spaces, or special chars)
+  case "$ref_key" in
+    ''|*[!A-Za-z0-9_]*)
+      printf 'status=error\nreason=--ref-key must be a plain identifier (letters, digits, underscore)\n'
+      return 1
+      ;;
+  esac
+
+  # Reject control characters (below 0x20 except tab, plus 0x7F) in any value
+  local _val
+  for _val in "$text" "$ref_value" "$sprint_id"; do
+    if _aiw_has_control_chars "$_val"; then
+      printf 'status=error\nreason=value contains disallowed control characters\n'
+      return 1
+    fi
+  done
 
   # Validate classification before any file writes
   if ! aiw_validate_classification "$classification"; then

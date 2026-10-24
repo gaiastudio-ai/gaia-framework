@@ -75,7 +75,7 @@ HEADER
       printf '# dedup_key: fake%d\n' "$i"
     done
     # Quoted triage entry (written by aiw_write)
-    printf '\n  - id: "AI-280"\n    sprint_id: "sprint-147"\n    text: "triage entry"\n    status: "open"\n'
+    printf '\n  - id: "AI-90001"\n    sprint_id: "sprint-147"\n    text: "triage entry"\n    status: "open"\n'
     # Embedded id in text (must NOT inflate max)
     printf '  - id: AI-5\n    text: "see also id: AI-9999 in tracker"\n    status: open\n'
     # parent_id field (must NOT inflate max)
@@ -173,8 +173,8 @@ EOF
   _make_realistic_fixture "$target"
   local got
   got="$(aiw_next_id "$target")"
-  # Max simple numeric id is 299; dated/embedded/parent_id/text-line all ignored
-  [ "$got" = "AI-300" ]
+  # Max simple numeric id is 90001; dated/embedded/parent_id/text-line all ignored
+  [ "$got" = "AI-90002" ]
 }
 
 @test "aiw_next_id exact id check does not prefix-match dated ids" {
@@ -383,22 +383,22 @@ EOF
   aiw_write --target "$target" --sprint-id "sprint-50" \
     --classification "bug" --text "legit" \
     --ref-key "finding_id" --ref-value "F-1" >/dev/null
-  # Attempt to forge an entry via text injection
   local forge_text
   forge_text="$(printf 'innocent"\n  - id: "AI-500"\n    text: "forged')"
   aiw_write --target "$target" --sprint-id "sprint-50" \
     --classification "bug" --text "$forge_text" \
     --ref-key "finding_id" --ref-value "F-3" >/dev/null
-  # yq must parse the file
   run yq '.' "$target"
   [ "$status" -eq 0 ]
-  # The next id must be 3 (not 500+)
   local next
   next="$(aiw_next_id "$target")"
   [ "$next" = "AI-3" ]
-  # A dedup check for the forged F-2 must return no-match
-  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-2"
-  [ "$status" -eq 1 ]
+  # A later F-2 write must succeed (not blocked by a forged entry)
+  local r2
+  r2="$(aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "real F-2" \
+    --ref-key "finding_id" --ref-value "F-2")"
+  grep -q 'status=ok' <<<"$r2"
 }
 
 @test "aiw_write produces no duplicate ids when text contains injection" {
@@ -412,7 +412,6 @@ EOF
   aiw_write --target "$target" --sprint-id "sprint-50" \
     --classification "bug" --text "$inject_text" \
     --ref-key "finding_id" --ref-value "F-2" >/dev/null
-  # Each id must appear exactly once
   local dupes
   dupes="$(grep -E '^[[:space:]]*-[[:space:]]+id:' "$target" | grep -oE 'AI-[0-9]+' | sort | uniq -d)"
   [ -z "$dupes" ]
@@ -421,14 +420,139 @@ EOF
 @test "aiw_write round-trips backslash and quote through yq" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
+  local input='has a \ backslash and a " quote'
   aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "bug" --text 'has a \\ backslash and a \" quote' \
+    --classification "bug" --text "$input" \
     --ref-key "finding_id" --ref-value "F-1" >/dev/null
   run yq '.' "$target"
   [ "$status" -eq 0 ]
-  # The text field should contain the escaped characters
-  grep -q 'backslash' "$target"
-  grep -q 'quote' "$target"
+  local decoded
+  decoded="$(yq '.items[0].text' "$target")"
+  [ "$decoded" = "$input" ]
+}
+
+@test "aiw_write rejects ref-key with newline (prevents entry forging)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "legit" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  local bad_key
+  bad_key="$(printf 'finding_id: "F-3"\n  - id: "AI-500"\n    note')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "$bad_key" --ref-value "x"
+  [ "$status" -eq 1 ]
+  grep -q 'status=error' <<<"$output"
+  # Next id must still be 2
+  local next
+  next="$(aiw_next_id "$target")"
+  [ "$next" = "AI-2" ]
+  # A later F-2 write must succeed
+  local r2
+  r2="$(aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "real F-2" \
+    --ref-key "finding_id" --ref-value "F-2")"
+  grep -q 'status=ok' <<<"$r2"
+}
+
+@test "aiw_write escapes ref-value with quote and newline; yq sees one item" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_val
+  bad_val="$(printf 'F"1\nforged')"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "$bad_val" >/dev/null
+  local n
+  n="$(yq '.items | length' "$target")"
+  [ "$n" -eq 1 ]
+}
+
+@test "aiw_write escapes sprint-id with quote and newline; yq sees one item" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_sprint
+  bad_sprint="$(printf 'sp"1\nforged')"
+  aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  local n
+  n="$(yq '.items | length' "$target")"
+  [ "$n" -eq 1 ]
+}
+
+@test "aiw_write dedup works for ref-value with quote and backslash" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local val='F"1\x'
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "$val" >/dev/null
+  local r2
+  r2="$(aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "$val")"
+  grep -q 'status=skipped_idempotent' <<<"$r2"
+  local n
+  n="$(yq '.items | length' "$target")"
+  [ "$n" -eq 1 ]
+}
+
+@test "aiw_write dedup works for sprint-id with quote" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_write --target "$target" --sprint-id 'sp"1' \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  local r2
+  r2="$(aiw_write --target "$target" --sprint-id 'sp"1' \
+    --classification "bug" --text "t" \
+    --ref-key "finding_id" --ref-value "F-1")"
+  grep -q 'status=skipped_idempotent' <<<"$r2"
+}
+
+@test "aiw_write escapes carriage return in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local val=$'cr\rx'
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$val" \
+    --ref-key "finding_id" --ref-value "F-1" >/dev/null
+  run yq '.' "$target"
+  [ "$status" -eq 0 ]
+  # The raw file must contain the \r escape, not a literal CR
+  grep -q '\\r' "$target"
+}
+
+@test "aiw_check_dedup matches sprint_id field by exact name" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has xsprint_id instead of sprint_id
+  printf -- '- id: AI-1\n  xsprint_id: "sprint-50"\n  classification: "bug"\n  finding_id: "F-1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_check_dedup matches classification field by exact name" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # File has xclassification instead of classification
+  printf -- '- id: AI-1\n  sprint_id: "sprint-50"\n  xclassification: "bug"\n  finding_id: "F-1"\n' > "$target"
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+@test "aiw_write rejects control characters in values" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bel_text
+  bel_text="$(printf 'has a \007 bell')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bel_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
 }
 
 # ===========================================================================
