@@ -192,7 +192,7 @@ case "$CMD" in
     SCHEMA_PATH="$(dirname "$0")/../schemas/project-config.schema.json"
     if [ -f "$SCHEMA_PATH" ] && command -v jq >/dev/null 2>&1; then
       if ! jq -r '.properties | keys[]' "$SCHEMA_PATH" 2>/dev/null \
-          | grep -Fxq "$SECTION"; then
+          | grep -Fxq -- "$SECTION"; then
         err "unknown section: '$SECTION' is not a declared property in $SCHEMA_PATH"
         err "consult the schema's .properties keys for the closed set of accepted names"
         exit 1

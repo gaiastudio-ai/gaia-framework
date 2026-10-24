@@ -310,11 +310,11 @@ _ic_batch_resolve_story_files() {
 # ---------------------------------------------------------------------------
 _ic_is_known_key() {
   local key="$1" epics_file="$2" shards_dir="$3"
-  if [ -f "$epics_file" ] && /usr/bin/grep -q "\\b${key}\\b" "$epics_file" 2>/dev/null; then
+  if [ -f "$epics_file" ] && /usr/bin/grep -Fwq -- "$key" "$epics_file" 2>/dev/null; then
     return 0
   fi
   if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
-    if /usr/bin/grep -rq "\\b${key}\\b" "$shards_dir" 2>/dev/null; then
+    if /usr/bin/grep -rFwq -- "$key" "$shards_dir" 2>/dev/null; then
       return 0
     fi
   fi
@@ -801,6 +801,13 @@ _ic_run_rules_cd() {
       _cache_id="$(printf '%s' "$_cf" | md5 2>/dev/null || printf '%s' "$_cf" | md5sum 2>/dev/null | cut -d' ' -f1)"
       local _cache_file="${_ic_cache_dir}/${_cache_id}"
 
+      # Refuse symlinked cache files — a symlink at the cache path could
+      # point outside the cache directory and read arbitrary content.
+      if [ -L "$_cache_file" ]; then
+        rm -f "$_cache_file" 2>/dev/null || true
+        printf '%s\t%s\t%s\n' "$_ck" "$_cs" "$_cf" >> "$uncached_input"
+        continue
+      fi
       if [ -f "$_cache_file" ]; then
         local _cached_stat="" _cached_cksum=""
         _cached_stat="$(sed -n '1p' "$_cache_file")"
@@ -909,7 +916,7 @@ _ic_run_rules_cd() {
       {
         printf '%s\n' "$_stat_key"
         printf '%s\n' "$_content_key"
-        /usr/bin/grep "^${_ck}	" "$fresh_parsed" || true
+        awk -F'\t' -v k="$_ck" '$1==k' "$fresh_parsed" || true
       } > "$_cache_file"
     done < "$parse_needed"
   fi
@@ -921,6 +928,25 @@ _ic_run_rules_cd() {
     cat "$cached_parsed" "$fresh_parsed" > "$all_parsed"
   else
     cp "$fresh_parsed" "$all_parsed"
+  fi
+
+  # Pre-validate all TS entries through the canonical denylist before the
+  # processing awk. The inline awk denylist is a fast pre-filter; this pass
+  # catches anything it misses (e.g. bare backslashes) and fails closed.
+  local _ts_deny_fail=""
+  while IFS=$'\t' read -r _dk _dt _dv; do
+    [ "$_dt" = "TS" ] || continue
+    if ! touch_set_denylist_check "$_dv" 2>/dev/null; then
+      local _dk_sf=""
+      _dk_sf="$(awk -F'\t' -v k="$_dk" '$1==k { print $3; exit }' "$parse_input" 2>/dev/null || true)"
+      _ts_deny_fail="FAIL indeterminate: denylist rejected: ${_dv} in ${_dk_sf:-$_dk}"
+      break
+    fi
+  done < "$all_parsed"
+  if [ -n "$_ts_deny_fail" ]; then
+    printf '%s\n' "$_ts_deny_fail"
+    printf '%s\n' "$_ts_deny_fail" >&2
+    return 1
   fi
 
   # Process ALL parsed data in a single awk pass: check field presence,
@@ -980,7 +1006,7 @@ _ic_run_rules_cd() {
             entry = entries[ei]
             if (entry == "") continue
 
-            # Denylist check (inline).
+            # Denylist check (inline — mirrors the canonical sanitizer).
             if (index(entry, "`") > 0 || index(entry, "$") > 0 || \
                 index(entry, "(") > 0 || index(entry, ")") > 0 || \
                 index(entry, ";") > 0 || index(entry, "|") > 0 || \
@@ -988,6 +1014,21 @@ _ic_run_rules_cd() {
                 index(entry, "<") > 0) {
               printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
               exit 0
+            }
+            # Backslash check: allowed only before glob metacharacters.
+            if (index(entry, "\\") > 0) {
+              elen = length(entry)
+              for (bi = 1; bi <= elen; bi++) {
+                bch = substr(entry, bi, 1)
+                if (bch == "\\") {
+                  nch = (bi < elen) ? substr(entry, bi + 1, 1) : ""
+                  if (nch != "*" && nch != "?" && nch != "[" && nch != "]") {
+                    printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
+                    exit 0
+                  }
+                  bi++
+                }
+              }
             }
 
             # Climb-out check.
@@ -1369,8 +1410,8 @@ _ic_run_rules_cd() {
   local _cand_st="$sprint_types_dir/${candidate}.txt"
   [ -f "$_cand_sp" ] || : > "$_cand_sp"
   [ -f "$_cand_st" ] || : > "$_cand_st"
-  /usr/bin/grep -Fxv "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
-  /usr/bin/grep -Fv "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
+  /usr/bin/grep -Fxv -- "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
+  /usr/bin/grep -Fv -- "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
 
   local cd_overall_rc=0
   local active_id
@@ -1402,8 +1443,8 @@ _ic_run_rules_cd() {
 
     local act_paths_filtered="$tmpdir/act_paths_f_${active_id}.txt"
     local act_types_filtered="$tmpdir/act_types_f_${active_id}.txt"
-    /usr/bin/grep -Fxv "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
-    /usr/bin/grep -Fv "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
+    /usr/bin/grep -Fxv -- "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
+    /usr/bin/grep -Fv -- "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
 
     local cand_all_paths="$cand_paths_filtered"
     local cand_all_types="$cand_types_filtered"
@@ -1416,8 +1457,8 @@ _ic_run_rules_cd() {
     if [ -n "$overlap_path" ]; then
       # Find which stories own this path.
       local ck_owner ak_owner
-      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
-      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
       rule_c_fail=1
       rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${overlap_path} (${candidate} -> ${active_id})"
     fi
@@ -1630,7 +1671,7 @@ _ic_run_rules_cd() {
         [ -n "$cfam" ] || continue
         [ "$rule_d_fail" -eq 0 ] || break
         # Check if this family appears in both.
-        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qx "$cfam" 2>/dev/null; then
+        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qxF -- "$cfam" 2>/dev/null; then
           # Config family: check section granularity.
           if [ "$cfam" = "config" ]; then
             # Get candidate and active story keys that touch config.
@@ -1648,8 +1689,8 @@ _ic_run_rules_cd() {
                 # Do both stories have predicted_config_sections?
                 local cck_has_cs=0 ack_has_cs=0
                 if [ -f "$cs_dir/_has_field.txt" ]; then
-                  /usr/bin/grep -qx "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
-                  /usr/bin/grep -qx "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
+                  /usr/bin/grep -qxF -- "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
+                  /usr/bin/grep -qxF -- "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
                 fi
 
                 if [ "$cck_has_cs" -eq 1 ] && [ "$ack_has_cs" -eq 1 ]; then
@@ -1812,8 +1853,14 @@ main() {
       ' "$_ov_file")" || true
       [ -n "$_ov_key" ] || _ic_die "overlay file has no key: $_ov_file"
 
-      # Check if key exists in resolved_f.
-      if /usr/bin/grep -q "^${_ov_key}	" "$resolved_f" 2>/dev/null; then
+      # Validate overlay key format (reject regex metacharacters).
+      case "$_ov_key" in
+        *"."*|*"^"*|*'$'*|*"["*|*"]"*|*"+"*|*"?"*|*"{"*|*"}"*|*"\\"*|*"|"*)
+          _ic_die "overlay key contains invalid characters: $_ov_key" ;;
+      esac
+
+      # Check if key exists in resolved_f (exact first-field match).
+      if awk -F'\t' -v k="$_ov_key" '$1==k { found=1; exit } END { exit !found }' "$resolved_f" 2>/dev/null; then
         # Replace the resolved path with the overlay path.
         local _ov_tmp="${resolved_f}.ovtmp"
         awk -F'\t' -v k="$_ov_key" -v p="$_ov_file" \

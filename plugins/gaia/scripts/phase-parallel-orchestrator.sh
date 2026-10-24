@@ -1326,9 +1326,9 @@ _ppo_next_locked() {
           # Clean up orphaned worktree created before the failed bookkeeping
           if [ -n "$wt" ] && [ -d "$wt" ]; then
             _ppo_load_worktree_lib 2>/dev/null || true
-            git worktree unlock "$wt" 2>/dev/null || true
-            git worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt" 2>/dev/null || true
-            git worktree prune 2>/dev/null || true
+            git -C "$repo" worktree unlock "$wt" 2>/dev/null || true
+            git -C "$repo" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt" 2>/dev/null || true
+            git -C "$repo" worktree prune 2>/dev/null || true
           fi
           # Clean up the slot scratch directory
           rm -rf "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true

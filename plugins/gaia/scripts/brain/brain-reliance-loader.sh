@@ -130,7 +130,7 @@ PYEOF
 # _brl_index_key_present <key> <keys-file> — 0 when the index carries the key.
 _brl_index_key_present() {
   local key="$1" keysf="$2"
-  grep -qxF "$key" "$keysf" 2>/dev/null
+  grep -qxF -- "$key" "$keysf" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------

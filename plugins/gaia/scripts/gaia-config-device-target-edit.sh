@@ -196,7 +196,7 @@ print(json.dumps(d))
     ;;
   set)
     # Orphan-target validation
-    if ! _read_platforms_list | grep -Fxq "$PLATFORM"; then
+    if ! _read_platforms_list | grep -Fxq -- "$PLATFORM"; then
       err "platform '$PLATFORM' is not in platforms[] — declare it first via /gaia-config-platform add $PLATFORM"
       exit 1
     fi

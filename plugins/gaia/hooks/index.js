@@ -146,14 +146,14 @@ async function readCache($, root) {
           try { sessionId = await $.session.id() } catch (_) { sessionId = null }
         }
 
-        if (sessionId && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId)) {
+        if (sessionId && sessionId.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId)) {
           var bindingPath = joinPath(stateDir, 'sessions', sessionId, 'bound_sprint_id')
           var boundId = null
           try {
             boundId = (await $.fs.read(bindingPath)).trim()
           } catch (_) { boundId = null }
 
-          if (boundId && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(boundId)) {
+          if (boundId && boundId.length <= 64 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(boundId)) {
             // Check sprint status from per-sprint cache.
             var perCacheName = '.sprint-progress-cache-' + boundId + '.json'
             var perCache = stateDir + '/' + perCacheName

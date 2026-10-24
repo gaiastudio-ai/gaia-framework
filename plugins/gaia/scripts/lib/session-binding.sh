@@ -106,6 +106,13 @@ _sb_validate_session_id() {
     return 1
   fi
 
+  # Length cap (64 characters, aligned with the statusline runtime limit).
+  if [ "${#sid}" -gt 64 ]; then
+    printf '%s: error: session ID exceeds 64-character limit (%d chars)\n' \
+      "$_SB_SCRIPT_NAME" "${#sid}" >&2
+    return 1
+  fi
+
   # Path separators (/ or \).
   case "$sid" in
     */*|*\\*)
@@ -199,10 +206,33 @@ provision_binding_dir() {
 
   local derived_dir="${project_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME}/${sid}"
 
-  # Create the directory if absent.
+  # Create the directory if absent, detecting failures instead of swallowing them.
   if [ ! -d "$derived_dir" ]; then
-    mkdir -p "$derived_dir" 2>/dev/null || true
-    chmod 0700 "$derived_dir" 2>/dev/null || true
+    if ! mkdir -p "$derived_dir" 2>/dev/null; then
+      printf '%s: error: mkdir failed for binding directory: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    if ! chmod 0700 "$derived_dir" 2>/dev/null; then
+      printf '%s: error: chmod 0700 failed for binding directory: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    # Post-check: confirm the directory exists with the correct mode.
+    if [ ! -d "$derived_dir" ]; then
+      printf '%s: error: binding directory absent after creation: %s\n' \
+        "$_SB_SCRIPT_NAME" "$derived_dir" >&2
+      return 1
+    fi
+    local _sb_mode=""
+    # GNU stat first (-c), then BSD stat (-f). GNU `stat -f` means filesystem
+    # stat (not format), so it must come second.
+    _sb_mode="$(stat -c '%a' "$derived_dir" 2>/dev/null || stat -f '%Lp' "$derived_dir" 2>/dev/null || echo "")"
+    if [ "$_sb_mode" != "700" ]; then
+      printf '%s: error: binding directory mode is %s, expected 700: %s\n' \
+        "$_SB_SCRIPT_NAME" "$_sb_mode" "$derived_dir" >&2
+      return 1
+    fi
   fi
 
   local derived_real=""

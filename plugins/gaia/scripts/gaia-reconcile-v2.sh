@@ -216,7 +216,7 @@ _grv2_list_retired_sections() {
 
 _grv2_in_list() {
   local needle="$1" list="$2"
-  printf '%s\n' "$list" | grep -Fxq "$needle"
+  printf '%s\n' "$list" | grep -Fxq -- "$needle"
 }
 
 # ---- Secret regex ----------------------------------------------------------

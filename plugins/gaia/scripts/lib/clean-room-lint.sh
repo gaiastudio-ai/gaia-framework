@@ -73,7 +73,7 @@ _lint_roster() {
   local name
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    if printf '%s\n' "$reviewer_names" | grep -qxF "$name"; then
+    if printf '%s\n' "$reviewer_names" | grep -qxF -- "$name"; then
       printf 'clean-room-lint: VIOLATION in %s — reviewer persona "%s" declared as teammate\n' \
         "$skill_path" "$name" >&2
       violations=$((violations + 1))
