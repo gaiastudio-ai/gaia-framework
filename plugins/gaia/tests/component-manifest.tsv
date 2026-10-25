@@ -751,6 +751,7 @@ scripts-lib	test-environment-manifest-generator.bats
 scripts-lib	transcript-fidelity.bats
 scripts-lib	worktree-lifecycle.bats
 scripts-lib	worktree-reap-safety.bats
+scripts-lib	worktree-val-sentinel-path.bats
 scripts-lib	write-val-envelope.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
