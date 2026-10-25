@@ -179,14 +179,18 @@ framework_version: "1.197.0"
 date: "2026-06-18"
 YAML
 
+  # HOME must encompass TEST_TMP so the walk-up boundary allows discovery.
+  local home_canon
+  home_canon="$(cd "$TEST_TMP" && pwd -P)"
+
   # From repo root: resolve-config should find the config and exit 0.
-  run bash -c "cd '$TEST_TMP' && GAIA_NO_PROJECT_WALKUP= '$RESOLVE_CONFIG' project_config_path"
+  run bash -c "cd '$TEST_TMP' && HOME='$home_canon' GAIA_NO_PROJECT_WALKUP= '$RESOLVE_CONFIG' project_config_path"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "project-config.yaml" ]]
 
   # From a nested subdirectory: walk-up discovery should find the same config.
   mkdir -p "$TEST_TMP/src/deep/nested"
-  run bash -c "cd '$TEST_TMP/src/deep/nested' && GAIA_NO_PROJECT_WALKUP= '$RESOLVE_CONFIG' project_config_path"
+  run bash -c "cd '$TEST_TMP/src/deep/nested' && HOME='$home_canon' GAIA_NO_PROJECT_WALKUP= '$RESOLVE_CONFIG' project_config_path"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "project-config.yaml" ]]
 

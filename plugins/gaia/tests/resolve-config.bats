@@ -209,6 +209,8 @@ YAML
 
 @test "resolve-config.sh : walk-up finds project-config.yaml in parent dir" {
   # Build a fake project root with config and a deep nested CWD.
+  # Set HOME to encompass the fixture tree so the walk-up boundary
+  # (which stops at HOME) does not prevent discovery.
   local proj="$TEST_TMP/proj"
   mkdir -p "$proj/config"
   cat > "$proj/config/project-config.yaml" <<'YAML'
@@ -224,8 +226,11 @@ YAML
 
   # Run resolve-config.sh from the deep nested CWD with NO CLAUDE_SKILL_DIR
   # set. Walk-up should locate $proj/config/project-config.yaml.
+  # HOME is set to TEST_TMP so CWD is under HOME (walk-up boundary).
+  local home_canon
+  home_canon="$(cd "$TEST_TMP" && pwd -P)"
   cd "$proj/nested/deeply/down/here"
-  run env -u CLAUDE_SKILL_DIR "$SCRIPT"
+  run env -u CLAUDE_SKILL_DIR HOME="$home_canon" "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"project_root='/tmp/walkup-fx'"* ]]
   [[ "$output" == *"framework_version='1.149.0'"* ]]

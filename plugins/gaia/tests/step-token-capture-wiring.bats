@@ -237,7 +237,9 @@ _stdin_with_usage() {
   unset _GAIA_PATHS_LOADED
   unset GAIA_NO_PROJECT_WALKUP
   rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
-  run bash -c "cd '$subdir' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  # HOME must encompass TEST_TMP so the walk-up boundary allows discovery.
+  local home_canon; home_canon="$(cd "$TEST_TMP" && pwd -P)"
+  run bash -c "HOME='$home_canon' && export HOME && cd '$subdir' && bash '$EMIT_HELPER' 1 load-story E999-S1"
   [ "$status" -eq 0 ]
   local line
   line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
@@ -273,12 +275,43 @@ _stdin_with_usage() {
   unset _GAIA_PATHS_LOADED
   unset GAIA_NO_PROJECT_WALKUP
   rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
-  run bash -c "cd '$nested' && bash '$EMIT_HELPER' 1 load-story E999-S1"
+  local home_canon; home_canon="$(cd "$TEST_TMP" && pwd -P)"
+  run bash -c "HOME='$home_canon' && export HOME && cd '$nested' && bash '$EMIT_HELPER' 1 load-story E999-S1"
   [ "$status" -eq 0 ]
   local line
   line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
   echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 9000' >/dev/null \
     || { echo "emitter walk-up did not skip config-less nested sub-repo" >&2; echo "$line" >&2; false; }
+}
+
+# ---------- Scenario J2: same as J but the nested sub-repo is a git init ------
+# The walk-up must cross a regular git repo (not a linked worktree) to find
+# the config-bearing root above it.
+
+@test "J2: emitter walk-up crosses git-init sub-repo to find root" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  printf '{"model":{"id":"o","display_name":"Opus"},"workspace":{"project_dir":"%s","current_dir":"%s"},"context_window":{"used_percentage":42,"current_usage":{"input_tokens":8000,"output_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},"context_window_size":1000000}}' \
+    "$TEST_TMP" "$TEST_TMP" > "$TEST_TMP/.stdin.json"
+  run bash "$STATUSLINE" < "$TEST_TMP/.stdin.json"
+  [ "$status" -eq 0 ]
+  [ -f "$SNAPSHOT_FILE" ] \
+    || { echo "statusline did not write snapshot" >&2; false; }
+  mkdir -p "$TEST_TMP/.gaia/config"
+  touch "$TEST_TMP/.gaia/config/project-config.yaml"
+  # Nested sub-repo is a real git repo with bare .gaia/ but no config.
+  local nested="$TEST_TMP/git-subrepo"
+  mkdir -p "$nested/.gaia/memory"
+  git -C "$nested" init -q 2>/dev/null
+  git -C "$nested" -c user.name=test -c user.email=test@test commit --allow-empty -m "init" -q 2>/dev/null
+  unset MEMORY_PATH PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH CLAUDE_SKILL_DIR _GAIA_PATHS_LOADED GAIA_NO_PROJECT_WALKUP
+  rm -f "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl" 2>/dev/null || true
+  local home_canon; home_canon="$(cd "$TEST_TMP" && pwd -P)"
+  run bash -c "HOME='$home_canon' && export HOME && cd '$nested' && bash '$EMIT_HELPER' 1 load-story test-story"
+  [ "$status" -eq 0 ]
+  local line
+  line=$(cat "$TEST_TMP/.gaia/memory/lifecycle-events.jsonl")
+  echo "$line" | jq -e '.data.tokens_snapshot.input_tokens == 8000' >/dev/null \
+    || { echo "emitter walk-up did not cross git-init sub-repo" >&2; echo "$line" >&2; false; }
 }
 
 # ---------- Scenario K: MEMORY_PATH save/restore across exec boundary ---------

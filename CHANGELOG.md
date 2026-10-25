@@ -9,6 +9,13 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Walk-up path resolution: git-bounded outside HOME (2026-10-24)
+
+#### Changed
+- `gaia-paths.sh` and `resolve-config.sh` walk-up: outside HOME (or when HOME is unset or "/"), the walk is now bounded by git — the repo top-level for a regular repo, or the parent of the main checkout for a linked worktree (when that parent is an ancestor of the CWD; otherwise the worktree's own top-level). A worktree of a repo whose main checkout is HOME (e.g. a dotfiles repo) stops at its own top-level to avoid walking through world-writable shared ancestors. Previously the walk climbed to `/` outside HOME, so a planted `.gaia/` in a shared ancestor could hijack the project root. The main checkout directory is always excluded in linked worktrees. **Note:** non-git projects opened from a subdirectory outside HOME, and devcontainer layouts with in-tree repos, should set `CLAUDE_PROJECT_ROOT` explicitly.
+- `resolve-config.sh` local overlay discovery now checks the canonical `.gaia/config/global.yaml` path alongside the legacy `config/global.yaml`. When `CLAUDE_PROJECT_ROOT` is set and the shared path is already resolved, the walk-up and its git detection are skipped.
+- HOME is canonicalized (`pwd -P`) alongside PWD for stable comparisons with symlinked HOME directories.
+
 ### Shared findings register and unified blocking rule (2026-10-14)
 
 #### Added
