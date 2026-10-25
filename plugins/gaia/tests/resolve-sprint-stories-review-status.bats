@@ -52,7 +52,7 @@ YAML
   run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
   # stdout must contain the resolved story path
-  printf '%s\n' "$output" | grep -q 'E900-S1' || false
+  grep -q 'E900-S1' <<<"$output" || false
 }
 
 # ---- AC2: sprint in "active" still succeeds (existing behaviour) ----
@@ -61,7 +61,7 @@ YAML
   fixture="$(_write_fixture active)"
   run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
-  printf '%s\n' "$output" | grep -q 'E900-S1' || false
+  grep -q 'E900-S1' <<<"$output" || false
 }
 
 # ---- AC3: sprint in "closed" exits 0 with no stories ----
@@ -71,14 +71,12 @@ YAML
   run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
   # stderr carries the warning (captured in output by bats `run`)
-  printf '%s\n' "$output" | grep -q 'active sprint not found' || false
-  # stdout must NOT contain any story path — count lines that contain the key
-  local story_lines
-  story_lines="$(printf '%s\n' "$output" | grep -c 'E900-S1' || true)"
-  # The only line matching E900-S1 (if any) is the stderr warning, not a path
-  # We verify no path was emitted by checking the warning is the sole match
-  # and that it is the stderr diagnostic, not a resolved path.
-  printf '%s\n' "$output" | grep -v 'active sprint not found' | grep -qv 'E900-S1' || true
+  grep -q 'active sprint not found' <<<"$output" || false
+  # stdout must NOT contain a resolved story path — the only line matching
+  # the synthetic key (if any) is the stderr diagnostic, not a file path.
+  local path_lines
+  path_lines="$(grep -v 'active sprint not found' <<<"$output" | grep -c 'E900-S1' || true)"
+  [ "$path_lines" -eq 0 ] || false
 }
 
 # ---- AC3: sprint in "planned" exits 0 with no stories ----
@@ -87,7 +85,7 @@ YAML
   fixture="$(_write_fixture planned)"
   run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
-  printf '%s\n' "$output" | grep -q 'active sprint not found' || false
+  grep -q 'active sprint not found' <<<"$output" || false
 }
 
 # ---- AC5: bash 3.2 portability check (structural — the full 3.2 run is in CI) ----
