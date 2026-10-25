@@ -86,11 +86,22 @@ YAML
   run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
   grep -q 'active sprint not found' <<<"$output" || false
+  # stdout must NOT contain a resolved story path (same check as the closed test).
+  local path_lines
+  path_lines="$(grep -v 'active sprint not found' <<<"$output" | grep -c 'E900-S1' || true)"
+  [ "$path_lines" -eq 0 ] || false
 }
 
-# ---- AC5: bash 3.2 portability check (structural — the full 3.2 run is in CI) ----
-@test "resolver script contains no bash 4+ constructs" {
-  # Verify the case statement uses POSIX-safe pattern (no ;;&, no ;&)
-  run grep -cE ';\;&|;;&' "$RESOLVER"
-  [ "$status" -ne 0 ] || false
+# ---- AC5: bash 3.2 portability — no case-clause fallthroughs ----
+@test "resolver script contains no bash 4+ case fallthroughs" {
+  # Detect ;& (bash 4.0 fallthrough) and ;;& (bash 4.0 resume-testing).
+  # grep -P uses a lookbehind so ";;" does not match the ";& " pattern.
+  # Fallback: two separate greps for portability.
+  local hits=0
+  # ;& not preceded by another ; (i.e. not ;;)
+  hits=$(grep -cE '[^;];&' "$RESOLVER" || true)
+  [ "$hits" -eq 0 ] || false
+  # ;;& (resume-testing)
+  hits=$(grep -cE ';;&' "$RESOLVER" || true)
+  [ "$hits" -eq 0 ] || false
 }

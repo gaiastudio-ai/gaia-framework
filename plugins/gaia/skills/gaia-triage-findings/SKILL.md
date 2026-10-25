@@ -45,7 +45,7 @@ Scan story files for non-empty Findings tables. **Two deterministic helpers own
 this step — the LLM does NOT glob the tree or read whole story files.**
 
 **1a. Resolve the scan set (sprint-scoped by default).** The default scan is
-the ACTIVE sprint's committed stories only — historical stories from prior
+the current sprint's committed stories only — historical stories from prior
 sprints have already been triaged, and re-scanning them wastes context. Resolve
 the file set via:
 
@@ -57,8 +57,8 @@ the file set via:
 
 The helper reads the **top-level** `sprint_id` and the **top-level `stories:`**
 list from `.gaia/state/sprint-status.yaml`, gates on the top-level `status:`
-lifecycle value (only `active` sprint-scopes; `closed`/`planned` emits nothing
-with an informational stderr message), resolves each committed key to its file
+lifecycle value (`active` or `review` sprint-scopes; `closed`/`planned` emits
+nothing with an informational stderr message), resolves each committed key to its file
 path via `resolve-story-file.sh`, and emits one path per line.
 
 - **`--all` flag** restores the legacy full historical sweep (every `*.md`
@@ -66,7 +66,7 @@ path via `resolve-story-file.sh`, and emits one path per line.
   to re-triage the whole backlog.
 - If an optional `story-key` argument was provided, scan only that story file
   (overrides sprint-scoping).
-- A closed/planned active sprint (no sprint-scoped set) means the operator
+- A closed or planned sprint (no sprint-scoped set) means the operator
   should pass `--all` or a `story-key` — surface the helper's stderr message.
 
 **1b. Extract findings (frontmatter + Findings only — never the body).** For
