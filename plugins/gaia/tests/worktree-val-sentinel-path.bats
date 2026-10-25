@@ -216,19 +216,21 @@ YAML
     || { echo "unexpected bare fallback: $output" >&2; false; }
 }
 
-@test "resolver prefix boundary: E900-S5 does not match E900-S50" {
-  # Arrange: only E900-S50 exists, not E900-S5.
+@test "resolver prefix boundary rejects longer key that shares a numeric prefix" {
+  # Arrange: only a longer key story exists, not the short one.
   local root="$TEST_TMP/proj-boundary"
-  mkdir -p "$root/.gaia/artifacts/implementation-artifacts/epic-E900-bound/E900-S50-other-story"
+  local long_key="E900-S50"
+  local short_key="E900-S5"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts/epic-E900-bound/${long_key}-other-story"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
 
-  # E900-S5 must NOT match E900-S50.
-  PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S5 --write
+  # The short key must NOT match the longer key's directory.
+  PROJECT_ROOT="$root" run "$RESOLVER" atdd "$short_key" --write
   [ "$status" -eq 0 ]
-  [[ "$output" != *"E900-S50"* ]] \
+  [[ "$output" != *"${long_key}"* ]] \
     || { echo "false prefix match: $output" >&2; false; }
   # Should fall back to the bare key.
-  [[ "$output" == *"epic-E900/E900-S5/atdd.md"* ]] \
+  [[ "$output" == *"epic-E900/${short_key}/atdd.md"* ]] \
     || { echo "unexpected path: $output" >&2; false; }
 }
 
