@@ -88,6 +88,21 @@ case "$TYPE" in
     ;;
 esac
 
+# Resolve the project root through the shared walk-up helper so that the
+# resolver works correctly from a linked worktree CWD (the walk-up excludes
+# the main checkout and finds the project root above it).
+if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GAIA_PROJECT_ROOT:-}" ]; then
+  _own_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _gaia_paths="$_own_dir/gaia-paths.sh"
+  if [ -f "$_gaia_paths" ]; then
+    unset _GAIA_PATHS_LOADED 2>/dev/null || true
+    # shellcheck source=gaia-paths.sh
+    . "$_gaia_paths"
+    # _GAIA_ROOT_CANON is the resolved project root from the walk-up.
+    PROJECT_ROOT="${_GAIA_ROOT_CANON:-$PWD}"
+  fi
+  unset _own_dir _gaia_paths
+fi
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
 TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}"
 IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"
@@ -103,7 +118,9 @@ STORY_DIR_NAME=""
 if [ -d "$IMPL_ARTIFACTS_DIR" ]; then
   # Rung 0: find story dir in the current layout (no stories/ sublevel):
   #   epic-{slug}/{STORY_KEY}-{slug}/
-  match=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+  # The find requires the parent to be an epic-* directory so directories
+  # under unrelated parents (e.g. sprint-archive/) do not match.
+  match=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" -path "*/epic-*/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
   if [ -n "$match" ]; then
     STORY_DIR_NAME=$(basename "$match")
     case "$STORY_DIR_NAME" in
@@ -133,11 +150,13 @@ fi
 # Fallback when no story dir exists in implementation-artifacts: scan the
 # test-artifacts tree for existing slug-bearing directories so the resolved
 # path preserves the epic and story slugs. Without this scan, the fallback
-# produces slug-less paths (epic-E<n>/E<n>-S<m>/) while the review-gate mirror
-# writes to the slugged form, creating duplicates.
+# produces slug-less paths while the review-gate mirror writes to the slugged
+# form, creating duplicates.
 if [ -z "$EPIC_DIR" ] || [ -z "$STORY_DIR_NAME" ]; then
   EPIC_ID="${STORY_KEY%%-*}"
   if [ -z "$EPIC_DIR" ] && [ -d "$TEST_ARTIFACTS_DIR" ]; then
+    # Require the epic dir name to start with the exact ID followed by a
+    # hyphen, preventing epic-E9 from matching epic-E90-slug.
     _epic_match=$(find "$TEST_ARTIFACTS_DIR" -maxdepth 1 -type d -name "epic-${EPIC_ID}-*" 2>/dev/null | head -1 || true)
     if [ -n "$_epic_match" ]; then
       EPIC_DIR=$(basename "$_epic_match")
@@ -147,9 +166,15 @@ if [ -z "$EPIC_DIR" ] || [ -z "$STORY_DIR_NAME" ]; then
   [ -z "$EPIC_DIR" ] && EPIC_DIR="epic-${EPIC_ID}"
 
   if [ -z "$STORY_DIR_NAME" ] && [ -d "$TEST_ARTIFACTS_DIR/$EPIC_DIR" ]; then
+    # Require the story dir name to start with the exact key followed by
+    # a hyphen, preventing E900-S5 from matching E900-S50-slug.
     _story_match=$(find "$TEST_ARTIFACTS_DIR/$EPIC_DIR" -maxdepth 1 -type d -name "${STORY_KEY}-*" 2>/dev/null | head -1 || true)
     if [ -n "$_story_match" ]; then
-      STORY_DIR_NAME=$(basename "$_story_match")
+      _story_base=$(basename "$_story_match")
+      case "$_story_base" in
+        "${STORY_KEY}-"*) STORY_DIR_NAME="$_story_base" ;;
+      esac
+      unset _story_base
     fi
     unset _story_match
   fi
