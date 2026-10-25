@@ -797,8 +797,8 @@ _stage_diff() {
 # --- new file similar to existing must still be scanned (no false pairing) ---
 
 @test "new file similar to existing production file is scanned in full" {
-  # A brand-new file that shares content with an existing one must not be
-  # paired against it (which would hide its sentinel). With -C this fails.
+  # A brand-new file that shares content with an existing one must be
+  # scanned in full, not paired against it.
   ( cd "$REPO" && git checkout -q main )
   {
     local _i=1
@@ -905,4 +905,128 @@ _stage_diff() {
   [ "$status" -ne 0 ]
   grep -qF "XXX" <<<"$output"
   grep -qF " leading.sh:2" <<<"$output"
+}
+
+# --- exempt→production move alongside a production rename ---
+
+@test "fixture moved to production is caught even when a similar prod file is renamed" {
+  # B-1 shape: the fixture shares content with the production file being
+  # renamed. Without the separate --no-renames call, git pairs the
+  # fixture's new path with the renamed prod file's old path instead.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB  # fixture sentinel\n'
+  } > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file + similar fixture" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" )
+  ( cd "$REPO" && git mv "$FIXTURE_FIXTURES_PATH" "$FIXTURE_PROD_OTHER_PATH" )
+  ( cd "$REPO" && git commit -q -m "feat: rename prod + move fixture to prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+}
+
+@test "delete plus create of similar file does not hide sentinel" {
+  # Same shape as B-1 but with explicit delete + create instead of rename.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  rm "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo clean_extra\n'
+  } > "$REPO/$FIXTURE_PROD_ALT_PATH"
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: delete + create + copy fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+# --- pass-8 regression: -C / diff.renames=copies shapes with shared STUB ---
+
+@test "new production file sharing a STUB line with existing file is caught" {
+  # With -C or diff.renames=copies, git pairs the new file with the
+  # existing one and the shared STUB line shows as unchanged, hiding it.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file with shared STUB" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: new file sharing STUB line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "fixture copy to production with shared STUB while similar prod file is modified" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  printf 'echo STUB shared\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod + fixture both with STUB" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo modified line\n' >> "$REPO/$FIXTURE_PROD_PATH"
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: modify prod + copy fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "file split keeping STUB in both halves catches it in the new file" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 5 ]; do printf 'echo part_a_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB in both\n'
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo part_b_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with STUB in middle" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Keep first half + STUB in original
+  {
+    local _i=1
+    while [ "$_i" -le 5 ]; do printf 'echo part_a_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB in both\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  # Put second half + STUB in new file
+  {
+    printf 'echo STUB in both\n'
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo part_b_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: split file keeping STUB" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
 }

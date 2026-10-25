@@ -102,11 +102,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # files against similar existing ones and hide their sentinels.
 _git_diff() { git -c core.quotePath=false -c diff.renames=true --no-pager diff --no-color --no-ext-diff --no-textconv --text "$@"; }
 
-# git diff --name-status -z: NUL-delimited, includes old paths for renames
-# and copies (R/C entries carry two NUL-separated paths: old then new).
-# Including the old path in the pathspec lets git pair the rename so the
-# diff shows only genuinely added lines, not every line as new.
-DIFF_PATHS=()
+# git diff --name-status -z: NUL-delimited, includes old paths for renames.
+# Paths are split into two lists: PROD_PATHS for production renames (both
+# old+new path, so git can pair them) and EXEMPT_TO_PROD for exempt→production
+# moves (new path only, scanned in a separate --no-renames call so rename
+# detection against the production list cannot steal the pairing).
+PROD_PATHS=()
+EXEMPT_TO_PROD=()
 _is_exempt() {
   case "$1" in
     gaia-framework/plugins/gaia/tests/*) return 0 ;;
@@ -131,13 +133,13 @@ _is_exempt() {
           _status=""
           _is_exempt "$_new_path" && continue
           if _is_exempt "$_old_path"; then
-            # Moving from an exempt path INTO production: include only
-            # the new path so git treats every line as added (full scan).
-            DIFF_PATHS+=("$_new_path")
+            # Moving from an exempt path INTO production: new path only,
+            # scanned separately with --no-renames (full scan).
+            EXEMPT_TO_PROD+=("$_new_path")
           else
             # Rename within production: include both paths so git can
             # pair the rename and show only genuinely added lines.
-            DIFF_PATHS+=("$_old_path" "$_new_path")
+            PROD_PATHS+=("$_old_path" "$_new_path")
           fi
           ;;
         D*)
@@ -150,14 +152,14 @@ _is_exempt() {
           IFS= read -r -d '' _spath || true
           _status=""
           _is_exempt "$_spath" && continue
-          DIFF_PATHS+=("$_spath")
+          PROD_PATHS+=("$_spath")
           ;;
       esac
     fi
   done
 } < <(_git_diff --name-status -z "${BASE_REF}..HEAD" 2>/dev/null || true)
 
-if [[ ${#DIFF_PATHS[@]} -eq 0 ]]; then
+if [[ ${#PROD_PATHS[@]} -eq 0 ]] && [[ ${#EXEMPT_TO_PROD[@]} -eq 0 ]]; then
   log "no production-path changes in $BASE_REF..HEAD — skipping forbidden-sentinel scan"
   exit 0
 fi
@@ -188,7 +190,16 @@ trap 'rm -f "$GREP_FILE" "$ADDED_TEXT" "$ADDED_META"' EXIT
 #     false-negative on lines whose text begins with "++").
 # The -w (word-boundary) flag on the final grep prevents false positives
 # from mktemp randomisation templates (e.g. "...XXXXXX").
-_git_diff -U0 "${BASE_REF}..HEAD" -- "${DIFF_PATHS[@]}" 2>/dev/null \
+# Two separate diff calls: production renames (with rename pairing) and
+# exempt→production moves (with --no-renames, so rename detection cannot
+# steal the pairing against production files in the same diff).
+{
+  [[ ${#PROD_PATHS[@]} -gt 0 ]] && \
+    _git_diff -U0 "${BASE_REF}..HEAD" -- "${PROD_PATHS[@]}" 2>/dev/null
+  [[ ${#EXEMPT_TO_PROD[@]} -gt 0 ]] && \
+    _git_diff --no-renames -U0 "${BASE_REF}..HEAD" -- "${EXEMPT_TO_PROD[@]}" 2>/dev/null
+  true
+} \
   | tr '\000' ' ' \
   | awk -v metafile="$ADDED_META" '
     # escape_safe: compute the metadata-safe form of file once per header
