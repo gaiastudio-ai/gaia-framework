@@ -10,9 +10,10 @@
 #   - The active sprint is read from the TOP-LEVEL `sprint_id:` key.
 #   - The committed stories are read from the TOP-LEVEL `stories:` sequence
 #     (each entry has a `key:`).
-#   - Gating: only when the top-level `status:` is `active` do we sprint-scope;
-#     a `closed`/`planned` sprint emits nothing with an informational message
-#     on stderr (the caller decides whether to fall back to --all).
+#   - Gating: the sprint must be in a runnable lifecycle state (`active` or
+#     `review`) for sprint-scoped resolution to proceed. A `closed`/`planned`
+#     sprint emits nothing with an informational message on stderr (the caller
+#     decides whether to fall back to --all).
 #
 # --all (full historical sweep): emit every `*.md` story file under the
 # implementation-artifacts tree — the legacy behavior, preserved on demand.
@@ -67,10 +68,13 @@ fi
 # Top-level lifecycle status (NOT a nested block — `status:` is the sprint
 # lifecycle value). Read the first top-level `status:` line.
 sprint_status_value=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }' "$SPRINT_STATUS")
-if [ "$sprint_status_value" != "active" ]; then
-  printf 'resolve-sprint-stories.sh: active sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
-  exit 0
-fi
+case "${sprint_status_value:-}" in
+  active|review) ;;  # runnable states — proceed
+  *)
+    printf 'resolve-sprint-stories.sh: active sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
+    exit 0
+    ;;
+esac
 
 # ---------- Migrate legacy items: key via shared library ----------
 # sprint-state.sh runs its own migration at pre-dispatch, but this script is

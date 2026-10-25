@@ -830,3 +830,4 @@
 3	action-items-write-retro-interop.bats	56
 1	sprint-state-key-alignment.bats	50
 3	worktree-walk-up-isolation.bats	42
+2	resolve-sprint-stories-review-status.bats	5

@@ -326,6 +326,7 @@ core	reconcile-cross-stack.bats
 core	republish-on-stale.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
+core	resolve-sprint-stories-review-status.bats
 core	retired-migrate-stories.bats
 core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
