@@ -210,26 +210,39 @@ YAML
   git -C "$_FX_MAIN" worktree remove "$_FX_WT" --force 2>/dev/null || true
 }
 
-# Prose guard: each SKILL.md call site must tell the consumer to use the
-# writer's printed path, not to recompute the hash independently.
-@test "no SKILL.md call site tells the asserter to compute sha256 independently" {
+# Prose guard: each SKILL.md call site must (a) NOT tell the consumer to
+# independently compute sha256, and (b) positively state that the consumer
+# captures the writer's stdout path. A missing or renamed file fails.
+@test "every SKILL.md call site captures the writer stdout path" {
   local skills_dir
   skills_dir="$(cd "$SCRIPTS_DIR/../skills" && pwd)"
-  local offending=""
+  local missing="" negative="" positive_missing=""
   for f in \
     "$skills_dir/gaia-dev-story/SKILL.md" \
     "$skills_dir/gaia-fix-story/SKILL.md" \
     "$skills_dir/gaia-validate-story/SKILL.md" \
     "$skills_dir/gaia-add-feature/SKILL.md" \
     "$skills_dir/gaia-val-validate/SKILL.md"; do
-    [ -f "$f" ] || continue
-    # The old pattern: "sentinel_path = ... sha256(...)" or "derived from sha256"
+    if [ ! -f "$f" ]; then
+      missing="${missing}$(basename "$(dirname "$f")")/SKILL.md\n"
+      continue
+    fi
+    # Negative: the old sha256 formula must be absent.
     if grep -q 'sentinel_path.*=.*sha256\|derived from.*sha256.*hex' "$f" 2>/dev/null; then
-      offending="${offending}${f}\n"
+      negative="${negative}$(basename "$(dirname "$f")")\n"
+    fi
+    # Positive: an asserter call site must mention capturing stdout as the
+    # sentinel path (not just a history section that mentions stdout).
+    if ! grep -q 'capture.*stdout.*sentinel_path\|stdout as.*sentinel_path' "$f" 2>/dev/null; then
+      positive_missing="${positive_missing}$(basename "$(dirname "$f")")\n"
     fi
   done
-  [ -z "$offending" ] \
-    || { printf 'FAIL: call sites still compute hash independently:\n%b' "$offending" >&2; false; }
+  [ -z "$missing" ] \
+    || { printf 'FAIL: SKILL.md file(s) missing:\n%b' "$missing" >&2; false; }
+  [ -z "$negative" ] \
+    || { printf 'FAIL: call sites still compute hash independently:\n%b' "$negative" >&2; false; }
+  [ -z "$positive_missing" ] \
+    || { printf 'FAIL: call sites do not mention capturing writer stdout:\n%b' "$positive_missing" >&2; false; }
 }
 
 # ---------------------------------------------------------------------------
@@ -339,7 +352,7 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# F1: GAIA_MEMORY_PATH isolation — must not break the resolver
+# Env-var isolation: unrelated path overrides must not break the resolver
 # ---------------------------------------------------------------------------
 
 @test "resolver tolerates an unrelated GAIA_MEMORY_PATH during walk-up" {

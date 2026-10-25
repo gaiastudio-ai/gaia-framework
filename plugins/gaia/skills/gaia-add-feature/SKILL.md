@@ -89,10 +89,11 @@ and delegation model are preserved verbatim from the legacy workflow.
   The classification is decided in Step 1; the Val gate runs
   unconditionally in Step 2 before any cascade or direct edit.
 - **No inline Val — Val MUST be dispatched via the main-turn Agent tool.**
-  After dispatch, the skill MUST source
+  After dispatch, the skill MUST write the sentinel via
+  `write-val-envelope.sh --envelope <json>` using Val's returned envelope,
+  capture its stdout as `{sentinel_path}`, source
   `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
-  `assert_agent_envelope {sentinel_path}` against the envelope sentinel
-  the Val persona writes; on non-zero exit HALT with the
+  `assert_agent_envelope {sentinel_path}`; on non-zero exit HALT with the
   canonical error string. The LLM MUST NOT pass off its own inline review
   as a Val outcome, MUST NOT compose a synthetic structured return JSON in
   the parent thread, and MUST NOT set `status: PASS` without a real
@@ -127,8 +128,8 @@ Contract). Dispatch is pinned to `model: claude-opus-4-7` and `effort: high`
 (Val opus pin — validation rigor is the contract).
 
 **Envelope-assert step.** After the Agent call returns
-and BEFORE consuming the Val verdict, the skill MUST write the sentinel via
-`write-val-envelope.sh` and **capture its stdout as `{sentinel_path}`**. Then source
+and BEFORE consuming the Val verdict, the skill MUST write the sentinel by passing Val's returned envelope to
+`write-val-envelope.sh --envelope <json>` and **capture its stdout as `{sentinel_path}`**. Then source
 `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
 `assert_agent_envelope {sentinel_path}` using the captured path.
 On non-zero exit, HALT with the canonical error string
@@ -410,7 +411,7 @@ adhere to the hygiene rules at dispatch time.
   pre-synthesized findings in the prompt.
 - **Envelope-assert step.** After the Agent call
   returns and BEFORE consuming the Val verdict, write the sentinel via
-  `write-val-envelope.sh` and **capture its stdout as `{sentinel_path}`**. Then source
+  `write-val-envelope.sh --envelope <json>` and **capture its stdout as `{sentinel_path}`**. Then source
   `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
   `assert_agent_envelope {sentinel_path}` using the captured path.
   For `/gaia-add-feature` the validation target is an in-memory intake
