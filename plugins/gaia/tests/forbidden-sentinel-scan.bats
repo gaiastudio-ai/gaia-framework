@@ -703,12 +703,26 @@ _stage_diff() {
 }
 
 @test "move from production into docs with sentinel exits 0" {
+  # A production file moved into an exempt tree must not be scanned.
+  # The base file is 5 lines so git detects the move as a rename even
+  # after appending a MOCK line (83% similarity > 50% threshold).
   ( cd "$REPO" && git checkout -q main )
-  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  {
+    printf 'echo line1\n'
+    printf 'echo STUB pre-existing\n'
+    printf 'echo line3\n'
+    printf 'echo line4\n'
+    printf 'echo line5\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
   ( cd "$REPO" && git add -A && git commit -q -m "base: prod with sentinel" && git checkout -q feat-test )
   ( cd "$REPO" && git merge -q main --no-edit )
   local docfile="docs/archive/old.sh"
-  ( cd "$REPO" && mkdir -p "$(dirname "$docfile")" && git mv "$FIXTURE_PROD_OTHER_PATH" "$docfile" && git commit -q -m "feat: move to docs" )
+  ( cd "$REPO" && mkdir -p "$(dirname "$docfile")" && git mv "$FIXTURE_PROD_OTHER_PATH" "$docfile" )
+  # Append a sentinel so the move is not content-identical. If the
+  # exempt-destination guard (~:134) is removed, both paths enter the
+  # production list, git pairs them, and the added MOCK fires a HALT.
+  printf 'echo MOCK added\n' >> "$REPO/$docfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: move to docs" )
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -eq 0 ]
 }
@@ -910,9 +924,9 @@ _stage_diff() {
 # --- exempt→production move alongside a production rename ---
 
 @test "fixture moved to production is caught even when a similar prod file is renamed" {
-  # B-1 shape: the fixture shares content with the production file being
-  # renamed. Without the separate --no-renames call, git pairs the
-  # fixture's new path with the renamed prod file's old path instead.
+  # The fixture shares content with the production file being renamed.
+  # Without the separate --no-renames call, git pairs the fixture's new
+  # path with the renamed prod file's old path instead.
   ( cd "$REPO" && git checkout -q main )
   {
     local _i=1
@@ -931,11 +945,11 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
-  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:11 —" <<<"$output"
 }
 
 @test "delete plus create of similar file does not hide sentinel" {
-  # Same shape as B-1 but with explicit delete + create instead of rename.
+  # Explicit delete + create instead of rename.
   ( cd "$REPO" && git checkout -q main )
   {
     local _i=1
@@ -955,13 +969,14 @@ _stage_diff() {
   cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1 —" <<<"$output"
 }
 
-# --- pass-8 regression: -C / diff.renames=copies shapes with shared STUB ---
+# --- copy detection disabled: similar new files scanned in full ---
 
 @test "new production file sharing a STUB line with existing file is caught" {
-  # With -C or diff.renames=copies, git pairs the new file with the
-  # existing one and the shared STUB line shows as unchanged, hiding it.
+  # A new file sharing content with an existing production file must be
+  # scanned in full. Copy detection is off, so the new file is unpaired.
   ( cd "$REPO" && git checkout -q main )
   {
     local _i=1
@@ -1029,4 +1044,88 @@ _stage_diff() {
   [ "$status" -ne 0 ]
   grep -qF "STUB" <<<"$output"
   grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+# --- exempt-only diff exits 0 with no false HALT ---
+
+@test "diff touching only exempt paths exits 0 with no HALT" {
+  # A diff that touches only test fixtures and docs must produce no
+  # production-path entries and exit cleanly.
+  _stage_diff "$FIXTURE_FIXTURES_PATH" 'echo STUB in fixture'
+  local docfile="docs/notes/plan.md"
+  _stage_diff "$docfile" 'MOCK placeholder'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+  # No HALT message at all
+  if grep -qF "HALT:" <<<"$output"; then
+    printf 'assert: unexpected HALT in output: %s\n' "$output" >&2
+    return 1
+  fi
+}
+
+# --- inexact production rename alongside fixture move with shared content ---
+
+@test "fixture moved to production is caught alongside an inexact prod rename with shared content" {
+  # A production file (old.sh) is renamed to new.sh with minor edits, and
+  # a fixture with identical content is moved into production (n.sh).
+  # Git detects both renames at the name-status level. When the fixture's
+  # path is correctly routed to the separate no-renames call, its sentinel
+  # is caught in full. When the fixture's path is misrouted into the
+  # production list, the content diff's rename detection pairs old.sh
+  # with n.sh (higher similarity than old.sh→new.sh), hiding the sentinel.
+  ( cd "$REPO" && git checkout -q main )
+  local prefix="gaia-public/plugins/gaia"
+  local oldprod="${prefix}/scripts/old.sh"
+  local newprod="${prefix}/scripts/new.sh"
+  local fixture="${prefix}/tests/fixtures/shared.sh"
+  local movedfix="${prefix}/scripts/n.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$oldprod")" "$(dirname "$fixture")" )
+  # Fixture: 30 shared lines + STUB on line 31.
+  # Production file: same 30 shared lines + STUB + one extra line.
+  # The extra line makes the production file slightly different so git
+  # pairs shared.sh→n.sh (100%) over old.sh→n.sh (97%).
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo STUB shared sentinel\n'
+    printf 'echo prod_only_line\n'
+  } > "$REPO/$oldprod"
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$fixture"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod + fixture with shared content" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Inexact rename: keep most lines but change the last two.
+  # Similarity (~93%) is high enough for git to detect as rename.
+  ( cd "$REPO" && git mv "$oldprod" "$newprod" )
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo clean replacement\n'
+    printf 'echo prod_only_rewritten\n'
+  } > "$REPO/$newprod"
+  # Move fixture into production
+  ( cd "$REPO" && git mv "$fixture" "$movedfix" )
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: inexact rename + move fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  helper_out="$output"
+  # The moved fixture's STUB at line 31 must be caught
+  grep -qF "$movedfix:31 —" <<<"$helper_out"
+  # The production rename's pre-existing STUB must NOT appear
+  if grep -qF "$newprod" <<<"$helper_out"; then
+    printf 'assert: renamed production file should not HALT: %s\n' "$helper_out" >&2
+    return 1
+  fi
 }

@@ -174,9 +174,10 @@ ADDED_TEXT="$(mktemp "${TMPDIR:-/tmp}/fss-text.XXXXXX")"
 ADDED_META="$(mktemp "${TMPDIR:-/tmp}/fss-meta.XXXXXX")"
 trap 'rm -f "$GREP_FILE" "$ADDED_TEXT" "$ADDED_META"' EXIT
 
-# Single-pass scan: one git-diff call, NUL-stripped, piped into awk that
-# extracts added lines into a text file and parallel metadata file, then
-# one grep pass over the text file.
+# Single-pass scan: two git-diff calls (production renames, then
+# exempt-to-production moves), NUL-stripped, piped into awk that extracts
+# added lines into a text file and parallel metadata file, then one grep
+# pass over the text file.
 #
 # tr strips NUL bytes that --text exposes from binary files; without it
 # GNU grep treats the whole text file as binary and prints nothing.
