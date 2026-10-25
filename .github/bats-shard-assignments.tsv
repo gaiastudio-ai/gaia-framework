@@ -829,8 +829,4 @@
 4	review-gate-hardening.bats	28
 3	action-items-write-retro-interop.bats	56
 1	sprint-state-key-alignment.bats	50
-3	worktree-walk-up-isolation.bats	21
-3	worktree-walk-up-isolation.bats	27
-3	worktree-walk-up-isolation.bats	29
-3	worktree-walk-up-isolation.bats	32
 3	worktree-walk-up-isolation.bats	42
