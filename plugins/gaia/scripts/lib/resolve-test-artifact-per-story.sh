@@ -99,7 +99,9 @@ if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GA
     # shellcheck source=gaia-paths.sh
     . "$_gaia_paths"
     # _GAIA_ROOT_CANON is the resolved project root from the walk-up.
-    PROJECT_ROOT="${_GAIA_ROOT_CANON:-$PWD}"
+    # The chain pattern preserves an existing value (defense-in-depth for
+    # the detector; the surrounding guard already verified it is empty).
+    PROJECT_ROOT="${PROJECT_ROOT:-${_GAIA_ROOT_CANON:-$PWD}}"
   fi
   unset _own_dir _gaia_paths
 fi
