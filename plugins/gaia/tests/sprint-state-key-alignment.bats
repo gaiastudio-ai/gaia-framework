@@ -213,7 +213,7 @@ teardown() {
   [ "$status" -eq 0 ]
   # The output must NOT say "auto_close_eligible: true" — the in-progress story
   # under the legacy items: key must be visible to the done-check.
-  [[ "$output" != *"auto_close_eligible: true"* ]]
+  [[ "$output" != *"auto_close_eligible: true"* ]] || false
   # Non-vacuous: confirm the yaml was migrated (items: -> stories:) so the
   # done-check actually inspected the entries rather than vacuously passing.
   grep -q '^stories:' "$SPRINT_STATUS_YAML"
@@ -265,8 +265,8 @@ teardown() {
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
-  [[ "$output" == *"E900-S2"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
+  [[ "$output" == *"E900-S2"* ]] || false
   local count
   count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
   [ "$count" -eq 2 ]
@@ -300,7 +300,7 @@ teardown() {
   [ "$count" -eq 20 ]
 
   for i in $(seq 1 20); do
-    [[ "$output" == *"E900-S${i}"* ]]
+    [[ "$output" == *"E900-S${i}"* ]] || false
   done
 }
 
@@ -327,7 +327,7 @@ teardown() {
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -367,8 +367,8 @@ YAML
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
   # After migration: both stories present (items entries merged into stories).
-  [[ "$output" == *"E900-S1"* ]]
-  [[ "$output" == *"E900-S2"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
+  [[ "$output" == *"E900-S2"* ]] || false
   local count
   count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
   [ "$count" -eq 2 ]
@@ -411,8 +411,8 @@ YAML
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
   # After migration: both stories present.
-  [[ "$output" == *"E900-S1"* ]]
-  [[ "$output" == *"E900-S2"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
+  [[ "$output" == *"E900-S2"* ]] || false
   local count
   count=$(printf '%s\n' "$output" | grep -c 'E900-S' || true)
   [ "$count" -eq 2 ]
@@ -514,7 +514,7 @@ YAML
 @test "all fixtures use temp dirs, not the real plugin tree" {
   [ -d "$TEST_TMP" ]
   [ -d "$TEST_TMP/project/.gaia/state" ]
-  [[ "$SPRINT_STATUS_YAML" == "$TEST_TMP"* ]]
+  [[ "$SPRINT_STATUS_YAML" == "$TEST_TMP"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -655,7 +655,7 @@ YAML
     --sprint-yaml "$SPRINT_STATUS_YAML" \
     --impl-root "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --test-artifacts "$TEST_TMP/project/.gaia/artifacts/test-artifacts"
-  [[ "$output" != *"no stories[] roster found"* ]]
+  [[ "$output" != *"no stories[] roster found"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -691,7 +691,7 @@ YAML
 
   run bash "$close" --force
   [ "$status" -ne 0 ]
-  [[ "$output" == *"non-done stories"* ]] || [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"non-done stories"* ]] || [[ "$output" == *"E900-S1"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -739,7 +739,7 @@ _start_holder() {
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
 
   local after_cksum
   after_cksum=$(cksum < "$SPRINT_STATUS_YAML")
@@ -826,7 +826,7 @@ _start_holder() {
   # A stories-only reader returns no points from items-only yaml, so
   # median_minutes_per_point shows "(no data)". The union reader joins
   # the points and computes a numeric median.
-  [[ "$output" != *'median_minutes_per_point: (no data)'* ]]
+  [[ "$output" != *'median_minutes_per_point: (no data)'* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -850,7 +850,7 @@ _start_holder() {
   if [ -f "$cache" ]; then
     grep -q 'E900-S3' "$cache"
   else
-    [[ "$output" == *"E900-S3"* ]]
+    [[ "$output" == *"E900-S3"* ]] || false
   fi
 }
 
@@ -907,8 +907,8 @@ MD
   PROJECT_ROOT="$TEST_TMP/project" \
     run bash "$dash"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
-  [[ "$output" == *"E900-S3"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
+  [[ "$output" == *"E900-S3"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -933,12 +933,12 @@ MD
   local s1_count
   s1_count=$(printf '%s\n' "$output" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$output" == *"E900-S1"*"done"* ]]
+  [[ "$output" == *"E900-S1"*"done"* ]] || false
   # E900-S2 and E900-S3 must each appear.
-  [[ "$output" == *"E900-S2"* ]]
-  [[ "$output" == *"E900-S3"* ]]
+  [[ "$output" == *"E900-S2"* ]] || false
+  [[ "$output" == *"E900-S3"* ]] || false
   # Total must be 3 stories.
-  [[ "$output" == *"Total: 3 stories"* ]]
+  [[ "$output" == *"Total: 3 stories"* ]] || false
 }
 
 @test "dashboard under held lock stories-first: each key once, stories wins, correct total" {
@@ -959,10 +959,10 @@ MD
   local s1_count
   s1_count=$(printf '%s\n' "$output" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$output" == *"E900-S1"*"done"* ]]
-  [[ "$output" == *"E900-S2"* ]]
-  [[ "$output" == *"E900-S3"* ]]
-  [[ "$output" == *"Total: 3 stories"* ]]
+  [[ "$output" == *"E900-S1"*"done"* ]] || false
+  [[ "$output" == *"E900-S2"* ]] || false
+  [[ "$output" == *"E900-S3"* ]] || false
+  [[ "$output" == *"Total: 3 stories"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -978,7 +978,7 @@ MD
 
   run bash "$close" --force
   [ "$status" -ne 0 ]
-  [[ "$output" == *"non-done"* ]] || [[ "$output" == *"E900-S"* ]]
+  [[ "$output" == *"non-done"* ]] || [[ "$output" == *"E900-S"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1053,7 +1053,7 @@ YAML
   PROJECT_CONFIG="$TEST_TMP/project/.gaia/config/project-config.yaml" \
     run bash "$ic" --candidate sprint-B --active sprint-A
   [ "$status" -ne 0 ]
-  [[ "$output" == *"FAIL"* ]]
+  [[ "$output" == *"FAIL"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1103,8 +1103,8 @@ YAML
   PROJECT_CONFIG="$TEST_TMP/project/.gaia/config/project-config.yaml" \
     run bash "$ig" "$sf" --candidate sprint-B
   [ "$status" -eq 0 ]
-  [[ "$output" == *"PASS rules (a),(b)"* ]]
-  [[ "$output" != *"FAIL rule (b)"* ]]
+  [[ "$output" == *"PASS rules (a),(b)"* ]] || false
+  [[ "$output" != *"FAIL rule (b)"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1139,8 +1139,8 @@ MD
   # The yaml says in-progress, so the done percentage must be 0.
   # A stories-only reader misses the yaml entry, falls back to the story file
   # which says done, and reports 100%.
-  [[ "$output" == *"0%"* ]] || [[ "$output" == *"| 0 |"*"| 1 |"* ]]
-  [[ "$output" != *"100%"* ]]
+  [[ "$output" == *"0%"* ]] || [[ "$output" == *"| 0 |"*"| 1 |"* ]] || false
+  [[ "$output" != *"100%"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1207,7 +1207,7 @@ YAML
   [ "$status" -eq 0 ]
   # The items-only key's review must appear. A stories-only yq query
   # would exclude E900-S3 from SPRINT_STORY_KEYS, dropping its review.
-  [[ "$output" == *"E900-S3"* ]]
+  [[ "$output" == *"E900-S3"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1224,9 +1224,9 @@ YAML
     --impl-dir "$TEST_TMP/project/.gaia/artifacts/implementation-artifacts" \
     --sprint-status "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
-  [[ "$output" == *"E900-S2"* ]]
-  [[ "$output" == *"E900-S3"* ]]
+  [[ "$output" == *"E900-S1"* ]] || false
+  [[ "$output" == *"E900-S2"* ]] || false
+  [[ "$output" == *"E900-S3"* ]] || false
 }
 
 # ===========================================================================
@@ -1254,7 +1254,7 @@ YAML
   run --separate-stderr bash "$SPRINT_STATE" detect-auto-close
   [ "$status" -ne 0 ]
   local all_out="${output}${stderr}"
-  [[ "$all_out" == *"lock timeout"* ]] || [[ "$all_out" == *"fail-closed"* ]]
+  [[ "$all_out" == *"lock timeout"* ]] || [[ "$all_out" == *"fail-closed"* ]] || false
 
   local after_cksum
   after_cksum=$(cksum < "$SPRINT_STATUS_YAML")
@@ -1281,7 +1281,7 @@ YAML
 
   run bash -c '. "'"$acquirelib"'"; . "'"$lib"'"; migrate_items_to_stories "'"$SPRINT_STATUS_YAML"'" --lock "'"$lockfile"'"'
   [ "$status" -ne 0 ]
-  [[ "$output" == *"lock timeout"* ]] || [[ "$output" == *"fail-closed"* ]]
+  [[ "$output" == *"lock timeout"* ]] || [[ "$output" == *"fail-closed"* ]] || false
 }
 
 # ---------------------------------------------------------------------------
@@ -1380,7 +1380,7 @@ YAML
   # The refusal message goes to stderr.
   [ "$status" -ne 0 ]
   local all_out="${output}${stderr}"
-  [[ "$all_out" == *"E900-S2"* ]] || [[ "$all_out" == *"E900-S3"* ]] || [[ "$all_out" == *"non-done"* ]]
+  [[ "$all_out" == *"E900-S2"* ]] || [[ "$all_out" == *"E900-S3"* ]] || [[ "$all_out" == *"non-done"* ]] || false
   # The per-sprint file must have been migrated (items: removed).
   grep -q '^stories:' "$state_dir/sprint-status-sprint-C.yaml"
   run grep -q '^items:' "$state_dir/sprint-status-sprint-C.yaml"
@@ -1450,7 +1450,7 @@ YAML
   SPRINT_STATUS_YAML="$SPRINT_STATUS_YAML" \
     run bash "$iso_dir/close.sh" --force
   [ "$status" -ne 0 ]
-  [[ "$output" == *"non-done"* ]] || [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"non-done"* ]] || [[ "$output" == *"E900-S1"* ]] || false
 }
 
 @test "throughput without migration lib: items-only yaml joins points via fallback" {
@@ -1474,8 +1474,8 @@ YAML
 
   run bash "$iso_dir/throughput-telemetry.sh" --events "$TEST_TMP/events.jsonl" --sprint-yaml "$SPRINT_STATUS_YAML"
   [ "$status" -eq 0 ]
-  [[ "$output" != *"command not found"* ]]
-  [[ "$output" != *'median_minutes_per_point: (no data)'* ]]
+  [[ "$output" != *"command not found"* ]] || false
+  [[ "$output" != *'median_minutes_per_point: (no data)'* ]] || false
 }
 
 # ===========================================================================
@@ -1515,8 +1515,8 @@ YAML
   out="$(bash -c '. "'"$ppo"'"; ppo_read_phases "'"$SPRINT_STATUS_YAML"'"')"
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$out" == *"E900-S1|2"* ]]
-  [[ "$out" == *"E900-S2|1"* ]]
+  [[ "$out" == *"E900-S1|2"* ]] || false
+  [[ "$out" == *"E900-S2|1"* ]] || false
 }
 
 @test "ppo_read_phases: stories-first both-keys gives stories phase" {
@@ -1551,8 +1551,8 @@ YAML
   out="$(bash -c '. "'"$ppo"'"; ppo_read_phases "'"$SPRINT_STATUS_YAML"'"')"
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$out" == *"E900-S1|2"* ]]
-  [[ "$out" == *"E900-S2|1"* ]]
+  [[ "$out" == *"E900-S1|2"* ]] || false
+  [[ "$out" == *"E900-S2|1"* ]] || false
 }
 
 @test "sprint-progress-audit: items-first both-keys gives stories status" {
@@ -1588,8 +1588,8 @@ YAML
   out="$(_SPRINT_STATUS="$SPRINT_STATUS_YAML" bash -c '_SPRINT_STATUS="'"$SPRINT_STATUS_YAML"'"; . "'"$fn_file"'"; _extract_stories')"
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$out" == *"E900-S1|done"* ]]
-  [[ "$out" == *"E900-S2|ready-for-dev"* ]]
+  [[ "$out" == *"E900-S1|done"* ]] || false
+  [[ "$out" == *"E900-S2|ready-for-dev"* ]] || false
 }
 
 @test "sprint-progress-audit: stories-first both-keys gives stories status" {
@@ -1624,8 +1624,8 @@ YAML
   out="$(_SPRINT_STATUS="$SPRINT_STATUS_YAML" bash -c '_SPRINT_STATUS="'"$SPRINT_STATUS_YAML"'"; . "'"$fn_file"'"; _extract_stories')"
   s1_count=$(printf '%s\n' "$out" | grep -c 'E900-S1' || true)
   [ "$s1_count" -eq 1 ]
-  [[ "$out" == *"E900-S1|done"* ]]
-  [[ "$out" == *"E900-S2|ready-for-dev"* ]]
+  [[ "$out" == *"E900-S1|done"* ]] || false
+  [[ "$out" == *"E900-S2|ready-for-dev"* ]] || false
 }
 
 @test "dashboard: items entry with empty title renders correctly" {
@@ -1660,20 +1660,18 @@ MD
   PROJECT_ROOT="$TEST_TMP/project" \
     run bash "$dash"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E900-S1"* ]]
-  # With tab separator (S1 mutant), the empty title collapses and the status
-  # shifts into the title column. The points value "2" must appear after the
-  # status, not in the status column. Extract the story row and verify the
-  # column layout: status ("in-progress") followed by points ("2").
+  [[ "$output" == *"E900-S1"* ]] || false
+  # When the buffer separator does not preserve empty fields, the empty
+  # title collapses and the status shifts into the title column. Verify the
+  # status is in its own column, not shifted left.
   local row
   row="$(printf '%s\n' "$output" | grep 'E900-S1')"
   # The dashboard format is: %-12s %-38s %-14s %s
-  # With correct parsing: "  E900-S1      <empty-title>                       in-progress    2"
-  # With S1 collapse:     "  E900-S1      in-progress                         2              "
-  # Assert points "2" appears after "in-progress" (correct column order).
-  [[ "$row" == *"in-progress"*"2"* ]]
+  # Correct:  "  E900-S1      <empty>                                 in-progress    2"
+  # Shifted:  "  E900-S1      in-progress                             2              "
+  [[ "$row" == *"in-progress"*"2"* ]] || false
   # Also: the title column (chars 15-52) must NOT contain "in-progress".
   # In the correct layout, the title is empty so that range is spaces.
   local title_col="${row:14:38}"
-  [[ "$title_col" != *"in-progress"* ]]
+  [[ "$title_col" != *"in-progress"* ]] || false
 }
