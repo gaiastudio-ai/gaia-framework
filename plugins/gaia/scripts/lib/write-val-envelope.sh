@@ -304,26 +304,27 @@ else
     done <<< "$_resolver_out"
     # Normalize worktree-relative roots so sentinels always land at the
     # shared project root, not inside a per-story worktree's .gaia/.
-    _eff_root="${PROJECT_ROOT:-${_project_root:-.}}"
-    _eff_root="$(_resolve_past_worktree "$_eff_root")"
+    # The resolved PROJECT_ROOT is stored in _resolved_PROJECT_ROOT so
+    # both branches reference the canonical root.
+    _resolved_PROJECT_ROOT="$(_resolve_past_worktree "${PROJECT_ROOT:-${_project_root:-.}}")"
     if [ -n "$_checkpoint_path" ]; then
       case "$_checkpoint_path" in
         /*) _checkpoint_path="$(_resolve_past_worktree "$_checkpoint_path")"
             CHECKPOINT_DIR="$_checkpoint_path" ;;
-        *)  CHECKPOINT_DIR="${_eff_root}/$_checkpoint_path" ;;
+        *)  CHECKPOINT_DIR="${_resolved_PROJECT_ROOT}/$_checkpoint_path" ;;
       esac
     else
       # .gaia/memory/checkpoints is the only location — the legacy
       # _memory/checkpoints fallback was removed with the consolidation migration.
-      CHECKPOINT_DIR="${_eff_root}/.gaia/memory/checkpoints"
+      CHECKPOINT_DIR="${_resolved_PROJECT_ROOT}/.gaia/memory/checkpoints"
     fi
-    unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line _eff_root
+    unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line _resolved_PROJECT_ROOT
   else
     # CWD-relative branch when resolve-config.sh is missing.
-    _eff_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}}"
-    _eff_root="$(_resolve_past_worktree "${_eff_root:-.}")"
-    CHECKPOINT_DIR="${_eff_root}/.gaia/memory/checkpoints"
-    unset _eff_root
+    _resolved_PROJECT_ROOT="$(_resolve_past_worktree "${PROJECT_ROOT:+${PROJECT_ROOT%/}}")"
+    : "${_resolved_PROJECT_ROOT:=.}"
+    CHECKPOINT_DIR="${_resolved_PROJECT_ROOT}/.gaia/memory/checkpoints"
+    unset _resolved_PROJECT_ROOT
   fi
 fi
 
