@@ -101,32 +101,59 @@ IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/
 EPIC_DIR=""
 STORY_DIR_NAME=""
 if [ -d "$IMPL_ARTIFACTS_DIR" ]; then
-  # Find epic-X dir containing stories/{STORY_KEY}-* with strict prefix-boundary
-  # match (so E1-S2 never matches E1-S21-*).
-  match=$(find "$IMPL_ARTIFACTS_DIR" -type d -path "*/epic-*/stories/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+  # Rung 0: find story dir in the current layout (no stories/ sublevel):
+  #   epic-{slug}/{STORY_KEY}-{slug}/
+  match=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" 2>/dev/null | head -1 || true)
   if [ -n "$match" ]; then
     STORY_DIR_NAME=$(basename "$match")
-    # Validate STORY_KEY- prefix boundary (strict prefix-boundary match)
     case "$STORY_DIR_NAME" in
       "${STORY_KEY}-"*)
-        EPIC_DIR_PATH=$(dirname "$(dirname "$match")")
-        EPIC_DIR=$(basename "$EPIC_DIR_PATH")
+        EPIC_DIR=$(basename "$(dirname "$match")")
         ;;
-      *) STORY_DIR_NAME="" ;;
+      *) match=""; STORY_DIR_NAME="" ;;
     esac
+  fi
+  # Rung 0b: legacy layout with stories/ sublevel:
+  #   epic-{slug}/stories/{STORY_KEY}-{slug}/
+  if [ -z "$match" ]; then
+    match=$(find "$IMPL_ARTIFACTS_DIR" -type d -path "*/epic-*/stories/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$match" ]; then
+      STORY_DIR_NAME=$(basename "$match")
+      case "$STORY_DIR_NAME" in
+        "${STORY_KEY}-"*)
+          EPIC_DIR_PATH=$(dirname "$(dirname "$match")")
+          EPIC_DIR=$(basename "$EPIC_DIR_PATH")
+          ;;
+        *) match=""; STORY_DIR_NAME="" ;;
+      esac
+    fi
   fi
 fi
 
-# Fallback when no story dir exists yet: extract epic_id from the story key
-# (E1-S1 → E1) and use the bare key as the story-dir name. The producer that
-# calls this later will be writing INTO this dir; a subsequent rename to the
-# canonical {key}-{slug} form is honored by rung-0 resolution above.
-if [ -z "$EPIC_DIR" ]; then
+# Fallback when no story dir exists in implementation-artifacts: scan the
+# test-artifacts tree for existing slug-bearing directories so the resolved
+# path preserves the epic and story slugs. Without this scan, the fallback
+# produces slug-less paths (epic-E<n>/E<n>-S<m>/) while the review-gate mirror
+# writes to the slugged form, creating duplicates.
+if [ -z "$EPIC_DIR" ] || [ -z "$STORY_DIR_NAME" ]; then
   EPIC_ID="${STORY_KEY%%-*}"
-  EPIC_DIR="epic-${EPIC_ID}"
-fi
-if [ -z "$STORY_DIR_NAME" ]; then
-  STORY_DIR_NAME="$STORY_KEY"
+  if [ -z "$EPIC_DIR" ] && [ -d "$TEST_ARTIFACTS_DIR" ]; then
+    _epic_match=$(find "$TEST_ARTIFACTS_DIR" -maxdepth 1 -type d -name "epic-${EPIC_ID}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$_epic_match" ]; then
+      EPIC_DIR=$(basename "$_epic_match")
+    fi
+    unset _epic_match
+  fi
+  [ -z "$EPIC_DIR" ] && EPIC_DIR="epic-${EPIC_ID}"
+
+  if [ -z "$STORY_DIR_NAME" ] && [ -d "$TEST_ARTIFACTS_DIR/$EPIC_DIR" ]; then
+    _story_match=$(find "$TEST_ARTIFACTS_DIR/$EPIC_DIR" -maxdepth 1 -type d -name "${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$_story_match" ]; then
+      STORY_DIR_NAME=$(basename "$_story_match")
+    fi
+    unset _story_match
+  fi
+  [ -z "$STORY_DIR_NAME" ] && STORY_DIR_NAME="$STORY_KEY"
 fi
 
 # Drop the `stories/` middle level for symmetry with the review-gate

@@ -190,6 +190,23 @@ if [ -z "$PERSONA_SIG" ]; then
   die "envelope persona_sig field must be non-empty"
 fi
 
+# ---------- Worktree-awareness helper ----------
+# When a path points inside a .gaia-worktrees/<key>/ directory (a linked
+# worktree managed by the sprint runner), resolve to the project root above
+# it — the parent of the .gaia-worktrees/ directory. This ensures sentinels
+# always land at the shared project root and artifact-path hashes are
+# consistent regardless of whether the caller is inside a worktree.
+_resolve_past_worktree() {
+  case "$1" in
+    */.gaia-worktrees/*)
+      printf '%s' "${1%%/.gaia-worktrees/*}"
+      ;;
+    *)
+      printf '%s' "$1"
+      ;;
+  esac
+}
+
 # ---------- Compute sentinel path ----------
 ARTIFACT_PATH=$(printf '%s' "$ENVELOPE" | jq -r '.artifact_path')
 
@@ -225,6 +242,9 @@ else
   fi
   unset _own_dir_h _resolver_h
 fi
+# Normalize worktree-relative project root to the actual project root so the
+# hash is consistent between worktree and non-worktree callers.
+_PROJECT_ROOT_FOR_HASH="$(_resolve_past_worktree "$_PROJECT_ROOT_FOR_HASH")"
 case "$ARTIFACT_PATH" in
   /*)
     if [ -n "$_PROJECT_ROOT_FOR_HASH" ]; then
@@ -239,6 +259,17 @@ case "$ARTIFACT_PATH" in
     ;;
 esac
 unset _PROJECT_ROOT_FOR_HASH
+# Strip any residual worktree path prefix from the artifact path so the hash
+# is always over the canonical project-relative form. A relative artifact_path
+# like ".gaia-worktrees/<key>/foo" becomes "foo"; an absolute one that was
+# already stripped above but still carries the worktree segment is caught here.
+case "$ARTIFACT_PATH" in
+  .gaia-worktrees/*)
+    _wt_tail="${ARTIFACT_PATH#.gaia-worktrees/}"
+    ARTIFACT_PATH="${_wt_tail#*/}"
+    unset _wt_tail
+    ;;
+esac
 HASH=$(printf '%s' "$ARTIFACT_PATH" | shasum -a 256 | cut -c1-16)
 
 # When CHECKPOINT_PATH env-var is unset, resolve the canonical checkpoint dir
@@ -271,20 +302,28 @@ else
           ;;
       esac
     done <<< "$_resolver_out"
+    # Normalize worktree-relative roots so sentinels always land at the
+    # shared project root, not inside a per-story worktree's .gaia/.
+    _eff_root="${PROJECT_ROOT:-${_project_root:-.}}"
+    _eff_root="$(_resolve_past_worktree "$_eff_root")"
     if [ -n "$_checkpoint_path" ]; then
       case "$_checkpoint_path" in
-        /*) CHECKPOINT_DIR="$_checkpoint_path" ;;
-        *)  CHECKPOINT_DIR="${PROJECT_ROOT:-${_project_root:-.}}/$_checkpoint_path" ;;
+        /*) _checkpoint_path="$(_resolve_past_worktree "$_checkpoint_path")"
+            CHECKPOINT_DIR="$_checkpoint_path" ;;
+        *)  CHECKPOINT_DIR="${_eff_root}/$_checkpoint_path" ;;
       esac
     else
       # .gaia/memory/checkpoints is the only location — the legacy
       # _memory/checkpoints fallback was removed with the consolidation migration.
-      CHECKPOINT_DIR="${PROJECT_ROOT:-${_project_root:-.}}/.gaia/memory/checkpoints"
+      CHECKPOINT_DIR="${_eff_root}/.gaia/memory/checkpoints"
     fi
-    unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line
+    unset _own_dir _resolver _resolver_out _project_root _checkpoint_path _line _eff_root
   else
     # CWD-relative branch when resolve-config.sh is missing.
-    CHECKPOINT_DIR="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints"
+    _eff_root="${PROJECT_ROOT:+${PROJECT_ROOT%/}}"
+    _eff_root="$(_resolve_past_worktree "${_eff_root:-.}")"
+    CHECKPOINT_DIR="${_eff_root}/.gaia/memory/checkpoints"
+    unset _eff_root
   fi
 fi
 
