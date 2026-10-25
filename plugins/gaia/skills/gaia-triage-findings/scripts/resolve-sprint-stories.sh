@@ -2,12 +2,12 @@
 # resolve-sprint-stories.sh — emit the set of story files /gaia-triage-findings
 # should scan.
 #
-# DEFAULT (sprint-scoped): read the active sprint from sprint-status.yaml and
+# DEFAULT (sprint-scoped): read the current sprint from sprint-status.yaml and
 # emit the file paths of ONLY its committed stories. This is the token-budget /
 # performance fix — historical stories from prior sprints have already been
 # triaged and re-scanning them wastes context.
 #
-#   - The active sprint is read from the TOP-LEVEL `sprint_id:` key.
+#   - The current sprint is read from the TOP-LEVEL `sprint_id:` key.
 #   - The committed stories are read from the TOP-LEVEL `stories:` sequence
 #     (each entry has a `key:`).
 #   - Gating: the sprint must be in a runnable lifecycle state (`active` or
@@ -71,7 +71,7 @@ sprint_status_value=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*
 case "${sprint_status_value:-}" in
   active|review) ;;  # runnable states — proceed
   *)
-    printf 'resolve-sprint-stories.sh: active sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
+    printf 'resolve-sprint-stories.sh: runnable sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
     exit 0
     ;;
 esac

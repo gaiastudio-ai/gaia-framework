@@ -14,11 +14,11 @@ yolo_steps: [3]
 
 ## Mission
 
-Scan the active sprint's committed story files (by default) for populated Findings tables and triage each finding into actionable backlog stories. New story files are created with complete frontmatter (all 15 required fields populated, `status: backlog`, `sprint_id: null`). The source story's findings table stays intact so re-triage is idempotent-friendly (dedup by source story key + finding text if re-run).
+Scan the current sprint's committed story files (by default) for populated Findings tables and triage each finding into actionable backlog stories. New story files are created with complete frontmatter (all 15 required fields populated, `status: backlog`, `sprint_id: null`). The source story's findings table stays intact so re-triage is idempotent-friendly (dedup by source story key + finding text if re-run).
 
-**Scan scope.** The default scan is **sprint-scoped** — only the stories committed to the active sprint (resolved from `sprint-status.yaml`) are scanned, and findings are extracted via a deterministic frontmatter+Findings extractor that never reads full story bodies (token-budget protection). Pass `--all` for the full historical sweep across every story, or a `story-key` to scan a single story. See Step 1.
+**Scan scope.** The default scan is **sprint-scoped** — only the stories committed to the current sprint (active or review status, resolved from `sprint-status.yaml`) are scanned, and findings are extracted via a deterministic frontmatter+Findings extractor that never reads full story bodies (token-budget protection). Pass `--all` for the full historical sweep across every story, or a `story-key` to scan a single story. See Step 1.
 
-**Mandatory sprint-close prerequisite.** `/gaia-triage-findings` is a required step in the sprint-close sequence (**review → triage → retro → close**). When it runs against the active sprint, its finalize step writes a per-sprint proof-of-run sentinel (`triage-findings-{sprint_id}-completed.json`); `/gaia-sprint-close` refuses to close a sprint whose triage sentinel is absent. Run triage after `/gaia-sprint-review` and before `/gaia-retro`.
+**Mandatory sprint-close prerequisite.** `/gaia-triage-findings` is a required step in the sprint-close sequence (**review → triage → retro → close**). When it runs against the current sprint, its finalize step writes a per-sprint proof-of-run sentinel (`triage-findings-{sprint_id}-completed.json`); `/gaia-sprint-close` refuses to close a sprint whose triage sentinel is absent. Run triage after `/gaia-sprint-review` and before `/gaia-retro`.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/triage-findings/` XML engine workflow. Follows the scripts-over-LLM principle where applicable.
 

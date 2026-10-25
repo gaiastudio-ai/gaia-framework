@@ -82,5 +82,5 @@ EOF
   run --separate-stderr "$RESOLVE" --impl-dir "$IMPL" --sprint-status "$TMP/closed.yaml"
   [ "$status" -eq 0 ]
   [ -z "$output" ]                       # no story paths on stdout
-  [[ "$stderr" == *"active sprint not found"* ]]
+  [[ "$stderr" == *"sprint not found"* ]]
 }

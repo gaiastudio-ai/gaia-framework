@@ -6,6 +6,7 @@
 # continuing to refuse "closed" and "planned" sprints.
 
 load 'test_helper.bash'
+bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
@@ -49,7 +50,7 @@ YAML
 @test "resolver returns stories when sprint status is review" {
   local fixture
   fixture="$(_write_fixture review)"
-  run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
+  run --separate-stderr bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
   # stdout must contain the resolved story path
   grep -q 'E900-S1' <<<"$output" || false
@@ -59,47 +60,42 @@ YAML
 @test "resolver returns stories when sprint status is active" {
   local fixture
   fixture="$(_write_fixture active)"
-  run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
+  run --separate-stderr bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
   grep -q 'E900-S1' <<<"$output" || false
 }
 
-# ---- AC3: sprint in "closed" exits 0 with no stories ----
-@test "resolver emits no stories and warns when sprint status is closed" {
+# ---- AC3: sprint in "closed" exits 0, warns on stderr, stdout empty ----
+@test "resolver emits no stories and warns on stderr when sprint status is closed" {
   local fixture
   fixture="$(_write_fixture closed)"
-  run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
+  run --separate-stderr bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
-  # stderr carries the warning (captured in output by bats `run`)
-  grep -q 'active sprint not found' <<<"$output" || false
-  # stdout must NOT contain a resolved story path — the only line matching
-  # the synthetic key (if any) is the stderr diagnostic, not a file path.
-  local path_lines
-  path_lines="$(grep -v 'active sprint not found' <<<"$output" | grep -c 'E900-S1' || true)"
-  [ "$path_lines" -eq 0 ] || false
+  # stdout must be empty (no story paths)
+  [ -z "$output" ] || false
+  # stderr carries the warning
+  grep -q 'sprint not found' <<<"$stderr" || false
 }
 
-# ---- AC3: sprint in "planned" exits 0 with no stories ----
-@test "resolver emits no stories and warns when sprint status is planned" {
+# ---- AC3: sprint in "planned" exits 0, warns on stderr, stdout empty ----
+@test "resolver emits no stories and warns on stderr when sprint status is planned" {
   local fixture
   fixture="$(_write_fixture planned)"
-  run bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
+  run --separate-stderr bash "$RESOLVER" --impl-dir "$IMPL_DIR" --sprint-status "$fixture"
   [ "$status" -eq 0 ] || false
-  grep -q 'active sprint not found' <<<"$output" || false
-  # stdout must NOT contain a resolved story path (same check as the closed test).
-  local path_lines
-  path_lines="$(grep -v 'active sprint not found' <<<"$output" | grep -c 'E900-S1' || true)"
-  [ "$path_lines" -eq 0 ] || false
+  # stdout must be empty (no story paths)
+  [ -z "$output" ] || false
+  # stderr carries the warning
+  grep -q 'sprint not found' <<<"$stderr" || false
 }
 
 # ---- AC5: bash 3.2 portability — no case-clause fallthroughs ----
 @test "resolver script contains no bash 4+ case fallthroughs" {
   # Detect ;& (bash 4.0 fallthrough) and ;;& (bash 4.0 resume-testing).
-  # grep -P uses a lookbehind so ";;" does not match the ";& " pattern.
-  # Fallback: two separate greps for portability.
+  # Two separate greps; the first uses (^|[^;]) to catch ;& at column 0.
   local hits=0
-  # ;& not preceded by another ; (i.e. not ;;)
-  hits=$(grep -cE '[^;];&' "$RESOLVER" || true)
+  # ;& not preceded by another ; (i.e. not ;;), including at line start
+  hits=$(grep -cE '(^|[^;]);&' "$RESOLVER" || true)
   [ "$hits" -eq 0 ] || false
   # ;;& (resume-testing)
   hits=$(grep -cE ';;&' "$RESOLVER" || true)
