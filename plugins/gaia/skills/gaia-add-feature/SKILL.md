@@ -127,10 +127,10 @@ Contract). Dispatch is pinned to `model: claude-opus-4-7` and `effort: high`
 (Val opus pin — validation rigor is the contract).
 
 **Envelope-assert step.** After the Agent call returns
-and BEFORE consuming the Val verdict, the skill MUST source
+and BEFORE consuming the Val verdict, the skill MUST write the sentinel via
+`write-val-envelope.sh` and **capture its stdout as `{sentinel_path}`**. Then source
 `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
-`assert_agent_envelope {sentinel_path}` where
-`{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
+`assert_agent_envelope {sentinel_path}` using the captured path.
 On non-zero exit, HALT with the canonical error string
 `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}` —
 DO NOT fall through to a self-judged verdict. Closes the regression class
@@ -409,10 +409,10 @@ adhere to the hygiene rules at dispatch time.
   computation and DO NOT include a sentinel JSON template or any
   pre-synthesized findings in the prompt.
 - **Envelope-assert step.** After the Agent call
-  returns and BEFORE consuming the Val verdict, source
+  returns and BEFORE consuming the Val verdict, write the sentinel via
+  `write-val-envelope.sh` and **capture its stdout as `{sentinel_path}`**. Then source
   `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke
-  `assert_agent_envelope {sentinel_path}` where
-  `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(artifact_path) first 16 hex}.json`.
+  `assert_agent_envelope {sentinel_path}` using the captured path.
   For `/gaia-add-feature` the validation target is an in-memory intake
   object, not an on-disk artifact — the orchestrator MUST pass the
   `feature_id` (e.g. `AF-YYYY-MM-DD-N`) as the literal `artifact_path`

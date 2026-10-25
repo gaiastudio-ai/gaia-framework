@@ -70,7 +70,7 @@ Preserve all existing valid content -- only modify sections flagged by findings.
   ```
   /gaia-val-validate {resolved_story_path}
   ```
-- **Envelope assertion.** After `/gaia-val-validate` returns and BEFORE consuming its verdict, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}` where `{sentinel_path} = .gaia/memory/checkpoints/val-envelope-{sha256(resolved_story_path) first 16 hex}.json`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md`.
+- **Envelope assertion.** After `/gaia-val-validate` returns and the sentinel has been written via `write-val-envelope.sh`, use the **sentinel path printed on its stdout** as `{sentinel_path}`. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib/assert-agent-envelope.sh` and invoke `assert_agent_envelope {sentinel_path}`. On non-zero exit, HALT with the canonical error string `HALT: Val agent envelope assertion failed — sentinel absent, malformed, or forged at {path}`. DO NOT fall through to a self-judged validation verdict. This directly closes the bypass class documented in memory rule `feedback_fix_story_inline_revalidation_bypass.md`.
 - Parse the re-validation result:
   - If zero CRITICAL/WARNING findings: validation is clean -- proceed to Step 6.
   - If CRITICAL/WARNING findings remain: do NOT loop. Exit non-zero with a summary listing each remaining finding. Leave status at `validating`.

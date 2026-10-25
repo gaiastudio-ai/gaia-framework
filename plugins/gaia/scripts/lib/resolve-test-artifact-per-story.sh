@@ -95,9 +95,30 @@ if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GA
   _own_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   _gaia_paths="$_own_dir/gaia-paths.sh"
   if [ -f "$_gaia_paths" ]; then
-    unset _GAIA_PATHS_LOADED 2>/dev/null || true
+    # Isolate the source: save and clear env vars that gaia-paths.sh
+    # validates (GAIA_*_PATH overrides, metachar rejection). Without this,
+    # an unrelated GAIA_MEMORY_PATH=/tmp/elsewhere or a metachar in any
+    # override makes gaia-paths.sh exit 1 and breaks the resolver.
+    _save_GAIA_CONFIG_PATH="${GAIA_CONFIG_PATH:-}"
+    _save_GAIA_ARTIFACTS_PATH="${GAIA_ARTIFACTS_PATH:-}"
+    _save_GAIA_STATE_PATH="${GAIA_STATE_PATH:-}"
+    _save_GAIA_MEMORY_PATH="${GAIA_MEMORY_PATH:-}"
+    _save_GAIA_CUSTOM_PATH="${GAIA_CUSTOM_PATH:-}"
+    _save_GAIA_KNOWLEDGE_PATH="${GAIA_KNOWLEDGE_PATH:-}"
+    unset GAIA_CONFIG_PATH GAIA_ARTIFACTS_PATH GAIA_STATE_PATH \
+          GAIA_MEMORY_PATH GAIA_CUSTOM_PATH GAIA_KNOWLEDGE_PATH \
+          _GAIA_PATHS_LOADED 2>/dev/null || true
     # shellcheck source=gaia-paths.sh
     . "$_gaia_paths"
+    # Restore the saved overrides so downstream consumers still see them.
+    [ -n "$_save_GAIA_CONFIG_PATH" ] && export GAIA_CONFIG_PATH="$_save_GAIA_CONFIG_PATH"
+    [ -n "$_save_GAIA_ARTIFACTS_PATH" ] && export GAIA_ARTIFACTS_PATH="$_save_GAIA_ARTIFACTS_PATH"
+    [ -n "$_save_GAIA_STATE_PATH" ] && export GAIA_STATE_PATH="$_save_GAIA_STATE_PATH"
+    [ -n "$_save_GAIA_MEMORY_PATH" ] && export GAIA_MEMORY_PATH="$_save_GAIA_MEMORY_PATH"
+    [ -n "$_save_GAIA_CUSTOM_PATH" ] && export GAIA_CUSTOM_PATH="$_save_GAIA_CUSTOM_PATH"
+    [ -n "$_save_GAIA_KNOWLEDGE_PATH" ] && export GAIA_KNOWLEDGE_PATH="$_save_GAIA_KNOWLEDGE_PATH"
+    unset _save_GAIA_CONFIG_PATH _save_GAIA_ARTIFACTS_PATH _save_GAIA_STATE_PATH \
+          _save_GAIA_MEMORY_PATH _save_GAIA_CUSTOM_PATH _save_GAIA_KNOWLEDGE_PATH
     # _GAIA_ROOT_CANON is the resolved project root from the walk-up.
     # The chain pattern preserves an existing value (defense-in-depth for
     # the detector; the surrounding guard already verified it is empty).
@@ -122,7 +143,14 @@ if [ -d "$IMPL_ARTIFACTS_DIR" ]; then
   #   epic-{slug}/{STORY_KEY}-{slug}/
   # The find requires the parent to be an epic-* directory so directories
   # under unrelated parents (e.g. sprint-archive/) do not match.
-  match=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" -path "*/epic-*/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+  _all_matches=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" -path "*/epic-*/${STORY_KEY}-*" 2>/dev/null || true)
+  _match_count=$(printf '%s\n' "$_all_matches" | grep -c '.' || true)
+  if [ "$_match_count" -gt 1 ]; then
+    printf 'resolve-test-artifact-per-story: WARNING: %d directories match %s; using the first\n' \
+      "$_match_count" "$STORY_KEY" >&2
+  fi
+  match=$(printf '%s\n' "$_all_matches" | head -1)
+  unset _all_matches _match_count
   if [ -n "$match" ]; then
     STORY_DIR_NAME=$(basename "$match")
     case "$STORY_DIR_NAME" in

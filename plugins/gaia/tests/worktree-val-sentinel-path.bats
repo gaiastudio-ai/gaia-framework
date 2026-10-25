@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # worktree-val-sentinel-path.bats — regression tests for Val sentinel
-# placement, hash integrity, and test-artifact slug preservation in
-# linked worktrees.
+# placement, hash integrity, asserter agreement, and test-artifact slug
+# preservation in linked worktrees.
 
 load 'test_helper.bash'
 
@@ -13,22 +13,18 @@ setup() {
 }
 
 teardown() {
-  # Clean up any worktrees we created.
   if [ -n "${_WT_MAIN:-}" ] && [ -d "$_WT_MAIN" ]; then
     git -C "$_WT_MAIN" worktree prune 2>/dev/null || true
   fi
   common_teardown
 }
 
-# Helper: build a valid Val envelope JSON.
 _envelope() {
   local artifact="${1:-.gaia/artifacts/planning-artifacts/prd.md}"
   local verdict="${2:-PASSED}"
   printf '{"agent":"val","persona_sig":"val-dev-test","timestamp":"2026-10-25T12:00:00Z","artifact_path":"%s","verdict":"%s"}' "$artifact" "$verdict"
 }
 
-# Helper: set up a fully isolated fixture project with config, a git main
-# checkout, and a linked worktree. Sets _FX_ROOT, _FX_MAIN, _FX_WT, _FX_HOME.
 _setup_worktree_fixture() {
   _FX_HOME="$TEST_TMP/home"
   _FX_ROOT="$TEST_TMP/home/proj"
@@ -48,9 +44,11 @@ planning_artifacts: .gaia/artifacts/planning-artifacts
 implementation_artifacts: .gaia/artifacts/implementation-artifacts
 creative_artifacts: .gaia/artifacts/creative-artifacts
 YAML
-  mkdir -p "$_FX_MAIN"
+  mkdir -p "$_FX_MAIN/.gaia"
+  printf 'placeholder\n' > "$_FX_MAIN/.gaia/ci-config.yaml"
   git -C "$_FX_MAIN" init -q 2>/dev/null
-  git -C "$_FX_MAIN" -c user.name=t -c user.email=t@t commit --allow-empty -m init -q 2>/dev/null
+  git -C "$_FX_MAIN" add -A 2>/dev/null
+  git -C "$_FX_MAIN" -c user.name=t -c user.email=t@t commit -m init -q 2>/dev/null
   _WT_MAIN="$_FX_MAIN"
   git -C "$_FX_MAIN" worktree add "$_FX_WT" -b wt-branch -q 2>/dev/null
   mkdir -p "$_FX_WT/src"
@@ -135,14 +133,12 @@ YAML
 }
 
 # ---------------------------------------------------------------------------
-# AC2: distinct artifacts produce distinct sentinel keys; writer and
-# asserter agree on ONE key formula
+# AC2: writer and asserter agree; distinct artifacts produce distinct keys
 # ---------------------------------------------------------------------------
 
 @test "three different artifact paths produce three distinct sentinel keys" {
   local cp="$TEST_TMP/cp-distinct"
   mkdir -p "$cp"
-
   local a1=".gaia-worktrees/E900-S1/plan.md"
   local a2=".gaia-worktrees/E900-S2/plan.md"
   local a3="plan.md"
@@ -153,7 +149,6 @@ YAML
   [ "$status" -eq 0 ]
   CHECKPOINT_PATH="$cp" run "$HELPER" --envelope "$(_envelope "$a3" PASSED)"
   [ "$status" -eq 0 ]
-
   local count
   count=$(find "$cp" -name 'val-envelope-*.json' -not -name '*.tmp*' | wc -l)
   count=$(echo "$count" | tr -d ' ')
@@ -161,48 +156,80 @@ YAML
     || { echo "expected 3 distinct sentinels, got $count" >&2; ls "$cp/" >&2; false; }
 }
 
-@test "writer hash matches the asserter formula from project root" {
-  local root="$TEST_TMP/proj-agree"
-  local cp="$root/.gaia/memory/checkpoints"
+@test "writer hash matches the asserter: project-relative path" {
+  local cp="$TEST_TMP/cp-agree"
   mkdir -p "$cp"
   local artifact=".gaia/artifacts/planning-artifacts/prd.md"
-  local envelope
-  envelope=$(_envelope "$artifact")
-
   local sentinel_path
-  sentinel_path=$(CHECKPOINT_PATH="$cp" "$HELPER" --envelope "$envelope")
+  sentinel_path=$(CHECKPOINT_PATH="$cp" "$HELPER" --envelope "$(_envelope "$artifact")")
   [ -n "$sentinel_path" ]
-
-  local expected_hash
-  expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
-  local expected_path="$cp/val-envelope-${expected_hash}.json"
-
-  [ "$sentinel_path" = "$expected_path" ] \
-    || { echo "writer=$sentinel_path asserter=$expected_path" >&2; false; }
-
   source "$ASSERT_HELPER"
   run assert_agent_envelope "$sentinel_path"
   [ "$status" -eq 0 ]
 }
 
-@test "writer hash matches asserter formula for an absolute artifact path" {
+@test "writer hash matches the asserter: absolute artifact path" {
   local root="$TEST_TMP/proj-abs"
   local cp="$root/.gaia/memory/checkpoints"
   mkdir -p "$cp"
   local rel="artifacts/plan.md"
   local abs="$root/$rel"
-  local envelope
-  envelope=$(_envelope "$abs")
-
   local sentinel_path
-  sentinel_path=$(PROJECT_ROOT="$root" CHECKPOINT_PATH="$cp" "$HELPER" --envelope "$envelope")
+  sentinel_path=$(PROJECT_ROOT="$root" CHECKPOINT_PATH="$cp" "$HELPER" --envelope "$(_envelope "$abs")")
   [ -n "$sentinel_path" ]
-
+  # The writer normalizes to project-relative; verify the hash matches.
   local expected_hash
   expected_hash=$(printf '%s' "$rel" | shasum -a 256 | cut -c1-16)
-  local expected_path="$cp/val-envelope-${expected_hash}.json"
-  [ "$sentinel_path" = "$expected_path" ] \
-    || { echo "writer=$sentinel_path expected=$expected_path" >&2; false; }
+  [[ "$sentinel_path" == *"val-envelope-${expected_hash}.json" ]] \
+    || { echo "hash mismatch: $sentinel_path" >&2; false; }
+  source "$ASSERT_HELPER"
+  run assert_agent_envelope "$sentinel_path"
+  [ "$status" -eq 0 ]
+}
+
+@test "writer then asserter end-to-end from a real worktree CWD" {
+  _setup_worktree_fixture
+  local root_canon
+  root_canon="$(cd "$_FX_ROOT" && pwd -P)"
+  local home_canon
+  home_canon="$(cd "$_FX_HOME" && pwd -P)"
+  local artifact=".gaia/artifacts/planning-artifacts/prd.md"
+
+  # Write + assert from inside the worktree with no env vars.
+  run bash -c "
+    export HOME='$home_canon'
+    unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT CHECKPOINT_PATH _GAIA_PATHS_LOADED GAIA_NO_PROJECT_WALKUP
+    cd '$_FX_WT/src'
+    sp=\$('$HELPER' --envelope '$(_envelope "$artifact")')
+    [ -n \"\$sp\" ] || { echo 'writer failed'; exit 1; }
+    source '$ASSERT_HELPER'
+    assert_agent_envelope \"\$sp\"
+  "
+  [ "$status" -eq 0 ] || { echo "FAILED: $output" >&2; false; }
+
+  git -C "$_FX_MAIN" worktree remove "$_FX_WT" --force 2>/dev/null || true
+}
+
+# Prose guard: each SKILL.md call site must tell the consumer to use the
+# writer's printed path, not to recompute the hash independently.
+@test "no SKILL.md call site tells the asserter to compute sha256 independently" {
+  local skills_dir
+  skills_dir="$(cd "$SCRIPTS_DIR/../skills" && pwd)"
+  local offending=""
+  for f in \
+    "$skills_dir/gaia-dev-story/SKILL.md" \
+    "$skills_dir/gaia-fix-story/SKILL.md" \
+    "$skills_dir/gaia-validate-story/SKILL.md" \
+    "$skills_dir/gaia-add-feature/SKILL.md" \
+    "$skills_dir/gaia-val-validate/SKILL.md"; do
+    [ -f "$f" ] || continue
+    # The old pattern: "sentinel_path = ... sha256(...)" or "derived from sha256"
+    if grep -q 'sentinel_path.*=.*sha256\|derived from.*sha256.*hex' "$f" 2>/dev/null; then
+      offending="${offending}${f}\n"
+    fi
+  done
+  [ -z "$offending" ] \
+    || { printf 'FAIL: call sites still compute hash independently:\n%b' "$offending" >&2; false; }
 }
 
 # ---------------------------------------------------------------------------
@@ -213,7 +240,6 @@ YAML
   local root="$TEST_TMP/proj-slug"
   mkdir -p "$root/.gaia/artifacts/implementation-artifacts/epic-E900-test-slug/E900-S5-my-story-slug"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S5 --write
   [ "$status" -eq 0 ]
   [[ "$output" == *"epic-E900-test-slug/E900-S5-my-story-slug/atdd.md"* ]] \
@@ -224,7 +250,6 @@ YAML
   local root="$TEST_TMP/proj-legacy-slug"
   mkdir -p "$root/.gaia/artifacts/implementation-artifacts/epic-E900-legacy/stories/E900-S6-legacy-slug"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S6 --write
   [ "$status" -eq 0 ]
   [[ "$output" == *"epic-E900-legacy/E900-S6-legacy-slug/atdd.md"* ]] \
@@ -258,7 +283,6 @@ YAML
 @test "fallback scans test-artifacts for slug-bearing epic/story dirs" {
   local root="$TEST_TMP/proj-fb-slug"
   mkdir -p "$root/.gaia/artifacts/test-artifacts/epic-E900-fallback-epic/E900-S7-fallback-story"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S7 --write
   [ "$status" -eq 0 ]
   [[ "$output" == *"epic-E900-fallback-epic/E900-S7-fallback-story/atdd.md"* ]] \
@@ -268,7 +292,6 @@ YAML
 @test "fallback produces bare key when no slugged dirs exist" {
   local root="$TEST_TMP/proj-bare"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S8 --write
   [ "$status" -eq 0 ]
   [[ "$output" == *"epic-E900/E900-S8/atdd.md"* ]] \
@@ -279,7 +302,6 @@ YAML
   local root="$TEST_TMP/proj-nonepic"
   mkdir -p "$root/.gaia/artifacts/implementation-artifacts/sprint-archive/E900-S4-old"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S4 --write
   [ "$status" -eq 0 ]
   [[ "$output" != *"sprint-archive"* ]] \
@@ -292,7 +314,6 @@ YAML
   local short_key="E900-S5"
   mkdir -p "$root/.gaia/artifacts/implementation-artifacts/epic-E900-bound/${long_key}-other-story"
   mkdir -p "$root/.gaia/artifacts/test-artifacts"
-
   PROJECT_ROOT="$root" run "$RESOLVER" atdd "$short_key" --write
   [ "$status" -eq 0 ]
   [[ "$output" != *"${long_key}"* ]] \
@@ -301,18 +322,47 @@ YAML
 
 @test "fallback prefix boundary rejects longer epic and story key prefixes" {
   local root="$TEST_TMP/proj-fb-bound"
-  # Only longer-key variants exist; the exact prefix must not match them.
-  mkdir -p "$root/.gaia/artifacts/test-artifacts/epic-E9000-wrong/E900-S50-other"
-
+  # The fixture has epic-E900-slug with BOTH E900-S5-real and E900-S50-other,
+  # plus a longer-epic epic-E9000-wrong.
+  mkdir -p "$root/.gaia/artifacts/test-artifacts/epic-E900-slug/E900-S5-real"
+  mkdir -p "$root/.gaia/artifacts/test-artifacts/epic-E900-slug/E900-S50-other"
+  mkdir -p "$root/.gaia/artifacts/test-artifacts/epic-E9000-wrong"
   PROJECT_ROOT="$root" run "$RESOLVER" atdd E900-S5 --write
   [ "$status" -eq 0 ]
   [[ "$output" != *"E900-S50"* ]] \
     || { echo "story prefix leak: $output" >&2; false; }
   [[ "$output" != *"E9000"* ]] \
     || { echo "epic prefix leak: $output" >&2; false; }
-  # Falls back to the bare key because no exact prefix match exists.
-  [[ "$output" == *"epic-E900/E900-S5/atdd.md"* ]] \
+  # Should resolve to the correct slug-bearing dir.
+  [[ "$output" == *"epic-E900-slug/E900-S5-real/atdd.md"* ]] \
     || { echo "unexpected: $output" >&2; false; }
+}
+
+# ---------------------------------------------------------------------------
+# F1: GAIA_MEMORY_PATH isolation — must not break the resolver
+# ---------------------------------------------------------------------------
+
+@test "resolver tolerates an unrelated GAIA_MEMORY_PATH during walk-up" {
+  _setup_worktree_fixture
+  local root_canon
+  root_canon="$(cd "$_FX_ROOT" && pwd -P)"
+  local home_canon
+  home_canon="$(cd "$_FX_HOME" && pwd -P)"
+  mkdir -p "$_FX_ROOT/.gaia/artifacts/implementation-artifacts/epic-E900-iso/E900-S10-iso"
+  mkdir -p "$_FX_ROOT/.gaia/artifacts/test-artifacts"
+
+  run bash -c "
+    export HOME='$home_canon'
+    export GAIA_MEMORY_PATH='/tmp/elsewhere'
+    unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT _GAIA_PATHS_LOADED GAIA_NO_PROJECT_WALKUP
+    cd '$_FX_WT'
+    '$RESOLVER' atdd E900-S10 --write
+  "
+  [ "$status" -eq 0 ] || { echo "FAILED: $output" >&2; false; }
+  [[ "$output" == "$root_canon/"* ]] \
+    || { echo "wrong root: $output" >&2; false; }
+
+  git -C "$_FX_MAIN" worktree remove "$_FX_WT" --force 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -341,7 +391,6 @@ YAML
   envelope=$(_envelope "$artifact")
   local expected_hash
   expected_hash=$(printf '%s' "$artifact" | shasum -a 256 | cut -c1-16)
-
   (
     cd "$root"
     unset CHECKPOINT_PATH _GAIA_PATHS_LOADED
