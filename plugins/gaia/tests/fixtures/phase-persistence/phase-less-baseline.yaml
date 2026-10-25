@@ -2,7 +2,6 @@ sprint_id: "sprint-99"
 status: planned
 total_points: 9
 goals: []
-items: []
 stories:
   - key: "AAA-S1"
     title: 'Baseline story AAA-S1'

@@ -513,12 +513,16 @@ ppo_read_phases() {
 
   local out
   out="$(awk '
+    /^stories[[:space:]]*:/ { cur_block = "s"; next }
+    /^items[[:space:]]*:/ { cur_block = "i"; next }
+    /^[A-Za-z_]/ && !/^[[:space:]]/ { cur_block = "" }
     /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
       k = $0
       sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
       gsub(/^["'"'"']|["'"'"']$/, "", k)
       key = k; phase = ""
-      order[++n] = key
+      if (!(key in seen)) { order[++n] = key; seen[key] = cur_block }
+      else if (cur_block == "s") { seen[key] = "s" }
       next
     }
     /^[[:space:]]+phase:[[:space:]]*/ {
@@ -526,7 +530,7 @@ ppo_read_phases() {
       p = $0
       sub(/^[[:space:]]+phase:[[:space:]]*/, "", p)
       gsub(/[^0-9]/, "", p)
-      if (p != "") ph[key] = p
+      if (p != "" && (!(key in ph) || cur_block == "s")) ph[key] = p
       next
     }
     END {

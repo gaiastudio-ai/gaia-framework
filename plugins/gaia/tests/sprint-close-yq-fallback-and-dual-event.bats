@@ -400,14 +400,18 @@ STUB
   chmod +x "$iso_root/scripts/lifecycle-event.sh"
   # lifecycle-event.sh sources the shared lock library from its lib/ sibling.
   cp "$real_scripts/lib/acquire-lock.sh" "$iso_root/scripts/lib/"
+  # close.sh sources the migration lib from PLUGIN_SCRIPTS_DIR/lib/.
+  [ -f "$real_scripts/lib/migrate-items-to-stories.sh" ] && \
+    cp "$real_scripts/lib/migrate-items-to-stories.sh" "$iso_root/scripts/lib/"
 
   # 2. Build a separate custom plugin root WITH the full scripts tree.
   local plugin_root="$TEST_TMP/custom-plugin-root"
   mkdir -p "$plugin_root/scripts/lib"
   cp "$real_scripts/sprint-state.sh"             "$plugin_root/scripts/"
   cp "$real_scripts/lifecycle-event.sh"           "$plugin_root/scripts/"
-  cp "$real_scripts/lib/story-state-machine.sh"   "$plugin_root/scripts/lib/"
-  cp "$real_scripts/lib/acquire-lock.sh"           "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/story-state-machine.sh"        "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/acquire-lock.sh"               "$plugin_root/scripts/lib/"
+  cp "$real_scripts/lib/migrate-items-to-stories.sh"   "$plugin_root/scripts/lib/"
   chmod +x "$plugin_root/scripts/sprint-state.sh" \
            "$plugin_root/scripts/lifecycle-event.sh"
 

@@ -85,6 +85,53 @@ done
 [ -e "$EVENTS" ] || die "events file not found: $EVENTS"
 [ -r "$EVENTS" ] || die "events file not readable: $EVENTS"
 
+# Source the shared items-to-stories lib for read_stories_or_items_points.
+_TT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/migrate-items-to-stories.sh
+if [ -f "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$_TT_SCRIPT_DIR/lib/migrate-items-to-stories.sh"
+fi
+
+# Fail-closed guard: if the shared lib did not load, define an inline
+# fallback that implements the same union-by-key semantics for points.
+if ! type read_stories_or_items_points >/dev/null 2>&1; then
+  read_stories_or_items_points() {
+    local yaml="$1"; [ -f "$yaml" ] || return 0
+    awk '
+      /^stories[[:space:]]*:[[:space:]]*$/ { in_s=1; in_i=0; next }
+      /^items[[:space:]]*:[[:space:]]*$/ { in_i=1; in_s=0; next }
+      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s=0; next }
+      /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i=0; next }
+      (in_s||in_i) && /^[A-Za-z_]/ { in_s=0; in_i=0 }
+      in_s && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        s_key[k]=1; s_order[s_n++]=k; next
+      }
+      in_s && /^[[:space:]]+points:/ {
+        v=$0; sub(/.*points:[[:space:]]*/,"",v); gsub(/[^0-9].*$/,"",v)
+        s_pts[s_order[s_n-1]]=v; next
+      }
+      in_i && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        i_order[i_n++]=k; next
+      }
+      in_i && /^[[:space:]]+points:/ {
+        v=$0; sub(/.*points:[[:space:]]*/,"",v); gsub(/[^0-9].*$/,"",v)
+        i_pts[i_order[i_n-1]]=v; next
+      }
+      END {
+        for(j=0;j<s_n;j++){
+          if(s_order[j]!=""&&s_pts[s_order[j]]!="")printf "%s\t%s\n",s_order[j],s_pts[s_order[j]]
+          seen[s_order[j]]=1
+        }
+        for(j=0;j<i_n;j++){
+          if(!(i_order[j] in seen)&&i_order[j]!=""&&i_pts[i_order[j]]!="")printf "%s\t%s\n",i_order[j],i_pts[i_order[j]]
+        }
+      }
+    ' "$yaml"
+  }
+fi
+
 # ---------- Points join (story_key -> points) ----------
 # Note: the active sprint-status.yaml only carries the CURRENT sprint's stories,
 # so closed-sprint medians need points from elsewhere.
@@ -94,25 +141,8 @@ done
 #   3. an optional --story-dir scanned for story-file frontmatter `points:`.
 # The story's T2 explicitly allows "sprint-status.yaml / story frontmatter".
 
-# awk that reads a sprint yaml `stories:` block -> "key<TAB>points" rows.
-sprint_points_awk='
-  /^stories:[[:space:]]*$/ { in_stories=1; next }
-  in_stories && /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
-    line=$0
-    sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", line)
-    gsub(/"/, "", line)
-    cur=line
-    next
-  }
-  in_stories && /^[[:space:]]+points:[[:space:]]*/ {
-    line=$0
-    sub(/^[[:space:]]+points:[[:space:]]*/, "", line)
-    gsub(/[^0-9].*$/, "", line)
-    if (cur != "" && line != "") printf "%s\t%s\n", cur, line
-    next
-  }
-  in_stories && /^[^[:space:]]/ { in_stories=0 }
-'
+# read_stories_or_items_points (from the shared lib) reads both stories:
+# and items: blocks with union-by-key semantics -> "key<TAB>points" rows.
 
 POINTS_TSV=""
 
@@ -131,7 +161,7 @@ fi
 if [ -n "$YAML_LIST" ]; then
   while IFS= read -r y; do
     [ -n "$y" ] && [ -r "$y" ] || continue
-    rows="$(awk "$sprint_points_awk" "$y")"
+    rows="$(read_stories_or_items_points "$y")"
     [ -n "$rows" ] && POINTS_TSV="${POINTS_TSV}${rows}
 "
   done <<EOF

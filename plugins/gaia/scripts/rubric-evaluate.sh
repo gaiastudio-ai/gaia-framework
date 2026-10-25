@@ -111,7 +111,9 @@ while i < n:
             goals.append(g)
             i += 1
         continue
-    if re.match(r'^stories:\s*$', line):
+    bm = re.match(r'^(stories|items):\s*$', line)
+    if bm:
+        block_name = bm.group(1)
         i += 1
         current = None
         while i < n and (lines[i].startswith(' ') or lines[i].startswith('-')):
@@ -119,6 +121,7 @@ while i < n:
             m_item = re.match(r'^\s*-\s+key:\s*(.*)$', ln)
             if m_item:
                 if current is not None:
+                    current["_src"] = block_name
                     stories.append(current)
                 current = {"key": m_item.group(1).strip().strip('"').strip("'")}
                 i += 1; continue
@@ -135,9 +138,21 @@ while i < n:
                 i += 1; continue
             i += 1
         if current is not None:
+            current["_src"] = block_name
             stories.append(current)
         continue
     i += 1
+
+# Deduplicate: stories entry wins over items entry on the same key.
+_by_key = {}
+for s in stories:
+    k = s.get("key", "")
+    if not k:
+        continue
+    src = s.pop("_src", "items")
+    if k not in _by_key or src == "stories":
+        _by_key[k] = s
+stories = list(_by_key.values())
 
 if not goals:
     sys.stderr.write("rubric-evaluate.sh: malformed sprint-status: no goals[] block\n")

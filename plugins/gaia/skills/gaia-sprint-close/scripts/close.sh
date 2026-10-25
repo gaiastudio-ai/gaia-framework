@@ -24,6 +24,46 @@ SCRIPT_NAME="gaia-sprint-close/close.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
+# shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
+if [ -f "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh"
+fi
+
+# Fail-closed guard: if the shared lib did not load, define an inline
+# fallback that implements the same union-by-key semantics. Without this,
+# parse_stories would silently see 0 stories and the precheck would pass.
+if ! type read_stories_or_items >/dev/null 2>&1; then
+  read_stories_or_items() {
+    local yaml="$1"; [ -f "$yaml" ] || return 0
+    awk '
+      /^stories[[:space:]]*:[[:space:]]*$/ { in_s=1; in_i=0; next }
+      /^items[[:space:]]*:[[:space:]]*$/ { in_i=1; in_s=0; next }
+      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s=0; next }
+      /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i=0; next }
+      (in_s||in_i) && /^[A-Za-z_]/ { in_s=0; in_i=0 }
+      in_s && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        s_key[k]=1; s_order[s_n++]=k; next
+      }
+      in_s && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        s_st[s_order[s_n-1]]=v; next
+      }
+      in_i && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        i_order[i_n++]=k; next
+      }
+      in_i && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        i_st[i_order[i_n-1]]=v; next
+      }
+      END {
+        for(j=0;j<s_n;j++){printf "%s\t%s\n",s_order[j],s_st[s_order[j]];seen[s_order[j]]=1}
+        for(j=0;j<i_n;j++){if(!(i_order[j] in seen))printf "%s\t%s\n",i_order[j],i_st[i_order[j]]}
+      }
+    ' "$yaml"
+  }
+fi
 
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
@@ -88,42 +128,13 @@ yaml_top_scalar() {
 }
 
 # Enumerate stories[] from sprint-status.yaml as "key=status" pairs on stdout.
-# Uses the same bash-regex pattern that sprint-state.sh cmd_detect_auto_close
-# uses (lines 2095-2120) — no yq dependency for the parse path.
+# Union of stories: and items: (stories wins on duplicate key).
+# Uses the shared lib's read_stories_or_items for consistent semantics.
 parse_stories() {
   local path="$1"
-  local in_stories=false
-  local s_key="" s_status=""
-  _flush() {
-    if [ -n "$s_key" ]; then
-      printf '%s=%s\n' "$s_key" "$s_status"
-    fi
-    s_key=""; s_status=""
-  }
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^stories: ]]; then
-      in_stories=true
-      continue
-    fi
-    if [ "$in_stories" = true ]; then
-      if [[ "$line" =~ ^[a-z_] ]]; then
-        in_stories=false
-        _flush
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
-        _flush
-        s_key=$(printf '%s' "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
-        s_status=$(printf '%s' "$line" | sed 's/.*status:[[:space:]]*//' | tr -d '"')
-      fi
-    fi
-  done < "$path"
-  if [ "$in_stories" = true ]; then
-    _flush
-  fi
+  read_stories_or_items "$path" | while IFS=$'\t' read -r k s; do
+    [ -n "$k" ] && printf '%s=%s\n' "$k" "$s"
+  done
 }
 
 # ISO 8601 UTC timestamp with seconds precision.
