@@ -566,6 +566,154 @@ _E='unset _GAIA_PATHS_LOADED CLAUDE_PROJECT_ROOT PROJECT_ROOT CLAUDE_SKILL_DIR G
   git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
 }
 
+# Walk-up finds config at an intermediate directory between the worktree
+# top-level and the ceiling (the parent of main).
+@test "walk-up finds intermediate config between worktree and ceiling" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local root="$TEST_TMP/i1root"; local main="$root/pub"
+  mkdir -p "$main" "$root/a/b"
+  git -C "$main" init -q 2>/dev/null; git -C "$main" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$root/a/b/K"
+  git -C "$main" worktree add "$wt" -b k -q 2>/dev/null
+  mkdir -p "$root/a/.gaia/config"
+  printf 'project:\n  n: intermediate\n' > "$root/a/.gaia/config/project-config.yaml"
+  local ic; ic="$(cd "$root/a" && pwd -P)"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$wt' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]; [ "$output" = "$ic" ]
+  git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+@test "resolve-config finds intermediate config between worktree and ceiling" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local root="$TEST_TMP/i2root"; local main="$root/pub"
+  mkdir -p "$main" "$root/wt/deep"
+  git -C "$main" init -q 2>/dev/null; git -C "$main" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$root/wt/deep/K"
+  git -C "$main" worktree add "$wt" -b k -q 2>/dev/null
+  _write_min_config "$root/wt"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt'; bash '$RESOLVE_CONFIG'"
+  [ "$status" -eq 0 ]; [[ "$output" == *"installed_path='original'"* ]]
+  git -C "$main" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# Disconnected worktree (parent of main is not an ancestor) with config at
+# the worktree's own top-level, CWD in src/. The walk must still run inside.
+@test "disconnected worktree finds config at its own top-level" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/dw/work/main"; mkdir -p "$main_dir"
+  git -C "$main_dir" init -q 2>/dev/null; git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$TEST_TMP/dw/tmp/x"
+  mkdir -p "$TEST_TMP/dw/tmp"
+  git -C "$main_dir" worktree add "$wt" -b dw -q 2>/dev/null
+  mkdir -p "$wt/.gaia/config" "$wt/src"
+  printf 'project:\n  n: wtcfg\n' > "$wt/.gaia/config/project-config.yaml"
+  local wc; wc="$(cd "$wt" && pwd -P)"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$wt/src' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]; [ "$output" = "$wc" ]
+  git -C "$main_dir" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+@test "resolve-config disconnected worktree finds config at its own top-level" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/dw2/work/main"; mkdir -p "$main_dir"
+  git -C "$main_dir" init -q 2>/dev/null; git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local wt="$TEST_TMP/dw2/tmp/x"
+  mkdir -p "$TEST_TMP/dw2/tmp"
+  git -C "$main_dir" worktree add "$wt" -b dw2 -q 2>/dev/null
+  _write_min_config "$wt"
+  mkdir -p "$wt/src"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$wt/src'; bash '$RESOLVE_CONFIG'"
+  [ "$status" -eq 0 ]; [[ "$output" == *"installed_path='original'"* ]]
+  git -C "$main_dir" worktree remove "$wt" --force 2>/dev/null || true
+}
+
+# Main checkout IS HOME: the walk stays at the worktree's own top-level.
+@test "main-is-HOME worktree stops at its own top-level (gaia-paths)" {
+  local H2="$TEST_TMP/hm"; mkdir -p "$H2" "$TEST_TMP/out/cfg"
+  git -C "$H2" init -q 2>/dev/null; git -C "$H2" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  mkdir -p "$TEST_TMP/out/cfg/.gaia/config"
+  printf 'project:\n  n: planted\n' > "$TEST_TMP/out/cfg/.gaia/config/project-config.yaml"
+  git -C "$H2" worktree add "$TEST_TMP/out/cfg/wt" -b hm -q 2>/dev/null
+  mkdir -p "$TEST_TMP/out/cfg/wt/src"
+  local dc; dc="$(cd "$TEST_TMP/out/cfg/wt/src" && pwd -P)"
+  local hc; hc="$(cd "$H2" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$TEST_TMP/out/cfg/wt/src' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]; [ "$output" = "$dc" ]
+  git -C "$H2" worktree remove "$TEST_TMP/out/cfg/wt" --force 2>/dev/null || true
+}
+
+@test "main-is-HOME worktree stops at its own top-level (resolve-config)" {
+  local H2="$TEST_TMP/hm2"; mkdir -p "$H2" "$TEST_TMP/out2"
+  git -C "$H2" init -q 2>/dev/null; git -C "$H2" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  _write_min_config "$TEST_TMP/out2"
+  git -C "$H2" worktree add "$TEST_TMP/out2/wt" -b hm2 -q 2>/dev/null
+  mkdir -p "$TEST_TMP/out2/wt/src"
+  local hc; hc="$(cd "$H2" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$TEST_TMP/out2/wt/src'; bash '$RESOLVE_CONFIG' 2>&1"
+  [[ "$output" == *"no config path"* ]]
+  git -C "$H2" worktree remove "$TEST_TMP/out2/wt" --force 2>/dev/null || true
+}
+
+# resolve-config under HOME: walk-up must find config above a repo, same
+# as the merge-base. Guards against the git ceiling leaking under HOME.
+@test "resolve-config under HOME finds config above a regular repo" {
+  local fh="$TEST_TMP/uhome"; mkdir -p "$fh/proj/repo/sub"
+  _write_min_config "$fh/proj"
+  git -C "$fh/proj/repo" init -q 2>/dev/null; git -C "$fh/proj/repo" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$fh/proj/repo/sub'; bash '$RESOLVE_CONFIG'"
+  [ "$status" -eq 0 ]; [[ "$output" == *"installed_path='original'"* ]]
+}
+
+# Prefix-sibling boundary: /u2/root/main and /u2/rootX/wt must not match
+# because rootX starts with root but is not under root/.
+@test "prefix sibling is not treated as ancestor (gaia-paths)" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/u2/root/main"; mkdir -p "$main_dir" "$TEST_TMP/u2/rootX"
+  git -C "$main_dir" init -q 2>/dev/null; git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  git -C "$main_dir" worktree add "$TEST_TMP/u2/rootX/wt" -b w -q 2>/dev/null
+  mkdir -p "$TEST_TMP/u2/.gaia/config"
+  printf 'project:\n  n: planted\n' > "$TEST_TMP/u2/.gaia/config/project-config.yaml"
+  local dc; dc="$(cd "$TEST_TMP/u2/rootX/wt" && pwd -P)"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "export HOME='$hc'; $_E cd '$TEST_TMP/u2/rootX/wt' && . '$LIB' && printf '%s' \"\$_GAIA_ROOT_CANON\""
+  [ "$status" -eq 0 ]; [ "$output" = "$dc" ]
+  git -C "$main_dir" worktree remove "$TEST_TMP/u2/rootX/wt" --force 2>/dev/null || true
+}
+
+@test "prefix sibling is not treated as ancestor (resolve-config)" {
+  local fh="$TEST_TMP/home"; mkdir -p "$fh"
+  local main_dir="$TEST_TMP/u3/root/main"; mkdir -p "$main_dir" "$TEST_TMP/u3/rootX"
+  git -C "$main_dir" init -q 2>/dev/null; git -C "$main_dir" -c user.name=t -c user.email=t commit --allow-empty -m i -q 2>/dev/null
+  git -C "$main_dir" worktree add "$TEST_TMP/u3/rootX/wt" -b w -q 2>/dev/null
+  _write_min_config "$TEST_TMP/u3"
+  local hc; hc="$(cd "$fh" && pwd -P)"
+
+  run bash -c "unset CLAUDE_PROJECT_ROOT GAIA_SHARED_CONFIG CLAUDE_SKILL_DIR GAIA_NO_PROJECT_WALKUP; export HOME='$hc'; cd '$TEST_TMP/u3/rootX/wt'; bash '$RESOLVE_CONFIG' 2>&1"
+  [[ "$output" == *"no config path"* ]]
+  git -C "$main_dir" worktree remove "$TEST_TMP/u3/rootX/wt" --force 2>/dev/null || true
+}
+
+# resolve-config: skip git when CLAUDE_PROJECT_ROOT and shared path are set.
+@test "resolve-config skips git when CPR and shared path are already set" {
+  _write_min_config "$TEST_TMP/cprtest"
+  local pc; pc="$(cd "$TEST_TMP/cprtest" && pwd -P)"
+  run bash -c "export CLAUDE_PROJECT_ROOT='$pc'; cd '$pc'; bash '$RESOLVE_CONFIG' --shared '$pc/.gaia/config/project-config.yaml'"
+  [ "$status" -eq 0 ]; [[ "$output" == *"installed_path='original'"* ]]
+}
+
 # ---------------------------------------------------------------------------
 # AC6: no internal traceability identifiers
 # ---------------------------------------------------------------------------
