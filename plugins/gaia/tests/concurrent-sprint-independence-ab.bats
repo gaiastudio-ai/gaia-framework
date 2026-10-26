@@ -20,9 +20,16 @@ setup() {
   SHARDS_DIR="$PLANNING_DIR/epics"
   mkdir -p "$STATE_DIR" "$IMPL_DIR" "$CONFIG_DIR" "$PLANNING_DIR" "$SHARDS_DIR"
 
-  # Concurrent mode config.
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  # Concurrent mode config (complete — the resolver must exit 0).
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:

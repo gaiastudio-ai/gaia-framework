@@ -20,8 +20,15 @@ _setup_project() {
   mkdir -p "$TEST_TMP/project/.gaia/artifacts/planning-artifacts"
   mkdir -p "$TEST_TMP/project/.gaia/artifacts/test-artifacts"
   mkdir -p "$TEST_TMP/project/.gaia/memory"
-  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<'YAML'
+  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_TMP/project"
+project_path: "$TEST_TMP/project/app"
+memory_path: "$TEST_TMP/project/.gaia/memory"
+checkpoint_path: "$TEST_TMP/project/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/project/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash-dev
     path: "."
@@ -1035,8 +1042,15 @@ YAML
 | E900-S1 | story one |
 | E900-S2 | story two |
 MD
-  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" << 'YAML'
+  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_TMP/project"
+project_path: "$TEST_TMP/project/app"
+memory_path: "$TEST_TMP/project/.gaia/memory"
+checkpoint_path: "$TEST_TMP/project/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/project/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash-dev
     path: "."
@@ -1083,8 +1097,15 @@ YAML
 |-----|-------|
 | E900-S1 | story one |
 MD
-  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" << 'YAML'
+  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_TMP/project"
+project_path: "$TEST_TMP/project/app"
+memory_path: "$TEST_TMP/project/.gaia/memory"
+checkpoint_path: "$TEST_TMP/project/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/project/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash-dev
     path: "."
@@ -1360,8 +1381,15 @@ YAML
   _create_story_file E900-S2 "two" ready-for-dev sprint-C 2
   _create_story_file E900-S3 "three" in-progress sprint-C 4
 
-  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" << 'YAML'
+  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_TMP/project"
+project_path: "$TEST_TMP/project/app"
+memory_path: "$TEST_TMP/project/.gaia/memory"
+checkpoint_path: "$TEST_TMP/project/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/project/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash-dev
     path: "."
@@ -1398,8 +1426,15 @@ YAML
   [ "$status" -eq 0 ]
 
   # Switch to concurrent mode.
-  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" << 'YAML'
+  cat > "$TEST_TMP/project/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_TMP/project"
+project_path: "$TEST_TMP/project/app"
+memory_path: "$TEST_TMP/project/.gaia/memory"
+checkpoint_path: "$TEST_TMP/project/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/project/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash-dev
     path: "."

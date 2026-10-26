@@ -398,8 +398,15 @@ setup() {
   mkdir -p "$proj/.gaia/artifacts/test-artifacts/strategy"
   mkdir -p "$proj/gaia-public/plugins/gaia/scripts"
 
-  cat > "$config/project-config.yaml" <<'YAML'
+  cat > "$config/project-config.yaml" <<YAML
 project_name: "test"
+project_root: "$TEST_TMP/proj"
+project_path: "$TEST_TMP/proj/app"
+memory_path: "$TEST_TMP/proj/.gaia/memory"
+checkpoint_path: "$TEST_TMP/proj/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/proj/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:
@@ -481,8 +488,15 @@ YAML
   mkdir -p "$proj/.gaia/artifacts/test-artifacts/strategy"
   mkdir -p "$proj/gaia-public/plugins/gaia/hooks"
 
-  cat > "$config/project-config.yaml" <<'YAML'
+  cat > "$config/project-config.yaml" <<YAML
 project_name: "test"
+project_root: "$TEST_TMP/proj2"
+project_path: "$TEST_TMP/proj2/app"
+memory_path: "$TEST_TMP/proj2/.gaia/memory"
+checkpoint_path: "$TEST_TMP/proj2/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/proj2/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:
@@ -527,8 +541,15 @@ YAML
   touch "$proj/gaia-public/plugins/gaia/scripts/sprint-state.sh"
   touch "$proj/gaia-public/plugins/gaia/hooks/pre-commit.sh"
 
-  cat > "$config/project-config.yaml" <<'YAML'
+  cat > "$config/project-config.yaml" <<YAML
 project_name: "test"
+project_root: "$TEST_TMP/proj3"
+project_path: "$TEST_TMP/proj3/app"
+memory_path: "$TEST_TMP/proj3/.gaia/memory"
+checkpoint_path: "$TEST_TMP/proj3/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/proj3/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:
@@ -869,8 +890,15 @@ SHIM
   mkdir -p "$proj/.gaia/artifacts/test-artifacts/strategy"
   mkdir -p "$proj/gaia-public/plugins/gaia/hooks"
 
-  cat > "$config/project-config.yaml" <<'YAML'
+  cat > "$config/project-config.yaml" <<YAML
 project_name: "test"
+project_root: "$TEST_TMP/projhash"
+project_path: "$TEST_TMP/projhash/app"
+memory_path: "$TEST_TMP/projhash/.gaia/memory"
+checkpoint_path: "$TEST_TMP/projhash/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/projhash/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:

@@ -117,7 +117,8 @@ run_resolver_isolated() {
   mkdir -p "$TEST_TMP/cache"
   run_resolver_isolated planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/planning-artifacts" ]
+  # Relative paths are resolved to absolute (anchored at project_root).
+  [ "$output" = "/tmp/gaia-art/docs/planning-artifacts" ]
 }
 
 @test "default shell format unchanged by --all addition (project_root row)" {
@@ -196,7 +197,8 @@ run_resolver_isolated() {
   mkdir -p "$TEST_TMP/cache"
   run_resolver_isolated --all --cache planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/planning-artifacts" ]
+  # Relative paths resolved to absolute (anchored at project_root).
+  [ "$output" = "/tmp/gaia-art/docs/planning-artifacts" ]
 
   # Change the resolved value, then query again with the cache enabled.
   sed -i.bak 's#^planning_artifacts:.*#planning_artifacts: CHANGED/planning#' \
@@ -204,8 +206,8 @@ run_resolver_isolated() {
   rm -f "$TEST_TMP/skill/config/project-config.yaml.bak"
   run_resolver_isolated --all --cache planning_artifacts
   [ "$status" -eq 0 ]
-  # If the cache were served stale this would still be docs/planning-artifacts.
-  [ "$output" = "CHANGED/planning" ]
+  # If the cache were served stale this would still be the old value.
+  [ "$output" = "/tmp/gaia-art/CHANGED/planning" ]
 }
 
 # bats test_tags=hardware-dependent

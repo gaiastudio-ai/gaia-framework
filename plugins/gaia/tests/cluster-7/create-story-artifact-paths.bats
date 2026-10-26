@@ -158,7 +158,8 @@ mk_shared_no_override() {
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "planning/" ]
+  # Relative paths resolved to absolute (anchored at project_root).
+  [ "$output" = "/tmp/gaia-cs-ap/planning" ]
 }
 
 @test "AC3: override implementation_artifacts resolves to 'stories/'" {
@@ -167,7 +168,7 @@ mk_shared_no_override() {
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" implementation_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "stories/" ]
+  [ "$output" = "/tmp/gaia-cs-ap/stories" ]
 }
 
 @test "AC3: override test_artifacts resolves to 'tests/'" {
@@ -176,7 +177,7 @@ mk_shared_no_override() {
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" test_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "tests/" ]
+  [ "$output" = "/tmp/gaia-cs-ap/tests" ]
 }
 
 @test "AC3: override creative_artifacts resolves to 'creative/'" {
@@ -185,7 +186,7 @@ mk_shared_no_override() {
   run env -u CLAUDE_PROJECT_ROOT -u GAIA_SHARED_CONFIG -u GAIA_LOCAL_CONFIG \
     CLAUDE_SKILL_DIR="$TEST_TMP/skill" "$SCRIPT" creative_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "creative/" ]
+  [ "$output" = "/tmp/gaia-cs-ap/creative" ]
 }
 
 # ---------------------------------------------------------------------------
