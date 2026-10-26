@@ -197,7 +197,7 @@ tmp_canon="$(mktemp)"
 if jq --arg root "$REPO_ROOT" '
       def canon(u):
         (u | sub("^file://"; ""))            # drop file:// scheme
-        | sub("^" + ($root | gsub("[.*+?(){}|^$\\[\\]\\\\]"; "\\\\\\(.)")); "")  # strip repo-root prefix (regex-escaped)
+        | if startswith($root) then ltrimstr($root) else . end  # strip repo-root prefix (literal match)
         | sub("^/"; "");                      # drop any residual leading slash
       walk(
         if type == "object" and has("uri") then .uri |= canon(.) else . end

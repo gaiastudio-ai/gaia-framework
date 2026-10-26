@@ -318,15 +318,59 @@ _ic_is_known_key() {
 # ---------------------------------------------------------------------------
 _ic_resolve_planning_paths() {
   local resolve_config="${_IC_SCRIPT_DIR}/resolve-config.sh"
-  local planning_dir=""
+  local planning_dir="" resolved_root=""
   if [ -x "$resolve_config" ]; then
-    planning_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    "$resolve_config" planning_artifacts 2>/dev/null)" || planning_dir=""
+    local _all_out
+    local _rc=0
+    _all_out="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                "$resolve_config" --all 2>/dev/null)" || _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      printf 'FAIL indeterminate: config resolver failed (exit %d)\n' "$_rc" >&2
+      return 1
+    fi
+    if [ -n "$_all_out" ]; then
+      # Decode shell_escape's '\'' sequences.
+      local _line _q="'" _esc="'\\''";
+      _line="$(/usr/bin/grep "^project_root=" <<< "$_all_out")" || _line=""
+      resolved_root="${_line#project_root=}"
+      resolved_root="${resolved_root#\'}"; resolved_root="${resolved_root%\'}"
+      resolved_root="${resolved_root//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^planning_artifacts=" <<< "$_all_out")" || _line=""
+      planning_dir="${_line#planning_artifacts=}"
+      planning_dir="${planning_dir#\'}"; planning_dir="${planning_dir%\'}"
+      planning_dir="${planning_dir//"$_esc"/$_q}"
+    fi
   fi
+  # Fail closed on values truncated by a newline in the path.
+  # A newline inside a resolver value breaks the line-oriented grep parsing:
+  # the grep captures only the first physical line, losing the rest. Detect
+  # this by checking the raw output for lines that do not match key='...'.
+  if [ -n "$_all_out" ]; then
+    local _bad_line
+    _bad_line="$(/usr/bin/grep -v "^[a-zA-Z_][a-zA-Z0-9_.]*=" <<< "$_all_out" | head -1)" || _bad_line=""
+    if [ -n "$_bad_line" ]; then
+      printf 'FAIL indeterminate: resolver output contains a malformed line (possible newline in path): %s\n' \
+        "$_bad_line" >&2
+      return 1
+    fi
+  fi
+
   if [ -z "$planning_dir" ]; then
     planning_dir="${_IC_PROJECT_ROOT:+${_IC_PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   fi
+
+  # Resolve to physical paths for symlink/alias-safe comparison.
+  if [ -n "$resolved_root" ] && [ -d "$resolved_root" ]; then
+    resolved_root="$(cd "$resolved_root" 2>/dev/null && pwd -P)" || true
+  fi
+  if [ -n "$planning_dir" ] && [ -d "$planning_dir" ]; then
+    planning_dir="$(cd "$planning_dir" 2>/dev/null && pwd -P)" || true
+  fi
+
+  # Outside-root planning dirs: keep reading the configured dir for the
+  # epics file (the classification skip is handled by _ic_resolve_artifact_dirs).
+
   printf '%s\t%s' "${planning_dir}/epics-and-stories.md" "${planning_dir}/epics"
 }
 
@@ -596,18 +640,93 @@ _expand_globs() {
 #   Prints: planning_dir<TAB>test_dir
 _ic_resolve_artifact_dirs() {
   local resolve_config="${_IC_SCRIPT_DIR}/resolve-config.sh"
-  local planning_dir="" test_dir=""
+  local planning_dir="" test_dir="" resolved_root=""
 
   if [ -x "$resolve_config" ]; then
-    planning_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    "$resolve_config" planning_artifacts 2>/dev/null)" || planning_dir=""
-    test_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+    # Single --all call (one fork) instead of three separate calls.
+    local _all_out
+    local _rc=0
+    _all_out="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
                 CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                "$resolve_config" test_artifacts 2>/dev/null)" || test_dir=""
+                "$resolve_config" --all 2>/dev/null)" || _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      printf 'FAIL indeterminate: config resolver failed (exit %d)\n' "$_rc" >&2
+      return 1
+    fi
+    if [ -n "$_all_out" ]; then
+      # Extract key='value' lines and decode shell_escape's '\'' sequences.
+      local _line _q="'" _esc="'\\''";
+      _line="$(/usr/bin/grep "^project_root=" <<< "$_all_out")" || _line=""
+      resolved_root="${_line#project_root=}"
+      resolved_root="${resolved_root#\'}"; resolved_root="${resolved_root%\'}"
+      resolved_root="${resolved_root//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^planning_artifacts=" <<< "$_all_out")" || _line=""
+      planning_dir="${_line#planning_artifacts=}"
+      planning_dir="${planning_dir#\'}"; planning_dir="${planning_dir%\'}"
+      planning_dir="${planning_dir//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^test_artifacts=" <<< "$_all_out")" || _line=""
+      test_dir="${_line#test_artifacts=}"
+      test_dir="${test_dir#\'}"; test_dir="${test_dir%\'}"
+      test_dir="${test_dir//"$_esc"/$_q}"
+    fi
+    # Fail closed on values truncated by a newline in the path.
+    local _bad_line
+    _bad_line="$(/usr/bin/grep -v "^[a-zA-Z_][a-zA-Z0-9_.]*=" <<< "$_all_out" | head -1)" || _bad_line=""
+    if [ -n "$_bad_line" ]; then
+      printf 'FAIL indeterminate: resolver output contains a malformed line (possible newline in path): %s\n' \
+        "$_bad_line" >&2
+      return 1
+    fi
   fi
 
-  # Make relative to PROJECT_ROOT.
+  # Fail closed on malformed values: non-absolute → resolver error.
+  local _v
+  for _v in "$resolved_root" "$planning_dir" "$test_dir"; do
+    [ -z "$_v" ] && continue
+    case "$_v" in /*) ;; *)
+      printf 'ERROR: parsed value is not absolute: %s\n' "$_v" >&2; return 1 ;;
+    esac
+  done
+
+  # Resolve both sides to physical paths (pwd -P) so /tmp vs /private/tmp
+  # and symlinked roots compare correctly.
+  _ic_to_phys() {
+    local _p="$1"
+    [ -z "$_p" ] && return 0
+    if [ -d "$_p" ]; then
+      (cd "$_p" 2>/dev/null && pwd -P) || printf '%s' "$_p"
+    else
+      # Path doesn't exist yet: resolve the nearest existing parent.
+      local _parent _base
+      _parent="$(dirname "$_p")"
+      _base="$(basename "$_p")"
+      if [ -d "$_parent" ]; then
+        printf '%s/%s' "$(cd "$_parent" 2>/dev/null && pwd -P)" "$_base"
+      else
+        printf '%s' "$_p"
+      fi
+    fi
+  }
+  resolved_root="$(_ic_to_phys "$resolved_root")"
+  planning_dir="$(_ic_to_phys "$planning_dir")"
+  test_dir="$(_ic_to_phys "$test_dir")"
+
+  # Make relative to the resolver's project_root.
+  # Outside-root absolute dirs: WARN and skip classification for that dir
+  # (touch-sets are project-relative so they can never match an outside dir).
+  if [ -n "$resolved_root" ]; then
+    local _root_prefix="${resolved_root%/}/"
+    case "$planning_dir" in
+      "${_root_prefix}"*) planning_dir="${planning_dir#"$_root_prefix"}" ;;
+      /*) printf 'WARNING: planning_artifacts %s is outside project_root %s; planning-artifact rule skipped for this dir\n' "$planning_dir" "$resolved_root" >&2
+          planning_dir="" ;;
+    esac
+    case "$test_dir" in
+      "${_root_prefix}"*) test_dir="${test_dir#"$_root_prefix"}" ;;
+      /*) printf 'WARNING: test_artifacts %s is outside project_root %s; test-artifact rule skipped for this dir\n' "$test_dir" "$resolved_root" >&2
+          test_dir="" ;;
+    esac
+  fi
   planning_dir="${planning_dir#./}"
   test_dir="${test_dir#./}"
   [ -n "$planning_dir" ] || planning_dir="$_IC_PLANNING_DEFAULT"
@@ -732,8 +851,14 @@ _ic_run_rules_cd() {
   mkdir -p "$ts_dir" "$cs_dir"
 
   # Resolve artifact directories for family classification.
+  # Fail closed: if resolution fails, propagate the error so the check
+  # exits non-zero rather than silently skipping rule (d).
   local art_dirs pdir tdir
-  art_dirs="$(_ic_resolve_artifact_dirs)"
+  art_dirs="$(_ic_resolve_artifact_dirs)" || {
+    printf 'FAIL indeterminate: artifact-dir resolution failed\n'
+    printf 'FAIL indeterminate: artifact-dir resolution failed\n' >&2
+    return 1
+  }
   pdir="${art_dirs%%	*}"
   tdir="${art_dirs#*	}"
 

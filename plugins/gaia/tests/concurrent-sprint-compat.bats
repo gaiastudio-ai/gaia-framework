@@ -19,7 +19,7 @@ setup() {
   mkdir -p "$STATE_DIR" "$IMPL_DIR" "$CONFIG_DIR"
 
   # Minimal sprint-status.yaml.
-  cat > "$STATE_DIR/sprint-status.yaml" <<'YAML'
+  cat > "$STATE_DIR/sprint-status.yaml" <<YAML
 sprint_id: "sprint-900"
 status: active
 total_points: 10
@@ -33,8 +33,15 @@ stories:
 YAML
 
   # Single-sprint config (max_concurrent_active absent).
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash
     path: "."
@@ -239,8 +246,15 @@ YAML
   # Start from a clean state for the two-sprint setup.
   rm -f "$STATE_DIR/sprint-status.yaml"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:
@@ -292,8 +306,15 @@ YAML
 @test "dropping --sprint-id from reconcile misses the non-proxy sprint" {
   rm -f "$STATE_DIR/sprint-status.yaml"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:
@@ -338,8 +359,15 @@ YAML
 @test "pure readers return correct data from proxy in two-sprint mode" {
   rm -f "$STATE_DIR/sprint-status.yaml"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:
@@ -406,8 +434,15 @@ YAML
   # Assert sprint-901's per-sprint file is updated and sprint-900's is unchanged.
   rm -f "$STATE_DIR/sprint-status.yaml"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:

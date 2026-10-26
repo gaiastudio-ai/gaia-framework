@@ -832,3 +832,4 @@
 3	worktree-walk-up-isolation.bats	42
 2	resolve-sprint-stories-review-status.bats	5
 3	worktree-val-sentinel-path.bats	18
+2	dotted-path-handling.bats	21

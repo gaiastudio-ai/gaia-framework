@@ -62,6 +62,13 @@ teardown() {
 _seed_config() {
   local max_conc="${1:-2}"
   cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP/app"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: $max_conc
 YAML
@@ -70,6 +77,13 @@ YAML
 
 _seed_single_config() {
   cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP/app"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 1
 YAML

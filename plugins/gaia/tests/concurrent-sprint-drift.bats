@@ -20,8 +20,15 @@ setup() {
   SHARDS_DIR="$PLANNING_DIR/epics"
   mkdir -p "$STATE_DIR" "$IMPL_DIR" "$CONFIG_DIR" "$PLANNING_DIR" "$SHARDS_DIR"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "drift-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 ci_cd:
@@ -178,8 +185,15 @@ CKPT
 # ---- AC7: single-sprint mode no drift ----
 
 @test "single-sprint mode: drift detection does not run" {
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "single-sprint"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash
     path: "."
@@ -195,8 +209,15 @@ YAML
 # ---- AC2: drift base fallback to origin/HEAD ----
 
 @test "drift base fallback to origin/HEAD when promotion_chain unset" {
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "drift-no-pc"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:
@@ -219,8 +240,15 @@ YAML
 # ---- AC2: drift base fail-closed when neither resolves ----
 
 @test "drift base fail-closed when neither promotion_chain nor origin/HEAD resolve" {
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "drift-no-base"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 2
 stacks:

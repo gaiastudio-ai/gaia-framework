@@ -1175,6 +1175,51 @@ fi
 [ -n "${GAIA_IMPLEMENTATION_ARTIFACTS:-}" ]  && v_implementation_artifacts="$GAIA_IMPLEMENTATION_ARTIFACTS"
 [ -n "${GAIA_CREATIVE_ARTIFACTS:-}" ]        && v_creative_artifacts="$GAIA_CREATIVE_ARTIFACTS"
 
+# ---------- Resolve relative project_root to absolute ----------
+# A relative project_root (e.g. ".") is anchored to the directory that owns
+# the discovered config file — the parent of .gaia/config/ or config/ — not
+# to the caller's CWD. This makes the output CWD-independent so that a run
+# from a worktree subdirectory returns the same paths as one from the project
+# root.
+_normalize_abs() {
+  # Collapse //, /. segments and strip trailing slash (preserving bare /).
+  # Pure parameter expansion — no forks (bash 3.2 safe).
+  # Empty input passes through empty (required-field checks rely on this).
+  [ -z "$1" ] && return 0
+  local _r="$1" _prev=""
+  # Iteratively collapse // → / and /./ → / until stable.
+  while [ "$_r" != "$_prev" ]; do
+    _prev="$_r"
+    case "$_r" in */./*) _r="${_r%%/./*}/${_r#*/./}" ;; esac
+    case "$_r" in *//*) _r="${_r%%//*}/${_r#*//}" ;; esac
+  done
+  # Strip trailing /. and trailing / (but keep bare /).
+  case "$_r" in *"/.")  _r="${_r%/.}" ;; esac
+  case "$_r" in *"/")   _r="${_r%/}" ;; esac
+  printf '%s' "${_r:-/}"
+}
+
+_config_anchor=""
+if [ -n "${SHARED_PATH:-}" ] && [ -f "${SHARED_PATH:-}" ]; then
+  _sd="$(cd "$(dirname "$SHARED_PATH")" 2>/dev/null && pwd)" || _sd=""
+  case "$_sd" in
+    */.gaia/config) _config_anchor="${_sd%/.gaia/config}" ;;
+    */config)       _config_anchor="${_sd%/config}" ;;
+    # --shared pointing at a file outside any config/ directory:
+    # anchor to the shared file's own directory so the output is
+    # CWD-independent even for non-standard layouts.
+    ?*)             _config_anchor="$_sd" ;;
+  esac
+  unset _sd
+fi
+[ -z "$_config_anchor" ] && _config_anchor="$PWD"
+
+case "$v_project_root" in
+  /*) ;;
+  ?*) v_project_root="${_config_anchor}/${v_project_root}" ;;
+esac
+v_project_root="$(_normalize_abs "$v_project_root")"
+
 # Default each artifact-dir key to {project_root}/docs/<dir> when neither
 # a config file value nor a GAIA_* env override supplied one. Runs AFTER env
 # overrides so an explicit empty value from env never falls through to the
@@ -1209,6 +1254,22 @@ _artifact_default() {
 # routing is needed — a plain project-root anchor is correct.
 [ -z "$v_memory_path" ]     && v_memory_path="${v_project_root}/.gaia/memory"
 [ -z "$v_checkpoint_path" ] && v_checkpoint_path="${v_project_root}/.gaia/memory/checkpoints"
+
+# ---------- Resolve remaining relative paths to absolute ----------
+# Resolve relative memory_path, checkpoint_path, and artifact-dir values
+# against the (now-absolute) project_root. Normalize all paths.
+_resolve_rel() {
+  local _p="$1" _anchor="$2"
+  case "$_p" in /*) ;; ?*) _p="${_anchor}/${_p}" ;; esac
+  _normalize_abs "$_p"
+}
+v_memory_path="$(_resolve_rel "$v_memory_path" "$v_project_root")"
+v_checkpoint_path="$(_resolve_rel "$v_checkpoint_path" "$v_project_root")"
+v_test_artifacts="$(_resolve_rel "$v_test_artifacts" "$v_project_root")"
+v_planning_artifacts="$(_resolve_rel "$v_planning_artifacts" "$v_project_root")"
+v_implementation_artifacts="$(_resolve_rel "$v_implementation_artifacts" "$v_project_root")"
+v_creative_artifacts="$(_resolve_rel "$v_creative_artifacts" "$v_project_root")"
+unset _config_anchor
 
 # ---------- Required-field check (post-merge, post-env) ----------
 
