@@ -444,7 +444,9 @@ locate_story_file() {
 # Unknown gate names are preserved in the file (spurious rows are left
 # untouched on update) but ignored for check/status vocabulary checks.
 
-# Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT`.
+# Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT\tSHA`.
+# Supports both three-column (legacy) and four-column (current) tables.
+# Three-column rows emit SHA as empty string.
 # Exits 1 (via die) if the `## Review Gate` header is absent.
 parse_gate_rows() {
   local file="$1"
@@ -506,33 +508,40 @@ parse_gate_rows() {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[i])
       }
 
-      # Emit TSV: GATE \t STATUS \t REPORT
-      printf "%s\t%s\t%s\n", cells[1], cells[2], cells[3]
+      # Emit TSV: GATE \t STATUS \t REPORT \t SHA
+      # Three-column rows emit empty SHA (fourth field).
+      sha = ""
+      if (n >= 4) { sha = cells[4] }
+      printf "%s\t%s\t%s\t%s\n", cells[1], cells[2], cells[3], sha
     }
   ' "$file"
 }
 
-# Populate two parallel global arrays ROW_GATES / ROW_STATUSES from the parsed
-# table, keeping only the canonical six gates (in canonical order). Exits 1
-# if any canonical gate is missing from the table.
+# Populate three parallel global arrays ROW_GATES / ROW_STATUSES / ROW_SHAS
+# from the parsed table, keeping only the canonical six gates (in canonical
+# order). Exits 1 if any canonical gate is missing from the table.
 ROW_GATES=()
 ROW_STATUSES=()
+ROW_SHAS=()
 load_canonical_rows() {
   local file="$1"
 
   # Reset globals.
   ROW_GATES=()
   ROW_STATUSES=()
+  ROW_SHAS=()
 
-  # Collect parsed rows into two temp arrays keyed by gate name.
+  # Collect parsed rows into temp arrays keyed by gate name.
   local -a parsed_gates=()
   local -a parsed_statuses=()
+  local -a parsed_shas=()
 
-  local gate status _report
-  while IFS=$'\t' read -r gate status _report; do
+  local gate status _report _sha
+  while IFS=$'\t' read -r gate status _report _sha; do
     [ -z "$gate" ] && continue
     parsed_gates+=("$gate")
     parsed_statuses+=("$status")
+    parsed_shas+=("${_sha:-}")
   done < <(parse_gate_rows "$file")
 
   # For each canonical gate (in order), find its row.
@@ -544,6 +553,7 @@ load_canonical_rows() {
       if [ "${parsed_gates[$i]}" = "$cg" ]; then
         ROW_GATES+=("$cg")
         ROW_STATUSES+=("${parsed_statuses[$i]}")
+        ROW_SHAS+=("${parsed_shas[$i]:-}")
         found=1
         break
       fi
@@ -748,38 +758,54 @@ cmd_review_gate_check() {
   # and exits 1 via die() if any canonical gate is missing from the table.
   load_canonical_rows "$file"
 
-  # Parse the six Report cells out of the parsed TSV stream so the table
-  # we render preserves whatever the story author wrote in the Report
-  # column (typically the em-dash placeholder, sometimes a review-file URL).
+  # Parse the six Report and SHA cells out of the parsed TSV stream so
+  # the table we render preserves whatever the story author wrote.
   local -a report_for_gate=()
-  local parsed_gate parsed_status parsed_report i found
+  local -a sha_for_gate=()
+  local parsed_gate _parsed_status parsed_report parsed_sha i found
   local cg
   for cg in "${CANONICAL_GATES[@]}"; do
     found=0
-    while IFS=$'\t' read -r parsed_gate parsed_status parsed_report; do
+    while IFS=$'\t' read -r parsed_gate _parsed_status parsed_report parsed_sha; do
       if [ "$parsed_gate" = "$cg" ]; then
         report_for_gate+=("$parsed_report")
+        sha_for_gate+=("${parsed_sha:-}")
         found=1
         break
       fi
     done < <(parse_gate_rows "$file")
     if [ $found -eq 0 ]; then
-      # Should be impossible — load_canonical_rows already enforced row
-      # presence — but guard defensively so the read loop never leaves
-      # report_for_gate short.
       report_for_gate+=("—")
+      sha_for_gate+=("")
     fi
   done
 
-  # Render the six-row markdown table exactly as a story file stores it.
-  printf '| Review | Status | Report |\n'
-  printf '|--------|--------|--------|\n'
-  i=0
-  while [ $i -lt "${#ROW_GATES[@]}" ]; do
-    printf '| %s | %s | %s |\n' \
-      "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}"
-    i=$((i + 1))
+  # Render the six-row markdown table. Use four columns when any row has
+  # a SHA; otherwise preserve the legacy three-column format.
+  local has_sha=0
+  for i in "${sha_for_gate[@]}"; do
+    if [ -n "$i" ]; then has_sha=1; break; fi
   done
+
+  if [ "$has_sha" -eq 1 ]; then
+    printf '| Review | Status | Report | Reviewed SHA |\n'
+    printf '|--------|--------|--------|--------------|  \n'
+    i=0
+    while [ $i -lt "${#ROW_GATES[@]}" ]; do
+      printf '| %s | %s | %s | %s |\n' \
+        "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}" "${sha_for_gate[$i]:-}"
+      i=$((i + 1))
+    done
+  else
+    printf '| Review | Status | Report |\n'
+    printf '|--------|--------|--------|\n'
+    i=0
+    while [ $i -lt "${#ROW_GATES[@]}" ]; do
+      printf '| %s | %s | %s |\n' \
+        "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}"
+      i=$((i + 1))
+    done
+  fi
 
   # Classify.
   local composite
@@ -859,14 +885,16 @@ cmd_check() {
 # ---------- Subcommand: update ----------
 
 # Rewrite exactly one row of the Review Gate table in $file, replacing the
-# Status cell of the matched gate with $new_verdict and the Report cell with
-# the provided report path (or "—" when none is given). All other bytes are
-# preserved. Runs under flock and uses tempfile + atomic mv.
+# Status cell of the matched gate with $new_verdict, the Report cell with
+# the provided report path (or "—" when none is given), and the Reviewed SHA
+# cell with the provided SHA. All other bytes are preserved. Runs under flock
+# and uses tempfile + atomic mv.
 cmd_update() {
   local file="$1"
   local gate_name="$2"
   local new_verdict="$3"
   local report_value="${4:-—}"
+  local sha_value="${5:-}"
 
   # Data-integrity guard: reject report paths that would corrupt the
   # markdown table or allow row injection. Pipe characters add cells,
@@ -895,10 +923,11 @@ cmd_update() {
     # $gate_name. Preserve CRLF and all surrounding bytes.
     # The report value is passed via ENVIRON to avoid awk -v backslash
     # expansion (awk -v interprets \t, \n etc. in the value).
-    GAIA_RG_REPORT="$report_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
+    GAIA_RG_REPORT="$report_value" GAIA_RG_SHA="$sha_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
       BEGIN {
         in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0
         new_report = ENVIRON["GAIA_RG_REPORT"]
+        new_sha = ENVIRON["GAIA_RG_SHA"]
       }
 
       # Detect `## Review Gate` header. We preserve the line verbatim
@@ -973,9 +1002,10 @@ cmd_update() {
         }
 
         # Rewrite this row. Preserve CRLF if the original had one.
+        # Always write four columns (with SHA).
         crlf = ""
         if (raw ~ /\r$/) { crlf = "\r" }
-        printf "| %s | %s | %s |%s\n", target, new_status, new_report, crlf
+        printf "| %s | %s | %s | %s |%s\n", target, new_status, new_report, new_sha, crlf
         rewritten = 1
         next
       }
@@ -1035,7 +1065,7 @@ main() {
       usage
       exit 0
       ;;
-    check|update|status|review-gate-check)
+    check|update|status|review-gate-check|carry-forward)
       ;;
     *)
       printf '%s: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -1045,6 +1075,7 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
+  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_scope="" carry_evidence=""
   # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
@@ -1099,6 +1130,30 @@ main() {
       --report-missing-reason)
         [ $# -ge 2 ] || die "--report-missing-reason requires a value"
         report_missing_reason="$2"; shift 2
+        ;;
+      --sha)
+        [ $# -ge 2 ] || die "--sha requires a value"
+        sha_arg="$2"; shift 2
+        ;;
+      --row)
+        [ $# -ge 2 ] || die "--row requires a value"
+        carry_row="$2"; shift 2
+        ;;
+      --from)
+        [ $# -ge 2 ] || die "--from requires a value"
+        carry_from="$2"; shift 2
+        ;;
+      --to)
+        [ $# -ge 2 ] || die "--to requires a value"
+        carry_to="$2"; shift 2
+        ;;
+      --scope)
+        [ $# -ge 2 ] || die "--scope requires a value"
+        carry_scope="$2"; shift 2
+        ;;
+      --evidence)
+        [ $# -ge 2 ] || die "--evidence requires a value"
+        carry_evidence="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1262,12 +1317,26 @@ main() {
         esac
       fi
 
+      # Resolve the SHA for the Reviewed SHA column. Default to the
+      # worktree HEAD when not explicitly provided; "none" outside a git
+      # work tree. This preserves backward compatibility — existing callers
+      # that omit --sha get automatic HEAD binding.
+      local resolved_sha="$sha_arg"
+      if [ -z "$resolved_sha" ]; then
+        local pp="${PROJECT_PATH:-.}"
+        if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          resolved_sha="$(git -C "$pp" rev-parse HEAD 2>/dev/null)" || resolved_sha="none"
+        else
+          resolved_sha="none"
+        fi
+      fi
+
       # If --plan-id is present, write to the ledger (NOT the Review Gate table).
       if [ -n "$plan_id" ]; then
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"
       else
         # Update the story file's Review Gate table (byte-identical).
-        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}"
+        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}" "$resolved_sha"
       fi
 
       # Test-artifacts mirror hook.
@@ -1338,6 +1407,67 @@ main() {
           fi
           ;;
       esac
+      ;;
+    carry-forward)
+      # Carry-forward: re-bind a review verdict from one SHA to another when
+      # the diff between the two SHAs has no files in the row's scope globs.
+      # The evidence is ALWAYS self-computed from the diff — caller-supplied
+      # evidence is refused (security mitigation).
+      [ -n "$carry_row" ]  || die "carry-forward requires --row <name>"
+      [ -n "$carry_from" ] || die "carry-forward requires --from <sha>"
+      [ -n "$carry_to" ]   || die "carry-forward requires --to <sha>"
+
+      # Refuse caller-supplied evidence (security: self-computed only).
+      if [ -n "$carry_evidence" ]; then
+        die "carry-forward: caller-supplied evidence is refused — evidence is self-computed from the diff (security policy)"
+      fi
+
+      # Use --gate if --row not provided via separate flag
+      if [ -z "$carry_row" ] && [ -n "$gate_name" ]; then
+        carry_row="$gate_name"
+      fi
+
+      # Validate the gate name.
+      if ! is_canonical_gate "$carry_row"; then
+        local allowed_gates
+        allowed_gates=$(join_by ', ' "${CANONICAL_GATES[@]}")
+        die "carry-forward: invalid gate name '$carry_row' — allowed: $allowed_gates"
+      fi
+
+      local pp="${PROJECT_PATH:-.}"
+      if ! git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        die "carry-forward requires a git work tree (PROJECT_PATH=$pp is not inside one)"
+      fi
+
+      # Compute the diff between from and to.
+      local diff_files
+      diff_files="$(git -C "$pp" diff --name-only "$carry_from" "$carry_to" 2>/dev/null)" \
+        || die "carry-forward: git diff failed between $carry_from and $carry_to"
+
+      # If --scope is provided, check whether any diff files match the scope globs.
+      local has_overlap=0
+      if [ -n "$carry_scope" ] && [ -n "$diff_files" ]; then
+        local scope_pattern="$carry_scope"
+        # Convert glob pattern to a grep-friendly regex:
+        # foo/** → foo/ prefix match; foo/*.sh → foo/[^/]*\.sh
+        local scope_regex
+        scope_regex="$(printf '%s' "$scope_pattern" | sed 's|\*\*/|.*/|g; s|\*|[^/]*|g; s|\.|\\.|g')"
+        if printf '%s\n' "$diff_files" | grep -qE "^${scope_regex}"; then
+          has_overlap=1
+        fi
+      fi
+
+      if [ "$has_overlap" -eq 1 ]; then
+        die "carry-forward: diff between $carry_from and $carry_to includes files in scope '$carry_scope' — review must be re-run"
+      fi
+
+      # Self-computed evidence: list of changed files (outside scope).
+      local evidence="carry-forward: no scope overlap in diff ${carry_from:0:7}..${carry_to:0:7}"
+
+      # Update the row to bind to the new SHA.
+      cmd_update "$STORY_FILE" "$carry_row" "PASSED" "carry-forward" "$carry_to"
+      printf 'carry-forward: %s bound from %s to %s (evidence: %s)\n' \
+        "$carry_row" "$carry_from" "$carry_to" "$evidence"
       ;;
   esac
 }
