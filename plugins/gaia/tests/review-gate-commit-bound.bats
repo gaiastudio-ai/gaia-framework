@@ -801,3 +801,141 @@ STORY
     --story E900-S35 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# AC5: Carry-forward sidecar record
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: sidecar record written with all required fields" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S40" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S40 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -eq 0 ]
+
+  local story_dir
+  story_dir="$(dirname "$story")"
+  local sidecar="${story_dir}/review-gate-carry.jsonl"
+  [ -f "$sidecar" ]
+  # Check all required fields are present in the sidecar record.
+  local record
+  record="$(cat "$sidecar")"
+  grep -q '"row":"Code Review"' <<< "$record"
+  grep -q "\"from_sha\":\"${sha_a}\"" <<< "$record"
+  grep -q "\"to_sha\":\"${sha_b}\"" <<< "$record"
+  grep -q '"evidence":{' <<< "$record"
+  grep -q '"changed_paths":' <<< "$record"
+  grep -q '"scope_globs":' <<< "$record"
+  grep -q '"timestamp":"' <<< "$record"
+  # Verify evidence contains the actual changed path and configured glob.
+  grep -q 'unrelated.txt' <<< "$record"
+  grep -q 'src/\*\*' <<< "$record"
+}
+
+@test "carry-forward: forged table row with no sidecar is NOT bound" {
+  # A row whose table SHA was manually changed to bind-head without
+  # going through carry-forward (no sidecar record).
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  # Create story with Code Review on sha_a (old), others on sha_b (head).
+  local impl="$PROJECT_PATH/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S41-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "E900-S41"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | ${sha_a} |
+| QA Tests | PASSED | qa.md | ${sha_b} |
+| Security Review | PASSED | sec.md | ${sha_b} |
+| Test Automation | PASSED | ta.md | ${sha_b} |
+| Test Review | PASSED | tr.md | ${sha_b} |
+| Performance Review | PASSED | perf.md | ${sha_b} |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+
+  # Code Review is on sha_a, head is sha_b. No carry-forward done.
+  # The row is stale — no sidecar record to prove a legitimate carry.
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_b" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'pending\|stale' <<< "$output"
+}
+
+@test "carry-forward: checker reads sidecar and treats carried row as bound" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local impl="$PROJECT_PATH/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S42-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "E900-S42"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | ${sha_a} |
+| QA Tests | PASSED | qa.md | ${sha_b} |
+| Security Review | PASSED | sec.md | ${sha_b} |
+| Test Automation | PASSED | ta.md | ${sha_b} |
+| Test Review | PASSED | tr.md | ${sha_b} |
+| Performance Review | PASSED | perf.md | ${sha_b} |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
+
+  # Do the carry-forward (writes sidecar).
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S42 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -eq 0 ]
+
+  # The checker should now treat Code Review as bound via the carry.
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_b" --ci-sha none --story "$story"
+  [ "$status" -eq 0 ]
+  grep -qi 'complete' <<< "$output"
+}

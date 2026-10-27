@@ -1573,9 +1573,24 @@ main() {
         die "carry-forward: diff between $carry_from and $carry_to includes files in scope — review must be re-run"
       fi
 
-      # Self-computed evidence string: records the from-SHA, to-SHA, and
-      # the fact that no scope overlap was found.
-      local evidence="no-scope-overlap:${carry_from:0:7}..${carry_to:0:7}"
+      # Build the evidence: list of changed paths and the configured scope globs.
+      local changed_json="[]"
+      if [ -n "$diff_files" ]; then
+        changed_json="$(printf '%s\n' "$diff_files" | awk '
+          BEGIN { printf "[" }
+          NR > 1 { printf "," }
+          { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
+          END { printf "]" }
+        ')"
+      fi
+      local globs_json
+      globs_json="$(printf '%s\n' "$config_scope" | awk '
+        BEGIN { printf "[" }
+        /^[[:space:]]*$/ { next }
+        NR > 1 { printf "," }
+        { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
+        END { printf "]" }
+      ')"
 
       # Persist the carry-forward: update the row's SHA to the to-SHA.
       # Keep the existing report path (do NOT overwrite with "carry-forward").
@@ -1590,8 +1605,26 @@ main() {
       done < <(parse_gate_rows "$STORY_FILE")
 
       cmd_update "$STORY_FILE" "$carry_row" "PASSED" "$current_report" "$carry_to"
-      printf 'carry-forward: %s bound from %s to %s (evidence: %s)\n' \
-        "$carry_row" "$carry_from" "$carry_to" "$evidence"
+
+      # Write carry-forward sidecar record (JSONL, one line per carry).
+      # The sidecar lives next to the story file in the same directory.
+      local story_dir
+      story_dir="$(dirname "$STORY_FILE")"
+      local sidecar="${story_dir}/review-gate-carry.jsonl"
+      local ts
+      ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      local record
+      record="$(printf '{"row":"%s","from_sha":"%s","to_sha":"%s","evidence":{"changed_paths":%s,"scope_globs":%s},"timestamp":"%s"}' \
+        "$carry_row" "$carry_from" "$carry_to" "$changed_json" "$globs_json" "$ts")"
+      # Atomic append via temp file + cat (safe on concurrent appends).
+      local sidecar_tmp
+      sidecar_tmp="$(mktemp "${story_dir}/.carry-tmp.XXXXXX")"
+      printf '%s\n' "$record" > "$sidecar_tmp"
+      cat "$sidecar_tmp" >> "$sidecar"
+      rm -f "$sidecar_tmp"
+
+      printf 'carry-forward: %s bound from %s to %s\n' \
+        "$carry_row" "$carry_from" "$carry_to"
       ;;
   esac
 }
