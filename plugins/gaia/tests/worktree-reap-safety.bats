@@ -549,8 +549,10 @@ _mk_aged_dead_sibling() {
 
   # The record must be re-locked (ownership recorded for reap safety).
   local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A5 -F "$wt" || true)"
-  printf '%s\n' "$rec" | /usr/bin/grep -q '^locked' \
-    || { echo "worktree record is not locked after re-create"; return 1; }
+  case "$rec" in
+    *locked*) ;;
+    *) echo "worktree record is not locked after re-create"; return 1 ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
