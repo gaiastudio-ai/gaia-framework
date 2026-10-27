@@ -824,7 +824,7 @@
 1	git-branch-dedup.bats	9
 2	verdict-resolver-required-false-malformed-json.bats	23
 1	verify-pr-merged-gh-api.bats	30
-4	worktree-reap-safety.bats	20
+4	worktree-reap-safety.bats	25
 3	defensive-shell-coding-sweep.bats	44
 4	review-gate-hardening.bats	28
 3	action-items-write-retro-interop.bats	56
