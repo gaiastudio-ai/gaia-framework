@@ -1100,7 +1100,7 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
-  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_scope="" carry_evidence=""
+  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_evidence=""
   # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
@@ -1171,10 +1171,6 @@ main() {
       --to)
         [ $# -ge 2 ] || die "--to requires a value"
         carry_to="$2"; shift 2
-        ;;
-      --scope)
-        [ $# -ge 2 ] || die "--scope requires a value"
-        carry_scope="$2"; shift 2
         ;;
       --evidence)
         [ $# -ge 2 ] || die "--evidence requires a value"
@@ -1512,40 +1508,34 @@ main() {
       local gate_slug
       gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
       local config_scope=""
-      if [ -n "$carry_scope" ]; then
-        # Allow --scope override for tests/configuration, but the caller must
-        # have set it — omitting --scope does NOT mean "no overlap".
-        config_scope="$carry_scope"
-      else
-        # Read from project config.
-        local config_file="${PROJECT_CONFIG:-}"
-        if [ -z "$config_file" ]; then
-          local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
-          config_file="$root/.gaia/config/project-config.yaml"
-        fi
-        if [ -f "$config_file" ] && command -v awk >/dev/null 2>&1; then
-          config_scope="$(awk -v slug="$gate_slug" '
-            /^review_gate:/ { in_rg = 1; next }
-            in_rg && /^[^ ]/ { in_rg = 0 }
-            in_rg && /scope_globs:/ { in_sg = 1; next }
-            in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
-            in_sg {
-              # Look for the gate slug key followed by a list.
-              if ($0 ~ slug ":") { in_gate = 1; next }
-              if (in_gate && $0 ~ /^      - /) {
-                val = $0
-                sub(/^[[:space:]]*- [[:space:]]*/, "", val)
-                sub(/[[:space:]]*$/, "", val)
-                gsub(/"/, "", val)
-                gsub(/'\''/, "", val)
-                if (out != "") out = out "\n"
-                out = out val
-              }
-              if (in_gate && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) { in_gate = 0 }
+      # Read scope globs from project config (the sole source; no CLI override).
+      local config_file="${PROJECT_CONFIG:-}"
+      if [ -z "$config_file" ]; then
+        local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+        config_file="$root/.gaia/config/project-config.yaml"
+      fi
+      if [ -f "$config_file" ] && command -v awk >/dev/null 2>&1; then
+        config_scope="$(awk -v slug="$gate_slug" '
+          /^review_gate:/ { in_rg = 1; next }
+          in_rg && /^[^ ]/ { in_rg = 0 }
+          in_rg && /scope_globs:/ { in_sg = 1; next }
+          in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
+          in_sg {
+            # Look for the gate slug key followed by a list.
+            if ($0 ~ slug ":") { in_gate = 1; next }
+            if (in_gate && $0 ~ /^      - /) {
+              val = $0
+              sub(/^[[:space:]]*- [[:space:]]*/, "", val)
+              sub(/[[:space:]]*$/, "", val)
+              gsub(/"/, "", val)
+              gsub(/'\''/, "", val)
+              if (out != "") out = out "\n"
+              out = out val
             }
-            END { if (out != "") print out }
-          ' "$config_file" 2>/dev/null)" || config_scope=""
-        fi
+            if (in_gate && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) { in_gate = 0 }
+          }
+          END { if (out != "") print out }
+        ' "$config_file" 2>/dev/null)" || config_scope=""
       fi
       if [ -z "$config_scope" ]; then
         die "carry-forward: no scope globs configured for row '$carry_row' (gate slug: $gate_slug) — cannot determine file overlap; refusing (fail closed)"

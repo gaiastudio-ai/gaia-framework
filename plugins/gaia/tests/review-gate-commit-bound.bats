@@ -86,6 +86,24 @@ STORY
   printf '%s' "$story"
 }
 
+# Helper: write a project-config.yaml with scope_globs for a given gate.
+# Usage: _write_scope_config <dir> <gate-slug> <glob> [<glob2> ...]
+_write_scope_config() {
+  local dir="$1" slug="$2"; shift 2
+  mkdir -p "$dir/.gaia/config"
+  local cfg="$dir/.gaia/config/project-config.yaml"
+  cat > "$cfg" <<YAML
+review_gate:
+  scope_globs:
+    ${slug}:
+YAML
+  local g
+  for g in "$@"; do
+    printf '      - "%s"\n' "$g" >> "$cfg"
+  done
+  export PROJECT_CONFIG="$cfg"
+}
+
 # ---------------------------------------------------------------------------
 # AC1: Dual-shape parser
 # ---------------------------------------------------------------------------
@@ -502,10 +520,10 @@ STORY
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S20" "$sha_a")"
   sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha_a} |/| Code Review | FAILED | cr.md | ${sha_a} |/" "$story"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "nonexistent/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S20 --row "Code Review" --from "$sha_a" --to "$sha_b" \
-    --scope "nonexistent/**"
+    --story E900-S20 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -ne 0 ]
   grep -qi 'not PASSED' <<< "$output"
 }
@@ -521,10 +539,10 @@ STORY
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S21" "$sha_a")"
   sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha_a} |/| Code Review | UNVERIFIED | — |  |/" "$story"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "nonexistent/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S21 --row "Code Review" --from "$sha_a" --to "$sha_b" \
-    --scope "nonexistent/**"
+    --story E900-S21 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -ne 0 ]
   grep -qi 'not PASSED' <<< "$output"
 }
@@ -539,10 +557,10 @@ STORY
   local story
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S22" "$sha_a")"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "nonexistent/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S22 --row "Code Review" --from "$sha_b" --to "$sha_b" \
-    --scope "nonexistent/**"
+    --story E900-S22 --row "Code Review" --from "$sha_b" --to "$sha_b"
   [ "$status" -ne 0 ]
   grep -qi 'mismatch' <<< "$output"
 }
@@ -562,10 +580,10 @@ STORY
   local story
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S7" "$sha_a")"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S7 --row "Code Review" --from "$sha_a" --to "$sha_b" \
-    --scope "src/**"
+    --story E900-S7 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -eq 0 ]
   grep "Code Review" "$story" | grep -q "$sha_b"
   grep "Code Review" "$story" | grep -q "cr.md"
@@ -585,10 +603,10 @@ STORY
   local story
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S23" "$sha_a")"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S23 --row "Code Review" --from "$sha_a" --to "$sha_b" \
-    --scope "src/**"
+    --story E900-S23 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -ne 0 ]
   grep -qi 'scope\|overlap\|re-run' <<< "$output"
 }
@@ -600,10 +618,11 @@ STORY
   local story
   story="$(_seed_story_4col "$PROJECT_PATH" "E900-S24" "$sha")"
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
     --story E900-S24 --row "Code Review" \
-    --from "--output=/tmp/x" --to "$sha" --scope "src/**"
+    --from "--output=/tmp/x" --to "$sha"
   [ "$status" -ne 0 ]
   [ ! -f /tmp/x ]
 }
@@ -645,14 +664,140 @@ status: review
 > Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
-    --story E900-S25 --row "Code Review" --from "$sha_a" --to "$sha_b" \
-    --scope "src/**"
+    --story E900-S25 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -eq 0 ]
 
   run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
     --bind-head "$sha_b" --ci-sha none --story "$story"
   [ "$status" -eq 0 ]
   grep -qi 'complete' <<< "$output"
+}
+
+@test "carry-forward: no configured scope refuses (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S30" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  # No scope config at all — should refuse.
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S30 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'no scope globs configured\|fail.*closed' <<< "$output"
+}
+
+@test "carry-forward: glob **/*.sh matches deep path overlap" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src/deep"
+  printf 'v1\n' > "$PROJECT_PATH/src/deep/util.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/deep/util.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S31" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "**/*.sh"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S31 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'scope\|overlap\|re-run' <<< "$output"
+}
+
+@test "carry-forward: glob src/**/main.sh matches nested path overlap" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src/sub"
+  printf 'v1\n' > "$PROJECT_PATH/src/sub/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/sub/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S32" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**/main.sh"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S32 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'scope\|overlap\|re-run' <<< "$output"
+}
+
+@test "carry-forward: glob *.sh matches root-level files only" {
+  _init_git "$PROJECT_PATH"
+  printf 'v1\n' > "$PROJECT_PATH/build.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/build.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S33" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "*.sh"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S33 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'scope\|overlap\|re-run' <<< "$output"
+}
+
+@test "carry-forward: dotted filename in scope is matched correctly" {
+  _init_git "$PROJECT_PATH"
+  printf 'v1\n' > "$PROJECT_PATH/.env.local"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/.env.local"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S34" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" ".env.*"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S34 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'scope\|overlap\|re-run' <<< "$output"
+}
+
+@test "carry-forward: anchored glob does not prefix-match" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/abc.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/abc.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S35" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  # Glob "src/a" should NOT match "src/abc.sh" (must be anchored)
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/a"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S35 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -eq 0 ]
 }
