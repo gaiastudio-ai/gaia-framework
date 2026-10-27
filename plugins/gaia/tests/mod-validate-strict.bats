@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 # mod-validate-strict.bats -- Plugin validate --strict and hooks.json lint.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)"
   PLUGIN_DIR="$REPO_ROOT/plugins/gaia"

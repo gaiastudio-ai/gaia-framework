@@ -3,6 +3,8 @@
 # Doc-guard tests for the Mode B (Agent Teams) user documentation page.
 # The page is hand-authored HTML under the doc site at documentation/mode-b.html.
 
+load 'test_helper.bash'
+
 setup() {
   DOC_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../documentation" && pwd)"
   PAGE="$DOC_ROOT/mode-b.html"

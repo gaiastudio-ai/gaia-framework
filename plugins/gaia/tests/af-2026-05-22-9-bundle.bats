@@ -96,7 +96,7 @@ teardown() { common_teardown; }
   grep -qF 'status: planned' "$tmp/sprint-status.yaml"
   grep -qF 'total_points: 0' "$tmp/sprint-status.yaml"
   grep -qF 'goals: []' "$tmp/sprint-status.yaml"
-  grep -qF 'items: []' "$tmp/sprint-status.yaml"
+  grep -qF 'stories: []' "$tmp/sprint-status.yaml"
 }
 
 @test "sprint-state.sh init refuses to overwrite existing yaml" {

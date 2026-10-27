@@ -4,6 +4,8 @@
 # phase READS. Guards against the Unicode-arrow vs ASCII-arrow homoglyph drift
 # that would silently break the merge's target-validation handoff.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   MARKER_LIB="$PLUGIN/skills/gaia-triage-findings/scripts/triaged-marker.sh"

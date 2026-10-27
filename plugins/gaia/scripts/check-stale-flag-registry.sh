@@ -97,7 +97,7 @@ registered=$(grep -oE "$_stale_re" "$registry_path" \
 
 # ---- Audit found vs registered ----
 for marker in $found_markers; do
-  if ! printf '%s\n' "$registered" | grep -qxF "$marker"; then
+  if ! printf '%s\n' "$registered" | grep -qxF -- "$marker"; then
     printf 'CRITICAL: Unregistered stale-flag marker: .gaia/memory/%s. Register in the stale-flag registry or remove.\n' \
       "$marker"
     exit_code=1

@@ -497,6 +497,7 @@ jobs:
             tests/skills/gaia-triage-findings-e41-s5-yolo-auto-apply.bats \
             tests/skills/gaia-triage-findings-reproduction-policy.bats \
             tests/skills/lint-skill-frontmatter.bats \
+            tests/skills/merge-pr-head-guard.bats \
             tests/skills/validate-plan-structure.bats \
             tests/skills/gaia-atdd/setup-finalize-quirks.bats \
             tests/skills/gaia-dev-story/e41-s4-yolo-auto-run-reviews.bats \

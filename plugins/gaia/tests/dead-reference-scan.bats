@@ -11,6 +11,8 @@
 # still fails).
 # AC3 of E29-S6: existing SKILL.md allowlist behavior unchanged.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPT="$PLUGIN_DIR/scripts/dead-reference-scan.sh"

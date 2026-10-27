@@ -6,6 +6,8 @@
 
 # shellcheck disable=SC2030,SC2031
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
 
@@ -28,9 +30,16 @@ setup() {
   touch "$TEST_DIR/gaia-public/plugins/gaia/scripts/lib/helper.sh"
   touch "$TEST_DIR/gaia-public/plugins/gaia/hooks/pre-commit.sh"
 
-  # Concurrent mode config.
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  # Concurrent mode config (complete — the resolver must exit 0).
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:
@@ -496,7 +505,7 @@ SHIM
   local stderr_content
   stderr_content="$(cat "$stderr_file")"
   rm -f "$stderr_file"
-  [ -z "$stderr_content" ]
+  [ -z "$stderr_content" ] || { echo "unexpected stderr: $stderr_content"; false; }
 }
 
 @test "config key granularity different sections pass" {
@@ -728,8 +737,15 @@ YAML
 
   touch "$spaced_dir/gaia-public/plugins/gaia/scripts/sprint-state.sh"
 
-  cat > "$spaced_dir/.gaia/config/project-config.yaml" <<'YAML'
+  cat > "$spaced_dir/.gaia/config/project-config.yaml" <<YAML
 project_name: "test-spaced"
+project_root: "$spaced_dir"
+project_path: "$spaced_dir/app"
+memory_path: "$spaced_dir/.gaia/memory"
+checkpoint_path: "$spaced_dir/.gaia/memory/checkpoints"
+installed_path: "$spaced_dir/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 4
 stacks:
@@ -987,4 +1003,775 @@ SHIM
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL indeterminate:"* ]]
+}
+
+# ---------- rule (d) with real resolver (absolute artifact paths) ---------
+
+# Helper: write a complete config with all required fields so the resolver
+# runs its full path instead of bailing on a missing field.
+_write_full_config() {
+  local root="$1"
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: $root
+project_path: $root/app
+memory_path: $root/.gaia/memory
+checkpoint_path: $root/.gaia/memory/checkpoints
+installed_path: $root/_gaia
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: .gaia/artifacts/planning-artifacts
+test_artifacts: .gaia/artifacts/test-artifacts
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+}
+
+# Seed two sprints that both touch the same PRD.
+_seed_prd_overlap() {
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  touch "$PLANNING_DIR/prd/prd.md"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: [".gaia/artifacts/planning-artifacts/prd/prd.md"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: [".gaia/artifacts/planning-artifacts/prd/prd.md"]'
+}
+
+@test "rule (d) fires with absolute project_root in config" {
+  _write_full_config "$TEST_DIR"
+  _seed_prd_overlap
+  run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires with dot root and root env set to test dir" {
+  _write_full_config "."
+  _seed_prd_overlap
+  export PROJECT_ROOT="$TEST_DIR"
+  run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires with dot root and all root envs unset" {
+  # The shipping call shape: project_root: ".", no root env.
+  _write_full_config "."
+  _seed_prd_overlap
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "traversal root in config fails closed via resolver error" {
+  # project_root: "../<dirname>" — the resolver rejects traversal and exits
+  # non-zero. The check must fail closed, not silently fall back.
+  local name
+  name="$(basename "$TEST_DIR")"
+  _write_full_config "../${name}"
+  _seed_prd_overlap
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected exit 1, got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL indeterminate"* ]] || { echo "missing FAIL indeterminate"; echo "$output"; false; }
+}
+
+@test "rule (d) fires with doubled-slash root and envs unset" {
+  _write_full_config "$TEST_DIR//"
+  _seed_prd_overlap
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires with trailing-dot root and envs unset" {
+  _write_full_config "$TEST_DIR/./"
+  _seed_prd_overlap
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires for test-plan family overlap via resolver" {
+  # Covers the test_dir strip (guards test-plan/traceability families).
+  _write_full_config "$TEST_DIR"
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  touch "$TEST_ARTIFACTS_DIR/strategy/traceability-matrix.md"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: [".gaia/artifacts/test-artifacts/strategy/traceability-matrix.md"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: [".gaia/artifacts/test-artifacts/strategy/traceability-matrix.md"]'
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on traceability"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires when project root path contains an apostrophe" {
+  # The resolver shell-escapes apostrophes as '\''. The parser must decode
+  # them so the prefix strip matches. The apostrophe is in the project root
+  # directory name, so every resolved absolute path contains it.
+  # Stories touch DIFFERENT files in the prd family so rule (c) cannot mask.
+  local apos_dir="$TEST_DIR/proj'apos"
+  local a_state="$apos_dir/.gaia/state"
+  local a_impl="$apos_dir/.gaia/artifacts/implementation-artifacts"
+  local a_plan="$apos_dir/.gaia/artifacts/planning-artifacts"
+  local a_test="$apos_dir/.gaia/artifacts/test-artifacts"
+  local a_cfg="$apos_dir/.gaia/config"
+  mkdir -p "$a_state" "$a_impl" "$a_cfg" "$a_plan/prd" "$a_plan/architecture" "$a_plan/epics" "$a_test/strategy"
+  mkdir -p "$apos_dir/gaia-public/plugins/gaia/scripts/lib" "$apos_dir/gaia-public/plugins/gaia/hooks"
+  touch "$apos_dir/gaia-public/plugins/gaia/scripts/sprint-state.sh" "$apos_dir/gaia-public/plugins/gaia/scripts/independence-check.sh" "$apos_dir/gaia-public/plugins/gaia/scripts/lib/helper.sh" "$apos_dir/gaia-public/plugins/gaia/hooks/pre-commit.sh"
+  cat > "$a_plan/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  printf 'sprint-900 %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$a_state/.sprint-migration-complete"
+  cat > "$a_cfg/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$apos_dir"
+project_path: "$apos_dir/app"
+memory_path: "$apos_dir/.gaia/memory"
+checkpoint_path: "$apos_dir/.gaia/memory/checkpoints"
+installed_path: "$apos_dir/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  for sid in sprint-900 sprint-903; do
+    local _status; [ "$sid" = "sprint-900" ] && _status=active || _status=planned
+    local _key; [ "$sid" = "sprint-900" ] && _key=E900-S1 || _key=E903-S1
+    cat > "$a_state/sprint-status-${sid}.yaml" <<YML
+sprint_id: "$sid"
+status: $_status
+stories:
+  - key: "$_key"
+    status: in-progress
+YML
+  done
+  touch "$a_plan/prd/a.md" "$a_plan/prd/b.md"
+  local _d
+  for pair in "E900-S1:E900:a" "E903-S1:E903:b"; do
+    IFS=: read -r _k _e _f <<< "$pair"
+    _d="$a_impl/epic-$(printf '%s' "$_e" | tr '[:upper:]' '[:lower:]')/${_k}-test-story"
+    mkdir -p "$_d"
+    printf -- '---\nkey: "%s"\nepic: "%s"\nstatus: in-progress\npredicted_touch_set: [".gaia/artifacts/planning-artifacts/prd/%s.md"]\n---\n# Story: %s\n' "$_k" "$_e" "$_f" "$_k" > "$_d/story.md"
+  done
+  cd "$apos_dir"
+  run env PROJECT_ROOT="$apos_dir" PROJECT_PATH="$apos_dir" \
+    IMPLEMENTATION_ARTIFACTS="$a_impl" GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+
+@test "rule (d) fires with apostrophe in planning_artifacts dir name" {
+  # Apostrophe in the artifact dir name exercises the quote decoder.
+  # Stories touch DIFFERENT files of one family so rule (c) cannot mask.
+  local apos_dir="$TEST_DIR/proj'plan"
+  local a_state="$apos_dir/.gaia/state" a_impl="$apos_dir/.gaia/artifacts/implementation-artifacts"
+  local a_plan="$apos_dir/.gaia/artifacts/plan'ning" a_test="$apos_dir/.gaia/artifacts/test-artifacts"
+  local a_cfg="$apos_dir/.gaia/config"
+  mkdir -p "$a_state" "$a_impl" "$a_cfg" "$a_plan/prd" "$a_plan/architecture" "$a_plan/epics" "$a_test/strategy"
+  mkdir -p "$apos_dir/gaia-public/plugins/gaia/scripts/lib" "$apos_dir/gaia-public/plugins/gaia/hooks"
+  touch "$apos_dir/gaia-public/plugins/gaia/scripts/sprint-state.sh" "$apos_dir/gaia-public/plugins/gaia/scripts/independence-check.sh" "$apos_dir/gaia-public/plugins/gaia/scripts/lib/helper.sh" "$apos_dir/gaia-public/plugins/gaia/hooks/pre-commit.sh"
+  cat > "$a_plan/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  printf 'sprint-900 %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$a_state/.sprint-migration-complete"
+  cat > "$a_cfg/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$apos_dir"
+project_path: "$apos_dir/app"
+memory_path: "$apos_dir/.gaia/memory"
+checkpoint_path: "$apos_dir/.gaia/memory/checkpoints"
+installed_path: "$apos_dir/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$a_plan"
+test_artifacts: "$a_test"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  for sid in sprint-900 sprint-903; do
+    local _st; [ "$sid" = "sprint-900" ] && _st=active || _st=planned
+    local _k; [ "$sid" = "sprint-900" ] && _k=E900-S1 || _k=E903-S1
+    cat > "$a_state/sprint-status-${sid}.yaml" <<YML
+sprint_id: "$sid"
+status: $_st
+stories:
+  - key: "$_k"
+    status: in-progress
+YML
+  done
+  touch "$a_plan/prd/a.md" "$a_plan/prd/b.md"
+  for pair in "E900-S1:E900:a" "E903-S1:E903:b"; do
+    IFS=: read -r _k _e _f <<< "$pair"
+    local _d="$a_impl/epic-$(printf '%s' "$_e" | tr '[:upper:]' '[:lower:]')/${_k}-test-story"
+    mkdir -p "$_d"
+    printf -- "---\nkey: \"%s\"\nepic: \"%s\"\nstatus: in-progress\npredicted_touch_set: [\".gaia/artifacts/plan'ning/prd/%s.md\"]\n---\n# Story: %s\n" "$_k" "$_e" "$_f" "$_k" > "$_d/story.md"
+  done
+  cd "$apos_dir"
+  run env PROJECT_ROOT="$apos_dir" PROJECT_PATH="$apos_dir" \
+    IMPLEMENTATION_ARTIFACTS="$a_impl" GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+# ---- Standalone project fixture helper ----
+# _make_project <root> <planning_rel> <test_rel> <overlap_family> [touch1] [touch2]
+#   Creates a minimal project tree with two sprints and two stories that
+#   touch DIFFERENT files of <overlap_family>. Dirs are created under <root>.
+#   planning_rel/test_rel are the config values (relative or absolute).
+#   Returns 0 on success.
+_make_project() {
+  local root="$1" p_cfg="$2" t_cfg="$3" family="$4"
+  local touch1="${5:-}" touch2="${6:-}"
+  local state="$root/.gaia/state" impl="$root/.gaia/artifacts/implementation-artifacts"
+  local cfg="$root/.gaia/config"
+  # Resolve the physical dir for planning/test from the config value.
+  local p_dir t_dir
+  case "$p_cfg" in
+    /*) p_dir="$p_cfg" ;;
+    *)  p_dir="$root/$p_cfg" ;;
+  esac
+  case "$t_cfg" in
+    /*) t_dir="$t_cfg" ;;
+    *)  t_dir="$root/$t_cfg" ;;
+  esac
+  mkdir -p "$state" "$impl" "$cfg"
+  mkdir -p "$p_dir/prd" "$p_dir/architecture" "$p_dir/epics"
+  mkdir -p "$t_dir/strategy"
+  mkdir -p "$root/gaia-public/plugins/gaia/scripts/lib" "$root/gaia-public/plugins/gaia/hooks"
+  touch "$root/gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  touch "$root/gaia-public/plugins/gaia/scripts/independence-check.sh"
+  touch "$root/gaia-public/plugins/gaia/scripts/lib/helper.sh"
+  touch "$root/gaia-public/plugins/gaia/hooks/pre-commit.sh"
+  cat > "$p_dir/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  printf 'sprint-900 %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$state/.sprint-migration-complete"
+  cat > "$cfg/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$root"
+project_path: "$root/app"
+memory_path: "$root/.gaia/memory"
+checkpoint_path: "$root/.gaia/memory/checkpoints"
+installed_path: "$root/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$p_cfg"
+test_artifacts: "$t_cfg"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  for sid in sprint-900 sprint-903; do
+    local _st; [ "$sid" = "sprint-900" ] && _st=active || _st=planned
+    local _k; [ "$sid" = "sprint-900" ] && _k=E900-S1 || _k=E903-S1
+    cat > "$state/sprint-status-${sid}.yaml" <<YML
+sprint_id: "$sid"
+status: $_st
+stories:
+  - key: "$_k"
+    status: in-progress
+YML
+  done
+  # Default touches: two files in prd family.
+  [ -n "$touch1" ] || touch1=".gaia/artifacts/planning-artifacts/prd/a.md"
+  [ -n "$touch2" ] || touch2=".gaia/artifacts/planning-artifacts/prd/b.md"
+  # Create the files.
+  local _tf
+  for _tf in "$touch1" "$touch2"; do
+    local _abs
+    case "$_tf" in /*) _abs="$_tf" ;; *) _abs="$root/$_tf" ;; esac
+    mkdir -p "$(dirname "$_abs")"
+    touch "$_abs"
+  done
+  for pair in "E900-S1:E900:$touch1" "E903-S1:E903:$touch2"; do
+    IFS=: read -r _k _e _f <<< "$pair"
+    local _d="$impl/epic-$(printf '%s' "$_e" | tr '[:upper:]' '[:lower:]')/${_k}-test-story"
+    mkdir -p "$_d"
+    printf -- '---\nkey: "%s"\nepic: "%s"\nstatus: in-progress\npredicted_touch_set: ["%s"]\n---\n# Story: %s\n' "$_k" "$_e" "$_f" "$_k" > "$_d/story.md"
+  done
+}
+
+# ---- Apostrophe + newline + outside-root + alias tests ----
+
+@test "rule (d) fires with apostrophe in relative planning_artifacts value" {
+  # planning_artifacts: "pl'an" (relative) — the resolver shell-escapes the
+  # apostrophe. The decode must strip it for the prefix to match.
+  # Two stories touch different files in the prd family so rule (c) cannot mask.
+  local pdir="$TEST_DIR/.gaia/artifacts/pl'an"
+  mkdir -p "$pdir/prd" "$pdir/architecture" "$pdir/epics"
+  cat > "$pdir/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  touch "$pdir/prd/a.md" "$pdir/prd/b.md"
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: ".gaia/artifacts/pl'an"
+test_artifacts: .gaia/artifacts/test-artifacts
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" "predicted_touch_set: [\".gaia/artifacts/pl'an/prd/a.md\"]"
+  create_story_ts "E903-S1" "E903" "predicted_touch_set: [\".gaia/artifacts/pl'an/prd/b.md\"]"
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "rule (d) fires with apostrophe in relative test_artifacts value" {
+  # test_artifacts: "te'st" (relative) — same decode on the test side.
+  # Two stories touch different traceability-family files so rule (c) cannot mask.
+  local tdir="$TEST_DIR/.gaia/artifacts/te'st"
+  mkdir -p "$tdir/strategy"
+  touch "$tdir/traceability-matrix.md" "$tdir/strategy/traceability-matrix.md"
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: .gaia/artifacts/planning-artifacts
+test_artifacts: ".gaia/artifacts/te'st"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" "predicted_touch_set: [\".gaia/artifacts/te'st/traceability-matrix.md\"]"
+  create_story_ts "E903-S1" "E903" "predicted_touch_set: [\".gaia/artifacts/te'st/strategy/traceability-matrix.md\"]"
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on traceability"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+
+@test "newline in root directory name refuses with malformed-line message" {
+  # A newline in the root path produces a malformed line in the resolver
+  # output (the value spans two lines). The check must refuse with a clear
+  # message naming the bad line. The pre-fix code (6d0e07b7) gives PASS
+  # exit 0 (fail-open).
+  local nl_root
+  nl_root="$TEST_DIR/root
+broken"
+  mkdir -p "$nl_root/.gaia/state" "$nl_root/.gaia/config" "$nl_root/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$nl_root/.gaia/artifacts/planning-artifacts/prd"
+  mkdir -p "$nl_root/.gaia/artifacts/planning-artifacts/epics"
+  mkdir -p "$nl_root/.gaia/artifacts/test-artifacts/strategy"
+  mkdir -p "$nl_root/gaia-public/plugins/gaia/scripts/lib" "$nl_root/gaia-public/plugins/gaia/hooks"
+  touch "$nl_root/gaia-public/plugins/gaia/scripts/sprint-state.sh"
+  touch "$nl_root/gaia-public/plugins/gaia/scripts/independence-check.sh"
+  touch "$nl_root/gaia-public/plugins/gaia/scripts/lib/helper.sh"
+  touch "$nl_root/gaia-public/plugins/gaia/hooks/pre-commit.sh"
+  cat > "$nl_root/.gaia/artifacts/planning-artifacts/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  printf 'sprint-900 %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$nl_root/.gaia/state/.sprint-migration-complete"
+  # Full config with project_root: "." — the resolver resolves it to CWD
+  # which contains the newline. The --all output then has a malformed line.
+  cat > "$nl_root/.gaia/config/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "."
+project_path: "$nl_root/app"
+memory_path: ".gaia/memory"
+checkpoint_path: ".gaia/memory/checkpoints"
+installed_path: "_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  for sid in sprint-900 sprint-903; do
+    local _st; [ "$sid" = "sprint-900" ] && _st=active || _st=planned
+    local _k; [ "$sid" = "sprint-900" ] && _k=E900-S1 || _k=E903-S1
+    cat > "$nl_root/.gaia/state/sprint-status-${sid}.yaml" <<YML
+sprint_id: "$sid"
+status: $_st
+stories:
+  - key: "$_k"
+    status: in-progress
+YML
+  done
+  touch "$nl_root/.gaia/artifacts/planning-artifacts/prd/a.md" "$nl_root/.gaia/artifacts/planning-artifacts/prd/b.md"
+  local _d
+  for pair in "E900-S1:E900:a" "E903-S1:E903:b"; do
+    IFS=: read -r _k _e _f <<< "$pair"
+    _d="$nl_root/.gaia/artifacts/implementation-artifacts/epic-$(printf '%s' "$_e" | tr '[:upper:]' '[:lower:]')/${_k}-test-story"
+    mkdir -p "$_d"
+    printf -- '---\nkey: "%s"\nepic: "%s"\nstatus: in-progress\npredicted_touch_set: [".gaia/artifacts/planning-artifacts/prd/%s.md"]\n---\n# Story: %s\n' "$_k" "$_e" "$_f" "$_k" > "$_d/story.md"
+  done
+  cd "$nl_root"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -ne 0 ] || { echo "expected non-zero exit, got 0"; echo "$output"; false; }
+  [[ "$output" == *"FAIL indeterminate"*"malformed line"* ]] || { echo "missing malformed-line refusal"; echo "$output"; false; }
+}
+
+@test "outside-root absolute planning_artifacts warns and continues" {
+  # An absolute planning_artifacts OUTSIDE the project_root must not block.
+  # The check prints a WARNING and the epics file is read from the configured
+  # (outside) dir. Delete the default-path epics file to prove the check
+  # reads from the configured location.
+  local outside_plan
+  outside_plan="$(mktemp -d "$TEST_DIR/../outside-plan-XXXXXX")"
+  mkdir -p "$outside_plan/prd" "$outside_plan/architecture" "$outside_plan/epics"
+  cat > "$outside_plan/epics-and-stories.md" <<'MD'
+# Epics and Stories
+## E900 — Test
+## E903 — Test2
+MD
+  # Remove the default-path epics file so the check must use the configured dir.
+  rm -f "$PLANNING_DIR/epics-and-stories.md"
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$outside_plan"
+test_artifacts: .gaia/artifacts/test-artifacts
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["src/a.txt"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["src/b.txt"]'
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  rm -rf "$outside_plan"
+  [ "$status" -eq 0 ] || { echo "expected PASS, got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"WARNING"*"outside"* ]] || { echo "missing outside-root WARNING"; echo "$output"; false; }
+}
+
+@test "outside-root absolute test_artifacts warns and continues" {
+  local outside_test
+  outside_test="$(mktemp -d "$TEST_DIR/../outside-test-XXXXXX")"
+  mkdir -p "$outside_test/strategy"
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: .gaia/artifacts/planning-artifacts
+test_artifacts: "$outside_test"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["src/a.txt"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["src/b.txt"]'
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  rm -rf "$outside_test"
+  [ "$status" -eq 0 ] || { echo "expected PASS, got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"WARNING"*"outside"* ]] || { echo "missing outside-root WARNING"; echo "$output"; false; }
+}
+
+@test "symlinked root with custom planning dir classifies correctly" {
+  # project_root is a symlink, planning_artifacts is a CUSTOM absolute
+  # physical path (not the default). The physical-path compare must resolve
+  # both sides so the prefix strip matches.
+  local real_root="$TEST_DIR/real-proj"
+  local link_root="$TEST_DIR/link-proj"
+  local custom_plan="$real_root/docs/plan"
+  _make_project "$real_root" \
+    "$custom_plan" \
+    "$real_root/.gaia/artifacts/test-artifacts" \
+    "prd" \
+    "docs/plan/prd/a.md" \
+    "docs/plan/prd/b.md"
+  ln -s "$real_root" "$link_root"
+  cat > "$real_root/.gaia/config/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$link_root"
+project_path: "$link_root/app"
+memory_path: "$link_root/.gaia/memory"
+checkpoint_path: "$link_root/.gaia/memory/checkpoints"
+installed_path: "$link_root/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$real_root/docs/plan"
+test_artifacts: "$real_root/.gaia/artifacts/test-artifacts"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  cd "$real_root"
+  run env PROJECT_ROOT="$link_root" PROJECT_PATH="$link_root" \
+    IMPLEMENTATION_ARTIFACTS="$real_root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "symlinked planning dir with custom path classifies correctly" {
+  # project_root points to the real dir; planning_artifacts points to a
+  # SYMLINK of a custom planning dir. The physical-path compare resolves
+  # the symlink so the prefix strip matches.
+  local real_root="$TEST_DIR/sym-proj"
+  local custom_plan="$real_root/docs/plan"
+  local link_plan="$TEST_DIR/plan-link"
+  _make_project "$real_root" \
+    "$custom_plan" \
+    "$real_root/.gaia/artifacts/test-artifacts" \
+    "prd" \
+    "docs/plan/prd/a.md" \
+    "docs/plan/prd/b.md"
+  ln -s "$custom_plan" "$link_plan"
+  cat > "$real_root/.gaia/config/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$real_root"
+project_path: "$real_root/app"
+memory_path: "$real_root/.gaia/memory"
+checkpoint_path: "$real_root/.gaia/memory/checkpoints"
+installed_path: "$real_root/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$link_plan"
+test_artifacts: "$real_root/.gaia/artifacts/test-artifacts"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  cd "$real_root"
+  run env PROJECT_ROOT="$real_root" PROJECT_PATH="$real_root" \
+    IMPLEMENTATION_ARTIFACTS="$real_root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "symlinked root with dot and custom plan from alias CWD classifies correctly" {
+  # project_root: "."; CWD is a symlink to the real dir; planning is a
+  # custom absolute path under the real dir.
+  local real_root="$TEST_DIR/dot-real"
+  local link_root="$TEST_DIR/dot-link"
+  local custom_plan="$real_root/docs/plan"
+  _make_project "$real_root" \
+    "$custom_plan" \
+    "$real_root/.gaia/artifacts/test-artifacts" \
+    "prd" \
+    "docs/plan/prd/a.md" \
+    "docs/plan/prd/b.md"
+  ln -s "$real_root" "$link_root"
+  cat > "$real_root/.gaia/config/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "."
+project_path: "app"
+memory_path: ".gaia/memory"
+checkpoint_path: ".gaia/memory/checkpoints"
+installed_path: "_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$real_root/docs/plan"
+test_artifacts: "$real_root/.gaia/artifacts/test-artifacts"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  cd "$link_root"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    IMPLEMENTATION_ARTIFACTS="$real_root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected FAIL rule (d), got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL rule (d): planning-artifact conflict on prd"* ]] || { echo "missing rule (d)"; echo "$output"; false; }
+}
+
+@test "non-conflicting layout with symlinked paths passes" {
+  local real_root="$TEST_DIR/pass-proj"
+  local link_root="$TEST_DIR/pass-link"
+  local custom_plan="$real_root/docs/plan"
+  _make_project "$real_root" \
+    "$custom_plan" \
+    "$real_root/.gaia/artifacts/test-artifacts" \
+    "none" \
+    "src/a.txt" \
+    "src/b.txt"
+  ln -s "$real_root" "$link_root"
+  cat > "$real_root/.gaia/config/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$link_root"
+project_path: "$link_root/app"
+memory_path: "$link_root/.gaia/memory"
+checkpoint_path: "$link_root/.gaia/memory/checkpoints"
+installed_path: "$link_root/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+planning_artifacts: "$real_root/docs/plan"
+test_artifacts: "$real_root/.gaia/artifacts/test-artifacts"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  cd "$real_root"
+  run env PROJECT_ROOT="$link_root" PROJECT_PATH="$link_root" \
+    IMPLEMENTATION_ARTIFACTS="$real_root/.gaia/artifacts/implementation-artifacts" \
+    GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1 \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 0 ] || { echo "expected PASS, got status=$status"; echo "$output"; false; }
+}
+
+@test "resolver returning non-absolute value fails closed via caller" {
+  # A mock resolve-config.sh returns a non-absolute test_artifacts.
+  # The non-absolute guard catches it; the caller propagates the failure.
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["src/a.txt"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["src/b.txt"]'
+  local mock_scripts="$TEST_DIR/mock-scripts"
+  mkdir -p "$mock_scripts"
+  local real_scripts _f _bn
+  real_scripts="$(cd "$(dirname "$IC_SCRIPT")" && pwd)"
+  for _f in "$real_scripts"/*; do
+    [ -e "$_f" ] || continue
+    _bn="$(basename "$_f")"
+    [ "$_bn" = "resolve-config.sh" ] && continue
+    ln -sf "$_f" "$mock_scripts/$_bn"
+  done
+  rm -f "$mock_scripts/independence-check.sh"
+  cp "$IC_SCRIPT" "$mock_scripts/independence-check.sh"
+  cat > "$mock_scripts/resolve-config.sh" <<MOCK
+#!/usr/bin/env bash
+printf "project_root='$TEST_DIR'\nplanning_artifacts='$PLANNING_DIR'\ntest_artifacts='not_absolute'\n"
+MOCK
+  chmod +x "$mock_scripts/resolve-config.sh"
+  cd "$TEST_DIR"
+  run bash "$mock_scripts/independence-check.sh" --candidate sprint-903 --active sprint-900
+  [ "$status" -eq 1 ] || { echo "expected exit 1, got status=$status"; echo "$output"; false; }
+  [[ "$output" == *"FAIL indeterminate: artifact-dir resolution failed"* ]] || { echo "missing FAIL indeterminate"; echo "$output"; false; }
+}
+
+@test "config missing required field fails closed naming the resolver" {
+  # A config that lacks a required field (date) causes the resolver to
+  # exit non-zero. The check must refuse, not fall back to defaults.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["src/a.txt"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["src/b.txt"]'
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -ne 0 ] || { echo "expected non-zero exit, got 0"; echo "$output"; false; }
+  [[ "$output" == *"FAIL indeterminate"*"config resolver failed"* ]] || { echo "missing resolver-error message"; echo "$output"; false; }
+}
+
+@test "resolver error message names the exit code" {
+  # Assert the exact diagnostic so the message cannot be silently removed.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "test-project"
+project_root: "$TEST_DIR"
+sprint:
+  max_concurrent_active: 4
+stacks:
+  - name: bash
+    path: "."
+YAML
+  create_sprint "sprint-900" "active" "E900-S1"
+  create_sprint "sprint-903" "planned" "E903-S1"
+  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["src/a.txt"]'
+  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["src/b.txt"]'
+  cd "$TEST_DIR"
+  run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+    bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
+  [ "$status" -ne 0 ] || { echo "expected non-zero, got 0"; echo "$output"; false; }
+  [[ "$output" == *"config resolver failed (exit "* ]] || { echo "missing exit-code in message"; echo "$output"; false; }
 }

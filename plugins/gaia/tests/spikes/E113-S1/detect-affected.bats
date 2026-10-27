@@ -15,6 +15,8 @@
 # cannot use the shared test_helper.bash (which tries to cd to ../scripts from
 # the bats-file dir). setup/teardown are defined inline here.
 
+load '../../test_helper.bash'
+
 SCRIPT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/spikes/E113-S1/detect-affected.sh"
 
 setup() {

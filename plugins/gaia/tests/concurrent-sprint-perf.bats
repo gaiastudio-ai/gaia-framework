@@ -4,6 +4,8 @@
 
 # shellcheck disable=SC2030,SC2031
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
 
@@ -17,8 +19,15 @@ setup() {
   mkdir -p "$TEST_DIR/gaia-public/plugins/gaia/scripts/lib"
   mkdir -p "$TEST_DIR/gaia-public/plugins/gaia/hooks"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "perf-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 10
 stacks:

@@ -9,6 +9,8 @@
 # Without this, a caller's real project tree can be silently mutated when
 # bats inherits any of these variables from the environment.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

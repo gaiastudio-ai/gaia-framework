@@ -17,6 +17,8 @@
 # [b] path and the new YOLO auto-copy log line so a future regression that
 # reverts the prose is caught at test time.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."
   HELPER="${PLUGIN_ROOT}/gaia/scripts/install-test-environment-manifest.sh"

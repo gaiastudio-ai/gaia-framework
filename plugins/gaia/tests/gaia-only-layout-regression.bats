@@ -15,6 +15,8 @@
 # The fixture is materialised fresh per test via
 # plugins/gaia/tests/fixtures/gaia-only-layout/setup.sh.
 
+load 'test_helper.bash'
+
 setup() {
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH

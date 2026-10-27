@@ -8,6 +8,8 @@
 # Composite verdict logic and matrix expansion are tested by the peer file
 # E74-S10-test-device-matrix.bats.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 PLUGIN_ROOT="$BATS_TEST_DIRNAME/.."

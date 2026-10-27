@@ -118,7 +118,7 @@ trap 'rm -f "$SEEN_TMP" "$DEDUPED_FILE" "$FINDINGS_FILE"' EXIT
 while IFS= read -r f || [ -n "$f" ]; do
   [ -z "$f" ] && continue
   [ ! -f "$f" ] && continue
-  if ! grep -Fxq "$f" "$SEEN_TMP" 2>/dev/null; then
+  if ! grep -Fxq -- "$f" "$SEEN_TMP" 2>/dev/null; then
     printf '%s\n' "$f" >> "$SEEN_TMP"
     printf '%s\n' "$f" >> "$DEDUPED_FILE"
   fi

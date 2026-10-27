@@ -100,7 +100,8 @@ run_resolver_isolated() {
   cd "$TEST_TMP"  # PWD must not contain a config/ dir, otherwise L5 wins.
   run_resolver_isolated planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/planning-artifacts" ]
+  # Relative artifact paths are resolved to absolute (anchored at project_root).
+  [ "$output" = "/tmp/gaia-art/docs/planning-artifacts" ]
 }
 
 @test "artifact-paths (positional): implementation_artifacts default → docs/implementation-artifacts" {
@@ -108,7 +109,7 @@ run_resolver_isolated() {
   cd "$TEST_TMP"
   run_resolver_isolated implementation_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/implementation-artifacts" ]
+  [ "$output" = "/tmp/gaia-art/docs/implementation-artifacts" ]
 }
 
 @test "artifact-paths (positional): test_artifacts default → docs/test-artifacts" {
@@ -116,7 +117,7 @@ run_resolver_isolated() {
   cd "$TEST_TMP"
   run_resolver_isolated test_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/test-artifacts" ]
+  [ "$output" = "/tmp/gaia-art/docs/test-artifacts" ]
 }
 
 @test "artifact-paths (positional): creative_artifacts default → docs/creative-artifacts" {
@@ -124,7 +125,7 @@ run_resolver_isolated() {
   cd "$TEST_TMP"
   run_resolver_isolated creative_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "docs/creative-artifacts" ]
+  [ "$output" = "/tmp/gaia-art/docs/creative-artifacts" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -137,7 +138,8 @@ run_resolver_isolated() {
   cd "$TEST_TMP"
   run_resolver_isolated planning_artifacts
   [ "$status" -eq 0 ]
-  [ "$output" = "planning/" ]
+  # Relative paths are resolved against project_root.
+  [ "$output" = "/tmp/gaia-art/planning" ]
 }
 
 # ---------------------------------------------------------------------------

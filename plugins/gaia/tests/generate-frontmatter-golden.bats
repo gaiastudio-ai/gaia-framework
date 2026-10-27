@@ -9,6 +9,8 @@
 #
 # Dependencies: bats-core 1.10+, diff, awk.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   GENERATOR="$REPO_ROOT/skills/gaia-create-story/scripts/generate-frontmatter.sh"

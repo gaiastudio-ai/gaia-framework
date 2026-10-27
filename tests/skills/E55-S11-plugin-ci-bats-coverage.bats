@@ -106,6 +106,7 @@ REQUIRED_FILES=(
   "tests/skills/gaia-triage-findings-e41-s5-yolo-auto-apply.bats"
   "tests/skills/gaia-triage-findings-reproduction-policy.bats"
   "tests/skills/lint-skill-frontmatter.bats"
+  "tests/skills/merge-pr-head-guard.bats"
   "tests/skills/validate-plan-structure.bats"
 
   # Skill-scoped suites (one directory down). These run clean — verified with

@@ -4,6 +4,9 @@
 
 # Unified ID-scrub pattern used by all AC5 tests (exempt: regex literals in this file).
 # Covers: FR-nnn, NFR-nnn, SR-nnn, ADR-nnn, E#-S#, TC-XXX-n, AF-20xx, AI-20xx
+
+load 'test_helper.bash'
+
 _ID_PATTERN='FR-[0-9]{2,}|NFR-[0-9]{2,}|SR-[0-9]{2,}|ADR-[0-9]{2,}|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|AF-20[0-9]{2}|AI-20[0-9]{2}'
 
 setup() {
@@ -78,22 +81,31 @@ setup() {
 
 # --- AC3: no parallel-sprint synonyms ---
 
-@test "no parallel sprint synonyms after stripping phase-parallel" {
-  hit_count=0
+# _glossary_synonym_scan ROOTS... — scan files under the given directories
+# for "parallel sprint" after stripping "phase-parallel".  Returns the hit
+# count via $hit_count (caller must initialise it).
+_glossary_synonym_scan() {
   while IFS= read -r file; do
     case "$file" in
       */tests/fixtures/*) continue ;;
       */tests/concurrent-sprint-glossary.bats) continue ;;
     esac
-    if sed 's/phase-parallel//Ig' "$file" | grep -qi 'parallel sprint'; then
+    local _stripped
+    _stripped="$(sed 's/phase-parallel//Ig' "$file")"
+    if grep -qi 'parallel sprint' <<< "$_stripped"; then
       echo "HIT: $file" >&2
       hit_count=$((hit_count + 1))
     fi
-  done < <(find "$REPO_ROOT/plugins" "$REPO_ROOT/documentation" -type f \
+  done < <(find "$@" -type f \
     \( -name '*.md' -o -name '*.csv' -o -name '*.html' -o -name '*.sh' \
        -o -name '*.bats' -o -name '*.yaml' -o -name '*.yml' -o -name '*.json' \
        -o -name '*.txt' -o -name '*.js' -o -name '*.ts' -o -name '*.py' \) \
     2>/dev/null)
+}
+
+@test "no parallel sprint synonyms after stripping phase-parallel" {
+  hit_count=0
+  _glossary_synonym_scan "$REPO_ROOT/plugins" "$REPO_ROOT/documentation"
   [ "$hit_count" -eq 0 ]
 }
 

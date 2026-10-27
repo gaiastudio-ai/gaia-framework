@@ -1,15 +1,13 @@
 #!/usr/bin/env bats
-# forbidden-sentinel-scan.bats — E88-S3
+# forbidden-sentinel-scan.bats
 #
-# Covers TC-DPD-11..15:
-#   TC-DPD-11 — production STUB -> HALT
-#   TC-DPD-12 — test-fixture STUB -> PASS (exempt path)
-#   TC-DPD-13 — --allow-stub with valid ID prefix -> PASS + reason emission
-#   TC-DPD-14 — --allow-stub with bare prose -> REJECT
-#   TC-DPD-15 — load-taxonomy.sh enumerates THREE supported taxonomies
+# Tests the forbidden-sentinel pre-PR scanner: production-path diff-only
+# scanning, exempt-path filtering, --allow-stub override, word-boundary
+# matching (mktemp false-positive avoidance), and diff-scope regression
+# (pre-existing sentinel on untouched lines must not trigger a failure).
 #
 # Helper under test:
-#   gaia-public/plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
+#   plugins/gaia/scripts/lib/forbidden-sentinel-scan.sh
 #
 # Invocation contract:
 #   forbidden-sentinel-scan.sh --base-ref <branch> [--allow-stub <reason>]
@@ -76,7 +74,7 @@ _stage_diff() {
   ( cd "$REPO" && mkdir -p "$(dirname "$path")" && printf '%s\n' "$content" > "$path" && git add -A && git commit -q -m "fixture: stage diff" )
 }
 
-# ---------------- TC-DPD-11: production STUB -> HALT ----------------
+# --- production-path sentinel detection ---
 @test "production-path STUB triggers HALT with canonical stderr" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # placeholder'
@@ -87,7 +85,7 @@ _stage_diff() {
   [[ "$output" == *"$FIXTURE_PROD_PATH"* ]]
 }
 
-# ---------------- TC-DPD-12: test-fixture STUB -> PASS ----------------
+# --- test-fixture exemption ---
 @test "test-fixture path STUB does NOT trigger HALT (exempt)" {
   _stage_diff "$FIXTURE_FIXTURES_PATH" \
     'echo STUB  # legitimate fixture stub'
@@ -95,25 +93,25 @@ _stage_diff() {
   [ "$status" -eq 0 ]
 }
 
-# ---------------- TC-DPD-13: --allow-stub with valid ID prefix -> PASS ----------------
+# --- allow-stub with valid ID prefix ---
 @test "allow-stub with valid story-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB  # contract-only dispatch'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10: contract-only dispatch"; cd "$OLDPWD"
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E900-S1: contract-only dispatch"; cd "$OLDPWD"
   [ "$status" -eq 0 ]
   # The accepted reason MUST be echoed on stdout so the caller can pipe it
   # forward to pr-body.sh.
-  [[ "$output" == *"E76-S10: contract-only dispatch"* ]]
+  [[ "$output" == *"E900-S1: contract-only dispatch"* ]]
 }
 
 @test "allow-stub with valid AI-ID prefix bypasses scan" {
   _stage_diff "$FIXTURE_PROD_PATH" \
-    'echo STUB  # AI-tracked'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "AI-2026-05-14-6: contract-only"; cd "$OLDPWD"
+    'echo STUB  # tracked'
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "AI-9999-01-01-1: contract-only"; cd "$OLDPWD"
   [ "$status" -eq 0 ]
 }
 
-# ---------------- TC-DPD-14: --allow-stub with bare prose -> REJECT ----------------
+# --- allow-stub with bare prose ---
 @test "allow-stub with bare prose is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
@@ -125,12 +123,12 @@ _stage_diff() {
 @test "allow-stub with story ID lacking trailing colon is rejected" {
   _stage_diff "$FIXTURE_PROD_PATH" \
     'echo STUB'
-  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E76-S10 contract-only"; cd "$OLDPWD"
+  cd "$REPO"; run "$HELPER" --base-ref main --allow-stub "E900-S1 contract-only"; cd "$OLDPWD"
   [ "$status" -ne 0 ]
   [[ "$output" == *"must cite a story ID"* ]]
 }
 
-# ---------------- TC-DPD-15: load-taxonomy enumerates 3 names ----------------
+# --- load-taxonomy enumeration ---
 @test "load-taxonomy.sh --taxonomy unknown enumerates THREE supported names" {
   run bash -c '"$0" --taxonomy frobnicate 2>&1' "$LIB_DIR/load-taxonomy.sh"
   [ "$status" -eq 1 ]
@@ -139,7 +137,7 @@ _stage_diff() {
   [[ "$output" == *forbidden-sentinels* ]]
 }
 
-# ---------------- TC-DPD-15b: load-taxonomy forbidden-sentinels works ----------------
+# --- load-taxonomy forbidden-sentinels ---
 @test "load-taxonomy --taxonomy forbidden-sentinels emits entries" {
   run "$LIB_DIR/load-taxonomy.sh" --taxonomy forbidden-sentinels
   [ "$status" -eq 0 ]
@@ -240,4 +238,894 @@ _stage_diff() {
   # The scan considers only files in the diff; the pre-existing.sh STUB is
   # not in the feat-test diff, so the helper should pass.
   [ "$status" -eq 0 ]
+}
+
+# --- diff-only scope: pre-existing sentinel on untouched line in a touched file ---
+
+@test "diff-only: pre-existing sentinel on untouched line in a touched file does not trigger" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends a benign line (line 2). The STUB on line 1 is
+  # not in the diff's added lines, so the scan must pass.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with pre-existing sentinel" && git checkout -q feat-test )
+  # Merge main into feat so the file exists, then append a clean line.
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho clean new line\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: append clean line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "diff-only: newly added line with sentinel in a file with pre-existing sentinel is caught" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends a MOCK on line 2. The added MOCK must be caught
+  # even though the pre-existing STUB is on an untouched line.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with pre-existing sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho MOCK  # newly added\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add MOCK line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  helper_out="$output"
+  grep -qF "MOCK" <<<"$helper_out"
+  # Must NOT report the pre-existing STUB (non-vacuous negative assertion)
+  if grep -qF "STUB" <<<"$helper_out"; then
+    printf 'assert: unexpected STUB in output: %s\n' "$helper_out" >&2
+    return 1
+  fi
+  # Assert exact line number: MOCK is on line 2
+  grep -qF ":2" <<<"$helper_out"
+}
+
+@test "diff-only: modified line that introduces a sentinel is caught" {
+  # Base commit: production file has a clean line 1.
+  # Feature commit: replaces line 1 content with something containing FIXME.
+  # The replacement line appears as a + in the diff and must be caught.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo clean content\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: clean file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo FIXME this needs work\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: modify line to add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+  # Assert exact line number: replacement is line 1
+  grep -qF ":1" <<<"$output"
+}
+
+@test "diff-only: clean PR with no sentinel in added lines passes" {
+  # Base commit: production file has a STUB on line 1.
+  # Feature commit: appends only clean lines. Must pass.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel in base" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # pre-existing\necho all good\necho nothing wrong here\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: clean additions" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- colour / external-diff resilience ---
+
+@test "scan works when user git config has color.diff=always" {
+  # Force colour output globally in the test repo. The scanner must
+  # suppress it with --no-color so @@ / + parsing is not broken.
+  ( cd "$REPO" && git config color.diff always && git config color.ui always )
+  _stage_diff "$FIXTURE_PROD_PATH" 'echo STUB'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+@test "colour config does not hide a pre-existing sentinel (no false positive)" {
+  ( cd "$REPO" && git config color.diff always && git config color.ui always )
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # base\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base with stub" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo STUB  # base\necho clean line\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: clean append" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- added lines whose text starts with ++ must not be skipped ---
+
+@test "added line starting with ++ containing a sentinel is caught" {
+  # An added line like '++ STUB here' shows as '+++ STUB here' in the raw
+  # diff. The scanner must NOT treat it as a +++ header.
+  _stage_diff "$FIXTURE_PROD_PATH" '++ STUB here'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+@test "added line starting with +++ containing a sentinel is caught" {
+  _stage_diff "$FIXTURE_PROD_PATH" '+++ MOCK value'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+}
+
+# --- base-ref pinning: multi-commit branch ---
+
+@test "scan considers all commits from base-ref, not just HEAD~1" {
+  # Two commits on feat: first adds a sentinel, second adds a clean line.
+  # If the scanner mistakenly scoped to HEAD~1..HEAD it would miss the
+  # sentinel from the first commit.
+  _stage_diff "$FIXTURE_PROD_PATH" 'echo FIXME'
+  _stage_diff "$FIXTURE_PROD_OTHER_PATH" 'echo clean'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+}
+
+# --- line-number accuracy: hunk start is read and counter advances ---
+
+@test "HALT message reports the correct destination line number" {
+  # Add 3 clean lines then a sentinel on line 5. The HALT must say :5.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'line1\nline2\nline3\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 3 lines" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'line1\nline2\nline3\nline4 clean\necho MOCK on line five\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add at line 5" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  grep -qF ":5" <<<"$output"
+}
+
+# --- performance on large diffs ---
+
+@test "scan of 2000 added lines completes within 10 seconds" {
+  # Generate a file with 2000 clean lines plus one sentinel at the end.
+  local bigfile="$REPO/$FIXTURE_PROD_PATH"
+  {
+    local i=1
+    while [ "$i" -le 2000 ]; do
+      printf 'echo line_%d\n' "$i"
+      i=$((i + 1))
+    done
+    printf 'echo STUB at the end\n'
+  } > "$bigfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: 2001 lines" )
+  local start end elapsed
+  start="$(date +%s)"
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  end="$(date +%s)"
+  elapsed=$((end - start))
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  # Generous bound: must complete in under 10 seconds. The single-pass
+  # approach finishes in well under 1 second.
+  if [ "$elapsed" -gt 10 ]; then
+    printf 'perf: scan took %ds (limit 10s)\n' "$elapsed" >&2
+    return 1
+  fi
+}
+
+# --- git-attributes: files marked binary or -diff must still be scanned ---
+
+@test "file marked -diff in .gitattributes is still scanned for sentinels" {
+  local lockfile="gaia-public/plugins/gaia/deps.lock"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && printf '*.lock -diff\n' > .gitattributes \
+      && mkdir -p "$(dirname "$lockfile")" && printf 'x\n' > "$lockfile" \
+      && git add -A && git commit -q -m "base: lock file with -diff attr" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nSTUB\n' > "$REPO/$lockfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel to lock file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "deps.lock" <<<"$output"
+}
+
+@test "file marked binary in .gitattributes is still scanned for sentinels" {
+  local binfile="gaia-public/plugins/gaia/data.bin"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && printf '*.bin binary\n' > .gitattributes \
+      && mkdir -p "$(dirname "$binfile")" && printf 'x\n' > "$binfile" \
+      && git add -A && git commit -q -m "base: binary-attr file" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nMOCK\n' > "$REPO/$binfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel to binary file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+}
+
+@test "file marked -diff in .git/info/attributes is still scanned" {
+  local lockfile="gaia-public/plugins/gaia/deps.lock"
+  ( cd "$REPO" && git checkout -q main )
+  ( cd "$REPO" && mkdir -p .git/info && printf '* -diff\n' > .git/info/attributes \
+      && mkdir -p "$(dirname "$lockfile")" && printf 'x\n' > "$lockfile" \
+      && git add -A && git commit -q -m "base: lock file" )
+  ( cd "$REPO" && git checkout -q feat-test && git merge -q main --no-edit )
+  printf 'x\nFIXME\n' > "$REPO/$lockfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+}
+
+@test "attributes file added in the same change does not hide sentinels" {
+  local prodfile="$FIXTURE_PROD_PATH"
+  # The change itself adds a .gitattributes marking .sh as -diff,
+  # alongside a .sh file with a sentinel. Both are new in this diff.
+  printf '*.sh -diff\n' > "$REPO/.gitattributes"
+  printf 'echo STUB\n' > "$REPO/$prodfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: attr + sentinel in same commit" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+# --- pathspec magic characters in file paths must not be interpreted ---
+
+@test "file path containing pathspec-magic colon prefix does not hide other sentinels" {
+  # A file named ':(exclude)gaia-public' at the repo root, if passed to
+  # git-diff as a pathspec, makes git interpret it as an exclude operator
+  # and silently drop all gaia-public/* paths from the diff output.
+  # GIT_LITERAL_PATHSPECS prevents this.
+  local trickname=':(exclude)gaia-public'
+  printf 'clean\n' > "$REPO/$trickname"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: trick path + sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+}
+
+# --- match parsing: sentinel in path must not false-positive ---
+
+@test "sentinel word in directory name does not trigger a false HALT" {
+  # A file at plugins/gaia/MOCK/clean.sh with clean content must pass.
+  local mockdir="gaia-public/plugins/gaia/MOCK"
+  ( cd "$REPO" && mkdir -p "$mockdir" )
+  local mockfile="$mockdir/clean.sh"
+  _stage_diff "$mockfile" 'echo perfectly fine'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "colon in file name does not corrupt line-number reporting" {
+  # A file named 'a:b.sh' should not split incorrectly.
+  local colonfile="gaia-public/plugins/gaia/scripts/a:b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$colonfile")" )
+  _stage_diff "$colonfile" 'echo FIXME'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+  # The path and line number must be correct despite the colon in the name
+  grep -qF "a:b.sh:1" <<<"$output"
+}
+
+@test "clean file whose name resembles a sentinel record does not false-positive" {
+  # A file named 'a:9:STUB.sh' with clean content must not trigger.
+  local trickname="gaia-public/plugins/gaia/scripts/a:9:STUB.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$trickname")" )
+  _stage_diff "$trickname" 'echo all clear'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- NUL bytes in binary files must not hide sentinels in other files ---
+
+@test "binary file with NUL bytes next to a script sentinel still HALTs" {
+  # A NUL-bearing .png alongside a .sh with a sentinel. Without NUL
+  # stripping, GNU grep treats the collected text file as binary and
+  # silently prints nothing, letting the scan exit 0.
+  local pngfile="gaia-public/plugins/gaia/assets/logo.png"
+  ( cd "$REPO" && mkdir -p "$(dirname "$pngfile")" )
+  printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR' > "$REPO/$pngfile"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: png + sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
+}
+
+@test "sentinel after a NUL byte inside an added line is still caught" {
+  # A single line containing a NUL then a sentinel. The NUL is replaced
+  # with a space so awk and grep see the sentinel.
+  # Use FIXTURE_PROD_ALT_PATH (built from prefix variable in setup) to
+  # avoid a literal plugins/gaia/scripts path that trips the refs linter.
+  local binscript="$FIXTURE_PROD_ALT_PATH"
+  ( cd "$REPO" && mkdir -p "$(dirname "$binscript")" )
+  printf 'before\x00MOCK after\n' > "$REPO/$binscript"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: nul-embedded sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  grep -qF "$FIXTURE_PROD_ALT_PATH:1" <<<"$output"
+}
+
+# --- filenames that git C-quotes must still be scanned ---
+
+@test "file with non-ASCII name (UTF-8) is scanned for sentinels" {
+  # Build the real UTF-8 bytes with printf -v (double-quoted \303 gives
+  # literal backslashes, not octal).
+  local prefix="gaia-public/plugins/gaia"
+  local utf8file
+  printf -v utf8file '%s/scripts/caf\303\251.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$utf8file")" )
+  printf 'clean\nSTUB\n' > "$REPO/$utf8file"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: utf8 name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  # Assert exact decoded path:line in the HALT message
+  printf -v _expected 'caf\303\251.sh:2'
+  grep -qF "$_expected" <<<"$output"
+}
+
+@test "file with double-quote in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local quotefile="${prefix}/scripts/a\"b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$quotefile")" )
+  printf 'clean\nMOCK\n' > "$REPO/$quotefile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: quote name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  # Assert decoded path (no escaped quotes)
+  grep -qF 'a"b.sh:2' <<<"$output"
+}
+
+@test "file with backslash in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local bsfile="${prefix}/scripts/back\\slash.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$bsfile")" )
+  printf 'clean\nFIXME\n' > "$REPO/$bsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: backslash name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "FIXME" <<<"$output"
+  # Backslash in path is escaped in the metadata/HALT message
+  grep -qF 'back\\slash.sh:2' <<<"$output"
+}
+
+@test "file with tab in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local tabfile
+  printf -v tabfile '%s/scripts/a\tb.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$tabfile")" )
+  printf 'clean\nXXX\n' > "$REPO/$tabfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: tab name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "XXX" <<<"$output"
+  # Tab in path is escaped in the HALT message
+  grep -qF 'a\tb.sh:2' <<<"$output"
+}
+
+@test "file with tab in name does not shift line numbers for later files" {
+  # A tab-bearing name must not break the metadata alignment for files
+  # that follow it in the diff. Both files' sentinels must report at
+  # the right lines. Without tab escaping, the metadata separator is
+  # corrupted and the tab file's line number is wrong.
+  local prefix="gaia-public/plugins/gaia"
+  local tabfile
+  printf -v tabfile '%s/scripts/a\tb.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$tabfile")" )
+  printf 'clean\nSTUB on line 2\n' > "$REPO/$tabfile"
+  printf 'clean\nFIXME on line 2\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: tab file + normal file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  # The tab file's sentinel must report path with escaped tab and line 2
+  grep -qF 'a\tb.sh:2' <<<"$output"
+  # The normal file must still report at line 2
+  grep -qF "$FIXTURE_PROD_PATH:2" <<<"$output"
+}
+
+# --- renamed files must not trigger on pre-existing content ---
+
+@test "pure rename of a file with a sentinel does not trigger" {
+  # A git mv with no content change should show zero added lines.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # pre-existing\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename only" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "rename plus a new sentinel line HALTs on the added line only" {
+  # Build a file with ~20 clean lines plus an OLD STUB to ensure git
+  # detects the rename (R record) and shows only added lines.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 18 ]; do
+      printf 'echo clean_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo STUB old pre-existing\n'
+    printf 'echo last_clean\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 20-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" )
+  # Append a MOCK sentinel on line 21
+  printf 'echo MOCK added after rename\n' >> "$REPO/$FIXTURE_PROD_ALT_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: rename + add sentinel" )
+  # Verify git shows an R record (rename detected)
+  local ns
+  ns="$(cd "$REPO" && git -c core.quotePath=false diff --name-status -z main..HEAD 2>/dev/null | tr '\0' ' ')"
+  [[ "$ns" == R* ]]
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  helper_out="$output"
+  grep -qF "MOCK" <<<"$helper_out"
+  grep -qF "$FIXTURE_PROD_ALT_PATH:21" <<<"$helper_out"
+  # The pre-existing STUB (line 19) must NOT appear in the HALT output
+  local halt_count
+  halt_count="$(grep -cF "HALT:" <<<"$helper_out")"
+  [ "$halt_count" -eq 1 ]
+}
+
+# --- files moved from exempt paths into production are fully scanned ---
+
+@test "move from tests/fixtures into production with old sentinel HALTs" {
+  # A file with a pre-existing STUB moved out of fixtures into production
+  # must be scanned in full (every line is new to production).
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # was in fixtures\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: fixture with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_FIXTURES_PATH" "$FIXTURE_PROD_OTHER_PATH" && git commit -q -m "feat: move fixture to prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+}
+
+@test "move from docs into production with old sentinel HALTs" {
+  ( cd "$REPO" && git checkout -q main )
+  local docfile="docs/design/spec.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$docfile")" )
+  printf 'echo MOCK  # was in docs\n' > "$REPO/$docfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: doc with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$docfile" "$FIXTURE_PROD_OTHER_PATH" && git commit -q -m "feat: move doc to prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+}
+
+@test "move from production into docs with sentinel exits 0" {
+  # A production file moved into an exempt tree must not be scanned.
+  # The base file is 5 lines so git detects the move as a rename even
+  # after appending a MOCK line (83% similarity > 50% threshold).
+  ( cd "$REPO" && git checkout -q main )
+  {
+    printf 'echo line1\n'
+    printf 'echo STUB pre-existing\n'
+    printf 'echo line3\n'
+    printf 'echo line4\n'
+    printf 'echo line5\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  local docfile="docs/archive/old.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$docfile")" && git mv "$FIXTURE_PROD_OTHER_PATH" "$docfile" )
+  # Append a sentinel so the move is not content-identical. If the
+  # exempt-destination guard (~:134) is removed, both paths enter the
+  # production list, git pairs them, and the added MOCK fires a HALT.
+  printf 'echo MOCK added\n' >> "$REPO/$docfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: move to docs" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "move from fixtures with an added sentinel HALTs on the added line" {
+  # Moving a fixture into production AND adding a new sentinel. The old
+  # clean line must not trigger (it's part of the full scan, but clean),
+  # and the added sentinel must HALT at the right line.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo clean line\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: clean fixture" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_FIXTURES_PATH" "$FIXTURE_PROD_OTHER_PATH" )
+  printf 'echo clean line\necho MOCK added\n' > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: move fixture + add sentinel" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+# --- LC_ALL=C is required for tr on high bytes ---
+
+@test "scan with LC_ALL=en_US.UTF-8 in caller env still catches sentinels with high bytes" {
+  # The script must override the caller's locale with its own LC_ALL=C.
+  # Without it, BSD tr and GNU grep may mishandle bytes > 127.
+  printf '\377\376STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: high-byte content" )
+  cd "$REPO"; LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_PATH:1" <<<"$output"
+}
+
+# --- copies are treated as new files (scanned in full) ---
+
+@test "fixture copied into production with old sentinel HALTs" {
+  # Without -C, a copy shows as a new file (A record) and is scanned in full.
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB  # fixture copy\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: fixture" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy fixture to prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+}
+
+@test "copy inside production with an old sentinel HALTs" {
+  # A copy of a production file is treated as a new file, so its old
+  # sentinel is caught (stricter than pairing, consistent with the ruling).
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file with sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  cp "$REPO/$FIXTURE_PROD_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: copy within prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1" <<<"$output"
+}
+
+@test "pure rename under caller diff.renames=false still exits 0" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename" )
+  cd "$REPO"; run env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=false "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+@test "pure rename under caller diff.renames=copies still exits 0" {
+  ( cd "$REPO" && git checkout -q main )
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: sentinel" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" && git commit -q -m "feat: rename" )
+  cd "$REPO"; run env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.renames GIT_CONFIG_VALUE_0=copies "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+}
+
+# --- new file similar to existing must still be scanned (no false pairing) ---
+
+@test "new file similar to existing production file is scanned in full" {
+  # A brand-new file that shares content with an existing one must be
+  # scanned in full, not paired against it.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB new\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: new file similar to existing" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "file split into two with a sentinel in the new part is caught" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo line_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: 10-line file" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Split: keep first 5 lines in original, put last 5 + sentinel in new file
+  head -5 "$REPO/$FIXTURE_PROD_PATH" > "$REPO/$FIXTURE_PROD_PATH.tmp"
+  mv "$REPO/$FIXTURE_PROD_PATH.tmp" "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo line_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo MOCK split\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: split file" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "MOCK" <<<"$output"
+}
+
+# --- file names with spaces ---
+
+@test "file with space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local spfile="${prefix}/scripts/a b.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$spfile")" )
+  printf 'clean\nSTUB\n' > "$REPO/$spfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "a b.sh:2" <<<"$output"
+}
+
+@test "file with trailing space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local trfile="${prefix}/scripts/x.sh "
+  ( cd "$REPO" && mkdir -p "$(dirname "$trfile")" )
+  printf 'clean\nMOCK\n' > "$REPO/$trfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: trailing space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "x.sh :2" <<<"$output"
+}
+
+@test "file with quote and space in name is scanned with correct path:line" {
+  local prefix="gaia-public/plugins/gaia"
+  local qsfile="${prefix}/scripts/a \"b c.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$qsfile")" )
+  printf 'clean\nFIXME\n' > "$REPO/$qsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: quote-space name" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF 'a "b c.sh:2' <<<"$output"
+}
+
+# --- newline in name must not shift later file line numbers ---
+
+@test "file with newline in name does not shift line numbers for later files" {
+  local prefix="gaia-public/plugins/gaia"
+  local nlfile
+  printf -v nlfile '%s/scripts/a\nb.sh' "$prefix"
+  ( cd "$REPO" && mkdir -p "$(dirname "$nlfile")" )
+  printf 'clean\nSTUB on line 2\n' > "$REPO/$nlfile"
+  printf 'clean\nFIXME on line 2\n' > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: newline file + normal" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  # The newline-named file's sentinel must also report at line 2
+  grep -qF 'a\nb.sh:2' <<<"$output"
+  # The normal file must still report at line 2
+  grep -qF "$FIXTURE_PROD_PATH:2" <<<"$output"
+}
+
+# --- leading/trailing-space name ---
+
+@test "file with leading space in name is scanned for sentinels" {
+  local prefix="gaia-public/plugins/gaia"
+  local lsfile="${prefix}/scripts/ leading.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$lsfile")" )
+  printf 'clean\nXXX\n' > "$REPO/$lsfile"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: leading space" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "XXX" <<<"$output"
+  grep -qF " leading.sh:2" <<<"$output"
+}
+
+# --- exempt→production move alongside a production rename ---
+
+@test "fixture moved to production is caught even when a similar prod file is renamed" {
+  # The fixture shares content with the production file being renamed.
+  # Without the separate --no-renames call, git pairs the fixture's new
+  # path with the renamed prod file's old path instead.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB  # fixture sentinel\n'
+  } > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file + similar fixture" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  ( cd "$REPO" && git mv "$FIXTURE_PROD_PATH" "$FIXTURE_PROD_ALT_PATH" )
+  ( cd "$REPO" && git mv "$FIXTURE_FIXTURES_PATH" "$FIXTURE_PROD_OTHER_PATH" )
+  ( cd "$REPO" && git commit -q -m "feat: rename prod + move fixture to prod" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:11 —" <<<"$output"
+}
+
+@test "delete plus create of similar file does not hide sentinel" {
+  # Explicit delete + create instead of rename.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  printf 'echo STUB\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  rm "$REPO/$FIXTURE_PROD_PATH"
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo clean_extra\n'
+  } > "$REPO/$FIXTURE_PROD_ALT_PATH"
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: delete + create + copy fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH:1 —" <<<"$output"
+}
+
+# --- copy detection disabled: similar new files scanned in full ---
+
+@test "new production file sharing a STUB line with existing file is caught" {
+  # A new file sharing content with an existing production file must be
+  # scanned in full. Copy detection is off, so the new file is unpaired.
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod file with shared STUB" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: new file sharing STUB line" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "fixture copy to production with shared STUB while similar prod file is modified" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 10 ]; do printf 'echo shared_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB shared\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  printf 'echo STUB shared\n' > "$REPO/$FIXTURE_FIXTURES_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod + fixture both with STUB" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  printf 'echo modified line\n' >> "$REPO/$FIXTURE_PROD_PATH"
+  cp "$REPO/$FIXTURE_FIXTURES_PATH" "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: modify prod + copy fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+@test "file split keeping STUB in both halves catches it in the new file" {
+  ( cd "$REPO" && git checkout -q main )
+  {
+    local _i=1
+    while [ "$_i" -le 5 ]; do printf 'echo part_a_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB in both\n'
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo part_b_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: file with STUB in middle" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Keep first half + STUB in original
+  {
+    local _i=1
+    while [ "$_i" -le 5 ]; do printf 'echo part_a_%d\n' "$_i"; _i=$((_i + 1)); done
+    printf 'echo STUB in both\n'
+  } > "$REPO/$FIXTURE_PROD_PATH"
+  # Put second half + STUB in new file
+  {
+    printf 'echo STUB in both\n'
+    local _i=6
+    while [ "$_i" -le 10 ]; do printf 'echo part_b_%d\n' "$_i"; _i=$((_i + 1)); done
+  } > "$REPO/$FIXTURE_PROD_OTHER_PATH"
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: split file keeping STUB" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  grep -qF "STUB" <<<"$output"
+  grep -qF "$FIXTURE_PROD_OTHER_PATH" <<<"$output"
+}
+
+# --- exempt-only diff exits 0 with no false HALT ---
+
+@test "diff touching only exempt paths exits 0 with no HALT" {
+  # A diff that touches only test fixtures and docs must produce no
+  # production-path entries and exit cleanly.
+  _stage_diff "$FIXTURE_FIXTURES_PATH" 'echo STUB in fixture'
+  local docfile="docs/notes/plan.md"
+  _stage_diff "$docfile" 'MOCK placeholder'
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -eq 0 ]
+  # No HALT message at all
+  if grep -qF "HALT:" <<<"$output"; then
+    printf 'assert: unexpected HALT in output: %s\n' "$output" >&2
+    return 1
+  fi
+}
+
+# --- inexact production rename alongside fixture move with shared content ---
+
+@test "fixture moved to production is caught alongside an inexact prod rename with shared content" {
+  # A production file (old.sh) is renamed to new.sh with minor edits, and
+  # a fixture with identical content is moved into production (n.sh).
+  # Git detects both renames at the name-status level. When the fixture's
+  # path is correctly routed to the separate no-renames call, its sentinel
+  # is caught in full. When the fixture's path is misrouted into the
+  # production list, the content diff's rename detection pairs old.sh
+  # with n.sh (higher similarity than old.sh→new.sh), hiding the sentinel.
+  ( cd "$REPO" && git checkout -q main )
+  local prefix="gaia-public/plugins/gaia"
+  local oldprod="${prefix}/scripts/old.sh"
+  local newprod="${prefix}/scripts/new.sh"
+  local fixture="${prefix}/tests/fixtures/shared.sh"
+  local movedfix="${prefix}/scripts/n.sh"
+  ( cd "$REPO" && mkdir -p "$(dirname "$oldprod")" "$(dirname "$fixture")" )
+  # Fixture: 30 shared lines + STUB on line 31.
+  # Production file: same 30 shared lines + STUB + one extra line.
+  # The extra line makes the production file slightly different so git
+  # pairs shared.sh→n.sh (100%) over old.sh→n.sh (97%).
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo STUB shared sentinel\n'
+    printf 'echo prod_only_line\n'
+  } > "$REPO/$oldprod"
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo STUB shared sentinel\n'
+  } > "$REPO/$fixture"
+  ( cd "$REPO" && git add -A && git commit -q -m "base: prod + fixture with shared content" && git checkout -q feat-test )
+  ( cd "$REPO" && git merge -q main --no-edit )
+  # Inexact rename: keep most lines but change the last two.
+  # Similarity (~93%) is high enough for git to detect as rename.
+  ( cd "$REPO" && git mv "$oldprod" "$newprod" )
+  {
+    local _i=1
+    while [ "$_i" -le 30 ]; do
+      printf 'echo shared_line_%d\n' "$_i"
+      _i=$((_i + 1))
+    done
+    printf 'echo clean replacement\n'
+    printf 'echo prod_only_rewritten\n'
+  } > "$REPO/$newprod"
+  # Move fixture into production
+  ( cd "$REPO" && git mv "$fixture" "$movedfix" )
+  ( cd "$REPO" && git add -A && git commit -q -m "feat: inexact rename + move fixture" )
+  cd "$REPO"; run "$HELPER" --base-ref main; cd "$OLDPWD"
+  [ "$status" -ne 0 ]
+  helper_out="$output"
+  # The moved fixture's STUB at line 31 must be caught
+  grep -qF "$movedfix:31 —" <<<"$helper_out"
+  # The production rename's pre-existing STUB must NOT appear
+  if grep -qF "$newprod" <<<"$helper_out"; then
+    printf 'assert: renamed production file should not HALT: %s\n' "$helper_out" >&2
+    return 1
+  fi
 }

@@ -4,6 +4,8 @@
 # Stubs replace only the bridge command; the REAL classification logic in
 # design_probe() is exercised on every invocation.
 
+load 'test_helper.bash'
+
 setup() {
   TEST_TMP="$(mktemp -d)"
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."

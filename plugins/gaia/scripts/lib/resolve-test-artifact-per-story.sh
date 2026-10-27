@@ -88,6 +88,44 @@ case "$TYPE" in
     ;;
 esac
 
+# Resolve the project root through the shared walk-up helper so that the
+# resolver works correctly from a linked worktree CWD (the walk-up excludes
+# the main checkout and finds the project root above it).
+if [ -z "${PROJECT_ROOT:-}" ] && [ -z "${CLAUDE_PROJECT_ROOT:-}" ] && [ -z "${GAIA_PROJECT_ROOT:-}" ]; then
+  _own_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _gaia_paths="$_own_dir/gaia-paths.sh"
+  if [ -f "$_gaia_paths" ]; then
+    # Isolate the source: save and clear env vars that gaia-paths.sh
+    # validates (GAIA_*_PATH overrides, metachar rejection). Without this,
+    # an unrelated GAIA_MEMORY_PATH=/tmp/elsewhere or a metachar in any
+    # override makes gaia-paths.sh exit 1 and breaks the resolver.
+    _save_GAIA_CONFIG_PATH="${GAIA_CONFIG_PATH:-}"
+    _save_GAIA_ARTIFACTS_PATH="${GAIA_ARTIFACTS_PATH:-}"
+    _save_GAIA_STATE_PATH="${GAIA_STATE_PATH:-}"
+    _save_GAIA_MEMORY_PATH="${GAIA_MEMORY_PATH:-}"
+    _save_GAIA_CUSTOM_PATH="${GAIA_CUSTOM_PATH:-}"
+    _save_GAIA_KNOWLEDGE_PATH="${GAIA_KNOWLEDGE_PATH:-}"
+    unset GAIA_CONFIG_PATH GAIA_ARTIFACTS_PATH GAIA_STATE_PATH \
+          GAIA_MEMORY_PATH GAIA_CUSTOM_PATH GAIA_KNOWLEDGE_PATH \
+          _GAIA_PATHS_LOADED 2>/dev/null || true
+    # shellcheck source=gaia-paths.sh
+    . "$_gaia_paths"
+    # Restore the saved overrides so downstream consumers still see them.
+    [ -n "$_save_GAIA_CONFIG_PATH" ] && export GAIA_CONFIG_PATH="$_save_GAIA_CONFIG_PATH"
+    [ -n "$_save_GAIA_ARTIFACTS_PATH" ] && export GAIA_ARTIFACTS_PATH="$_save_GAIA_ARTIFACTS_PATH"
+    [ -n "$_save_GAIA_STATE_PATH" ] && export GAIA_STATE_PATH="$_save_GAIA_STATE_PATH"
+    [ -n "$_save_GAIA_MEMORY_PATH" ] && export GAIA_MEMORY_PATH="$_save_GAIA_MEMORY_PATH"
+    [ -n "$_save_GAIA_CUSTOM_PATH" ] && export GAIA_CUSTOM_PATH="$_save_GAIA_CUSTOM_PATH"
+    [ -n "$_save_GAIA_KNOWLEDGE_PATH" ] && export GAIA_KNOWLEDGE_PATH="$_save_GAIA_KNOWLEDGE_PATH"
+    unset _save_GAIA_CONFIG_PATH _save_GAIA_ARTIFACTS_PATH _save_GAIA_STATE_PATH \
+          _save_GAIA_MEMORY_PATH _save_GAIA_CUSTOM_PATH _save_GAIA_KNOWLEDGE_PATH
+    # _GAIA_ROOT_CANON is the resolved project root from the walk-up.
+    # The chain pattern preserves an existing value (defense-in-depth for
+    # the detector; the surrounding guard already verified it is empty).
+    PROJECT_ROOT="${PROJECT_ROOT:-${_GAIA_ROOT_CANON:-$PWD}}"
+  fi
+  unset _own_dir _gaia_paths
+fi
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${GAIA_PROJECT_ROOT:-$PWD}}}"
 TEST_ARTIFACTS_DIR="${TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}"
 IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/implementation-artifacts}"
@@ -101,32 +139,76 @@ IMPL_ARTIFACTS_DIR="${IMPLEMENTATION_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/
 EPIC_DIR=""
 STORY_DIR_NAME=""
 if [ -d "$IMPL_ARTIFACTS_DIR" ]; then
-  # Find epic-X dir containing stories/{STORY_KEY}-* with strict prefix-boundary
-  # match (so E1-S2 never matches E1-S21-*).
-  match=$(find "$IMPL_ARTIFACTS_DIR" -type d -path "*/epic-*/stories/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+  # Rung 0: find story dir in the current layout (no stories/ sublevel):
+  #   epic-{slug}/{STORY_KEY}-{slug}/
+  # The find requires the parent to be an epic-* directory so directories
+  # under unrelated parents (e.g. sprint-archive/) do not match.
+  _all_matches=$(find "$IMPL_ARTIFACTS_DIR" -maxdepth 2 -type d -name "${STORY_KEY}-*" -path "*/epic-*/${STORY_KEY}-*" 2>/dev/null || true)
+  _match_count=$(printf '%s\n' "$_all_matches" | grep -c '.' || true)
+  if [ "$_match_count" -gt 1 ]; then
+    printf 'resolve-test-artifact-per-story: WARNING: %d directories match %s; using the first\n' \
+      "$_match_count" "$STORY_KEY" >&2
+  fi
+  match=$(printf '%s\n' "$_all_matches" | head -1)
+  unset _all_matches _match_count
   if [ -n "$match" ]; then
     STORY_DIR_NAME=$(basename "$match")
-    # Validate STORY_KEY- prefix boundary (strict prefix-boundary match)
     case "$STORY_DIR_NAME" in
       "${STORY_KEY}-"*)
-        EPIC_DIR_PATH=$(dirname "$(dirname "$match")")
-        EPIC_DIR=$(basename "$EPIC_DIR_PATH")
+        EPIC_DIR=$(basename "$(dirname "$match")")
         ;;
-      *) STORY_DIR_NAME="" ;;
+      *) match=""; STORY_DIR_NAME="" ;;
     esac
+  fi
+  # Rung 0b: legacy layout with stories/ sublevel:
+  #   epic-{slug}/stories/{STORY_KEY}-{slug}/
+  if [ -z "$match" ]; then
+    match=$(find "$IMPL_ARTIFACTS_DIR" -type d -path "*/epic-*/stories/${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$match" ]; then
+      STORY_DIR_NAME=$(basename "$match")
+      case "$STORY_DIR_NAME" in
+        "${STORY_KEY}-"*)
+          EPIC_DIR_PATH=$(dirname "$(dirname "$match")")
+          EPIC_DIR=$(basename "$EPIC_DIR_PATH")
+          ;;
+        *) match=""; STORY_DIR_NAME="" ;;
+      esac
+    fi
   fi
 fi
 
-# Fallback when no story dir exists yet: extract epic_id from the story key
-# (E1-S1 → E1) and use the bare key as the story-dir name. The producer that
-# calls this later will be writing INTO this dir; a subsequent rename to the
-# canonical {key}-{slug} form is honored by rung-0 resolution above.
-if [ -z "$EPIC_DIR" ]; then
+# Fallback when no story dir exists in implementation-artifacts: scan the
+# test-artifacts tree for existing slug-bearing directories so the resolved
+# path preserves the epic and story slugs. Without this scan, the fallback
+# produces slug-less paths while the review-gate mirror writes to the slugged
+# form, creating duplicates.
+if [ -z "$EPIC_DIR" ] || [ -z "$STORY_DIR_NAME" ]; then
   EPIC_ID="${STORY_KEY%%-*}"
-  EPIC_DIR="epic-${EPIC_ID}"
-fi
-if [ -z "$STORY_DIR_NAME" ]; then
-  STORY_DIR_NAME="$STORY_KEY"
+  if [ -z "$EPIC_DIR" ] && [ -d "$TEST_ARTIFACTS_DIR" ]; then
+    # Require the epic dir name to start with the exact ID followed by a
+    # hyphen, preventing epic-E9 from matching epic-E90-slug.
+    _epic_match=$(find "$TEST_ARTIFACTS_DIR" -maxdepth 1 -type d -name "epic-${EPIC_ID}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$_epic_match" ]; then
+      EPIC_DIR=$(basename "$_epic_match")
+    fi
+    unset _epic_match
+  fi
+  [ -z "$EPIC_DIR" ] && EPIC_DIR="epic-${EPIC_ID}"
+
+  if [ -z "$STORY_DIR_NAME" ] && [ -d "$TEST_ARTIFACTS_DIR/$EPIC_DIR" ]; then
+    # Require the story dir name to start with the exact key followed by
+    # a hyphen, preventing E900-S5 from matching E900-S50-slug.
+    _story_match=$(find "$TEST_ARTIFACTS_DIR/$EPIC_DIR" -maxdepth 1 -type d -name "${STORY_KEY}-*" 2>/dev/null | head -1 || true)
+    if [ -n "$_story_match" ]; then
+      _story_base=$(basename "$_story_match")
+      case "$_story_base" in
+        "${STORY_KEY}-"*) STORY_DIR_NAME="$_story_base" ;;
+      esac
+      unset _story_base
+    fi
+    unset _story_match
+  fi
+  [ -z "$STORY_DIR_NAME" ] && STORY_DIR_NAME="$STORY_KEY"
 fi
 
 # Drop the `stories/` middle level for symmetry with the review-gate

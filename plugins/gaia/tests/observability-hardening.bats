@@ -4,6 +4,8 @@
 #
 # Fixture directory: tests/fixtures/observability-hardening/
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   STEP_REPORT="$REPO_ROOT/plugins/gaia/scripts/step-report.sh"

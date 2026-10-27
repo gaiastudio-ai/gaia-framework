@@ -17,6 +17,8 @@
 #   - regex metacharacters treated literally in fallback
 #   - negation rules in fallback
 
+load 'test_helper.bash'
+
 setup() {
   HELPER="${BATS_TEST_DIRNAME}/../scripts/lib/transcript-writer.sh"
   TMPDIR_TEST="$(mktemp -d)"

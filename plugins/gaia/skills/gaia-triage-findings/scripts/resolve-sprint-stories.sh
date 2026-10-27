@@ -2,17 +2,18 @@
 # resolve-sprint-stories.sh — emit the set of story files /gaia-triage-findings
 # should scan.
 #
-# DEFAULT (sprint-scoped): read the active sprint from sprint-status.yaml and
+# DEFAULT (sprint-scoped): read the current sprint from sprint-status.yaml and
 # emit the file paths of ONLY its committed stories. This is the token-budget /
 # performance fix — historical stories from prior sprints have already been
 # triaged and re-scanning them wastes context.
 #
-#   - The active sprint is read from the TOP-LEVEL `sprint_id:` key.
+#   - The current sprint is read from the TOP-LEVEL `sprint_id:` key.
 #   - The committed stories are read from the TOP-LEVEL `stories:` sequence
 #     (each entry has a `key:`).
-#   - Gating: only when the top-level `status:` is `active` do we sprint-scope;
-#     a `closed`/`planned` sprint emits nothing with an informational message
-#     on stderr (the caller decides whether to fall back to --all).
+#   - Gating: the sprint must be in a runnable lifecycle state (`active` or
+#     `review`) for sprint-scoped resolution to proceed. A `closed`/`planned`
+#     sprint emits nothing with an informational message on stderr (the caller
+#     decides whether to fall back to --all).
 #
 # --all (full historical sweep): emit every `*.md` story file under the
 # implementation-artifacts tree — the legacy behavior, preserved on demand.
@@ -67,20 +68,51 @@ fi
 # Top-level lifecycle status (NOT a nested block — `status:` is the sprint
 # lifecycle value). Read the first top-level `status:` line.
 sprint_status_value=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }' "$SPRINT_STATUS")
-if [ "$sprint_status_value" != "active" ]; then
-  printf 'resolve-sprint-stories.sh: active sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
-  exit 0
+case "${sprint_status_value:-}" in
+  active|review) ;;  # runnable states — proceed
+  *)
+    printf 'resolve-sprint-stories.sh: runnable sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
+    exit 0
+    ;;
+esac
+
+# ---------- Migrate legacy items: key via shared library ----------
+# sprint-state.sh runs its own migration at pre-dispatch, but this script is
+# invoked independently. Source the shared lib and call migrate under lock.
+# If the lib is unavailable (stripped install), the both-keys reader below
+# handles the fallback without writing.
+_MIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" 2>/dev/null && pwd 2>/dev/null || echo "")"
+if [ -n "$_MIG_LIB_DIR" ] && [ -f "$_MIG_LIB_DIR/acquire-lock.sh" ] && [ -f "$_MIG_LIB_DIR/migrate-items-to-stories.sh" ]; then
+  # shellcheck source=../../../scripts/lib/acquire-lock.sh
+  . "$_MIG_LIB_DIR/acquire-lock.sh"
+  # shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
+  . "$_MIG_LIB_DIR/migrate-items-to-stories.sh"
+  migrate_items_to_stories "$SPRINT_STATUS" --lock "${SPRINT_STATUS}.lock" || true
 fi
 
-# Committed story keys from the top-level `stories:` sequence (`- key: "…"`).
+# Committed story keys: union of `stories:` and `items:` blocks.
+# When both blocks exist, `stories:` wins on duplicate key, and items-only
+# keys are included. Matches the shared reader so the result is identical
+# whether migration ran or not.
 keys=$(awk '
-  /^stories[[:space:]]*:/ { in_stories = 1; next }
-  in_stories && /^[A-Za-z_]/ { in_stories = 0 }   # next top-level key ends the block
+  /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; next }
+  /^items[[:space:]]*:/ { in_items = 1; in_stories = 0; next }
+  (in_stories || in_items) && /^[A-Za-z_]/ { in_stories = 0; in_items = 0 }
   in_stories && /key[[:space:]]*:/ {
     line = $0
     sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
-    gsub(/["'\'']/, "", line)
-    print line
+    gsub(/["'"'"'"]/, "", line)
+    if (!(line in s_seen)) { s_order[s_n++] = line; s_seen[line] = 1 }
+  }
+  in_items && /key[[:space:]]*:/ {
+    line = $0
+    sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
+    gsub(/["'"'"'"]/, "", line)
+    if (!(line in i_seen)) { i_order[i_n++] = line; i_seen[line] = 1 }
+  }
+  END {
+    for (j = 0; j < s_n; j++) { printf "%s\n", s_order[j]; seen[s_order[j]] = 1 }
+    for (j = 0; j < i_n; j++) { if (!(i_order[j] in seen)) printf "%s\n", i_order[j] }
   }
 ' "$SPRINT_STATUS")
 

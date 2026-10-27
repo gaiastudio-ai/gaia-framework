@@ -21,6 +21,8 @@
 # Story: E77-S14 (Tier 2 — plugin-test sub-rubric, FR-416)
 # =============================================================================
 
+load 'test_helper.bash'
+
 set -euo pipefail
 
 setup() {

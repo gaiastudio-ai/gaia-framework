@@ -6,6 +6,8 @@
 # type-tagged envelopes, and degrades gracefully when the dispatch script is
 # absent.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

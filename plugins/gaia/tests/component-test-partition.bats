@@ -12,6 +12,8 @@
 #   - a drift-guard that fails if a new documentation/-touching bats is added
 #     without being wired into the docs stack's test command.
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {

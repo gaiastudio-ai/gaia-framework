@@ -32,6 +32,8 @@ set -euo pipefail
 is_uint() {
   case "$1" in
     ''|*[!0-9]*) return 1 ;;
+    0)           return 0 ;;
+    0*)          return 1 ;;  # leading zero is octal in bash arithmetic
     *)           return 0 ;;
   esac
 }
@@ -60,7 +62,7 @@ fi
 fallback=4
 # Extract only rows whose wall_seconds column passes numeric validation.
 valid_times=$(tail -n +2 "$BASELINE" \
-  | awk -F'\t' '$2 ~ /^[0-9]+$/ { print $2 }' \
+  | awk -F'\t' '$2 ~ /^(0|[1-9][0-9]*)$/ { print $2 }' \
   | sort -n)
 n=$(printf '%s\n' "$valid_times" | grep -c '[0-9]' || true)
 
@@ -89,7 +91,7 @@ fi
 # bash arithmetic.
 awk -F'\t' -v fb="$fallback" '
   NR == FNR && FNR > 1 {
-    if ($2 ~ /^[0-9]+$/) cost[$1] = $2
+    if ($2 ~ /^(0|[1-9][0-9]*)$/) cost[$1] = $2
     next
   }
   NR != FNR {

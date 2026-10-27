@@ -2,6 +2,8 @@
 # e39-s4-sprint-scope.bats — sprint-scoped triage default vs --all opt-in.
 # TC-STCL-1 (sprint-scoped default), TC-STCL-2 (--all full sweep).
 
+load 'test_helper.bash'
+
 bats_require_minimum_version 1.5.0
 
 setup() {
@@ -80,5 +82,5 @@ EOF
   run --separate-stderr "$RESOLVE" --impl-dir "$IMPL" --sprint-status "$TMP/closed.yaml"
   [ "$status" -eq 0 ]
   [ -z "$output" ]                       # no story paths on stdout
-  [[ "$stderr" == *"active sprint not found"* ]]
+  [[ "$stderr" == *"sprint not found"* ]]
 }

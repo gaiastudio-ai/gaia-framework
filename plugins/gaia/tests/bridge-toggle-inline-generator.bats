@@ -6,6 +6,8 @@
 # /gaia-brownfield. The SKILL.md prose MUST NOT mention /gaia-brownfield
 # to the end user — the dependency is internal only.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN_ROOT="${BATS_TEST_DIRNAME}/../.."

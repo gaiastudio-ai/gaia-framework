@@ -505,6 +505,13 @@ _al_acquire_impl() {
     _al_strict=1
   fi
 
+  # Validate fd is a positive integer before it reaches any eval.
+  case "$fd" in
+    ''|*[!0-9]*)
+      printf 'acquire-lock: fd must be a positive integer, got: %s\n' "$fd" >&2
+      return 1 ;;
+  esac
+
   # When parallel execution is active, flock is mandatory at every locking
   # entry point — not only in sprint-state.sh. The gate is inside acquire_lock
   # itself so no caller can bypass it.
@@ -861,6 +868,9 @@ _al_require_flock_impl() {
 
 acquire_lock_close_predicate() {
   local limit="${1:-}" state_dir="${2:-}"
+
+  # Strip trailing slash to prevent double-slash in constructed paths.
+  state_dir="${state_dir%/}"
 
   # Concurrent mode: limit > 1 always takes L4.
   if [ -n "$limit" ] && [ "$limit" -gt 1 ] 2>/dev/null; then

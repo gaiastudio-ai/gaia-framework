@@ -24,12 +24,17 @@ teardown() { common_teardown; }
 # AC5(a) — 7-goal completion-pass sweep yields ZERO HIGH findings + exactly
 # one rubric-applicability LOW advisory.
 # ---------------------------------------------------------------------------
-@test "AC5a: 7-goal completion-pass sweep — zero HIGH sgr-velocity-003 findings" {
+@test "AC5a: 7-goal completion-pass sweep — all sgr-velocity-003 findings are Low" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/7-goal-sweep-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # No HIGH sgr-velocity-003 findings — all are LOW under completion-pass.
-  high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
-  [ "$high_count" -eq 0 ]
+  # At least one finding must be present (not vacuous).
+  local vel_count
+  vel_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$vel_count" -ge 1 ]
+  # Every finding must be Low — zero High or Medium.
+  local non_low
+  non_low=$(printf '%s\n' "$output" | grep '"rule_id":"sgr-velocity-003"' | grep -cv '"severity":"Low"' || true)
+  [ "$non_low" -eq 0 ]
 }
 
 @test "AC5a: 7-goal completion-pass sweep — exactly one sgr-velocity-006 advisory" {
@@ -42,9 +47,9 @@ teardown() { common_teardown; }
 @test "AC5a: 7-goal completion-pass sweep — advisory names scaled floor and goals-below count" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/7-goal-sweep-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Floor = max(0.10, 0.30 * (4/7)) = 0.171... → "17%" or "17.14%" — assert "17"
+  # Floor = min(1/7, max(0.10, 0.30 * (4/7))) = min(0.1429, 0.171) = 0.1429 → "14%"
   [[ "$output" == *"sprint_shape: completion-pass applied"* ]]
-  [[ "$output" == *"17"* ]]
+  [[ "$output" == *"floor scaled to 14%"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -65,28 +70,33 @@ teardown() { common_teardown; }
 }
 
 # ---------------------------------------------------------------------------
-# AC5(c) — 5-goal default sprint scales floor to 24%; below-floor goals
-# surface at MEDIUM intermediate severity (not HIGH).
+# AC5(c) — 5-goal default sprint scales floor to 20% (capped at 1/N);
+# below-floor goals surface at MEDIUM intermediate severity (not HIGH).
 # ---------------------------------------------------------------------------
-@test "AC5c: 5-goal default — scaled floor is 24% (computed from formula)" {
+@test "AC5c: 5-goal default — scaled floor is 20% (capped at 1/N)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC" --emit-floor
   [ "$status" -eq 0 ]
-  # Floor = 0.30 * (4/5) = 0.24 → assert "24" appears
-  [[ "$output" == *"floor_pct"*"24"* ]]
+  # Floor = min(1/5, max(0.10, 0.30*(4/5))) = min(0.20, 0.24) = 0.20
+  local floor_val
+  floor_val=$(printf '%s\n' "$output" | grep '"meta":"floor"' | python3 -c "import sys,json; print(json.load(sys.stdin)['floor_pct'])")
+  [ "$floor_val" = "0.2" ]
 }
 
-@test "AC5c: 5-goal default — goals within 5%% of floor emit MEDIUM (intermediate tier)" {
+@test "AC5c: 5-goal default — goal at exactly 5pp below floor emits MEDIUM (intermediate tier)" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 3 (20%) is within 5% of 24% floor → MEDIUM
+  # Goal 4 (15%) is exactly 5pp below 20% floor → MEDIUM (not HIGH)
   medium_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"Medium"' || true)
   [ "$medium_count" -ge 1 ]
+  # Verify specifically goal 4 is the MEDIUM one
+  [[ "$output" == *'"goal_index":4'*'"severity":"Medium"'* ]] || \
+    [[ "$output" == *'"severity":"Medium"'*'"goal_index":4'* ]]
 }
 
 @test "AC5c: 5-goal default — goals >5%% below floor emit HIGH" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/5-goal-default.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  # Goal 5 (10%) is >5% below 24% floor → HIGH
+  # Goal 5 (10%) is >5% below 20% floor → HIGH
   high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
   [ "$high_count" -ge 1 ]
 }
@@ -95,11 +105,15 @@ teardown() { common_teardown; }
 # AC6 — sprint-50 regression replay: zero HIGH findings + one sgr-velocity-006
 # + all per-goal verdicts PASSED.
 # ---------------------------------------------------------------------------
-@test "sprint-50 replay under completion-pass — zero HIGH sgr-velocity-003 findings" {
+@test "sprint-50 replay under completion-pass — all sgr-velocity-003 findings are Low" {
   run bash "$EVAL_SCRIPT" --sprint-status "$FIXTURES/sprint-50-replay-completion-pass.yaml" --rubric "$RUBRIC"
   [ "$status" -eq 0 ]
-  high_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003".*"severity":"High"' || true)
-  [ "$high_count" -eq 0 ]
+  local vel_count
+  vel_count=$(printf '%s\n' "$output" | grep -c '"rule_id":"sgr-velocity-003"' || true)
+  [ "$vel_count" -ge 1 ]
+  local non_low
+  non_low=$(printf '%s\n' "$output" | grep '"rule_id":"sgr-velocity-003"' | grep -cv '"severity":"Low"' || true)
+  [ "$non_low" -eq 0 ]
 }
 
 @test "sprint-50 replay under completion-pass — exactly one sgr-velocity-006 advisory" {

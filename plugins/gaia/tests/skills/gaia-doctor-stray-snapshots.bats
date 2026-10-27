@@ -9,6 +9,8 @@
 #   - Nothing is deleted by the scan
 #   - No-stray project reports clean
 
+load '../test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"

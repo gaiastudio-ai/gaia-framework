@@ -513,12 +513,16 @@ ppo_read_phases() {
 
   local out
   out="$(awk '
+    /^stories[[:space:]]*:/ { cur_block = "s"; next }
+    /^items[[:space:]]*:/ { cur_block = "i"; next }
+    /^[A-Za-z_]/ && !/^[[:space:]]/ { cur_block = "" }
     /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
       k = $0
       sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
       gsub(/^["'"'"']|["'"'"']$/, "", k)
       key = k; phase = ""
-      order[++n] = key
+      if (!(key in seen)) { order[++n] = key; seen[key] = cur_block }
+      else if (cur_block == "s") { seen[key] = "s" }
       next
     }
     /^[[:space:]]+phase:[[:space:]]*/ {
@@ -526,7 +530,7 @@ ppo_read_phases() {
       p = $0
       sub(/^[[:space:]]+phase:[[:space:]]*/, "", p)
       gsub(/[^0-9]/, "", p)
-      if (p != "") ph[key] = p
+      if (p != "" && (!(key in ph) || cur_block == "s")) ph[key] = p
       next
     }
     END {
@@ -1326,9 +1330,9 @@ _ppo_next_locked() {
           # Clean up orphaned worktree created before the failed bookkeeping
           if [ -n "$wt" ] && [ -d "$wt" ]; then
             _ppo_load_worktree_lib 2>/dev/null || true
-            git worktree unlock "$wt" 2>/dev/null || true
-            git worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt" 2>/dev/null || true
-            git worktree prune 2>/dev/null || true
+            git -C "$repo" worktree unlock "$wt" 2>/dev/null || true
+            git -C "$repo" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt" 2>/dev/null || true
+            git -C "$repo" worktree prune 2>/dev/null || true
           fi
           # Clean up the slot scratch directory
           rm -rf "$(ppo_slot_scratch_for "$key")" 2>/dev/null || true

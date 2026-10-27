@@ -143,43 +143,123 @@ _gaia_paths_resolve_override() {
 # CWD they were invoked from. Without this walk-up the resolution fell straight
 # to $PWD, so a script run from a subdirectory (or an unrelated CWD) silently
 # failed to find .gaia/config — e.g. detect-orchestration-mode.sh returned Mode
-# A even with orchestration.mode:team set. The bounded walk-up mirrors the
-# pattern in scripts/resolve-config.sh and scripts/load-stack-persona.sh: it
-# stops at / and $HOME, and is skipped when CLAUDE_SKILL_DIR or
-# GAIA_NO_PROJECT_WALKUP is set (test-isolation escape hatches).
+# A even with orchestration.mode:team set.
+#
+# Walk-up boundaries (mirrors resolve-config.sh):
+# Under HOME the walk stops at $HOME. Outside HOME (or when HOME is unset
+# or "/") the walk is bounded by git: the repo top-level for a regular repo,
+# or the parent of the main checkout for a linked worktree. Without git the
+# walk does not run — CWD is used as-is. Skipped when CLAUDE_SKILL_DIR or
+# GAIA_NO_PROJECT_WALKUP is set (test-isolation).
 
 _gaia_paths_walk_up_root() {
   # Echo the nearest ancestor of $PWD (inclusive) that is the project root, or
-  # nothing if none is found within the $HOME / root bound.
+  # nothing if none is found within the walk-up boundary.
   #
-  # Two-tier match (config-bearing preferred). A bare `.gaia/` directory is NOT
-  # sufficient on its own: an in-tree sub-repo can carry its own `.gaia/` that
-  # holds only runtime state or a tracked CI slice — NOT project-config.yaml —
-  # and the old single-tier "first ancestor with any .gaia/" rule stopped there,
-  # shadowing the real project root one level up. That silently down-shifted
-  # callers to defaults (e.g. detect-orchestration-mode.sh returned Mode A even
-  # with orchestration.mode:team set in the real project-root config).
+  # Walk-up ceiling:
+  #   Under HOME (HOME set, not "/", CWD under it): ceiling = HOME.
+  #   Outside HOME, HOME unset, or HOME="/":
+  #     - linked worktree: ceiling = parent of the main checkout top-level
+  #     - regular git repo: ceiling = git show-toplevel
+  #     - no git: no walk-up (return 1)
   #
-  # Pass 1 finds the nearest ancestor whose `.gaia/config/project-config.yaml`
-  # actually exists — the authoritative project root. Pass 2 falls back to the
-  # original "nearest ancestor with any .gaia/" rule, so a greenfield / partial
-  # setup that has a `.gaia/` but not yet a config still resolves as before.
-  local d
+  # Main-checkout exclusion (linked worktrees only): the main checkout
+  # directory (parent of git-common-dir) is never accepted as the root.
+  # This lets <root>/.gaia-worktrees/<key> resolve to <root> while
+  # preventing resolution into <root>/gaia-public/.gaia.
+  #
+  # Two-tier match: pass 1 (config-bearing) preferred, pass 2 (bare .gaia/).
+  local d ceiling phys_pwd phys_home _excluded_dir _under_home
+
+  phys_pwd="$(cd "$PWD" 2>/dev/null && pwd -P)" || phys_pwd="$PWD"
+  phys_home=""
+  if [ -n "${HOME:-}" ] && [ "${HOME:-}" != "/" ]; then
+    phys_home="$(cd "$HOME" 2>/dev/null && pwd -P)" || phys_home="$HOME"
+  fi
+
+  # Detect linked worktree vs regular repo.
+  _excluded_dir=""
+  local _git_toplevel=""
+  if command -v git >/dev/null 2>&1; then
+    local _git_lines _gd _gc _rest
+    # One git call; --show-toplevel fails outside a work tree, giving us the
+    # same guard as the former --is-inside-work-tree pre-check.
+    _git_lines="$(git rev-parse --git-dir --git-common-dir --show-toplevel 2>/dev/null)" || _git_lines=""
+    if [ -n "$_git_lines" ]; then
+      # Parse three lines without forking sed/head/tail.
+      _gd="${_git_lines%%
+*}"
+      _rest="${_git_lines#*
+}"
+      _gc="${_rest%%
+*}"
+      _git_toplevel="${_rest#*
+}"
+      [ -n "$_gd" ] && _gd="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gd=""
+      [ -n "$_gc" ] && _gc="$(cd "$_gc" 2>/dev/null && pwd -P)" || _gc=""
+      if [ -n "$_gd" ] && [ -n "$_gc" ] && [ "$_gd" != "$_gc" ]; then
+        _excluded_dir="$(cd "$_gc/.." 2>/dev/null && pwd -P)" || _excluded_dir=""
+      fi
+    fi
+  fi
+
+  # Compute ceiling.
+  ceiling=""
+  _under_home=0
+  if [ -n "$phys_home" ]; then
+    case "$phys_pwd" in
+      "$phys_home"|"$phys_home"/*) ceiling="$phys_home"; _under_home=1 ;;
+    esac
+  fi
+
+  if [ "$_under_home" -eq 0 ]; then
+    # Outside HOME (or HOME unset / "/"): bound by git.
+    if [ -n "$_excluded_dir" ]; then
+      # Linked worktree: walk up to the parent of the main checkout when
+      # it is an ancestor of the CWD.  Otherwise the worktree is placed
+      # outside the main checkout's tree (e.g. `git worktree add /tmp/x`)
+      # and the walk stays inside the worktree's own top-level.
+      # When the main checkout IS HOME, dirname(HOME) is not a meaningful
+      # project root, so the worktree top-level is used.
+      local _wt_parent
+      _wt_parent="$(dirname "$_excluded_dir")"
+      if [ -n "$phys_home" ] && [ "$_excluded_dir" = "$phys_home" ]; then
+        ceiling="$_git_toplevel"
+      else
+        case "$phys_pwd" in
+          "$_wt_parent"|"$_wt_parent"/*) ceiling="$_wt_parent" ;;
+          *) ceiling="$_git_toplevel" ;;
+        esac
+      fi
+    elif [ -n "$_git_toplevel" ]; then
+      ceiling="$_git_toplevel"
+    else
+      return 1  # No git, outside HOME — no walk-up
+    fi
+  fi
 
   # Pass 1: nearest ancestor with a real project-config.yaml under .gaia/config.
-  d="$PWD"
-  if [ -f "$d/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
-  while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
+  d="$phys_pwd"
+  if [ "$d" != "$_excluded_dir" ] && [ -f "$d/.gaia/config/project-config.yaml" ]; then
+    printf '%s' "$d"; return 0
+  fi
+  while [ "$d" != "/" ] && [ "$d" != "$ceiling" ]; do
     d="$(dirname "$d")"
-    if [ -f "$d/.gaia/config/project-config.yaml" ]; then printf '%s' "$d"; return 0; fi
+    if [ "$d" != "$_excluded_dir" ] && [ -f "$d/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$d"; return 0
+    fi
   done
 
   # Pass 2 (fallback): nearest ancestor with any .gaia/ directory.
-  d="$PWD"
-  if [ -d "${d}/.gaia" ]; then printf '%s' "$d"; return 0; fi
-  while [ "$d" != "/" ] && [ "$d" != "${HOME:-/nonexistent}" ]; do
+  d="$phys_pwd"
+  if [ "$d" != "$_excluded_dir" ] && [ -d "${d}/.gaia" ]; then
+    printf '%s' "$d"; return 0
+  fi
+  while [ "$d" != "/" ] && [ "$d" != "$ceiling" ]; do
     d="$(dirname "$d")"
-    if [ -d "${d}/.gaia" ]; then printf '%s' "$d"; return 0; fi
+    if [ "$d" != "$_excluded_dir" ] && [ -d "${d}/.gaia" ]; then
+      printf '%s' "$d"; return 0
+    fi
   done
   return 1
 }

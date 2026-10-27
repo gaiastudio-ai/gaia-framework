@@ -36,6 +36,8 @@ _IC_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source catch-all flag parser (exposes catch_all_epics).
 # shellcheck source=lib/catch-all-flag.sh
 . "${_IC_SCRIPT_DIR}/lib/catch-all-flag.sh"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "${_IC_SCRIPT_DIR}/lib/migrate-items-to-stories.sh"
 
 # Source story file resolver (exposes resolve_story_file).
 # shellcheck source=resolve-story-file.sh
@@ -181,20 +183,7 @@ _ic_read_sprint_keys() {
   if [ ! -r "$state_file" ]; then
     _ic_die "unable to read dependency structure"
   fi
-  awk '
-    BEGIN { in_s = 0 }
-    { line = $0; sub(/\r$/, "", line) }
-    line ~ /^stories:[[:space:]]*$/ { in_s = 1; next }
-    line ~ /^stories:[[:space:]]*\[\][[:space:]]*$/ { next }
-    in_s && line ~ /^[^[:space:]-]/ { in_s = 0; next }
-    !in_s { next }
-    line ~ /^[[:space:]]+-[[:space:]]+key:[[:space:]]*/ {
-      k = line
-      sub(/^[[:space:]]+-[[:space:]]+key:[[:space:]]*/, "", k)
-      gsub(/^["'"'"'[:space:]]+|["'"'"'[:space:]]+$/, "", k)
-      if (k != "") print k
-    }
-  ' "$state_file"
+  read_stories_or_items "$state_file" | cut -f1
 }
 
 # ---------------------------------------------------------------------------
@@ -310,11 +299,11 @@ _ic_batch_resolve_story_files() {
 # ---------------------------------------------------------------------------
 _ic_is_known_key() {
   local key="$1" epics_file="$2" shards_dir="$3"
-  if [ -f "$epics_file" ] && /usr/bin/grep -q "\\b${key}\\b" "$epics_file" 2>/dev/null; then
+  if [ -f "$epics_file" ] && /usr/bin/grep -Fwq -- "$key" "$epics_file" 2>/dev/null; then
     return 0
   fi
   if [ -n "$shards_dir" ] && [ -d "$shards_dir" ]; then
-    if /usr/bin/grep -rq "\\b${key}\\b" "$shards_dir" 2>/dev/null; then
+    if /usr/bin/grep -rFwq -- "$key" "$shards_dir" 2>/dev/null; then
       return 0
     fi
   fi
@@ -329,15 +318,59 @@ _ic_is_known_key() {
 # ---------------------------------------------------------------------------
 _ic_resolve_planning_paths() {
   local resolve_config="${_IC_SCRIPT_DIR}/resolve-config.sh"
-  local planning_dir=""
+  local planning_dir="" resolved_root=""
   if [ -x "$resolve_config" ]; then
-    planning_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    "$resolve_config" planning_artifacts 2>/dev/null)" || planning_dir=""
+    local _all_out
+    local _rc=0
+    _all_out="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+                "$resolve_config" --all 2>/dev/null)" || _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      printf 'FAIL indeterminate: config resolver failed (exit %d)\n' "$_rc" >&2
+      return 1
+    fi
+    if [ -n "$_all_out" ]; then
+      # Decode shell_escape's '\'' sequences.
+      local _line _q="'" _esc="'\\''";
+      _line="$(/usr/bin/grep "^project_root=" <<< "$_all_out")" || _line=""
+      resolved_root="${_line#project_root=}"
+      resolved_root="${resolved_root#\'}"; resolved_root="${resolved_root%\'}"
+      resolved_root="${resolved_root//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^planning_artifacts=" <<< "$_all_out")" || _line=""
+      planning_dir="${_line#planning_artifacts=}"
+      planning_dir="${planning_dir#\'}"; planning_dir="${planning_dir%\'}"
+      planning_dir="${planning_dir//"$_esc"/$_q}"
+    fi
   fi
+  # Fail closed on values truncated by a newline in the path.
+  # A newline inside a resolver value breaks the line-oriented grep parsing:
+  # the grep captures only the first physical line, losing the rest. Detect
+  # this by checking the raw output for lines that do not match key='...'.
+  if [ -n "$_all_out" ]; then
+    local _bad_line
+    _bad_line="$(/usr/bin/grep -v "^[a-zA-Z_][a-zA-Z0-9_.]*=" <<< "$_all_out" | head -1)" || _bad_line=""
+    if [ -n "$_bad_line" ]; then
+      printf 'FAIL indeterminate: resolver output contains a malformed line (possible newline in path): %s\n' \
+        "$_bad_line" >&2
+      return 1
+    fi
+  fi
+
   if [ -z "$planning_dir" ]; then
     planning_dir="${_IC_PROJECT_ROOT:+${_IC_PROJECT_ROOT%/}/}.gaia/artifacts/planning-artifacts"
   fi
+
+  # Resolve to physical paths for symlink/alias-safe comparison.
+  if [ -n "$resolved_root" ] && [ -d "$resolved_root" ]; then
+    resolved_root="$(cd "$resolved_root" 2>/dev/null && pwd -P)" || true
+  fi
+  if [ -n "$planning_dir" ] && [ -d "$planning_dir" ]; then
+    planning_dir="$(cd "$planning_dir" 2>/dev/null && pwd -P)" || true
+  fi
+
+  # Outside-root planning dirs: keep reading the configured dir for the
+  # epics file (the classification skip is handled by _ic_resolve_artifact_dirs).
+
   printf '%s\t%s' "${planning_dir}/epics-and-stories.md" "${planning_dir}/epics"
 }
 
@@ -607,18 +640,93 @@ _expand_globs() {
 #   Prints: planning_dir<TAB>test_dir
 _ic_resolve_artifact_dirs() {
   local resolve_config="${_IC_SCRIPT_DIR}/resolve-config.sh"
-  local planning_dir="" test_dir=""
+  local planning_dir="" test_dir="" resolved_root=""
 
   if [ -x "$resolve_config" ]; then
-    planning_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                    "$resolve_config" planning_artifacts 2>/dev/null)" || planning_dir=""
-    test_dir="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
+    # Single --all call (one fork) instead of three separate calls.
+    local _all_out
+    local _rc=0
+    _all_out="$(PROJECT_ROOT="$_IC_PROJECT_ROOT" \
                 CLAUDE_PROJECT_ROOT="$_IC_PROJECT_ROOT" \
-                "$resolve_config" test_artifacts 2>/dev/null)" || test_dir=""
+                "$resolve_config" --all 2>/dev/null)" || _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      printf 'FAIL indeterminate: config resolver failed (exit %d)\n' "$_rc" >&2
+      return 1
+    fi
+    if [ -n "$_all_out" ]; then
+      # Extract key='value' lines and decode shell_escape's '\'' sequences.
+      local _line _q="'" _esc="'\\''";
+      _line="$(/usr/bin/grep "^project_root=" <<< "$_all_out")" || _line=""
+      resolved_root="${_line#project_root=}"
+      resolved_root="${resolved_root#\'}"; resolved_root="${resolved_root%\'}"
+      resolved_root="${resolved_root//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^planning_artifacts=" <<< "$_all_out")" || _line=""
+      planning_dir="${_line#planning_artifacts=}"
+      planning_dir="${planning_dir#\'}"; planning_dir="${planning_dir%\'}"
+      planning_dir="${planning_dir//"$_esc"/$_q}"
+      _line="$(/usr/bin/grep "^test_artifacts=" <<< "$_all_out")" || _line=""
+      test_dir="${_line#test_artifacts=}"
+      test_dir="${test_dir#\'}"; test_dir="${test_dir%\'}"
+      test_dir="${test_dir//"$_esc"/$_q}"
+    fi
+    # Fail closed on values truncated by a newline in the path.
+    local _bad_line
+    _bad_line="$(/usr/bin/grep -v "^[a-zA-Z_][a-zA-Z0-9_.]*=" <<< "$_all_out" | head -1)" || _bad_line=""
+    if [ -n "$_bad_line" ]; then
+      printf 'FAIL indeterminate: resolver output contains a malformed line (possible newline in path): %s\n' \
+        "$_bad_line" >&2
+      return 1
+    fi
   fi
 
-  # Make relative to PROJECT_ROOT.
+  # Fail closed on malformed values: non-absolute → resolver error.
+  local _v
+  for _v in "$resolved_root" "$planning_dir" "$test_dir"; do
+    [ -z "$_v" ] && continue
+    case "$_v" in /*) ;; *)
+      printf 'ERROR: parsed value is not absolute: %s\n' "$_v" >&2; return 1 ;;
+    esac
+  done
+
+  # Resolve both sides to physical paths (pwd -P) so /tmp vs /private/tmp
+  # and symlinked roots compare correctly.
+  _ic_to_phys() {
+    local _p="$1"
+    [ -z "$_p" ] && return 0
+    if [ -d "$_p" ]; then
+      (cd "$_p" 2>/dev/null && pwd -P) || printf '%s' "$_p"
+    else
+      # Path doesn't exist yet: resolve the nearest existing parent.
+      local _parent _base
+      _parent="$(dirname "$_p")"
+      _base="$(basename "$_p")"
+      if [ -d "$_parent" ]; then
+        printf '%s/%s' "$(cd "$_parent" 2>/dev/null && pwd -P)" "$_base"
+      else
+        printf '%s' "$_p"
+      fi
+    fi
+  }
+  resolved_root="$(_ic_to_phys "$resolved_root")"
+  planning_dir="$(_ic_to_phys "$planning_dir")"
+  test_dir="$(_ic_to_phys "$test_dir")"
+
+  # Make relative to the resolver's project_root.
+  # Outside-root absolute dirs: WARN and skip classification for that dir
+  # (touch-sets are project-relative so they can never match an outside dir).
+  if [ -n "$resolved_root" ]; then
+    local _root_prefix="${resolved_root%/}/"
+    case "$planning_dir" in
+      "${_root_prefix}"*) planning_dir="${planning_dir#"$_root_prefix"}" ;;
+      /*) printf 'WARNING: planning_artifacts %s is outside project_root %s; planning-artifact rule skipped for this dir\n' "$planning_dir" "$resolved_root" >&2
+          planning_dir="" ;;
+    esac
+    case "$test_dir" in
+      "${_root_prefix}"*) test_dir="${test_dir#"$_root_prefix"}" ;;
+      /*) printf 'WARNING: test_artifacts %s is outside project_root %s; test-artifact rule skipped for this dir\n' "$test_dir" "$resolved_root" >&2
+          test_dir="" ;;
+    esac
+  fi
   planning_dir="${planning_dir#./}"
   test_dir="${test_dir#./}"
   [ -n "$planning_dir" ] || planning_dir="$_IC_PLANNING_DEFAULT"
@@ -743,8 +851,14 @@ _ic_run_rules_cd() {
   mkdir -p "$ts_dir" "$cs_dir"
 
   # Resolve artifact directories for family classification.
+  # Fail closed: if resolution fails, propagate the error so the check
+  # exits non-zero rather than silently skipping rule (d).
   local art_dirs pdir tdir
-  art_dirs="$(_ic_resolve_artifact_dirs)"
+  art_dirs="$(_ic_resolve_artifact_dirs)" || {
+    printf 'FAIL indeterminate: artifact-dir resolution failed\n'
+    printf 'FAIL indeterminate: artifact-dir resolution failed\n' >&2
+    return 1
+  }
   pdir="${art_dirs%%	*}"
   tdir="${art_dirs#*	}"
 
@@ -801,6 +915,13 @@ _ic_run_rules_cd() {
       _cache_id="$(printf '%s' "$_cf" | md5 2>/dev/null || printf '%s' "$_cf" | md5sum 2>/dev/null | cut -d' ' -f1)"
       local _cache_file="${_ic_cache_dir}/${_cache_id}"
 
+      # Refuse symlinked cache files — a symlink at the cache path could
+      # point outside the cache directory and read arbitrary content.
+      if [ -L "$_cache_file" ]; then
+        rm -f "$_cache_file" 2>/dev/null || true
+        printf '%s\t%s\t%s\n' "$_ck" "$_cs" "$_cf" >> "$uncached_input"
+        continue
+      fi
       if [ -f "$_cache_file" ]; then
         local _cached_stat="" _cached_cksum=""
         _cached_stat="$(sed -n '1p' "$_cache_file")"
@@ -909,7 +1030,7 @@ _ic_run_rules_cd() {
       {
         printf '%s\n' "$_stat_key"
         printf '%s\n' "$_content_key"
-        /usr/bin/grep "^${_ck}	" "$fresh_parsed" || true
+        awk -F'\t' -v k="$_ck" '$1==k' "$fresh_parsed" || true
       } > "$_cache_file"
     done < "$parse_needed"
   fi
@@ -921,6 +1042,25 @@ _ic_run_rules_cd() {
     cat "$cached_parsed" "$fresh_parsed" > "$all_parsed"
   else
     cp "$fresh_parsed" "$all_parsed"
+  fi
+
+  # Pre-validate all TS entries through the canonical denylist before the
+  # processing awk. The inline awk denylist is a fast pre-filter; this pass
+  # catches anything it misses (e.g. bare backslashes) and fails closed.
+  local _ts_deny_fail=""
+  while IFS=$'\t' read -r _dk _dt _dv; do
+    [ "$_dt" = "TS" ] || continue
+    if ! touch_set_denylist_check "$_dv" 2>/dev/null; then
+      local _dk_sf=""
+      _dk_sf="$(awk -F'\t' -v k="$_dk" '$1==k { print $3; exit }' "$parse_input" 2>/dev/null || true)"
+      _ts_deny_fail="FAIL indeterminate: denylist rejected: ${_dv} in ${_dk_sf:-$_dk}"
+      break
+    fi
+  done < "$all_parsed"
+  if [ -n "$_ts_deny_fail" ]; then
+    printf '%s\n' "$_ts_deny_fail"
+    printf '%s\n' "$_ts_deny_fail" >&2
+    return 1
   fi
 
   # Process ALL parsed data in a single awk pass: check field presence,
@@ -980,7 +1120,7 @@ _ic_run_rules_cd() {
             entry = entries[ei]
             if (entry == "") continue
 
-            # Denylist check (inline).
+            # Denylist check (inline — mirrors the canonical sanitizer).
             if (index(entry, "`") > 0 || index(entry, "$") > 0 || \
                 index(entry, "(") > 0 || index(entry, ")") > 0 || \
                 index(entry, ";") > 0 || index(entry, "|") > 0 || \
@@ -988,6 +1128,21 @@ _ic_run_rules_cd() {
                 index(entry, "<") > 0) {
               printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
               exit 0
+            }
+            # Backslash check: allowed only before glob metacharacters.
+            if (index(entry, "\\") > 0) {
+              elen = length(entry)
+              for (bi = 1; bi <= elen; bi++) {
+                bch = substr(entry, bi, 1)
+                if (bch == "\\") {
+                  nch = (bi < elen) ? substr(entry, bi + 1, 1) : ""
+                  if (nch != "*" && nch != "?" && nch != "[" && nch != "]") {
+                    printf "FAIL indeterminate: denylist rejected: %s in %s", entry, sf
+                    exit 0
+                  }
+                  bi++
+                }
+              }
             }
 
             # Climb-out check.
@@ -1369,8 +1524,8 @@ _ic_run_rules_cd() {
   local _cand_st="$sprint_types_dir/${candidate}.txt"
   [ -f "$_cand_sp" ] || : > "$_cand_sp"
   [ -f "$_cand_st" ] || : > "$_cand_st"
-  /usr/bin/grep -Fxv "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
-  /usr/bin/grep -Fv "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
+  /usr/bin/grep -Fxv -- "$_ic_config_path" "$_cand_sp" > "$cand_paths_filtered" 2>/dev/null || : > "$cand_paths_filtered"
+  /usr/bin/grep -Fv -- "$_ic_config_path" "$_cand_st" > "$cand_types_filtered" 2>/dev/null || : > "$cand_types_filtered"
 
   local cd_overall_rc=0
   local active_id
@@ -1402,8 +1557,8 @@ _ic_run_rules_cd() {
 
     local act_paths_filtered="$tmpdir/act_paths_f_${active_id}.txt"
     local act_types_filtered="$tmpdir/act_types_f_${active_id}.txt"
-    /usr/bin/grep -Fxv "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
-    /usr/bin/grep -Fv "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
+    /usr/bin/grep -Fxv -- "$_ic_config_path" "$_act_sp" > "$act_paths_filtered" 2>/dev/null || : > "$act_paths_filtered"
+    /usr/bin/grep -Fv -- "$_ic_config_path" "$_act_st" > "$act_types_filtered" 2>/dev/null || : > "$act_types_filtered"
 
     local cand_all_paths="$cand_paths_filtered"
     local cand_all_types="$cand_types_filtered"
@@ -1416,8 +1571,8 @@ _ic_run_rules_cd() {
     if [ -n "$overlap_path" ]; then
       # Find which stories own this path.
       local ck_owner ak_owner
-      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
-      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ck_owner="$(for k in $(cat "$cand_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
+      ak_owner="$(for k in $(cat "$act_keys_f"); do /usr/bin/grep -Fxq -- "$overlap_path" "$resolved_dir/${k}.txt" 2>/dev/null && printf '%s' "$k" && break; done)"
       rule_c_fail=1
       rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${overlap_path} (${candidate} -> ${active_id})"
     fi
@@ -1630,7 +1785,7 @@ _ic_run_rules_cd() {
         [ -n "$cfam" ] || continue
         [ "$rule_d_fail" -eq 0 ] || break
         # Check if this family appears in both.
-        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qx "$cfam" 2>/dev/null; then
+        if printf '%s\n' "$act_fam_names" | /usr/bin/grep -qxF -- "$cfam" 2>/dev/null; then
           # Config family: check section granularity.
           if [ "$cfam" = "config" ]; then
             # Get candidate and active story keys that touch config.
@@ -1648,8 +1803,8 @@ _ic_run_rules_cd() {
                 # Do both stories have predicted_config_sections?
                 local cck_has_cs=0 ack_has_cs=0
                 if [ -f "$cs_dir/_has_field.txt" ]; then
-                  /usr/bin/grep -qx "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
-                  /usr/bin/grep -qx "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
+                  /usr/bin/grep -qxF -- "$cck" "$cs_dir/_has_field.txt" 2>/dev/null && cck_has_cs=1
+                  /usr/bin/grep -qxF -- "$ack" "$cs_dir/_has_field.txt" 2>/dev/null && ack_has_cs=1
                 fi
 
                 if [ "$cck_has_cs" -eq 1 ] && [ "$ack_has_cs" -eq 1 ]; then
@@ -1812,8 +1967,14 @@ main() {
       ' "$_ov_file")" || true
       [ -n "$_ov_key" ] || _ic_die "overlay file has no key: $_ov_file"
 
-      # Check if key exists in resolved_f.
-      if /usr/bin/grep -q "^${_ov_key}	" "$resolved_f" 2>/dev/null; then
+      # Validate overlay key format (reject regex metacharacters).
+      case "$_ov_key" in
+        *"."*|*"^"*|*'$'*|*"["*|*"]"*|*"+"*|*"?"*|*"{"*|*"}"*|*"\\"*|*"|"*)
+          _ic_die "overlay key contains invalid characters: $_ov_key" ;;
+      esac
+
+      # Check if key exists in resolved_f (exact first-field match).
+      if awk -F'\t' -v k="$_ov_key" '$1==k { found=1; exit } END { exit !found }' "$resolved_f" 2>/dev/null; then
         # Replace the resolved path with the overlay path.
         local _ov_tmp="${resolved_f}.ovtmp"
         awk -F'\t' -v k="$_ov_key" -v p="$_ov_file" \

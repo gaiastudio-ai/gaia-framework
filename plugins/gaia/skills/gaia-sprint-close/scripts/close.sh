@@ -24,6 +24,46 @@ SCRIPT_NAME="gaia-sprint-close/close.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_SCRIPTS_DIR="$(cd "$SCRIPT_DIR/../../../scripts" && pwd)"
 LIFECYCLE_EVENT_SH="$PLUGIN_SCRIPTS_DIR/lifecycle-event.sh"
+# shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
+if [ -f "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh" ]; then
+  . "$PLUGIN_SCRIPTS_DIR/lib/migrate-items-to-stories.sh"
+fi
+
+# Fail-closed guard: if the shared lib did not load, define an inline
+# fallback that implements the same union-by-key semantics. Without this,
+# parse_stories would silently see 0 stories and the precheck would pass.
+if ! type read_stories_or_items >/dev/null 2>&1; then
+  read_stories_or_items() {
+    local yaml="$1"; [ -f "$yaml" ] || return 0
+    awk '
+      /^stories[[:space:]]*:[[:space:]]*$/ { in_s=1; in_i=0; next }
+      /^items[[:space:]]*:[[:space:]]*$/ { in_i=1; in_s=0; next }
+      /^stories[[:space:]]*:[[:space:]]*\[\]/ { in_s=0; next }
+      /^items[[:space:]]*:[[:space:]]*\[\]/ { in_i=0; next }
+      (in_s||in_i) && /^[A-Za-z_]/ { in_s=0; in_i=0 }
+      in_s && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        s_key[k]=1; s_order[s_n++]=k; next
+      }
+      in_s && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        s_st[s_order[s_n-1]]=v; next
+      }
+      in_i && /^[[:space:]]+-[[:space:]]+key:/ {
+        k=$0; sub(/.*key:[[:space:]]*/,"",k); gsub(/["'"'"'[:space:]]/,"",k)
+        i_order[i_n++]=k; next
+      }
+      in_i && /^[[:space:]]+status:/ {
+        v=$0; sub(/.*status:[[:space:]]*/,"",v); gsub(/["'"'"'[:space:]]/,"",v)
+        i_st[i_order[i_n-1]]=v; next
+      }
+      END {
+        for(j=0;j<s_n;j++){printf "%s\t%s\n",s_order[j],s_st[s_order[j]];seen[s_order[j]]=1}
+        for(j=0;j<i_n;j++){if(!(i_order[j] in seen))printf "%s\t%s\n",i_order[j],i_st[i_order[j]]}
+      }
+    ' "$yaml"
+  }
+fi
 
 # PROJECT_PATH defaults to CWD; honor a pre-exported value (used by bats).
 PROJECT_PATH="${PROJECT_PATH:-$PWD}"
@@ -88,42 +128,13 @@ yaml_top_scalar() {
 }
 
 # Enumerate stories[] from sprint-status.yaml as "key=status" pairs on stdout.
-# Uses the same bash-regex pattern that sprint-state.sh cmd_detect_auto_close
-# uses (lines 2095-2120) — no yq dependency for the parse path.
+# Union of stories: and items: (stories wins on duplicate key).
+# Uses the shared lib's read_stories_or_items for consistent semantics.
 parse_stories() {
   local path="$1"
-  local in_stories=false
-  local s_key="" s_status=""
-  _flush() {
-    if [ -n "$s_key" ]; then
-      printf '%s=%s\n' "$s_key" "$s_status"
-    fi
-    s_key=""; s_status=""
-  }
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^stories: ]]; then
-      in_stories=true
-      continue
-    fi
-    if [ "$in_stories" = true ]; then
-      if [[ "$line" =~ ^[a-z_] ]]; then
-        in_stories=false
-        _flush
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*key:[[:space:]]* ]]; then
-        _flush
-        s_key=$(printf '%s' "$line" | sed 's/.*key:[[:space:]]*//' | tr -d '"')
-        continue
-      fi
-      if [[ "$line" =~ ^[[:space:]]+status:[[:space:]]* ]]; then
-        s_status=$(printf '%s' "$line" | sed 's/.*status:[[:space:]]*//' | tr -d '"')
-      fi
-    fi
-  done < "$path"
-  if [ "$in_stories" = true ]; then
-    _flush
-  fi
+  read_stories_or_items "$path" | while IFS=$'\t' read -r k s; do
+    [ -n "$k" ] && printf '%s=%s\n' "$k" "$s"
+  done
 }
 
 # ISO 8601 UTC timestamp with seconds precision.
@@ -159,11 +170,16 @@ json_string_array() {
 usage() {
   cat <<'USAGE' >&2
 Usage:
-  close.sh [--force] [--force-with-rollover <key1,key2,...>] [--help]
+  close.sh [--sprint <sprint-id>] [<sprint-id>] [--force] [--force-with-rollover <key1,key2,...>] [--help]
 
-Closes the active sprint: writes status:closed + closed_at to sprint-status.yaml,
+Closes the target sprint: writes status:closed + closed_at to sprint-status.yaml,
 archives the yaml under .gaia/artifacts/implementation-artifacts/sprint-archive/,
 and emits a sprint_closed lifecycle event to .gaia/memory/lifecycle-events.jsonl.
+
+Sprint resolution (via the shared resolver):
+  1. Explicit --sprint <id> (highest priority).
+  2. Session binding (the sprint bound to the current session).
+  3. Single-sprint default (one active sprint, no ambiguity).
 
 Pre-conditions:
   - A retro doc must exist at .gaia/artifacts/implementation-artifacts/retrospective/retrospective-{sprint_id}-*.md
@@ -172,6 +188,7 @@ Pre-conditions:
   - Sprint must not already be closed (idempotent re-close exits 0 with warning).
 
 Flags:
+  --sprint <id>           Target a specific sprint (concurrent mode).
   --force                 Bypass the sprint-review sentinel check (audited; recorded in close-summary).
   --force-with-rollover   Close with non-done stories (must list exactly the non-done keys).
 
@@ -183,11 +200,31 @@ USAGE
 FORCE_ROLLOVER_RAW=""
 FORCE_BYPASS_SENTINEL=0
 _RESUME_MODE=0
+_SPRINT_FLAG=""
+_POSITIONAL_SPRINT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help|-h) usage; exit 0 ;;
     --force)
       FORCE_BYPASS_SENTINEL=1
+      shift
+      ;;
+    --sprint)
+      [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
+      [ -n "$2" ] || die "--sprint requires a non-empty sprint ID"
+      if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$2" ]; then
+        die "repeated --sprint: '$_SPRINT_FLAG' and '$2'"
+      fi
+      _SPRINT_FLAG="$2"
+      shift 2
+      ;;
+    --sprint=*)
+      _SPRINT_FLAG_NEW="${1#--sprint=}"
+      [ -n "$_SPRINT_FLAG_NEW" ] || die "--sprint requires a non-empty sprint ID"
+      if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$_SPRINT_FLAG_NEW" ]; then
+        die "repeated --sprint: '$_SPRINT_FLAG' and '$_SPRINT_FLAG_NEW'"
+      fi
+      _SPRINT_FLAG="$_SPRINT_FLAG_NEW"
       shift
       ;;
     --force-with-rollover)
@@ -199,19 +236,123 @@ while [ "$#" -gt 0 ]; do
       FORCE_ROLLOVER_RAW="${1#--force-with-rollover=}"
       shift
       ;;
-    *) die "unknown argument: $1" ;;
+    -*)
+      die "unknown argument: $1"
+      ;;
+    *)
+      # Positional argument: treat as sprint ID.
+      if [ -n "$_POSITIONAL_SPRINT" ]; then
+        die "unexpected positional argument: $1 (already have $_POSITIONAL_SPRINT)"
+      fi
+      _POSITIONAL_SPRINT="$1"
+      shift
+      ;;
   esac
 done
+
+# ---------- Sprint resolution via shared resolver ----------
+
+SESSION_BINDING_SH="$PLUGIN_SCRIPTS_DIR/lib/session-binding.sh"
+if [ -f "$SESSION_BINDING_SH" ]; then
+  # shellcheck source=../../../scripts/lib/session-binding.sh
+  . "$SESSION_BINDING_SH"
+
+  # Provision the binding directory from the session ID so the resolver
+  # can read the binding file written by bind.sh. Without this call,
+  # GAIA_BINDING_DIR is unset and the resolver never sees the binding.
+  # Exit 1 (no session ID) is non-fatal — non-interactive context.
+  # Exit 3 (spoofing detected) is fatal — fail closed.
+  _provision_rc=0
+  provision_binding_dir 2>/dev/null || _provision_rc=$?
+  if [ "$_provision_rc" -eq 3 ]; then
+    die "binding directory validation failed (spoofing detected)"
+  fi
+fi
+
+# Positional/flag conflict detection (before the resolver).
+# When both a positional sprint ID and --sprint are given with different
+# values, refuse immediately with a conflict diagnostic.
+if [ -n "$_SPRINT_FLAG" ] && [ -n "$_POSITIONAL_SPRINT" ]; then
+  if [ "$_SPRINT_FLAG" != "$_POSITIONAL_SPRINT" ]; then
+    die "positional sprint ID '$_POSITIONAL_SPRINT' conflicts with --sprint '$_SPRINT_FLAG'"
+  fi
+fi
+
+# Merge positional into --sprint for the resolver (the resolver only
+# accepts --sprint for the sprint-close command class).
+_effective_sprint="${_SPRINT_FLAG:-${_POSITIONAL_SPRINT:-}}"
+
+# Detect whether to use the resolver or the legacy single-sprint path.
+# Two conditions skip the resolver:
+#   1. SPRINT_STATUS_YAML is set — the caller explicitly chose the file.
+#   2. .gaia/state/ does not exist — legacy layout, no per-sprint files.
+# This decision is made once BEFORE calling the resolver and is not
+# inferred from any resolver failure.
+_state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
+_use_resolver=0
+if [ -z "${SPRINT_STATUS_YAML:-}" ] && [ -d "$_state_dir" ]; then
+  _use_resolver=1
+fi
+
+# Build resolver arguments.
+_resolver_args=(--command sprint-close)
+if [ -n "$_effective_sprint" ]; then
+  _resolver_args+=(--sprint "$_effective_sprint")
+fi
+
+# Resolve the target sprint ID. The resolver handles:
+#   - explicit --sprint (highest priority)
+#   - session binding fallback
+#   - single-sprint default
+# On failure (unknown ID, conflict, ambiguous), it prints diagnostics to
+# stderr and returns non-zero — close.sh propagates that exit (fail closed).
+if [ "$_use_resolver" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
+  _resolver_stderr="$(mktemp)"
+  trap 'rm -f "$_resolver_stderr"' EXIT
+  _resolver_rc=0
+  RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>"$_resolver_stderr")" || _resolver_rc=$?
+  if [ "$_resolver_rc" -ne 0 ]; then
+    # Fail closed: surface the resolver's diagnostic and exit non-zero.
+    cat "$_resolver_stderr" >&2
+    rm -f "$_resolver_stderr"
+    exit "$_resolver_rc"
+  fi
+  rm -f "$_resolver_stderr"
+else
+  # Resolver skipped (SPRINT_STATUS_YAML set, .gaia/state/ absent, or
+  # session-binding.sh not found). Use the effective sprint or fall
+  # through to the legacy single-sprint path.
+  RESOLVED_SPRINT="$_effective_sprint"
+fi
 
 # ---------- Dependency check ----------
 
 command -v yq >/dev/null 2>&1 || die "yq required (mikefarah v4); install via 'brew install yq' or equivalent"
 
-YAML_PATH="$(resolve_yaml_path)"
+# When a specific sprint was resolved, look for its per-sprint state file
+# first; fall back to the main sprint-status.yaml for single-sprint mode.
+if [ -n "${RESOLVED_SPRINT:-}" ]; then
+  _per_sprint="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status-${RESOLVED_SPRINT}.yaml"
+  if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
+    YAML_PATH="$SPRINT_STATUS_YAML"
+  elif [ -f "$_per_sprint" ]; then
+    YAML_PATH="$_per_sprint"
+  else
+    # Fall back to main file (single-sprint layout or env override).
+    YAML_PATH="$(resolve_yaml_path)"
+  fi
+else
+  YAML_PATH="$(resolve_yaml_path)"
+fi
 [ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $YAML_PATH"
 
 SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
 [ -n "$SPRINT_ID" ] || die "sprint_id not found in $YAML_PATH"
+
+# Sanity: when the resolver gave us an ID, the state file must match.
+if [ -n "${RESOLVED_SPRINT:-}" ] && [ "$SPRINT_ID" != "$RESOLVED_SPRINT" ]; then
+  die "sprint ID mismatch: resolver gave '${RESOLVED_SPRINT}' but state file contains '${SPRINT_ID}'"
+fi
 
 # ---------- Step 2 — Idempotency short-circuit ----------
 # Done BEFORE retro check so already-closed sprints don't require an existing

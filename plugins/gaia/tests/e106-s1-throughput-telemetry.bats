@@ -11,6 +11,8 @@
 #
 # Refs: AC1-AC6, AC-INT1, TS1-TS7, ADR-128, ADR-042, FR-549, FR-550
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   SCRIPT="$REPO_ROOT/plugins/gaia/scripts/throughput-telemetry.sh"

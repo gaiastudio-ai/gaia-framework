@@ -4,6 +4,7 @@ core	E78-S6-plugin-versioning-rubric.bats
 core	E79-S4-csp-readers.bats
 core	a11y-three-phase-reorganization.bats
 core	action-items-canonical-path.bats
+core	action-items-write-retro-interop.bats
 core	action-skill-contract.bats
 core	adapter-schema-contract.bats
 core	adapters/credential-isolation.bats
@@ -129,6 +130,7 @@ core	config-phase-schema.bats
 core	config-yaml-editor-e71-s3-coverage-stub.bats
 core	dead-code-join.bats
 core	dead-reference-scan.bats
+core	defensive-shell-coding-sweep.bats
 core	design-a11y-rebind.bats
 core	design-availability.bats
 core	design-gate-sites.bats
@@ -266,6 +268,7 @@ core	gaia-sprint-wiring-boundary-writes.bats
 core	gaia-sprint-wiring-orchestration.bats
 core	gaia-test-a11y.bats
 core	gaia-test-dast.bats
+core	git-branch-dedup.bats
 core	git-workflow-worktree-docs.bats
 core	ground-truth-lifecycle-wiring.bats
 core	ground-truth-staleness-capstone.bats
@@ -323,6 +326,7 @@ core	reconcile-cross-stack.bats
 core	republish-on-stale.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
+core	resolve-sprint-stories-review-status.bats
 core	retired-migrate-stories.bats
 core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
@@ -368,6 +372,7 @@ core	sprint-progress-snapshot-hook.bats
 core	sprint-review-yolo-fallback.bats
 core	sprint-state-goals-root-isolation.bats
 core	sprint-state-inject.bats
+core	sprint-state-key-alignment.bats
 core	sprint-state-split-repo-resolution.bats
 core	sprint-state-ssot-parity.bats
 core	sprint-state-wrapper-sync.bats
@@ -393,6 +398,7 @@ core	taxonomy-ssot-audit.bats
 core	tdd-reviewer-agent-contract.bats
 core	test-automate-adr-051-preservation.bats
 core	test-automate-phase2.bats
+core	test-hygiene-guard.bats
 core	test-manual-evidence.bats
 core	test-manual-surface-docs.bats
 core	test-plan-schema-detection.bats
@@ -444,6 +450,7 @@ core	vcp-rc-02-06-readiness-conflicts.bats
 core	verdict-resolver-parameterized.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
+core	worktree-walk-up-isolation.bats
 scripts-brain	brain-c2-unlinked-predicate.bats
 scripts-brain	brain-feed-smoke.bats
 scripts-brain	brain-harvest-edges.bats
@@ -523,6 +530,7 @@ scripts-core	discovery-board-render.bats
 scripts-core	discovery-board-state.bats
 scripts-core	discovery-board-write.bats
 scripts-core	discovery-graduate.bats
+scripts-core	dotted-path-handling.bats
 scripts-core	drift-detection-ci-suppression.bats
 scripts-core	drift-detection.bats
 scripts-core	e106-s2-dual-track-estimation.bats
@@ -612,6 +620,7 @@ scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config-cwd-independence.bats
 scripts-core	resolve-config.bats
 scripts-core	retirement-sweep.bats
+scripts-core	review-gate-hardening.bats
 scripts-core	review-gate-proof-of-execution.bats
 scripts-core	review-gate-sprint-scope.bats
 scripts-core	review-gate.bats
@@ -623,6 +632,7 @@ scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
 scripts-core	selective-test-driver.bats
 scripts-core	setup-root-resolution.bats
+scripts-core	sgr-velocity-003-floor-scaling.bats
 scripts-core	skill-dispatch-memory-load.bats
 scripts-core	skill-md-claude-skill-dir-anti-pattern.bats
 scripts-core	skills/e117-s5-stack-dev-parity.bats
@@ -663,6 +673,7 @@ scripts-core	vcp-cpt-09-phase3-solutioning.bats
 scripts-core	vcp-cpt-09-phase3-testing.bats
 scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
+scripts-core	verdict-resolver-required-false-malformed-json.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
 scripts-core	worktree-git-push.bats
@@ -740,6 +751,8 @@ scripts-lib	template-overrides.bats
 scripts-lib	test-environment-manifest-generator.bats
 scripts-lib	transcript-fidelity.bats
 scripts-lib	worktree-lifecycle.bats
+scripts-lib	worktree-reap-safety.bats
+scripts-lib	worktree-val-sentinel-path.bats
 scripts-lib	write-val-envelope.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
@@ -788,7 +801,6 @@ scripts-sprint	sprint-state-yaml-quote-stripping.bats
 scripts-sprint	sprint-status-dashboard-auto-close-banner.bats
 scripts-sprint	sprint-status-dashboard-stranded-ready.bats
 scripts-sprint	story-state-path-resolution.bats
-scripts-sprint	test-hygiene-guard.bats
 scripts-sprint	transition-story-status-sweep.bats
 scripts-sprint	transition-story-status-traced-issues.bats
 scripts-sprint	transition-story-status-trap.bats
@@ -878,6 +890,7 @@ skills	promotion-chain-guard.bats
 skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
 skills	skills/gaia-doctor-stray-snapshots.bats
+skills	sprint-close-resolver.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
@@ -894,4 +907,5 @@ skills	test-strategy-docs-only-default.bats
 skills	test-test-automate-phase-1.bats
 skills	validate-against-schema-date-fix.bats
 skills	verdict-provenance-check.bats
+skills	verify-pr-merged-gh-api.bats
 skills	write-val-sentinel-sprint-id-format.bats

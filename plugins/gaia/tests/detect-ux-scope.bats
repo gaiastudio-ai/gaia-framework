@@ -7,6 +7,8 @@
 #
 # Dependencies: bats-core 1.10+, jq, GNU or BSD grep with -E support.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   HELPER="$REPO_ROOT/scripts/detect-ux-scope.sh"

@@ -3,6 +3,8 @@
 #
 # Story: E93-S4. Traces to AC1, AC3, AC4, AC5, AC6, AC8, AC9.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   RUNNER="${BATS_TEST_DIRNAME}/../skills/gaia-sprint-review/scripts/track-b-dispatch.sh"
@@ -142,8 +144,14 @@ teardown() {
 }
 
 @test "runner does NOT invoke AskUserQuestion" {
-  # Strip comment lines, then assert no actual invocation of AskUserQuestion
-  ! grep -v '^[[:space:]]*#' "$RUNNER" | grep -q "AskUserQuestion("
+  # Strip comment lines, then assert no actual invocation of AskUserQuestion.
+  # Capture first to avoid SIGPIPE under pipefail.
+  local _code
+  _code="$(grep -v '^[[:space:]]*#' "$RUNNER")"
+  if grep -q "AskUserQuestion(" <<< "$_code"; then
+    printf 'runner must not invoke AskUserQuestion\n' >&2
+    return 1
+  fi
 }
 
 @test "empty sprint_review section → empty array + stderr warning, exit 0 ( soft-fail preserved)" {

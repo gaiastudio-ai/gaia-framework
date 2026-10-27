@@ -6,6 +6,8 @@
 # restores the full sweep; the extractor emits frontmatter + Findings only,
 # never the story body.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   EXTRACT="$PLUGIN/skills/gaia-triage-findings/scripts/extract-findings.sh"

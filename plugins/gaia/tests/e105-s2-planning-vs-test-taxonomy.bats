@@ -14,6 +14,8 @@
 # Maps to AC1-AC5, AC-INT1 and TS1-TS6.
 # Refs: ADR-127 §7.2/§7.6, ADR-070, FR-554, NFR-91, feedback_cumulative_target_gate_bug_class
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   MIGRATE="$REPO_ROOT/plugins/gaia/scripts/migrate-planning-vs-test.sh"

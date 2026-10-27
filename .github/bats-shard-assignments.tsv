@@ -364,6 +364,7 @@
 2	round-lifecycle.bats	125
 2	round-wiring.bats	23
 2	safe-grep-log.bats	8
+2	sgr-velocity-003-floor-scaling.bats	23
 2	sister-skills-strategy-test-artifact-fallback.bats	5
 2	skill-frontmatter-guard.bats	3
 2	skill-rename-preflight.bats	16
@@ -567,6 +568,7 @@
 3	skill-dispatch-brain-load.bats	6
 3	skill-dispatch-memory-load.bats	5
 3	sm-capacity-check-unchanged.bats	3
+3	sprint-close-resolver.bats	20
 3	sprint-close-sentinel-unconditional.bats	8
 3	sprint-review-yolo-fallback.bats	7
 3	sprint-state-goals-and-state-machine.bats	34
@@ -810,8 +812,6 @@
 2	concurrent-sprint-arg.bats	62
 2	concurrent-sprint-independence-cd.bats	38
 3	concurrent-sprint-perf.bats	3
-2	concurrent-sprint-independence-cd.bats	38
-3	concurrent-sprint-perf.bats	3
 1	ci-fast-feedback-cap.bats	5
 1	publish-gate-release-commit.bats	5
 3	concurrent-sprint-surfaces.bats	28
@@ -821,3 +821,15 @@
 3	concurrent-sprint-sweep.bats	10
 3	concurrent-sprint-recheck.bats	18
 3	concurrent-sprint-drift.bats	14
+1	git-branch-dedup.bats	9
+2	verdict-resolver-required-false-malformed-json.bats	23
+1	verify-pr-merged-gh-api.bats	30
+4	worktree-reap-safety.bats	20
+3	defensive-shell-coding-sweep.bats	44
+4	review-gate-hardening.bats	28
+3	action-items-write-retro-interop.bats	56
+1	sprint-state-key-alignment.bats	50
+3	worktree-walk-up-isolation.bats	42
+2	resolve-sprint-stories-review-status.bats	5
+3	worktree-val-sentinel-path.bats	18
+2	dotted-path-handling.bats	21

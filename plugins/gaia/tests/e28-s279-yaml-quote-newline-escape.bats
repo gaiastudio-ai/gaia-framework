@@ -8,6 +8,8 @@
 # yaml_quote must now force-quote AND escape \n/\r so the generated config
 # stays a single document.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   GEN="$PLUGIN_ROOT/skills/gaia-init/scripts/generate-config.sh"

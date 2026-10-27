@@ -180,7 +180,7 @@ fi
 # per-term shadowing arithmetic. Step 2c grep-checks the redacted body.
 sanitized_body="$body"
 for excl in "${UX_EXCLUSIONS[@]}"; do
-  if printf '%s\n' "$body" | grep -qiF "$excl"; then
+  if printf '%s\n' "$body" | grep -qiF -- "$excl"; then
     excluded_by+=("$excl")
     # Replace every case-insensitive occurrence with whitespace of equal length
     # so token positions are preserved (no accidental new word boundaries).

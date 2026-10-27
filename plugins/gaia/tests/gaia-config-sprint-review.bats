@@ -16,6 +16,8 @@
 # schema level (the WARN is emitted by /gaia-config-validate, not the
 # schema validator).
 
+load 'test_helper.bash'
+
 setup() {
   # Tests at plugins/gaia/tests/ — REPO_ROOT is three levels up (gaia-public/).
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"

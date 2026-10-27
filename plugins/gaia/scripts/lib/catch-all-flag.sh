@@ -420,7 +420,7 @@ is_catch_all() {
     result="$(catch_all_epics "$epics_file" "$shards_dir" 2>/dev/null)" || return 1
   fi
 
-  printf '%s\n' "$result" | LC_ALL=C grep -Fqx "$epic_key"
+  printf '%s\n' "$result" | LC_ALL=C grep -Fqx -- "$epic_key"
 }
 
 # ---------------------------------------------------------------------------
@@ -516,7 +516,7 @@ _catch_all_set_unset() {
   local current_val="false"
   local current_set
   current_set="$(catch_all_epics "$epics_file" "$shards_dir" 2>/dev/null)" || true
-  if printf '%s\n' "$current_set" | /usr/bin/grep -Fqx "$epic_key" 2>/dev/null; then
+  if printf '%s\n' "$current_set" | /usr/bin/grep -Fqx -- "$epic_key" 2>/dev/null; then
     current_val="true"
   fi
 

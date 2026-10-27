@@ -12,6 +12,8 @@
 # so the block round-trips through a YAML parser regardless of the payload's
 # incoming indent depth.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   WRITER="$PLUGIN/skills/gaia-meeting/scripts/meeting-notes-writer.sh"

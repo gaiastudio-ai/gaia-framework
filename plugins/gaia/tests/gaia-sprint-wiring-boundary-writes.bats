@@ -7,6 +7,8 @@
 # gaia-sprint-close} directly mutates sprint-status.yaml via `yq -i` or
 # `sed -i` — all writes MUST route through sprint-state.sh subcommands.
 
+load 'test_helper.bash'
+
 setup() {
   export GAIA_SNAPSHOT_HOOK_DISABLE=1
   PLUGIN_DIR="${BATS_TEST_DIRNAME}/../skills"

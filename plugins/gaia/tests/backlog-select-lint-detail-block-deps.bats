@@ -7,6 +7,8 @@
 # three extraction paths: pipe-table roster row, story-file frontmatter,
 # AND the bold-label detail block -- with no silent-empty fallback.
 
+load 'test_helper.bash'
+
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   LINT="$REPO_ROOT/plugins/gaia/scripts/backlog-select-lint.sh"

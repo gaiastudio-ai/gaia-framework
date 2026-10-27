@@ -16,6 +16,6 @@ stories:
     goal_index: 1
   - key: "T-S2"
     title: "Goal 2 incidental story"
-    status: "done"
+    status: "in-progress"
     points: 1
     goal_index: 2

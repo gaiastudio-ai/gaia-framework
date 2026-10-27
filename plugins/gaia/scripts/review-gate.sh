@@ -860,13 +860,27 @@ cmd_check() {
 
 # Rewrite exactly one row of the Review Gate table in $file, replacing the
 # Status cell of the matched gate with $new_verdict and the Report cell with
-# "—" (the canonical empty-report placeholder used by all six review
-# workflows). All other bytes are preserved. Runs under flock and uses
-# tempfile + atomic mv.
+# the provided report path (or "—" when none is given). All other bytes are
+# preserved. Runs under flock and uses tempfile + atomic mv.
 cmd_update() {
   local file="$1"
   local gate_name="$2"
   local new_verdict="$3"
+  local report_value="${4:-—}"
+
+  # Data-integrity guard: reject report paths that would corrupt the
+  # markdown table or allow row injection. Pipe characters add cells,
+  # newlines (CR/LF) forge rows. Fail closed with an actionable message.
+  case "$report_value" in
+    *'|'*)
+      die "report path contains a pipe character ('|') which would corrupt the Review Gate table — refusing update for gate '$gate_name'"
+      ;;
+  esac
+  case "$report_value" in
+    *$'\n'*|*$'\r'*)
+      die "report path contains a newline or carriage-return which would forge a Review Gate row — refusing update for gate '$gate_name'"
+      ;;
+  esac
 
   # Validate the section exists (produces a precise error).
   # We also validate by loading canonical rows.
@@ -879,8 +893,13 @@ cmd_update() {
     # Stream $file through awk, rewriting only the first data row of the
     # first pipe-table under `## Review Gate` whose first cell matches
     # $gate_name. Preserve CRLF and all surrounding bytes.
-    awk -v target="$gate_name" -v new_status="$new_verdict" -v new_report="—" '
-      BEGIN { in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0 }
+    # The report value is passed via ENVIRON to avoid awk -v backslash
+    # expansion (awk -v interprets \t, \n etc. in the value).
+    GAIA_RG_REPORT="$report_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
+      BEGIN {
+        in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0
+        new_report = ENVIRON["GAIA_RG_REPORT"]
+      }
 
       # Detect `## Review Gate` header. We preserve the line verbatim
       # (including any trailing \r) and track state off a stripped copy.
@@ -1213,9 +1232,20 @@ main() {
                    && [ -n "$execution_evidence" ] \
                    && [ -f "$execution_evidence" ] \
                    && command -v jq >/dev/null 2>&1; then
-                  _ev_exit="$(jq -r '.exit_code // 0' "$execution_evidence" 2>/dev/null || printf '0')"
-                  _ev_fails="$(jq -r '[.suites[]?.fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null || printf '0')"
-                  _ev_skipped="$(jq -r '.skipped // false' "$execution_evidence" 2>/dev/null || printf 'false')"
+                  # Validate the evidence is well-formed JSON with a
+                  # top-level object before reading fields. Malformed JSON
+                  # or a non-object top level must fail closed — a silent
+                  # fall-through to 0 would let a broken capture pass.
+                  if ! jq -e 'type == "object"' "$execution_evidence" >/dev/null 2>&1; then
+                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence is not valid JSON or is not an object. Fix the evidence file and retry."
+                  fi
+                  _ev_exit="$(jq -r '[.suites[]? | select(.required != false) | .exit_code // 0] | max // 0' "$execution_evidence" 2>/dev/null)" || _ev_exit=""
+                  _ev_fails="$(jq -r '[.suites[]? | select(.required != false) | .fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null)" || _ev_fails=""
+                  _ev_skipped="$(jq -r '.skipped // false' "$execution_evidence" 2>/dev/null)" || _ev_skipped=""
+                  # If any jq extraction failed (empty), fail closed.
+                  if [ -z "$_ev_exit" ] || [ -z "$_ev_fails" ] || [ -z "$_ev_skipped" ]; then
+                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — failed to read execution-evidence fields (malformed JSON structure). Fix the evidence file and retry."
+                  fi
                   if [ "${_ev_exit:-0}" != "0" ]; then
                     die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports exit_code=${_ev_exit} (red suite). Either fix the failing tests and re-capture evidence, or record verdict=FAILED."
                   fi
@@ -1237,7 +1267,7 @@ main() {
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"
       else
         # Update the story file's Review Gate table (byte-identical).
-        cmd_update "$STORY_FILE" "$gate_name" "$verdict"
+        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}"
       fi
 
       # Test-artifacts mirror hook.

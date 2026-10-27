@@ -57,6 +57,10 @@ This script is read-only — it NEVER modifies any artifact.
 USAGE
 }
 
+_ESD_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/migrate-items-to-stories.sh
+. "$_ESD_SCRIPT_DIR/lib/migrate-items-to-stories.sh"
+
 epic_filter=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -143,22 +147,10 @@ epic_list=$(awk '
 # survives sprint closure — so it's the right tie-breaker for archived
 # stories whose archive yaml might predate a later transition.
 _parse_sprint_yaml() {
-  awk '
-    /^stories:/ { in_stories = 1; next }
-    in_stories && /^[a-z_]+:/ { in_stories = 0 }
-    in_stories && /^[[:space:]]+- key:/ {
-      v = $0
-      sub(/^[[:space:]]+- key:[[:space:]]*/, "", v)
-      gsub(/["'\''[:space:]]/, "", v)
-      key = v
-    }
-    in_stories && /^[[:space:]]+status:/ {
-      v = $0
-      sub(/^[[:space:]]+status:[[:space:]]*/, "", v)
-      gsub(/["'\''[:space:]]/, "", v)
-      if (key) { print key "=" v; key = "" }
-    }
-  ' "$1"
+  # Union of stories: and items: (stories wins on duplicate key).
+  read_stories_or_items "$1" | while IFS=$'\t' read -r k s; do
+    [ -n "$k" ] && printf '%s=%s\n' "$k" "$s"
+  done
 }
 
 _resolve_statuses() {

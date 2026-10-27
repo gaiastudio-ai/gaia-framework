@@ -109,6 +109,14 @@
       cross-contamination the isolation prevents. The command will not switch
       the mode on for you — it explains that it is off and runs sequentially.</p>
 
+      <p>The worktree reap heuristic honours one additional environment
+      variable: <code>GAIA_WORKTREE_REAP_AGE_SECONDS</code> (default 1800).
+      A dead-owner worktree with no commits ahead of the base branch is only
+      reaped once it is older than this many seconds.  Non-integer values fall
+      back to the default.  Set it to <code>0</code> to reap immediately (useful
+      in tests) or raise it if story sessions routinely exceed 30 minutes of
+      idle time between shell calls.</p>
+
       <p>Two further keys live in the same configuration section:
       <code>teammate_dispatch_ceiling</code>, the total number of concurrent
       agents of every class, which must leave headroom above the slot budget for

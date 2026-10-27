@@ -62,6 +62,13 @@ teardown() {
 _seed_config() {
   local max_conc="${1:-2}"
   cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP/app"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: $max_conc
 YAML
@@ -70,6 +77,13 @@ YAML
 
 _seed_single_config() {
   cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_root: "$TEST_TMP"
+project_path: "$TEST_TMP/app"
+memory_path: "$TEST_TMP/.gaia/memory"
+checkpoint_path: "$TEST_TMP/.gaia/memory/checkpoints"
+installed_path: "$TEST_TMP/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 1
 YAML
@@ -1216,4 +1230,110 @@ SH
   [[ "$output" == *"sprint-900"* ]]
 
   rm -f "$STATE_DIR/.sprint-closing-sprint-900"
+}
+
+# ============================================================================
+# Holder sidecar diagnostic: contending close reads the sidecar
+# ============================================================================
+
+# Helper: launch a background holder that acquires L4 and optionally writes the
+# sidecar. Sets _HOLDER_PID for teardown. Usage:
+#   _start_lock_holder [--sidecar <content>]
+_start_lock_holder() {
+  local sidecar_content=""
+  if [ "${1:-}" = "--sidecar" ]; then
+    sidecar_content="${2:-}"
+  fi
+
+  local holder_script="$TEST_TMP/holder.sh"
+  local ready_file="$TEST_TMP/holder-ready"
+
+  cat > "$holder_script" <<HOLDER
+#!/usr/bin/env bash
+set -euo pipefail
+LC_ALL=C; export LC_ALL
+source "$LOCK_LIB"
+lock_path="\$1"
+sidecar_path="\$2"
+sidecar_value="\$3"
+ready_signal="\$4"
+acquire_lock "\$lock_path" 10 8 --strict
+if [ -n "\$sidecar_value" ]; then
+  printf '%s' "\$sidecar_value" > "\$sidecar_path"
+fi
+touch "\$ready_signal"
+# Hold the lock until killed.
+while true; do sleep 60; done
+HOLDER
+  chmod +x "$holder_script"
+
+  local l4_path="$STATE_DIR/.sprint-lifecycle.lock"
+  local sidecar_path="$STATE_DIR/.sprint-lifecycle.holder"
+
+  "$holder_script" "$l4_path" "$sidecar_path" "$sidecar_content" "$ready_file" &
+  _HOLDER_PID=$!
+
+  # Wait for the holder to signal readiness (lock acquired, sidecar written).
+  local tries=0
+  while [ ! -f "$ready_file" ] && [ "$tries" -lt 30 ]; do
+    sleep 1
+    tries=$((tries + 1))
+  done
+  [ -f "$ready_file" ]
+}
+
+_stop_lock_holder() {
+  if [ -n "${_HOLDER_PID:-}" ]; then
+    kill "$_HOLDER_PID" 2>/dev/null || true
+    wait "$_HOLDER_PID" 2>/dev/null || true
+    _HOLDER_PID=""
+  fi
+}
+
+@test "waiting close reads holder sidecar and reports the blocking sprint" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_per_sprint_yaml "sprint-901" "review" 3 3
+  _seed_proxy_yaml "sprint-901" "review"
+  _seed_sentinel "sprint-901"
+  _seed_last_activated "sprint-901"
+
+  # Hold the lifecycle lock from a background process, with the sidecar
+  # written as sprint-900 (the real Phase A writes it exactly this way).
+  _start_lock_holder --sidecar "sprint-900"
+
+  # Set a short L4 timeout so the contender times out quickly.
+  export GAIA_LOCK_L4_TIMEOUT=2
+
+  # Attempt to close sprint-901 — should fail because L4 is held.
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-901" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review
+  _stop_lock_holder
+
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"sprint close in progress (sprint sprint-900) -- retry"* ]]
+}
+
+@test "waiting close without sidecar or markers reports another sprint" {
+  _seed_config 2
+  _seed_per_sprint_yaml "sprint-900" "review" 3 3
+  _seed_per_sprint_yaml "sprint-901" "review" 3 3
+  _seed_proxy_yaml "sprint-901" "review"
+  _seed_sentinel "sprint-901"
+  _seed_last_activated "sprint-901"
+
+  # Hold the lifecycle lock but do NOT write the sidecar.
+  _start_lock_holder
+
+  # Ensure no closing markers exist.
+  rm -f "$STATE_DIR"/.sprint-closing-* 2>/dev/null || true
+
+  export GAIA_LOCK_L4_TIMEOUT=2
+
+  run "$SPRINT_STATE_SH" close --sprint-id "sprint-901" --closed-at "2026-10-20T12:00:00Z" \
+    --pre-close-status review
+  _stop_lock_holder
+
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"sprint close in progress (sprint another sprint) -- retry"* ]]
 }

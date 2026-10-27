@@ -3,6 +3,8 @@
 # detect-orchestration-mode.sh must resolve the project root by walking up to
 # find .gaia/, so Mode B engages regardless of the prelude's CWD.
 
+load 'test_helper.bash'
+
 setup() {
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT
   PLUGIN="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
@@ -19,7 +21,10 @@ EOF
 
 # TC-ORM-1 — from a NESTED SUBDIR, with both signals set, returns team.
 @test "detector returns team from a nested subdir of the project root" {
+  # HOME must encompass BATS_TEST_TMPDIR so the walk-up boundary allows discovery.
+  local home_canon; home_canon="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+      HOME="$home_canon" \
       bash -c "cd '$PROJ/src/components' && bash '$DETECT'"
   [ "$status" -eq 0 ]
   [ "$output" = "team" ]
@@ -70,8 +75,24 @@ EOF
   # runtime state — no project-config.yaml.
   mkdir -p "$PROJ/subrepo/.gaia/state" "$PROJ/subrepo/src"
   printf 'placeholder\n' > "$PROJ/subrepo/.gaia/state/run.txt"
+  local home_canon; home_canon="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+      HOME="$home_canon" \
       bash -c "cd '$PROJ/subrepo/src' && bash '$DETECT'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "team" ]
+}
+
+# Same as the config-less child test above but the sub-repo is a real git init.
+# The walk-up must cross a regular git repo boundary to find the project root.
+@test "walk-up crosses a git-init sub-repo to find project root above it" {
+  mkdir -p "$PROJ/gitrepo/.gaia/state" "$PROJ/gitrepo/src"
+  git -C "$PROJ/gitrepo" init -q 2>/dev/null
+  git -C "$PROJ/gitrepo" -c user.name=test -c user.email=test@test commit --allow-empty -m "init" -q 2>/dev/null
+  local home_canon; home_canon="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
+  run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+      HOME="$home_canon" \
+      bash -c "cd '$PROJ/gitrepo/src' && bash '$DETECT'"
   [ "$status" -eq 0 ]
   [ "$output" = "team" ]
 }
@@ -82,7 +103,9 @@ EOF
 # config anywhere, the mode is subagent (no team signal).
 @test "bare-.gaia fallback still resolves when no config exists anywhere" {
   green="$BATS_TEST_TMPDIR/green"; mkdir -p "$green/.gaia/state" "$green/work"
+  local home_canon; home_canon="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
   run env -u CLAUDE_PROJECT_ROOT CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 \
+      HOME="$home_canon" \
       bash -c "cd '$green/work' && bash '$DETECT'"
   [ "$status" -eq 0 ]
   [ "$output" = "subagent" ]

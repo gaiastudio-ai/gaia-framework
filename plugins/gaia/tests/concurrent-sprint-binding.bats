@@ -5,6 +5,8 @@
 
 # shellcheck disable=SC2030,SC2031
 
+load 'test_helper.bash'
+
 setup() {
   # bats setup — clear project/root env vars per repo-wide lint.
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH

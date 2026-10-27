@@ -3,6 +3,8 @@
 # provider terminology, no leaked internal identifiers, and that the
 # rewritten entry preserves what the release actually shipped.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   CHANGELOG="$PLUGIN_ROOT/CHANGELOG.md"

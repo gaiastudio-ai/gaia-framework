@@ -3,6 +3,8 @@
 # suite is absent from the tree, and that no surviving test or CI config
 # references a deleted path.
 
+load 'test_helper.bash'
+
 setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"

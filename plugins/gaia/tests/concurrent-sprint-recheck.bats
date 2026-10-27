@@ -20,8 +20,15 @@ setup() {
   mkdir -p "$STATE_DIR" "$IMPL_DIR" "$CONFIG_DIR" "$PLANNING_DIR" "$SHARDS_DIR"
   mkdir -p "$TEST_DIR/gaia-public/plugins/gaia/scripts/lib"
 
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "recheck-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 sprint:
   max_concurrent_active: 3
 stacks:
@@ -309,8 +316,15 @@ OV
 # ---- AC7: single-sprint mode ----
 
 @test "single-sprint mode: no re-check, gate exits 0" {
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "single-sprint-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash
     path: "."
@@ -375,15 +389,22 @@ YAML
 }
 
 @test "sprint-state.sh inject skips gate in single-sprint mode" {
-  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
 project_name: "single-sprint"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
 stacks:
   - name: bash
     path: "."
 YAML
   rm -f "$STATE_DIR"/sprint-status-*.yaml
   # Create a single-sprint state file.
-  cat > "$STATE_DIR/sprint-status.yaml" <<'YAML'
+  cat > "$STATE_DIR/sprint-status.yaml" <<YAML
 sprint_id: "sprint-900"
 status: active
 total_points: 0
