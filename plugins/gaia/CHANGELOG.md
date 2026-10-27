@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.224.0] — 2026-10-27
+
+### Added
+
+- (sprint-close) wire close.sh to the shared sprint resolver (#2293)
+
+### Changed
+
+- migrate 159 bats suites onto test_helper.bash (#2292)
+- (sprint-close) cover the holder-sidecar diagnostic for a waiting close (#2284)
+
+### Fixed
+
+- (paths) dotted worktree path handling in sarif-merge and config resolver (#2305)
+- (paths) val sentinel and test-artifact path resolution in worktrees (#2304)
+- (triage) accept sprints in review status in the story resolver (#2303)
+- (forbidden-sentinel-scan) scan only added diff lines, not whole files (#2298)
+- (paths) git-bounded walk-up outside HOME, main-checkout exclusion (#2295)
+- (sprint-state) align init story-list key with readers (#2294)
+- (action-items-write) handle unquoted ids, any-indent dedup, indent-preserving append (#2289)
+- (scripts) harden argument separators, fixed-string matching, input validation (#2300)
+- (review-gate) filter optional suites, pass report path, discover pass-suffixed reports (#2299)
+- (merge) read pr head branch from github api instead of local HEAD (#2286)
+- require age threshold before reaping a sibling worktree (#2291)
+- (dev-story) verify-pr-merged.sh checks actual PR merge status via gh api (#2290)
+- (rubric) cap sgr-velocity-003 per-goal floor so total never exceeds 100% (#2287)
+- (verdict-resolver) honour required:false and reject malformed llm-findings (#2296)
+- (git-branch) detect worktree branch and apply slug cap (#2288)
+
 ## [1.223.0] — 2026-10-20
 
 ### Added
