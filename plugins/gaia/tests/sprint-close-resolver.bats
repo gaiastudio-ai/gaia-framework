@@ -692,7 +692,7 @@ teardown() {
   [ "$before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
 }
 
-@test "SPRINT_STATUS_YAML mismatch with binding file refuses" {
+@test "SPRINT_STATUS_YAML mismatch with binding file refuses with no state change" {
   _build_single_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
@@ -709,10 +709,53 @@ teardown() {
   chmod 0700 "$bind_dir"
   printf 'sprint-999' > "$bind_dir/bound_sprint_id"
 
+  local before
+  before="$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")"
+
   run bash "$CLOSE_SH"
 
   [ "$status" -ne 0 ]
   [[ "$output" == *"binding mismatch"* ]]
+  # State file must be unchanged.
+  [ "$before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
+  # No archive must have been created.
+  local archive_count
+  archive_count="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$archive_count" -eq 0 ]
+}
+
+@test "stale env matching file but disagreeing with binding file refuses" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Env matches the file (sprint-200) but binding file says sprint-999.
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export GAIA_BOUND_SPRINT_ID="sprint-200"
+  local sid="stale-env-session-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-999' > "$bind_dir/bound_sprint_id"
+
+  local before
+  before="$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  # Must refuse: binding file (authoritative) disagrees with the sprint.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"binding mismatch"* ]]
+  [[ "$output" == *"sprint-999"* ]]
+  # State file must be unchanged.
+  [ "$before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
+  # No archive must have been created.
+  local archive_count
+  archive_count="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$archive_count" -eq 0 ]
 }
 
 @test "SPRINT_STATUS_YAML matching binding closes normally" {
@@ -747,19 +790,27 @@ teardown() {
 @test "close-then-finalize order is enforced in SKILL.md" {
   local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
 
-  # No !-prefixed invocation of finalize.sh may appear outside ## Finalize.
+  # Extract the Finalize section.
+  local finalize_section
+  finalize_section="$(awk '/^## Finalize/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
+
+  # The Finalize instruction must say close.sh runs first (kills M17/M6e).
+  /usr/bin/grep -q 'After close\.sh exits 0.*finalize' <<<"$finalize_section"
+
+  # No invocation of finalize.sh may appear outside ## Finalize.
+  # Matches bang-prefixed lines AND bash invocation lines (kills M6d/M6f).
+  # Prose mentions (backtick-quoted references in Mission) are not invocations.
   local invocation_outside
   invocation_outside="$(awk '
     /^## Finalize/{in_fin=1; next}
     /^## /{in_fin=0}
     !in_fin && /^!.*finalize\.sh/ {print NR": "$0}
+    !in_fin && /bash.*finalize\.sh/ {print NR": "$0}
   ' "$skill_md")"
   [ -z "$invocation_outside" ]
 
-  # The exact Do-NOT sentence must be anchored in the Finalize section.
-  local finalize_section
-  finalize_section="$(awk '/^## Finalize/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
-  /usr/bin/grep -q 'Do NOT run finalize before close\.sh succeeds' <<<"$finalize_section"
+  # The exact Do-NOT sentence must be anchored at both start and end.
+  /usr/bin/grep -qx 'Do NOT run finalize before close\.sh succeeds — the checkpoint and brain reindex must see the archive\.' <<<"$finalize_section"
 
   # No line outside ## Finalize pairs "finalize" with "before close".
   local bad_order
@@ -832,6 +883,28 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"sprint-200"* ]]
   [[ "$output" == *"closed"* ]]
+}
+
+@test "yaml_top_scalar inline-comment strip matters for idempotent close detection" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Already-closed sprint with an inline comment on status.
+  # yaml_top_scalar must strip "# done" to return "closed" so the idempotent
+  # path fires. Removing only the comment strip (M8/M10b) makes close.sh
+  # see "closed   # done" which does NOT match "closed" — skipping the
+  # idempotent exit and instead trying to close an already-closed sprint
+  # through the normal path (which would not output "already closed").
+  printf 'sprint_id: sprint-200\nstatus: closed   # done\nclosed_at: "2026-10-20T00:00:00Z"\ntotal_points: 10\nstories:\n  - key: DEMO-S1\n    status: done\n' \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  run bash "$CLOSE_SH" --sprint sprint-200
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already closed"* ]]
 }
 
 # ---------- read_binding atomic read (story AC7) ----------
@@ -928,40 +1001,81 @@ teardown() {
 
 # ---------- Triage resolver concurrent-sprint support (story AC10) ----------
 
+# Helper: build concurrent state files via the REAL sprint-state.sh writer
+# (init + transition), then add stories via yq. The init/transition commands
+# produce files with quoted sprint_id, the canonical story layout, and a
+# proxy main file that is a copy of the last-activated sprint.
+_build_real_writer_concurrent() {
+  local root="$1"
+  local sprint_state_sh="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  [ -f "$sprint_state_sh" ] || { echo "sprint-state.sh not found" >&2; return 1; }
+
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state" "$root/.gaia/memory/checkpoints"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts"
+
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+sprint:
+  max_concurrent_active: 3
+stacks:
+  - name: bash
+    path: "."
+YAML
+
+  (
+    export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root" PROJECT_PATH="$root"
+    export PROJECT_CONFIG="$root/.gaia/config/project-config.yaml"
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    # Init + activate sprint-901.
+    bash "$sprint_state_sh" init --sprint-id sprint-901 2>/dev/null
+    bash "$sprint_state_sh" transition --sprint sprint-901 --to active 2>/dev/null
+    # Init + activate sprint-902.
+    bash "$sprint_state_sh" init --sprint-id sprint-902 2>/dev/null
+    bash "$sprint_state_sh" transition --sprint sprint-902 --to active 2>/dev/null
+  ) || { echo "sprint-state.sh init/transition failed" >&2; return 1; }
+}
+
+# Helper: build a single-sprint state file via the real writer.
+_build_real_writer_single() {
+  local root="$1" sid="${2:-sprint-900}"
+  local sprint_state_sh="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  [ -f "$sprint_state_sh" ] || { echo "sprint-state.sh not found" >&2; return 1; }
+
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state" "$root/.gaia/memory/checkpoints"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts"
+
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: test-project
+YAML
+
+  (
+    export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root" PROJECT_PATH="$root"
+    export PROJECT_CONFIG="$root/.gaia/config/project-config.yaml"
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    bash "$sprint_state_sh" init --sprint-id "$sid" 2>/dev/null
+    bash "$sprint_state_sh" transition --sprint "$sid" --to active 2>/dev/null
+  ) || { echo "sprint-state.sh init/transition failed" >&2; return 1; }
+}
+
 @test "resolve-sprint-stories.sh discovers per-sprint state files" {
   local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
   [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
 
-  mkdir -p "$TEST_TMP/.gaia/state"
-  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
-  cat > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md" <<'MD'
----
-key: STORY-A1
----
-# Story A1
-MD
-  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
-  cat > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md" <<'MD'
----
-key: STORY-B1
----
-# Story B1
-MD
+  _build_real_writer_concurrent "$TEST_TMP"
 
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-A.yaml" <<'YAML'
-sprint_id: sprint-A
-status: active
-stories:
-  - key: STORY-A1
-    status: in-progress
-YAML
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-B.yaml" <<'YAML'
-sprint_id: sprint-B
-status: review
-stories:
-  - key: STORY-B1
-    status: done
-YAML
+  # Add stories via yq to the real-writer files.
+  yq -i '.stories = [{"key": "STORY-A1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml"
+  yq -i '.stories = [{"key": "STORY-B1", "status": "done"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml"
+  # Update main proxy to match sprint-902 (last-activated).
+  cp "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml" \
+     "$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
+  printf -- '---\nkey: STORY-A1\n---\n# Story A1\n' > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md"
+  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
+  printf -- '---\nkey: STORY-B1\n---\n# Story B1\n' > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md"
 
   export PROJECT_ROOT="$TEST_TMP"
 
@@ -976,36 +1090,19 @@ YAML
   local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
   [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
 
-  mkdir -p "$TEST_TMP/.gaia/state"
-  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
-  cat > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md" <<'MD'
----
-key: STORY-A1
----
-# Story A1
-MD
-  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
-  cat > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md" <<'MD'
----
-key: STORY-B1
----
-# Story B1
-MD
+  _build_real_writer_concurrent "$TEST_TMP"
 
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-A.yaml" <<'YAML'
-sprint_id: sprint-A
-status: active
-stories:
-  - key: STORY-A1
-    status: in-progress
-YAML
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-B.yaml" <<'YAML'
-sprint_id: sprint-B
-status: closed
-stories:
-  - key: STORY-B1
-    status: done
-YAML
+  yq -i '.stories = [{"key": "STORY-A1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml"
+  # Close sprint-902 via status change — stories remain but sprint is non-runnable.
+  yq -i '.status = "closed"' "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml"
+  yq -i '.stories = [{"key": "STORY-B1", "status": "done"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml"
+
+  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
+  printf -- '---\nkey: STORY-A1\n---\n# Story A1\n' > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md"
+  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
+  printf -- '---\nkey: STORY-B1\n---\n# Story B1\n' > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md"
 
   export PROJECT_ROOT="$TEST_TMP"
 
@@ -1020,45 +1117,35 @@ YAML
   local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
   [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
 
-  mkdir -p "$TEST_TMP/.gaia/state"
-  mkdir -p "$TEST_TMP/impl/epic-a/MAIN-S1-test"
-  cat > "$TEST_TMP/impl/epic-a/MAIN-S1-test/story.md" <<'MD'
----
-key: MAIN-S1
----
-# Story MAIN-S1
-MD
-  mkdir -p "$TEST_TMP/impl/epic-b/PER-S1-test"
-  cat > "$TEST_TMP/impl/epic-b/PER-S1-test/story.md" <<'MD'
----
-key: PER-S1
----
-# Story PER-S1
-MD
+  # Build a single-sprint main file (sprint-M) via the real writer.
+  _build_real_writer_single "$TEST_TMP" sprint-M
+  yq -i '.stories = [{"key": "MAIN-S1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status.yaml"
 
-  # Main file: active sprint with MAIN-S1 (no per-sprint file for this sprint).
-  cat > "$TEST_TMP/.gaia/state/sprint-status.yaml" <<'YAML'
-sprint_id: sprint-M
-status: active
-stories:
-  - key: MAIN-S1
-    status: in-progress
-YAML
-  # Per-sprint file for a different sprint.
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-P.yaml" <<'YAML'
-sprint_id: sprint-P
-status: active
-stories:
-  - key: PER-S1
-    status: done
-YAML
+  # Add a per-sprint file for a DIFFERENT sprint (sprint-P) via the real writer,
+  # using a concurrent config overlay.
+  yq -i '.sprint.max_concurrent_active = 3' "$TEST_TMP/.gaia/config/project-config.yaml"
+  local sprint_state_sh="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  (
+    export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP" PROJECT_PATH="$TEST_TMP"
+    export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    bash "$sprint_state_sh" init --sprint-id sprint-P 2>/dev/null
+    bash "$sprint_state_sh" transition --sprint sprint-P --to active 2>/dev/null
+  )
+  yq -i '.stories = [{"key": "PER-S1", "status": "done"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-P.yaml"
+
+  mkdir -p "$TEST_TMP/impl/epic-a/MAIN-S1-test"
+  printf -- '---\nkey: MAIN-S1\n---\n# Story MAIN-S1\n' > "$TEST_TMP/impl/epic-a/MAIN-S1-test/story.md"
+  mkdir -p "$TEST_TMP/impl/epic-b/PER-S1-test"
+  printf -- '---\nkey: PER-S1\n---\n# Story PER-S1\n' > "$TEST_TMP/impl/epic-b/PER-S1-test/story.md"
 
   export PROJECT_ROOT="$TEST_TMP"
 
   run bash "$resolve_sh" --impl-dir "$TEST_TMP/impl"
 
   [ "$status" -eq 0 ]
-  # Both sprints' stories must be discovered.
   [[ "$output" == *"MAIN-S1"* ]]
   [[ "$output" == *"PER-S1"* ]]
 }
@@ -1067,57 +1154,91 @@ YAML
   local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
   [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
 
-  mkdir -p "$TEST_TMP/.gaia/state"
-  mkdir -p "$TEST_TMP/impl/epic-a/MAIN-S1-test"
-  cat > "$TEST_TMP/impl/epic-a/MAIN-S1-test/story.md" <<'MD'
----
-key: MAIN-S1
----
-# Story MAIN-S1
-MD
+  # Build a single-sprint main file (sprint-M) via the real writer.
+  _build_real_writer_single "$TEST_TMP" sprint-M
+  yq -i '.stories = [{"key": "MAIN-S1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status.yaml"
 
-  # Active sprint only in the main file.
-  cat > "$TEST_TMP/.gaia/state/sprint-status.yaml" <<'YAML'
-sprint_id: sprint-M
-status: active
-stories:
-  - key: MAIN-S1
-    status: in-progress
-YAML
-  # Stale closed per-sprint file for a different sprint.
-  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-old.yaml" <<'YAML'
-sprint_id: sprint-old
-status: closed
-stories:
-  - key: OLD-S1
-    status: done
-YAML
+  # Plant a stale closed per-sprint file for a different sprint.
+  # Use the real init/transition/close writer so the closed file has the canonical format.
+  yq -i '.sprint.max_concurrent_active = 3' "$TEST_TMP/.gaia/config/project-config.yaml"
+  local sprint_state_sh="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  (
+    export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP" PROJECT_PATH="$TEST_TMP"
+    export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+    export GAIA_SKIP_ORPHAN_SWEEP=1 GAIA_SNAPSHOT_HOOK_DISABLE=1
+    bash "$sprint_state_sh" init --sprint-id sprint-old 2>/dev/null
+    bash "$sprint_state_sh" transition --sprint sprint-old --to active 2>/dev/null
+  )
+  yq -i '.status = "closed"' "$TEST_TMP/.gaia/state/sprint-status-sprint-old.yaml"
+  yq -i '.stories = [{"key": "OLD-S1", "status": "done"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-old.yaml"
+
+  mkdir -p "$TEST_TMP/impl/epic-a/MAIN-S1-test"
+  printf -- '---\nkey: MAIN-S1\n---\n# Story MAIN-S1\n' > "$TEST_TMP/impl/epic-a/MAIN-S1-test/story.md"
 
   export PROJECT_ROOT="$TEST_TMP"
 
   run bash "$resolve_sh" --impl-dir "$TEST_TMP/impl"
 
   [ "$status" -eq 0 ]
-  # Main sprint's story must still be discovered.
   [[ "$output" == *"MAIN-S1"* ]]
+}
+
+@test "main file is skipped when its sprint already has a per-sprint file" {
+  local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+  [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
+
+  # Build concurrent fixture: two sprints, main is a proxy of sprint-902 (last-activated).
+  _build_real_writer_concurrent "$TEST_TMP"
+
+  # sprint-901: unique story UNIQUE-S1.
+  yq -i '.stories = [{"key": "UNIQUE-S1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml"
+  # sprint-902 (last-activated, so main is its proxy): story SHARED-S1.
+  yq -i '.stories = [{"key": "SHARED-S1", "status": "done"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml"
+  # Main file is the proxy copy of sprint-902, PLUS an extra story MAIN-ONLY-S1
+  # that exists only in main. If the resolver incorrectly reads the main file
+  # when sprint-902 already has a per-sprint file, MAIN-ONLY-S1 appears in output.
+  cp "$TEST_TMP/.gaia/state/sprint-status-sprint-902.yaml" \
+     "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  yq -i '.stories += [{"key": "MAIN-ONLY-S1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  mkdir -p "$TEST_TMP/impl/epic-a/UNIQUE-S1-test"
+  printf -- '---\nkey: UNIQUE-S1\n---\n' > "$TEST_TMP/impl/epic-a/UNIQUE-S1-test/story.md"
+  mkdir -p "$TEST_TMP/impl/epic-b/SHARED-S1-test"
+  printf -- '---\nkey: SHARED-S1\n---\n' > "$TEST_TMP/impl/epic-b/SHARED-S1-test/story.md"
+  mkdir -p "$TEST_TMP/impl/epic-c/MAIN-ONLY-S1-test"
+  printf -- '---\nkey: MAIN-ONLY-S1\n---\n' > "$TEST_TMP/impl/epic-c/MAIN-ONLY-S1-test/story.md"
+
+  export PROJECT_ROOT="$TEST_TMP"
+
+  run bash "$resolve_sh" --impl-dir "$TEST_TMP/impl"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"UNIQUE-S1"* ]]
+  [[ "$output" == *"SHARED-S1"* ]]
+  # MAIN-ONLY-S1 must NOT appear — the main file should be skipped because
+  # sprint-902 already has a per-sprint file.
+  [[ "$output" != *"MAIN-ONLY-S1"* ]]
 }
 
 @test "resolve-sprint-stories.sh trims status with inline comments and whitespace" {
   local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
   [ -f "$resolve_sh" ] || { echo "resolve-sprint-stories.sh not found at $resolve_sh" >&2; return 1; }
 
-  mkdir -p "$TEST_TMP/.gaia/state"
-  mkdir -p "$TEST_TMP/impl/epic-a/STORY-T1-test"
-  cat > "$TEST_TMP/impl/epic-a/STORY-T1-test/story.md" <<'MD'
----
-key: STORY-T1
----
-# Story T1
-MD
+  # Build a single-sprint file via the real writer, then add an inline comment.
+  _build_real_writer_single "$TEST_TMP" sprint-T
+  # Inject an inline comment on the status line.
+  /usr/bin/sed -i '' 's/^status: active$/status: active   # pending/' \
+    "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  yq -i '.stories = [{"key": "STORY-T1", "status": "in-progress"}]' \
+    "$TEST_TMP/.gaia/state/sprint-status.yaml"
 
-  # Status with trailing whitespace and inline comment.
-  printf 'sprint_id: sprint-T\nstatus: active   # pending\nstories:\n  - key: STORY-T1\n    status: in-progress\n' \
-    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  mkdir -p "$TEST_TMP/impl/epic-a/STORY-T1-test"
+  printf -- '---\nkey: STORY-T1\n---\n# Story T1\n' > "$TEST_TMP/impl/epic-a/STORY-T1-test/story.md"
 
   export PROJECT_ROOT="$TEST_TMP"
 

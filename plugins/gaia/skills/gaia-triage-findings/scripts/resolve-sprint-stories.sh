@@ -92,8 +92,9 @@ else
       _SPRINT_STATUS_FILES=("$_main_file")
     else
       # Check if the main file's sprint already has a per-sprint file.
+      # Trim inline comments, trailing whitespace and CR (same as the status awk).
       _main_sid=""
-      _main_sid=$(awk -F: '/^sprint_id[[:space:]]*:/ { sub(/^sprint_id[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); print; exit }' "$_main_file" 2>/dev/null) || _main_sid=""
+      _main_sid=$(awk '/^sprint_id[[:space:]]*:/ { sub(/^sprint_id[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); sub(/[[:space:]]*#.*$/, ""); sub(/[[:space:]]*$/, ""); gsub(/\r/, ""); print; exit }' "$_main_file" 2>/dev/null) || _main_sid=""
       if [ -n "$_main_sid" ] && [ ! -f "${_state_dir}/sprint-status-${_main_sid}.yaml" ]; then
         _SPRINT_STATUS_FILES+=("$_main_file")
       fi
