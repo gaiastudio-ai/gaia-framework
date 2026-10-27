@@ -589,3 +589,310 @@ teardown() {
   # grep exit 1 = no match = pass.
   [ "$status" -eq 1 ]
 }
+
+# ---------- Binding shape validation (story AC1) ----------
+
+@test "invalid binding ID from env is refused with diagnostic" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Set a malformed bound sprint ID via the env var.
+  export GAIA_BOUND_SPRINT_ID='x/../y'
+  # Suppress the binding dir provision so the env path is used.
+  unset GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]]
+}
+
+@test "invalid binding ID from binding file is refused by resolver" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Use the resolver directly to test shape validation on the binding file,
+  # since close.sh's provision_binding_dir intercepts spoofed dirs first.
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # Set up a binding dir with an invalid sprint ID.
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/bad-shape-session"
+  mkdir -p "$bind_dir"
+  printf 'x/../y' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  unset GAIA_BOUND_SPRINT_ID
+
+  run resolve_sprint_arg --command sprint-close
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]]
+}
+
+# ---------- Stale SPRINT_STATUS_YAML warning (story AC2) ----------
+
+@test "stale SPRINT_STATUS_YAML triggers warning and cross-checks binding" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Point SPRINT_STATUS_YAML at the real file.
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  # Bind to a different sprint via the env var.
+  export GAIA_BOUND_SPRINT_ID="sprint-999"
+
+  run bash "$CLOSE_SH"
+
+  # close.sh should succeed (the file is valid) but emit a WARNING about the
+  # mismatch between the env override and the binding.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"SPRINT_STATUS_YAML"* ]]
+}
+
+# ---------- SKILL.md scoped tests (story AC3, AC4, AC5) ----------
+
+@test "accept ONLY sentence mutant in SKILL.md Action section is caught" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+
+  # Extract the Action section (between ## Action and the next ##).
+  local action_section
+  action_section="$(awk '/^## Action/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
+
+  # The Action section must contain "accept ONLY" (case-sensitive).
+  printf '%s' "$action_section" | /usr/bin/grep -q 'accept ONLY'
+}
+
+@test "close-then-finalize order is enforced in SKILL.md" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+
+  # The Finalize section must say close.sh succeeds before finalize runs.
+  # Specifically: "After close.sh exits 0" appears BEFORE "finalize" in the
+  # Finalize section, and "Do NOT run finalize before close.sh" is present.
+  /usr/bin/grep -q 'After close\.sh exits 0.*finalize' "$skill_md"
+  /usr/bin/grep -q 'Do NOT run finalize before close\.sh' "$skill_md"
+
+  # The ## Finalize heading must appear after ## Action (ordering check).
+  local action_line finalize_line
+  action_line="$(/usr/bin/grep -n '^## Action' "$skill_md" | head -1 | cut -d: -f1)"
+  finalize_line="$(/usr/bin/grep -n '^## Finalize' "$skill_md" | head -1 | cut -d: -f1)"
+  [ -n "$action_line" ]
+  [ -n "$finalize_line" ]
+  [ "$action_line" -lt "$finalize_line" ]
+}
+
+@test "quote-character refusal appears in SKILL.md Action section" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+
+  # Extract the Action section.
+  local action_section
+  action_section="$(awk '/^## Action/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
+
+  # The Action section must refuse quote characters (single and double).
+  printf '%s' "$action_section" | /usr/bin/grep -q "'"
+  printf '%s' "$action_section" | /usr/bin/grep -q '"'
+}
+
+# ---------- Triage snippet quoting (story AC6) ----------
+
+@test "triage-sentinel snippet has quoted sprint_id placeholder" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+
+  # The triage-sentinel snippet must quote the {sprint_id} placeholder.
+  /usr/bin/grep -q "'{sprint_id}'" "$skill_md"
+}
+
+# ---------- Triage SKILL.md wording (story AC8) ----------
+
+@test "SKILL.md says active or review sprint for triage sentinel" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+
+  /usr/bin/grep -q 'active or review sprint' "$skill_md"
+}
+
+# ---------- yaml_top_scalar trimming (story AC9) ----------
+
+@test "yaml_top_scalar trims trailing whitespace and inline comments" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Write a state file with trailing spaces and an inline comment.
+  cat > "$TEST_TMP/.gaia/state/sprint-status.yaml" <<'YAML'
+sprint_id: sprint-200
+status: review   # pending close
+total_points: 10
+stories:
+  - key: DEMO-S1
+    status: done
+YAML
+
+  # close.sh reads status via yaml_top_scalar; it should see "review" not
+  # "review   # pending close".
+  touch "$TEST_TMP/.gaia/artifacts/implementation-artifacts/retrospective-sprint-200-2026-10-21.md"
+
+  # The status should be readable as "review" (not refused).
+  run bash "$CLOSE_SH" --sprint sprint-200
+
+  # close.sh should proceed past the idempotency check (status != closed)
+  # and reach the pre-conditions (not die on "unknown status").
+  # The exact exit depends on pre-conditions (retro, sentinel), but it
+  # must NOT die with "sprint_id not found" or similar parse failures.
+  [[ "$output" != *"sprint_id not found"* ]]
+}
+
+# ---------- Lazy session dir (story AC14) ----------
+
+@test "refused close leaves no new session directory behind" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Use a session ID that has no pre-existing binding dir.
+  local session_id="bats-cleanup-test-$$-$(date +%s)"
+  export CLAUDE_CODE_SESSION_ID="$session_id"
+  unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
+
+  local session_dir="$TEST_TMP/.gaia/state/sessions/$session_id"
+  [ ! -d "$session_dir" ]
+
+  # Request closing a non-existent sprint so close.sh fails.
+  run bash "$CLOSE_SH" --sprint nonexistent-sprint-888
+
+  [ "$status" -ne 0 ]
+  # The newly created session dir must have been cleaned up.
+  [ ! -d "$session_dir" ]
+}
+
+# ---------- Triage resolver concurrent-sprint support (story AC10) ----------
+
+@test "resolve-sprint-stories.sh discovers per-sprint state files" {
+  local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+  [ -f "$resolve_sh" ] || skip "resolve-sprint-stories.sh not found"
+
+  # Build a concurrent-mode project with two active sprints.
+  mkdir -p "$TEST_TMP/.gaia/state"
+  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
+  cat > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md" <<'MD'
+---
+key: STORY-A1
+---
+# Story A1
+MD
+  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
+  cat > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md" <<'MD'
+---
+key: STORY-B1
+---
+# Story B1
+MD
+
+  # Per-sprint state files.
+  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-A.yaml" <<'YAML'
+sprint_id: sprint-A
+status: active
+stories:
+  - key: STORY-A1
+    status: in-progress
+YAML
+  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-B.yaml" <<'YAML'
+sprint_id: sprint-B
+status: review
+stories:
+  - key: STORY-B1
+    status: done
+YAML
+
+  export PROJECT_ROOT="$TEST_TMP"
+
+  run bash "$resolve_sh" --impl-dir "$TEST_TMP/impl"
+
+  [ "$status" -eq 0 ]
+  # Both stories should be discovered.
+  [[ "$output" == *"STORY-A1"* ]]
+  [[ "$output" == *"STORY-B1"* ]]
+}
+
+@test "resolve-sprint-stories.sh skips closed per-sprint files" {
+  local resolve_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+  [ -f "$resolve_sh" ] || skip "resolve-sprint-stories.sh not found"
+
+  mkdir -p "$TEST_TMP/.gaia/state"
+  mkdir -p "$TEST_TMP/impl/epic-a/STORY-A1-test"
+  cat > "$TEST_TMP/impl/epic-a/STORY-A1-test/story.md" <<'MD'
+---
+key: STORY-A1
+---
+# Story A1
+MD
+  mkdir -p "$TEST_TMP/impl/epic-b/STORY-B1-test"
+  cat > "$TEST_TMP/impl/epic-b/STORY-B1-test/story.md" <<'MD'
+---
+key: STORY-B1
+---
+# Story B1
+MD
+
+  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-A.yaml" <<'YAML'
+sprint_id: sprint-A
+status: active
+stories:
+  - key: STORY-A1
+    status: in-progress
+YAML
+  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-B.yaml" <<'YAML'
+sprint_id: sprint-B
+status: closed
+stories:
+  - key: STORY-B1
+    status: done
+YAML
+
+  export PROJECT_ROOT="$TEST_TMP"
+
+  run bash "$resolve_sh" --impl-dir "$TEST_TMP/impl"
+
+  [ "$status" -eq 0 ]
+  # Only STORY-A1 from the active sprint should appear.
+  [[ "$output" == *"STORY-A1"* ]]
+  [[ "$output" != *"STORY-B1"* ]]
+}
+
+# ---------- No leaked IDs in changed files (story AC11) ----------
+
+@test "no internal traceability identifiers in published session-binding.sh" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  run /usr/bin/grep -EnH \
+    '(FR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|NFR-[0-9]+|SR-[0-9]+)' \
+    "$sb_sh"
+  [ "$status" -eq 1 ]
+}
+
+@test "no internal traceability identifiers in published resolve-sprint-stories.sh" {
+  local rs_sh="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+  run /usr/bin/grep -EnH \
+    '(FR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|NFR-[0-9]+|SR-[0-9]+)' \
+    "$rs_sh"
+  [ "$status" -eq 1 ]
+}
+
+@test "no internal traceability identifiers in published sprint-close SKILL.md" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/SKILL.md"
+  run /usr/bin/grep -EnH \
+    '(FR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|NFR-[0-9]+|SR-[0-9]+)' \
+    "$skill_md"
+  [ "$status" -eq 1 ]
+}

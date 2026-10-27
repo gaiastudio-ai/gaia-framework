@@ -57,24 +57,36 @@ if [ "$ALL" -eq 1 ]; then
 fi
 
 # ---------- sprint-scoped default ----------
-if [ -z "$SPRINT_STATUS" ]; then
-  SPRINT_STATUS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
-fi
-if [ ! -f "$SPRINT_STATUS" ]; then
-  printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2
-  exit 0
-fi
-
-# Top-level lifecycle status (NOT a nested block — `status:` is the sprint
-# lifecycle value). Read the first top-level `status:` line.
-sprint_status_value=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }' "$SPRINT_STATUS")
-case "${sprint_status_value:-}" in
-  active|review) ;;  # runnable states — proceed
-  *)
-    printf 'resolve-sprint-stories.sh: runnable sprint not found (status=%s); pass --all to scan all stories\n' "${sprint_status_value:-unset}" >&2
+# Discover sprint-status files: explicit path, per-sprint files, or main file.
+_SPRINT_STATUS_FILES=()
+if [ -n "$SPRINT_STATUS" ]; then
+  # Explicit --sprint-status: use only that file.
+  if [ ! -f "$SPRINT_STATUS" ]; then
+    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2
     exit 0
-    ;;
-esac
+  fi
+  _SPRINT_STATUS_FILES=("$SPRINT_STATUS")
+else
+  # Discover per-sprint state files for concurrent-sprint support.
+  _state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
+  if [ -d "$_state_dir" ]; then
+    for _psf in "$_state_dir"/sprint-status-*.yaml; do
+      [ -f "$_psf" ] || continue
+      # Skip lock/result files.
+      case "$_psf" in *.lock|*.result) continue ;; esac
+      _SPRINT_STATUS_FILES+=("$_psf")
+    done
+  fi
+  # Fall back to the main file when no per-sprint files exist.
+  if [ "${#_SPRINT_STATUS_FILES[@]}" -eq 0 ]; then
+    SPRINT_STATUS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
+    if [ ! -f "$SPRINT_STATUS" ]; then
+      printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2
+      exit 0
+    fi
+    _SPRINT_STATUS_FILES=("$SPRINT_STATUS")
+  fi
+fi
 
 # ---------- Migrate legacy items: key via shared library ----------
 # sprint-state.sh runs its own migration at pre-dispatch, but this script is
@@ -82,39 +94,72 @@ esac
 # If the lib is unavailable (stripped install), the both-keys reader below
 # handles the fallback without writing.
 _MIG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib" 2>/dev/null && pwd 2>/dev/null || echo "")"
+_mig_loaded=0
 if [ -n "$_MIG_LIB_DIR" ] && [ -f "$_MIG_LIB_DIR/acquire-lock.sh" ] && [ -f "$_MIG_LIB_DIR/migrate-items-to-stories.sh" ]; then
   # shellcheck source=../../../scripts/lib/acquire-lock.sh
   . "$_MIG_LIB_DIR/acquire-lock.sh"
   # shellcheck source=../../../scripts/lib/migrate-items-to-stories.sh
   . "$_MIG_LIB_DIR/migrate-items-to-stories.sh"
-  migrate_items_to_stories "$SPRINT_STATUS" --lock "${SPRINT_STATUS}.lock" || true
+  _mig_loaded=1
 fi
 
-# Committed story keys: union of `stories:` and `items:` blocks.
-# When both blocks exist, `stories:` wins on duplicate key, and items-only
-# keys are included. Matches the shared reader so the result is identical
-# whether migration ran or not.
-keys=$(awk '
-  /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; next }
-  /^items[[:space:]]*:/ { in_items = 1; in_stories = 0; next }
-  (in_stories || in_items) && /^[A-Za-z_]/ { in_stories = 0; in_items = 0 }
-  in_stories && /key[[:space:]]*:/ {
-    line = $0
-    sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
-    gsub(/["'"'"'"]/, "", line)
-    if (!(line in s_seen)) { s_order[s_n++] = line; s_seen[line] = 1 }
-  }
-  in_items && /key[[:space:]]*:/ {
-    line = $0
-    sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
-    gsub(/["'"'"'"]/, "", line)
-    if (!(line in i_seen)) { i_order[i_n++] = line; i_seen[line] = 1 }
-  }
-  END {
-    for (j = 0; j < s_n; j++) { printf "%s\n", s_order[j]; seen[s_order[j]] = 1 }
-    for (j = 0; j < i_n; j++) { if (!(i_order[j] in seen)) printf "%s\n", i_order[j] }
-  }
-' "$SPRINT_STATUS")
+# Iterate over discovered sprint-status files, collecting story keys from
+# each runnable sprint (active or review). This supports concurrent sprints
+# where each has its own per-sprint state file.
+keys=""
+_any_runnable=0
+for _ssf in "${_SPRINT_STATUS_FILES[@]}"; do
+  [ -f "$_ssf" ] || continue
+
+  # Top-level lifecycle status.
+  _ssf_status=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); print; exit }' "$_ssf")
+  case "${_ssf_status:-}" in
+    active|review) _any_runnable=1 ;;
+    *) continue ;;  # skip non-runnable sprints
+  esac
+
+  # Migrate items if the lib is available.
+  if [ "$_mig_loaded" -eq 1 ]; then
+    migrate_items_to_stories "$_ssf" --lock "${_ssf}.lock" || true
+  fi
+
+  # Committed story keys: union of stories: and items: blocks.
+  _file_keys=$(awk '
+    /^stories[[:space:]]*:/ { in_stories = 1; in_items = 0; next }
+    /^items[[:space:]]*:/ { in_items = 1; in_stories = 0; next }
+    (in_stories || in_items) && /^[A-Za-z_]/ { in_stories = 0; in_items = 0 }
+    in_stories && /key[[:space:]]*:/ {
+      line = $0
+      sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
+      gsub(/["'"'"'"]/, "", line)
+      if (!(line in s_seen)) { s_order[s_n++] = line; s_seen[line] = 1 }
+    }
+    in_items && /key[[:space:]]*:/ {
+      line = $0
+      sub(/^[[:space:]]*-?[[:space:]]*key[[:space:]]*:[[:space:]]*/, "", line)
+      gsub(/["'"'"'"]/, "", line)
+      if (!(line in i_seen)) { i_order[i_n++] = line; i_seen[line] = 1 }
+    }
+    END {
+      for (j = 0; j < s_n; j++) { printf "%s\n", s_order[j]; seen[s_order[j]] = 1 }
+      for (j = 0; j < i_n; j++) { if (!(i_order[j] in seen)) printf "%s\n", i_order[j] }
+    }
+  ' "$_ssf")
+  if [ -n "$_file_keys" ]; then
+    keys="${keys:+${keys}
+}${_file_keys}"
+  fi
+done
+
+if [ "$_any_runnable" -eq 0 ]; then
+  printf 'resolve-sprint-stories.sh: no runnable sprint found; pass --all to scan all stories\n' >&2
+  exit 0
+fi
+
+# Deduplicate keys across sprints.
+if [ -n "$keys" ]; then
+  keys="$(printf '%s\n' "$keys" | awk '!seen[$0]++')"
+fi
 
 [ -n "$keys" ] || exit 0
 

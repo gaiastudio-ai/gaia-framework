@@ -395,19 +395,25 @@ write_binding() {
 read_binding() {
   local binding_file="${GAIA_BINDING_DIR:-}/${_SB_BINDING_FILENAME}"
 
-  # No binding dir or file — unbound.
-  if [ -z "${GAIA_BINDING_DIR:-}" ] || [ ! -f "$binding_file" ]; then
+  # No binding dir — unbound.
+  if [ -z "${GAIA_BINDING_DIR:-}" ]; then
     return 1
   fi
 
-  # Containment check.
+  # Atomic read: attempt cat directly and check the result.
+  # This closes the TOCTOU window between a separate -f check and the read.
+  local bound_id=""
+  bound_id="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || bound_id=""
+
+  # No file or empty — unbound.
+  if [ -z "$bound_id" ]; then
+    return 1
+  fi
+
+  # Containment check (now that we know the file exists).
   if ! _sb_check_containment "$binding_file"; then
     return 3
   fi
-
-  # Read the binding.
-  local bound_id=""
-  bound_id="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || bound_id=""
 
   # Validate format.
   if [ -z "$bound_id" ]; then
@@ -801,6 +807,12 @@ resolve_sprint_arg() {
   local binding_closed=false
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
     bound_id="$GAIA_BOUND_SPRINT_ID"
+    # Shape-validate the bound ID (same pattern as --sprint).
+    if ! printf '%s' "$bound_id" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+      printf '%s: error: bound sprint ID has invalid shape: %s\n' \
+        "$_SB_SCRIPT_NAME" "$bound_id" >&2
+      return "$SPRINT_INVALID_ID"
+    fi
     # Check if the bound sprint is closed
     local bs_status=""
     bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
@@ -810,6 +822,12 @@ resolve_sprint_arg() {
   elif [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
     bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || bound_id=""
     if [ -n "$bound_id" ]; then
+      # Shape-validate the bound ID from the binding file.
+      if ! printf '%s' "$bound_id" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
+        printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
+          "$_SB_SCRIPT_NAME" "$bound_id" >&2
+        return "$SPRINT_INVALID_ID"
+      fi
       local bs_status=""
       bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
       if [ "$bs_status" = "closed" ]; then

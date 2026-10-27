@@ -124,6 +124,8 @@ yaml_top_scalar() {
   set -o pipefail
   [ -z "$line" ] && { printf ''; return 0; }
   value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//" | tr -d "\"'")
+  # Strip inline YAML comments (# ...) and trailing whitespace/CR.
+  value=$(printf '%s' "$value" | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//' | tr -d '\r')
   printf '%s' "$value"
 }
 
@@ -253,9 +255,24 @@ done
 # ---------- Sprint resolution via shared resolver ----------
 
 SESSION_BINDING_SH="$PLUGIN_SCRIPTS_DIR/lib/session-binding.sh"
+_close_session_dir_created=""
 if [ -f "$SESSION_BINDING_SH" ]; then
   # shellcheck source=../../../scripts/lib/session-binding.sh
   . "$SESSION_BINDING_SH"
+
+  # Detect whether provision_binding_dir will create a NEW directory so we
+  # can clean it up if close.sh fails before the binding is consumed.
+  _pre_provision_sid=""
+  _pre_provision_sid="$(_sb_derive_session_id 2>/dev/null)" || _pre_provision_sid=""
+  if [ -n "$_pre_provision_sid" ]; then
+    _pre_provision_root="$(_sb_resolve_project_root 2>/dev/null)" || _pre_provision_root=""
+    if [ -n "$_pre_provision_root" ]; then
+      _pre_provision_dir="${_pre_provision_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME:-sessions}/${_pre_provision_sid}"
+      if [ ! -d "$_pre_provision_dir" ]; then
+        _close_session_dir_created="$_pre_provision_dir"
+      fi
+    fi
+  fi
 
   # Provision the binding directory from the session ID so the resolver
   # can read the binding file written by bind.sh. Without this call,
@@ -265,9 +282,26 @@ if [ -f "$SESSION_BINDING_SH" ]; then
   _provision_rc=0
   provision_binding_dir 2>/dev/null || _provision_rc=$?
   if [ "$_provision_rc" -eq 3 ]; then
+    # Clean up newly created dir before dying.
+    if [ -n "$_close_session_dir_created" ] && [ -d "$_close_session_dir_created" ]; then
+      rmdir "$_close_session_dir_created" 2>/dev/null || true
+    fi
     die "binding directory validation failed (spoofing detected)"
   fi
 fi
+
+# Cleanup trap: remove newly created session dir if close.sh exits non-zero
+# before the close operation succeeds.
+_close_succeeded=0
+_close_cleanup() {
+  if [ "$_close_succeeded" -eq 0 ] && [ -n "$_close_session_dir_created" ] && [ -d "$_close_session_dir_created" ]; then
+    # Only remove if the dir is empty (no binding file was written by us).
+    if [ ! -f "$_close_session_dir_created/${_SB_BINDING_FILENAME:-bound_sprint_id}" ]; then
+      rmdir "$_close_session_dir_created" 2>/dev/null || true
+    fi
+  fi
+}
+trap '_close_cleanup' EXIT
 
 # Positional/flag conflict detection (before the resolver).
 # When both a positional sprint ID and --sprint are given with different
@@ -292,6 +326,10 @@ _state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
 _use_resolver=0
 if [ -z "${SPRINT_STATUS_YAML:-}" ] && [ -d "$_state_dir" ]; then
   _use_resolver=1
+else
+  if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
+    warn "WARNING: SPRINT_STATUS_YAML is set — resolver and session binding bypassed; target file: ${SPRINT_STATUS_YAML}"
+  fi
 fi
 
 # Build resolver arguments.
@@ -308,7 +346,7 @@ fi
 # stderr and returns non-zero — close.sh propagates that exit (fail closed).
 if [ "$_use_resolver" -eq 1 ] && type resolve_sprint_arg >/dev/null 2>&1; then
   _resolver_stderr="$(mktemp)"
-  trap 'rm -f "$_resolver_stderr"' EXIT
+  trap 'rm -f "$_resolver_stderr"; _close_cleanup' EXIT
   _resolver_rc=0
   RESOLVED_SPRINT="$(resolve_sprint_arg "${_resolver_args[@]}" 2>"$_resolver_stderr")" || _resolver_rc=$?
   if [ "$_resolver_rc" -ne 0 ]; then
@@ -354,6 +392,20 @@ if [ -n "${RESOLVED_SPRINT:-}" ] && [ "$SPRINT_ID" != "$RESOLVED_SPRINT" ]; then
   die "sprint ID mismatch: resolver gave '${RESOLVED_SPRINT}' but state file contains '${SPRINT_ID}'"
 fi
 
+# Cross-check: when SPRINT_STATUS_YAML bypassed the resolver, verify the
+# sprint ID in the file against the session binding (if any).
+if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
+  if [ "$SPRINT_ID" != "$GAIA_BOUND_SPRINT_ID" ]; then
+    warn "WARNING: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$GAIA_BOUND_SPRINT_ID'"
+  fi
+elif [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
+  _cross_bound=""
+  _cross_bound="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null | tr -d '\n')" || _cross_bound=""
+  if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
+    warn "WARNING: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_cross_bound'"
+  fi
+fi
+
 # ---------- Step 2 — Idempotency short-circuit ----------
 # Done BEFORE retro check so already-closed sprints don't require an existing
 # retro doc (idempotency check doesn't require retro presence).
@@ -392,6 +444,7 @@ if [ "$current_status" = "closed" ]; then
 
     if [ "$_archive_count" -gt 0 ]; then
       warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+      _close_succeeded=1
       exit 0
     fi
     # Archive missing — resume. Will be passed to the close writer below.
@@ -400,6 +453,7 @@ if [ "$current_status" = "closed" ]; then
   else
     # Single-sprint mode: exit 0 regardless of archive presence.
     warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+    _close_succeeded=1
     exit 0
   fi
 fi
@@ -687,4 +741,5 @@ rm -f "$checklist_tmp"
 printf 'sprint %s closed at %s; archive: %s; lifecycle event recorded\n' \
   "$SPRINT_ID" "$CLOSED_AT" "$ARCHIVE_PATH"
 
+_close_succeeded=1
 exit 0
