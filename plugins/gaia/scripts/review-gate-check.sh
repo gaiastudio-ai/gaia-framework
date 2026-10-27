@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# review-gate-check — commit-bound composite Review Gate checker
+# review-gate-check.sh — commit-bound composite Review Gate checker
 #
 # Reads the Review Gate table from a story file and checks whether every
 # canonical row is PASSED and bound to the current head SHA. Returns a
@@ -11,13 +11,16 @@
 #   BLOCKED  — at least one row is FAILED
 #
 # Usage:
-#   review-gate-check --bind-head <sha> --ci-sha <sha> --story <file>
-#   review-gate-check --help
+#   review-gate-check.sh --bind-head <sha> --ci-sha <sha> --story <file>
+#   review-gate-check.sh --help
 #
 # Flags:
 #   --bind-head <sha>  The commit SHA that all reviews must be bound to.
+#                      Must be a real hex SHA (not "none"), normalized to
+#                      full length.
 #   --ci-sha <sha>     The SHA of the CI run. Must match --bind-head for
-#                      COMPLETE, or "none" in no-CI binding mode.
+#                      COMPLETE, or "none" ONLY when no CI is configured
+#                      (no promotion chain in project config).
 #   --story <file>     Path to the story markdown file.
 #
 # Exit codes:
@@ -32,7 +35,7 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-SCRIPT_NAME="review-gate-check"
+SCRIPT_NAME="review-gate-check.sh"
 
 _RGC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
@@ -48,14 +51,16 @@ die() {
 usage() {
   cat <<'USAGE'
 Usage:
-  review-gate-check --bind-head <sha> --ci-sha <sha> --story <file>
-  review-gate-check --help
+  review-gate-check.sh --bind-head <sha> --ci-sha <sha> --story <file>
+  review-gate-check.sh --help
 
 Composite Review Gate check with commit binding.
 
 Flags:
   --bind-head <sha>  The commit SHA that all reviews must be bound to.
-  --ci-sha <sha>     CI run SHA; must match --bind-head or "none" (no-CI mode).
+                     Must be a real hex SHA, not "none".
+  --ci-sha <sha>     CI run SHA; must match --bind-head, or "none" only
+                     when no CI is configured.
   --story <file>     Path to the story markdown file.
 
 Exit codes:
@@ -75,6 +80,32 @@ CANONICAL_GATES=(
   "Performance Review"
 )
 
+# Check whether CI is configured by reading the promotion chain from config.
+_has_ci_configured() {
+  local config_file="${PROJECT_CONFIG:-}"
+  if [ -z "$config_file" ]; then
+    local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+    config_file="$root/.gaia/config/project-config.yaml"
+  fi
+  if [ ! -f "$config_file" ]; then
+    return 1
+  fi
+  # Check for ci_cd.promotion_chain with at least one entry.
+  if grep -q 'promotion_chain:' "$config_file" 2>/dev/null; then
+    if awk '
+      /^ci_cd:/ { in_ci = 1; next }
+      in_ci && /^[^ ]/ { in_ci = 0 }
+      in_ci && /promotion_chain:/ { in_pc = 1; next }
+      in_pc && /^[^ ]/ && !/^    / { in_pc = 0 }
+      in_pc && /- id:/ { found = 1; exit }
+      END { exit (found ? 0 : 1) }
+    ' "$config_file" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
 main() {
   local bind_head="" ci_sha="" story_file=""
 
@@ -91,6 +122,30 @@ main() {
   [ -n "$bind_head" ] || die "--bind-head is required"
   [ -n "$ci_sha" ]    || die "--ci-sha is required"
   [ -n "$story_file" ] || die "--story is required"
+
+  # Validate --bind-head BEFORE file check: must be a real hex SHA, not "none".
+  case "$bind_head" in
+    -*)  die "--bind-head starts with '-' — potential argument injection" ;;
+    none) die "--bind-head must be a real commit SHA, not 'none'" ;;
+  esac
+  if ! printf '%s' "$bind_head" | grep -qE '^[0-9a-fA-F]{4,40}$'; then
+    die "--bind-head must be a hex SHA (4-40 hex chars), got '$bind_head'"
+  fi
+
+  # Validate --ci-sha: "none" only allowed in no-CI mode.
+  if [ "$ci_sha" = "none" ]; then
+    if _has_ci_configured; then
+      die "--ci-sha none is not accepted when CI is configured (promotion chain present); pass the CI run SHA"
+    fi
+  else
+    case "$ci_sha" in
+      -*) die "--ci-sha starts with '-' — potential argument injection" ;;
+    esac
+    if ! printf '%s' "$ci_sha" | grep -qE '^[0-9a-fA-F]{4,40}$'; then
+      die "--ci-sha must be a hex SHA or 'none', got '$ci_sha'"
+    fi
+  fi
+
   [ -f "$story_file" ] || die "story file not found: $story_file"
 
   # Parse the table.
@@ -166,7 +221,9 @@ main() {
     i=$((i + 1))
   done
 
-  # CI SHA check.
+  # CI SHA check: "none" is only valid when no CI is configured (checked above).
+  # When ci_sha is "none" AND no CI is configured, it's acceptable (no CI binding).
+  # When ci_sha is a real SHA, it must match bind_head.
   if [ "$ci_sha" != "none" ] && [ "$ci_sha" != "$bind_head" ]; then
     has_pending=1
     pending_list="${pending_list}  - CI SHA mismatch (ci=${ci_sha}, head=${bind_head})\n"

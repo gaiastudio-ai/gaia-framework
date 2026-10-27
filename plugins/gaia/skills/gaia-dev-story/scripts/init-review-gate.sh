@@ -81,10 +81,10 @@ if [ "$has_section" -eq 0 ]; then
   {
     cat "$TMP"
     printf '\n\n## Review Gate\n\n'
-    printf '| Review | Status | Report |\n'
-    printf '|--------|--------|--------|\n'
+    printf '| Review | Status | Report | Reviewed SHA |\n'
+    printf '|--------|--------|--------|--------------|  \n'
     for g in "${CANONICAL_GATES[@]}"; do
-      printf '| %s | UNVERIFIED | — |\n' "$g"
+      printf '| %s | UNVERIFIED | — |  |\n' "$g"
     done
     printf '\n> Story moves to `done` only when ALL reviews show PASSED.\n'
   } > "${TMP}.new"

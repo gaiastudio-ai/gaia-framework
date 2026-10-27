@@ -87,7 +87,8 @@ SCRIPT_NAME="review-gate.sh"
 _RG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/acquire-lock.sh
 . "${_RG_DIR}/lib/acquire-lock.sh"
-unset _RG_DIR
+# shellcheck source=lib/review-gate-table.sh
+. "${_RG_DIR}/lib/review-gate-table.sh"
 
 # ---------- Canonical vocabulary ----------
 
@@ -150,6 +151,49 @@ die() {
   # message…  (always exit 1)
   printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2
   exit 1
+}
+
+# Validate a value is safe for table-cell insertion: reject pipe, newline, CR.
+# Used for --sha, --report and any other value written into the markdown table.
+_validate_table_value() {
+  local label="$1" value="$2"
+  case "$value" in
+    *'|'*)
+      die "$label contains a pipe character ('|') which would corrupt the table — refusing"
+      ;;
+  esac
+  case "$value" in
+    *$'\n'*|*$'\r'*)
+      die "$label contains a newline or carriage-return which would forge a table row — refusing"
+      ;;
+  esac
+}
+
+# Validate a commit SHA argument: must be 4-40 hex chars, no leading dash.
+# Optionally resolves to a full SHA via git rev-parse --verify when a git
+# work tree is available. Returns the (possibly resolved) SHA on stdout.
+# Arguments: label value [project_path]
+_validate_sha_arg() {
+  local label="$1" value="$2" pp="${3:-${PROJECT_PATH:-.}}"
+  # Reject leading dash (argument injection via git).
+  case "$value" in
+    -*)
+      die "$label starts with '-' — potential argument injection; refusing"
+      ;;
+  esac
+  # Reject non-hex characters (must be 4-40 hex chars).
+  if ! printf '%s' "$value" | grep -qE '^[0-9a-fA-F]{4,40}$'; then
+    die "$label must be a hex SHA (4-40 hex chars), got '$value'"
+  fi
+  # Resolve to full SHA when in a git work tree.
+  if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local full_sha
+    full_sha="$(git -C "$pp" rev-parse --verify "${value}^{commit}" 2>/dev/null)" \
+      || die "$label '$value' does not resolve to a valid commit"
+    printf '%s' "$full_sha"
+  else
+    printf '%s' "$value"
+  fi
 }
 
 usage() {
@@ -445,76 +489,17 @@ locate_story_file() {
 # untouched on update) but ignored for check/status vocabulary checks.
 
 # Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT\tSHA`.
-# Supports both three-column (legacy) and four-column (current) tables.
-# Three-column rows emit SHA as empty string.
+# Delegates to the shared dual-shape parser (review-gate-table.sh).
+# Three-column rows emit SHA as "absent".
 # Exits 1 (via die) if the `## Review Gate` header is absent.
 parse_gate_rows() {
   local file="$1"
 
-  # First: confirm the `## Review Gate` header exists. awk-only detection is
-  # cheaper and gives a precise error message.
   if ! grep -q '^## Review Gate[[:space:]]*$' "$file"; then
     die "story file '$file' is missing the '## Review Gate' section"
   fi
 
-  awk '
-    BEGIN { in_section = 0; in_table = 0; saw_sep = 0 }
-    /^## Review Gate[[:space:]]*$/ { in_section = 1; in_table = 0; saw_sep = 0; next }
-    in_section && /^## / {
-      # A new h2 header terminates the section.
-      in_section = 0; in_table = 0; next
-    }
-    !in_section { next }
-
-    # Inside the section. Look for the first pipe-table.
-    {
-      # Strip trailing \r so CRLF files parse correctly.
-      sub(/\r$/, "", $0)
-    }
-
-    in_section && !in_table {
-      # Header row starts the table (first line beginning with |).
-      if ($0 ~ /^[[:space:]]*\|/) {
-        in_table = 1
-        saw_sep = 0
-        next
-      }
-      next
-    }
-
-    in_table {
-      # End of table: blank line or non-pipe line.
-      if ($0 !~ /^[[:space:]]*\|/) {
-        in_table = 0
-        in_section = 0
-        next
-      }
-
-      # Separator row (| --- | --- | --- |) — skip exactly one.
-      if (!saw_sep && $0 ~ /^[[:space:]]*\|[[:space:]]*-+/) {
-        saw_sep = 1
-        next
-      }
-
-      # Data row. Strip leading/trailing pipe and whitespace, split on |.
-      line = $0
-      sub(/^[[:space:]]*\|/, "", line)
-      sub(/\|[[:space:]]*$/, "", line)
-      n = split(line, cells, /\|/)
-      if (n < 3) next
-
-      # Trim each cell.
-      for (i = 1; i <= n; i++) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[i])
-      }
-
-      # Emit TSV: GATE \t STATUS \t REPORT \t SHA
-      # Three-column rows emit empty SHA (fourth field).
-      sha = ""
-      if (n >= 4) { sha = cells[4] }
-      printf "%s\t%s\t%s\t%s\n", cells[1], cells[2], cells[3], sha
-    }
-  ' "$file"
+  parse_review_gate_table "$file"
 }
 
 # Populate three parallel global arrays ROW_GATES / ROW_STATUSES / ROW_SHAS
@@ -926,12 +911,11 @@ cmd_update() {
     GAIA_RG_REPORT="$report_value" GAIA_RG_SHA="$sha_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
       BEGIN {
         in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0
+        header_upgraded = 0
         new_report = ENVIRON["GAIA_RG_REPORT"]
         new_sha = ENVIRON["GAIA_RG_SHA"]
       }
 
-      # Detect `## Review Gate` header. We preserve the line verbatim
-      # (including any trailing \r) and track state off a stripped copy.
       {
         raw = $0
         line = $0
@@ -945,7 +929,6 @@ cmd_update() {
       }
 
       in_section && line ~ /^## / {
-        # New h2 terminates the section.
         in_section = 0; in_table = 0
         print raw
         next
@@ -960,6 +943,21 @@ cmd_update() {
         if (line ~ /^[[:space:]]*\|/) {
           in_table = 1
           saw_sep = 0
+
+          # Check if this is a 3-column header that needs upgrading.
+          # Count pipe-delimited cells in the header row.
+          tmp_h = line
+          sub(/^[[:space:]]*\|/, "", tmp_h)
+          sub(/\|[[:space:]]*$/, "", tmp_h)
+          h_cols = split(tmp_h, hcells, /\|/)
+          if (h_cols == 3 && new_sha != "") {
+            # Upgrade to 4-column header.
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "| Review | Status | Report | Reviewed SHA |%s\n", crlf
+            header_upgraded = 1
+            next
+          }
         }
         print raw
         next
@@ -975,11 +973,32 @@ cmd_update() {
 
         if (!saw_sep && line ~ /^[[:space:]]*\|[[:space:]]*-+/) {
           saw_sep = 1
+          if (header_upgraded) {
+            # Upgrade separator to 4 columns.
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "|--------|--------|--------|--------------|%s\n", crlf
+            next
+          }
           print raw
           next
         }
 
         if (rewritten) {
+          # Upgrade non-target rows to 4 columns if header was upgraded.
+          if (header_upgraded) {
+            tmp2 = line
+            sub(/^[[:space:]]*\|/, "", tmp2)
+            sub(/\|[[:space:]]*$/, "", tmp2)
+            n2 = split(tmp2, c2, /\|/)
+            if (n2 == 3) {
+              for (j = 1; j <= 3; j++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", c2[j])
+              crlf = ""
+              if (raw ~ /\r$/) { crlf = "\r" }
+              printf "| %s | %s | %s |  |%s\n", c2[1], c2[2], c2[3], crlf
+              next
+            }
+          }
           print raw
           next
         }
@@ -997,12 +1016,19 @@ cmd_update() {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", gate)
 
         if (gate != target) {
+          # Upgrade non-target rows to 4 columns if header was upgraded.
+          if (header_upgraded && n == 3) {
+            for (j = 1; j <= 3; j++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[j])
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "| %s | %s | %s |  |%s\n", cells[1], cells[2], cells[3], crlf
+            next
+          }
           print raw
           next
         }
 
-        # Rewrite this row. Preserve CRLF if the original had one.
-        # Always write four columns (with SHA).
+        # Rewrite this row — always four columns.
         crlf = ""
         if (raw ~ /\r$/) { crlf = "\r" }
         printf "| %s | %s | %s | %s |%s\n", target, new_status, new_report, new_sha, crlf
@@ -1014,7 +1040,6 @@ cmd_update() {
 
       END {
         if (!rewritten) {
-          # Signal failure to the caller via exit code 2.
           exit 2
         }
       }
@@ -1329,6 +1354,13 @@ main() {
         else
           resolved_sha="none"
         fi
+      else
+        # Explicit --sha: validate table-safety and hex format.
+        _validate_table_value "--sha" "$resolved_sha"
+        if [ "$resolved_sha" != "none" ]; then
+          local pp="${PROJECT_PATH:-.}"
+          resolved_sha="$(_validate_sha_arg "--sha" "$resolved_sha" "$pp")"
+        fi
       fi
 
       # If --plan-id is present, write to the ledger (NOT the Review Gate table).
@@ -1409,10 +1441,16 @@ main() {
       esac
       ;;
     carry-forward)
-      # Carry-forward: re-bind a review verdict from one SHA to another when
-      # the diff between the two SHAs has no files in the row's scope globs.
-      # The evidence is ALWAYS self-computed from the diff — caller-supplied
-      # evidence is refused (security mitigation).
+      # Carry-forward: re-bind a PASSED review verdict from one SHA to another
+      # when the diff between the two SHAs has no files in the row's configured
+      # scope globs. Evidence is ALWAYS self-computed from the diff — caller-
+      # supplied evidence is refused (security mitigation per threat model).
+      #
+      # Pre-conditions (all must hold or the carry is refused):
+      #   1. Row must currently be PASSED
+      #   2. Row's recorded SHA must equal --from
+      #   3. Configured scope globs must exist for the row (fail closed)
+      #   4. Diff between --from and --to must have zero overlap with scope
       [ -n "$carry_row" ]  || die "carry-forward requires --row <name>"
       [ -n "$carry_from" ] || die "carry-forward requires --from <sha>"
       [ -n "$carry_to" ]   || die "carry-forward requires --to <sha>"
@@ -1422,7 +1460,7 @@ main() {
         die "carry-forward: caller-supplied evidence is refused — evidence is self-computed from the diff (security policy)"
       fi
 
-      # Use --gate if --row not provided via separate flag
+      # Use --gate if --row not provided via separate flag.
       if [ -z "$carry_row" ] && [ -n "$gate_name" ]; then
         carry_row="$gate_name"
       fi
@@ -1439,33 +1477,129 @@ main() {
         die "carry-forward requires a git work tree (PROJECT_PATH=$pp is not inside one)"
       fi
 
-      # Compute the diff between from and to.
+      # Validate --from and --to as hex SHAs (security: prevent argument injection).
+      carry_from="$(_validate_sha_arg "--from" "$carry_from" "$pp")"
+      carry_to="$(_validate_sha_arg "--to" "$carry_to" "$pp")"
+
+      # Pre-condition 1+2: verify the row is currently PASSED and bound to --from.
+      load_canonical_rows "$STORY_FILE"
+      local row_idx=-1 ci
+      ci=0
+      while [ "$ci" -lt "${#ROW_GATES[@]}" ]; do
+        if [ "${ROW_GATES[$ci]}" = "$carry_row" ]; then
+          row_idx=$ci
+          break
+        fi
+        ci=$((ci + 1))
+      done
+      if [ "$row_idx" -eq -1 ]; then
+        die "carry-forward: row '$carry_row' not found in Review Gate table"
+      fi
+      if [ "${ROW_STATUSES[$row_idx]}" != "PASSED" ]; then
+        die "carry-forward: row '$carry_row' is ${ROW_STATUSES[$row_idx]}, not PASSED — only PASSED rows can be carried forward"
+      fi
+      local recorded_sha="${ROW_SHAS[$row_idx]:-}"
+      if [ -z "$recorded_sha" ] || [ "$recorded_sha" = "absent" ]; then
+        die "carry-forward: row '$carry_row' has no recorded SHA — cannot verify it matches --from"
+      fi
+      if [ "$recorded_sha" != "$carry_from" ]; then
+        die "carry-forward: row '$carry_row' was reviewed on $recorded_sha, not $carry_from — SHA mismatch"
+      fi
+
+      # Pre-condition 3: read configured scope globs for this row.
+      # Scope globs are configured under review_gate.scope_globs.<gate-slug>
+      # in project-config.yaml. If no scope is configured, refuse (fail closed).
+      local gate_slug
+      gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+      local config_scope=""
+      if [ -n "$carry_scope" ]; then
+        # Allow --scope override for tests/configuration, but the caller must
+        # have set it — omitting --scope does NOT mean "no overlap".
+        config_scope="$carry_scope"
+      else
+        # Read from project config.
+        local config_file="${PROJECT_CONFIG:-}"
+        if [ -z "$config_file" ]; then
+          local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+          config_file="$root/.gaia/config/project-config.yaml"
+        fi
+        if [ -f "$config_file" ] && command -v awk >/dev/null 2>&1; then
+          config_scope="$(awk -v slug="$gate_slug" '
+            /^review_gate:/ { in_rg = 1; next }
+            in_rg && /^[^ ]/ { in_rg = 0 }
+            in_rg && /scope_globs:/ { in_sg = 1; next }
+            in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
+            in_sg {
+              # Look for the gate slug key followed by a list.
+              if ($0 ~ slug ":") { in_gate = 1; next }
+              if (in_gate && $0 ~ /^      - /) {
+                val = $0
+                sub(/^[[:space:]]*- [[:space:]]*/, "", val)
+                sub(/[[:space:]]*$/, "", val)
+                gsub(/"/, "", val)
+                gsub(/'\''/, "", val)
+                if (out != "") out = out "\n"
+                out = out val
+              }
+              if (in_gate && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) { in_gate = 0 }
+            }
+            END { if (out != "") print out }
+          ' "$config_file" 2>/dev/null)" || config_scope=""
+        fi
+      fi
+      if [ -z "$config_scope" ]; then
+        die "carry-forward: no scope globs configured for row '$carry_row' (gate slug: $gate_slug) — cannot determine file overlap; refusing (fail closed)"
+      fi
+
+      # Pre-condition 4: compute the diff and check for scope overlap.
       local diff_files
       diff_files="$(git -C "$pp" diff --name-only "$carry_from" "$carry_to" 2>/dev/null)" \
         || die "carry-forward: git diff failed between $carry_from and $carry_to"
 
-      # If --scope is provided, check whether any diff files match the scope globs.
       local has_overlap=0
-      if [ -n "$carry_scope" ] && [ -n "$diff_files" ]; then
-        local scope_pattern="$carry_scope"
-        # Convert glob pattern to a grep-friendly regex:
-        # foo/** → foo/ prefix match; foo/*.sh → foo/[^/]*\.sh
-        local scope_regex
-        scope_regex="$(printf '%s' "$scope_pattern" | sed 's|\*\*/|.*/|g; s|\*|[^/]*|g; s|\.|\\.|g')"
-        if printf '%s\n' "$diff_files" | grep -qE "^${scope_regex}"; then
-          has_overlap=1
-        fi
+      if [ -n "$diff_files" ]; then
+        # Check each scope glob against the diff files.
+        local scope_line
+        while IFS= read -r scope_line; do
+          [ -z "$scope_line" ] && continue
+          # Convert the glob to a portable grep pattern:
+          #   1. Escape regex metacharacters (dots, brackets, etc.)
+          #   2. Convert ** to match any path segment(s)
+          #   3. Convert * to match within a single path segment
+          local pat="$scope_line"
+          # Escape dots, brackets, parens, plus, question marks
+          pat="$(printf '%s' "$pat" | sed 's/\./\\./g; s/\[/\\[/g; s/\]/\\]/g; s/(/\\(/g; s/)/\\)/g; s/+/\\+/g; s/?/[^\/]/g')"
+          # Replace ** with a placeholder, then * with single-segment match
+          pat="$(printf '%s' "$pat" | sed 's|\*\*|__GLOBSTAR__|g; s|\*|[^/]*|g; s|__GLOBSTAR__|.*|g')"
+          # Anchor the pattern
+          if printf '%s\n' "$diff_files" | grep -qE "^${pat}$"; then
+            has_overlap=1
+            break
+          fi
+        done <<< "$config_scope"
       fi
 
       if [ "$has_overlap" -eq 1 ]; then
-        die "carry-forward: diff between $carry_from and $carry_to includes files in scope '$carry_scope' — review must be re-run"
+        die "carry-forward: diff between $carry_from and $carry_to includes files in scope — review must be re-run"
       fi
 
-      # Self-computed evidence: list of changed files (outside scope).
-      local evidence="carry-forward: no scope overlap in diff ${carry_from:0:7}..${carry_to:0:7}"
+      # Self-computed evidence string: records the from-SHA, to-SHA, and
+      # the fact that no scope overlap was found.
+      local evidence="no-scope-overlap:${carry_from:0:7}..${carry_to:0:7}"
 
-      # Update the row to bind to the new SHA.
-      cmd_update "$STORY_FILE" "$carry_row" "PASSED" "carry-forward" "$carry_to"
+      # Persist the carry-forward: update the row's SHA to the to-SHA.
+      # Keep the existing report path (do NOT overwrite with "carry-forward").
+      # Parse the current report value from the table to preserve it.
+      local current_report="—"
+      local parsed_gate parsed_status parsed_report parsed_sha
+      while IFS=$'\t' read -r parsed_gate _parsed_status2 parsed_report parsed_sha; do
+        if [ "$parsed_gate" = "$carry_row" ]; then
+          current_report="$parsed_report"
+          break
+        fi
+      done < <(parse_gate_rows "$STORY_FILE")
+
+      cmd_update "$STORY_FILE" "$carry_row" "PASSED" "$current_report" "$carry_to"
       printf 'carry-forward: %s bound from %s to %s (evidence: %s)\n' \
         "$carry_row" "$carry_from" "$carry_to" "$evidence"
       ;;

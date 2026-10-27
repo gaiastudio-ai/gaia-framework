@@ -1,12 +1,8 @@
 #!/usr/bin/env bats
 # review-gate-commit-bound.bats — tests for commit-bound review gate
 #
-# Covers:
-#   AC1 — dual-shape parser (3-col and 4-col Review Gate tables)
-#   AC2 — bind-head check (stale rows -> PENDING, all-bound -> COMPLETE)
-#   AC3 — non-destructive init (preserve existing verdicts, seed only missing)
-#   AC4 — SHA binding on update (default HEAD, "none" outside git)
-#   AC5 — carry-forward (self-computed evidence, refuse caller evidence)
+# Covers all five ACs: dual-shape parser, bind-head check, non-destructive
+# init, SHA binding on update, and carry-forward with self-computed evidence.
 
 load 'test_helper.bash'
 
@@ -16,86 +12,32 @@ setup() {
   mkdir -p "$PROJECT_PATH"
   export PLUGIN_ROOT
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
-  # Disable proof-of-execution for fixture-level tests
   export REVIEW_GATE_PROOF_OF_EXECUTION=off
 }
 
 teardown() { common_teardown; }
 
-# ---------------------------------------------------------------------------
-# AC1: Dual-shape parser reads both table formats
-# ---------------------------------------------------------------------------
-
-@test "dual-shape parser exists as sourceable library" {
-  local parser="${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
-  [ -f "$parser" ]
+# Helper: create a git repo with an initial commit.
+_init_git() {
+  local dir="$1"
+  git -C "$dir" init -q
+  git -C "$dir" config user.email "test@test.local"
+  git -C "$dir" config user.name "Test"
+  printf 'init\n' > "$dir/README.md"
+  git -C "$dir" add README.md
+  git -C "$dir" commit -q -m "init"
 }
 
-@test "dual-shape parser reads three-column row correctly (SHA absent)" {
-  local parser="${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
-  [ -f "$parser" ]
-
-  # shellcheck source=/dev/null
-  source "$parser"
-
-  local three_col_row="| Code Review | PASSED | report.md |"
-  local result
-  result="$(parse_review_gate_row "$three_col_row")"
-
-  grep -q 'status=PASSED' <<< "$result"
-  grep -q 'report=report.md' <<< "$result"
-  # Three-column row: SHA absent (empty or "absent")
-  grep -qE '(reviewed_sha=|sha=)$' <<< "$result" \
-    || grep -q 'reviewed_sha=absent' <<< "$result"
-}
-
-@test "dual-shape parser reads four-column row correctly (SHA present)" {
-  local parser="${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
-  [ -f "$parser" ]
-
-  # shellcheck source=/dev/null
-  source "$parser"
-
-  local four_col_row="| Code Review | PASSED | report.md | abc1234 |"
-  local result
-  result="$(parse_review_gate_row "$four_col_row")"
-
-  grep -q 'status=PASSED' <<< "$result"
-  grep -q 'report=report.md' <<< "$result"
-  grep -qE '(reviewed_sha|sha)=abc1234' <<< "$result"
-}
-
-@test "dual-shape parser rejects malformed row (too few columns)" {
-  local parser="${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
-  [ -f "$parser" ]
-
-  # shellcheck source=/dev/null
-  source "$parser"
-
-  local bad_row="| Code Review | PASSED |"
-  run parse_review_gate_row "$bad_row"
-  [ "$status" -ne 0 ]
-}
-
-# ---------------------------------------------------------------------------
-# AC2: Bind-head check — stale rows PENDING, all-bound-on-head COMPLETE
-# ---------------------------------------------------------------------------
-
-@test "review-gate-check exists as executable" {
-  local checker="${PLUGIN_ROOT}/scripts/review-gate-check"
-  [ -x "$checker" ]
-}
-
-@test "bind-head check: stale row produces non-COMPLETE verdict" {
-  local checker="${PLUGIN_ROOT}/scripts/review-gate-check"
-  [ -x "$checker" ]
-
-  local story="${PROJECT_PATH}/docs/implementation-artifacts/E900-S1-test-story/story.md"
-  mkdir -p "$(dirname "$story")"
-  cat > "$story" <<'STORY'
+# Helper: create a flat story file with all 6 canonical rows (4-col).
+_seed_story_4col() {
+  local dir="$1" key="$2" sha="${3:-}"
+  local impl="$dir/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/${key}-test.md"
+  cat > "$story" <<STORY
 ---
 template: 'story'
-key: "E900-S1"
+key: "${key}"
 title: "Test Story"
 status: review
 ---
@@ -103,63 +45,229 @@ status: review
 
 | Review | Status | Report | Reviewed SHA |
 |--------|--------|--------|--------------|
-| Code Review | PASSED | cr.md | OLD_SHA |
-| QA Tests | PASSED | qa.md | HEAD_SHA |
-| Security Review | PASSED | sec.md | HEAD_SHA |
-| Test Automation | PASSED | ta.md | HEAD_SHA |
-| Test Review | PASSED | tr.md | HEAD_SHA |
-| Performance Review | PASSED | perf.md | HEAD_SHA |
+| Code Review | PASSED | cr.md | ${sha} |
+| QA Tests | PASSED | qa.md | ${sha} |
+| Security Review | PASSED | sec.md | ${sha} |
+| Test Automation | PASSED | ta.md | ${sha} |
+| Test Review | PASSED | tr.md | ${sha} |
+| Performance Review | PASSED | perf.md | ${sha} |
 
-> Story moves to `done` only when ALL reviews show PASSED.
+> Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
-
-  run "$checker" --bind-head HEAD_SHA --ci-sha HEAD_SHA --story "$story"
-  [ "$status" -ne 0 ]
-  grep -qi 'pending\|stale\|not.*complete' <<< "$output"
+  printf '%s' "$story"
 }
 
-@test "bind-head check: all rows current returns COMPLETE" {
-  local checker="${PLUGIN_ROOT}/scripts/review-gate-check"
-  [ -x "$checker" ]
-
-  local story="${PROJECT_PATH}/docs/implementation-artifacts/E900-S2-test-story/story.md"
-  mkdir -p "$(dirname "$story")"
-  cat > "$story" <<'STORY'
+# Helper: create a story with 3-column (legacy) table.
+_seed_story_3col() {
+  local dir="$1" key="$2"
+  local impl="$dir/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/${key}-test.md"
+  cat > "$story" <<STORY
 ---
 template: 'story'
-key: "E900-S2"
-title: "Test Story 2"
+key: "${key}"
+title: "Test Story"
 status: review
 ---
 ## Review Gate
 
-| Review | Status | Report | Reviewed SHA |
-|--------|--------|--------|--------------|
-| Code Review | PASSED | cr.md | HEAD_SHA |
-| QA Tests | PASSED | qa.md | HEAD_SHA |
-| Security Review | PASSED | sec.md | HEAD_SHA |
-| Test Automation | PASSED | ta.md | HEAD_SHA |
-| Test Review | PASSED | tr.md | HEAD_SHA |
-| Performance Review | PASSED | perf.md | HEAD_SHA |
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | cr.md |
+| QA Tests | PASSED | qa.md |
+| Security Review | PASSED | sec.md |
+| Test Automation | PASSED | ta.md |
+| Test Review | PASSED | tr.md |
+| Performance Review | PASSED | perf.md |
 
-> Story moves to `done` only when ALL reviews show PASSED.
+> Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
+  printf '%s' "$story"
+}
 
-  run "$checker" --bind-head HEAD_SHA --ci-sha HEAD_SHA --story "$story"
+# ---------------------------------------------------------------------------
+# AC1: Dual-shape parser
+# ---------------------------------------------------------------------------
+
+@test "dual-shape parser exists as sourceable library" {
+  [ -f "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh" ]
+}
+
+@test "dual-shape parser reads three-column row with SHA exactly absent" {
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  local result
+  result="$(parse_review_gate_row "| Code Review | PASSED | report.md |")"
+  grep -q 'status=PASSED' <<< "$result"
+  grep -q 'report=report.md' <<< "$result"
+  grep -q 'reviewed_sha=absent' <<< "$result"
+}
+
+@test "dual-shape parser reads four-column row with SHA present" {
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  local result
+  result="$(parse_review_gate_row "| Code Review | PASSED | report.md | abc1234 |")"
+  grep -q 'status=PASSED' <<< "$result"
+  grep -q 'report=report.md' <<< "$result"
+  grep -q 'reviewed_sha=abc1234' <<< "$result"
+}
+
+@test "dual-shape parser rejects 2-column row explicitly" {
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  run parse_review_gate_row "| Code Review | PASSED |"
+  [ "$status" -ne 0 ]
+  grep -qi 'fewer than 3' <<< "$output"
+}
+
+@test "dual-shape parser rejects 5-column row explicitly" {
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  run parse_review_gate_row "| Code Review | PASSED | report.md | abc | extra |"
+  [ "$status" -ne 0 ]
+  grep -qi 'more than 4' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# AC2: Bind-head check
+# ---------------------------------------------------------------------------
+
+@test "review-gate-check.sh exists as executable" {
+  [ -x "${PLUGIN_ROOT}/scripts/review-gate-check.sh" ]
+}
+
+@test "bind-head: stale row produces PENDING (real git repo)" {
+  _init_git "$PROJECT_PATH"
+  local sha_old
+  sha_old="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "v2"
+  local sha_head
+  sha_head="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S1" "$sha_old")"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_head" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'pending\|stale' <<< "$output"
+}
+
+@test "bind-head: all rows current returns COMPLETE (real git repo)" {
+  _init_git "$PROJECT_PATH"
+  local sha_head
+  sha_head="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S2" "$sha_head")"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_head" --ci-sha none --story "$story"
   [ "$status" -eq 0 ]
   grep -qi 'complete' <<< "$output"
 }
 
+@test "bind-head: FAILED row produces BLOCKED" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S10" "$sha")"
+  sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha} |/| Code Review | FAILED | cr.md | ${sha} |/" "$story"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -eq 1 ]
+  grep -qi 'blocked' <<< "$output"
+}
+
+@test "bind-head: UNVERIFIED row produces PENDING" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S11" "$sha")"
+  sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha} |/| Code Review | UNVERIFIED | — |  |/" "$story"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -eq 2 ]
+  grep -qi 'pending' <<< "$output"
+}
+
+@test "bind-head: 3-col PASSED row reads PENDING (no SHA is stale)" {
+  local story
+  story="$(_seed_story_3col "$PROJECT_PATH" "E900-S12")"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "abcd1234" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'pending\|stale' <<< "$output"
+}
+
+@test "bind-head: CI SHA mismatch produces not COMPLETE" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S13" "$sha")"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha "0000000000000000000000000000000000000000" --story "$story"
+  [ "$status" -ne 0 ]
+}
+
+@test "bind-head: --ci-sha none with CI configured is refused" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S14" "$sha")"
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      name: Staging
+      branch: staging
+YAML
+  PROJECT_PATH="$PROJECT_PATH" PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml" \
+    run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+      --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'not accepted\|ci.*configured\|promotion' <<< "$output"
+}
+
+@test "bind-head: --bind-head none is refused" {
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head none --ci-sha none --story /dev/null
+  [ "$status" -ne 0 ]
+  grep -qi 'not.*none\|must be.*sha' <<< "$output"
+}
+
+@test "bind-head: unknown verdict not treated as pass" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S15" "$sha")"
+  sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha} |/| Code Review | BOGUS | cr.md | ${sha} |/" "$story"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+}
+
 # ---------------------------------------------------------------------------
-# AC3: Non-destructive init preserves existing verdicts
+# AC3: Non-destructive init
 # ---------------------------------------------------------------------------
 
-@test "init-review-gate preserves existing verdicts and seeds missing rows" {
+@test "init preserves existing verdicts and seeds only missing rows" {
   local init_script="${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh"
   [ -f "$init_script" ]
-
-  local story="${PROJECT_PATH}/docs/implementation-artifacts/E900-S3-test-story/story.md"
-  mkdir -p "$(dirname "$story")"
+  local story="${PROJECT_PATH}/story.md"
   cat > "$story" <<'STORY'
 ---
 template: 'story'
@@ -178,35 +286,30 @@ status: in-progress
 
 ## Estimate
 STORY
-
   run bash "$init_script" "$story"
   [ "$status" -eq 0 ]
-
-  # Existing PASSED verdict on Code Review preserved
-  grep '| Code Review | PASSED | cr-report.md |' "$story"
-
-  # Existing FAILED verdict on QA Tests preserved
-  grep '| QA Tests | FAILED | qa-report.md |' "$story"
-
-  # Missing rows seeded with UNVERIFIED
-  grep '| Security Review | UNVERIFIED |' "$story"
-  grep '| Test Automation | UNVERIFIED |' "$story"
-  grep '| Test Review | UNVERIFIED |' "$story"
-  grep '| Performance Review | UNVERIFIED |' "$story"
-
-  # Total row count exactly 6
+  grep -F '| Code Review | PASSED | cr-report.md |' "$story"
+  grep -F '| QA Tests | FAILED | qa-report.md |' "$story"
+  grep -F '| Security Review | UNVERIFIED |' "$story"
+  grep -F '| Test Automation | UNVERIFIED |' "$story"
+  grep -F '| Test Review | UNVERIFIED |' "$story"
+  grep -F '| Performance Review | UNVERIFIED |' "$story"
+  # Count data rows (after the separator, before end of table).
   local row_count
-  row_count=$(grep -c '^| .* | .* |' "$story" | head -1)
-  # Must have at least 6 data rows (excluding header and separator)
-  [ "$row_count" -ge 6 ]
+  row_count="$(awk '
+    /^## Review Gate/ { in_rg = 1; next }
+    in_rg && /^## / { in_rg = 0 }
+    in_rg && /^\|---/ { after_sep = 1; next }
+    in_rg && after_sep && /^\| / { count++ }
+    in_rg && after_sep && !/^\|/ { after_sep = 0 }
+    END { print count + 0 }
+  ' "$story")"
+  [ "$row_count" -eq 6 ]
 }
 
-@test "init-review-gate is idempotent (second run produces no changes)" {
+@test "init idempotent: seed then rerun produces no changes" {
   local init_script="${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh"
-  [ -f "$init_script" ]
-
-  local story="${PROJECT_PATH}/docs/implementation-artifacts/E900-S4-test-story/story.md"
-  mkdir -p "$(dirname "$story")"
+  local story="${PROJECT_PATH}/story-idem.md"
   cat > "$story" <<'STORY'
 ---
 template: 'story'
@@ -214,56 +317,49 @@ key: "E900-S4"
 title: "Test Story 4"
 status: in-progress
 ---
-## Review Gate
+## Acceptance Criteria
 
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | UNVERIFIED | — |
-| QA Tests | UNVERIFIED | — |
-| Security Review | UNVERIFIED | — |
-| Test Automation | UNVERIFIED | — |
-| Test Review | UNVERIFIED | — |
-| Performance Review | UNVERIFIED | — |
-
-> Story moves to `done` only when ALL reviews show PASSED.
+- [ ] AC1
 
 ## Estimate
 STORY
-
   run bash "$init_script" "$story"
   [ "$status" -eq 0 ]
   local after_first
   after_first="$(cat "$story")"
-
   run bash "$init_script" "$story"
   [ "$status" -eq 0 ]
   local after_second
   after_second="$(cat "$story")"
-
   [ "$after_first" = "$after_second" ]
 }
 
+@test "init seeds 4-column header on fresh story" {
+  local init_script="${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh"
+  local story="${PROJECT_PATH}/story-4col.md"
+  cat > "$story" <<'STORY'
+---
+template: 'story'
+key: "E900-S16"
+title: "Test Story"
+status: in-progress
+---
+## Estimate
+STORY
+  run bash "$init_script" "$story"
+  [ "$status" -eq 0 ]
+  grep -q '| Review | Status | Report | Reviewed SHA |' "$story"
+}
+
 # ---------------------------------------------------------------------------
-# AC4: Update binds worktree HEAD by default
+# AC4: Update binds worktree HEAD
 # ---------------------------------------------------------------------------
 
 @test "update without --sha binds worktree HEAD automatically" {
-  local gate="${PLUGIN_ROOT}/scripts/review-gate.sh"
-  [ -f "$gate" ]
-
-  # Initialize a git repo so rev-parse HEAD works
-  git -C "$PROJECT_PATH" init -q
-  git -C "$PROJECT_PATH" config user.email "test@test.local"
-  git -C "$PROJECT_PATH" config user.name "Test"
-  printf 'init\n' > "$PROJECT_PATH/README.md"
-  git -C "$PROJECT_PATH" add README.md
-  git -C "$PROJECT_PATH" commit -q -m "init"
-  local expected_sha
-  expected_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
-
+  _init_git "$PROJECT_PATH"
   local impl="${PROJECT_PATH}/docs/implementation-artifacts"
   mkdir -p "$impl"
-  local story="${impl}/E900-S5-test-story.md"
+  local story="${impl}/E900-S5-test.md"
   cat > "$story" <<'STORY'
 ---
 template: 'story'
@@ -284,30 +380,22 @@ status: review
 
 > Story moves to `done` only when ALL reviews show PASSED.
 STORY
-
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "add story"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "add story"
+  local expected_sha
   expected_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
 
-  run bash "$gate" update \
-    --story E900-S5 \
-    --gate "Code Review" \
-    --verdict PASSED \
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story E900-S5 --gate "Code Review" --verdict PASSED \
     --report-missing-reason "test fixture"
   [ "$status" -eq 0 ]
-
-  # The fourth column must contain the current HEAD SHA
-  grep "| Code Review | PASSED |" "$story" | grep "$expected_sha"
+  grep "Code Review" "$story" | grep -q "$expected_sha"
 }
 
 @test "update records none outside git work tree" {
-  local non_git_dir="${TEST_TMP}/non-git"
-  mkdir -p "$non_git_dir"
-  export PROJECT_PATH="$non_git_dir"
-
-  local impl="${non_git_dir}/docs/implementation-artifacts"
-  mkdir -p "$impl"
-  local story="${impl}/E900-S6-test-story.md"
+  local non_git="${TEST_TMP}/non-git"
+  mkdir -p "$non_git/docs/implementation-artifacts"
+  export PROJECT_PATH="$non_git"
+  local story="$non_git/docs/implementation-artifacts/E900-S6-test.md"
   cat > "$story" <<'STORY'
 ---
 template: 'story'
@@ -328,63 +416,219 @@ status: review
 
 > Story moves to `done` only when ALL reviews show PASSED.
 STORY
-
-  local gate="${PLUGIN_ROOT}/scripts/review-gate.sh"
-  run bash "$gate" update \
-    --story E900-S6 \
-    --gate "Code Review" \
-    --verdict PASSED \
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story E900-S6 --gate "Code Review" --verdict PASSED \
     --report-missing-reason "test fixture"
   [ "$status" -eq 0 ]
+  grep '| Code Review | PASSED |' "$story" | grep -q '| none |'
+}
 
-  # SHA recorded as "none"
-  grep '| Code Review | PASSED | .* | none |' "$story"
+@test "update on 3-column table upgrades header to 4 columns" {
+  _init_git "$PROJECT_PATH"
+  local story
+  story="$(_seed_story_3col "$PROJECT_PATH" "E900-S17")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story E900-S17 --gate "Code Review" --verdict PASSED \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  grep -q '| Review | Status | Report | Reviewed SHA |' "$story"
+}
+
+@test "update refuses --sha with pipe character" {
+  _init_git "$PROJECT_PATH"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S18" "abc1234")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story E900-S18 --gate "Code Review" --verdict PASSED \
+    --sha "abc|injected" --report-missing-reason "test"
+  [ "$status" -ne 0 ]
+  grep -qi 'pipe\|corrupt' <<< "$output"
+}
+
+@test "update refuses --sha with leading dash" {
+  _init_git "$PROJECT_PATH"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S19" "abc1234")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story E900-S19 --gate "Code Review" --verdict PASSED \
+    --sha "--output=/tmp/x" --report-missing-reason "test"
+  [ "$status" -ne 0 ]
+  [ ! -f /tmp/x ]
 }
 
 # ---------------------------------------------------------------------------
-# AC5: Carry-forward self-computes evidence, refuses caller-supplied
+# AC5: Carry-forward
 # ---------------------------------------------------------------------------
 
-@test "carry-forward verb is recognized" {
-  local gate="${PLUGIN_ROOT}/scripts/review-gate.sh"
-  [ -f "$gate" ]
-
-  run bash "$gate" carry-forward --help 2>&1
-  # Must not be "unknown subcommand"
-  ! grep -qi 'unknown.*sub\|unrecognized' <<< "$output"
+@test "carry-forward verb is wired (not just --help exit)" {
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward 2>&1
+  [ "$status" -ne 0 ]
+  grep -qi 'requires\|--row\|--from' <<< "$output"
+  ! grep -qi 'unknown.*sub' <<< "$output"
 }
 
-@test "carry-forward: no scope overlap allows carry" {
-  local gate="${PLUGIN_ROOT}/scripts/review-gate.sh"
-  [ -f "$gate" ]
+@test "carry-forward refuses caller-supplied evidence" {
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S8" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
 
-  # Initialize git with two commits
-  git -C "$PROJECT_PATH" init -q
-  git -C "$PROJECT_PATH" config user.email "test@test.local"
-  git -C "$PROJECT_PATH" config user.name "Test"
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S8 --row "Code Review" --from "$sha_a" --to "$sha_b" \
+    --evidence "fabricated"
+  [ "$status" -ne 0 ]
+  grep -qi 'refuse' <<< "$output"
+}
+
+@test "carry-forward refuses FAILED row" {
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S20" "$sha_a")"
+  sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha_a} |/| Code Review | FAILED | cr.md | ${sha_a} |/" "$story"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S20 --row "Code Review" --from "$sha_a" --to "$sha_b" \
+    --scope "nonexistent/**"
+  [ "$status" -ne 0 ]
+  grep -qi 'not PASSED' <<< "$output"
+}
+
+@test "carry-forward refuses UNVERIFIED row" {
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S21" "$sha_a")"
+  sed -i.bak "s/| Code Review | PASSED | cr.md | ${sha_a} |/| Code Review | UNVERIFIED | — |  |/" "$story"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S21 --row "Code Review" --from "$sha_a" --to "$sha_b" \
+    --scope "nonexistent/**"
+  [ "$status" -ne 0 ]
+  grep -qi 'not PASSED' <<< "$output"
+}
+
+@test "carry-forward refuses mismatched --from SHA" {
+  _init_git "$PROJECT_PATH"
+  local sha_a sha_b
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S22" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S22 --row "Code Review" --from "$sha_b" --to "$sha_b" \
+    --scope "nonexistent/**"
+  [ "$status" -ne 0 ]
+  grep -qi 'mismatch' <<< "$output"
+}
+
+@test "carry-forward: no scope overlap succeeds and preserves report path" {
+  _init_git "$PROJECT_PATH"
   mkdir -p "$PROJECT_PATH/src"
   printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
   printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "commit A"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
   local sha_a
   sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
-
-  # Second commit changes only an unrelated file
   printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "commit B"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S7" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S7 --row "Code Review" --from "$sha_a" --to "$sha_b" \
+    --scope "src/**"
+  [ "$status" -eq 0 ]
+  grep "Code Review" "$story" | grep -q "$sha_b"
+  grep "Code Review" "$story" | grep -q "cr.md"
+}
+
+@test "carry-forward: scope overlap is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S23" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S23 --row "Code Review" --from "$sha_a" --to "$sha_b" \
+    --scope "src/**"
+  [ "$status" -ne 0 ]
+  grep -qi 'scope\|overlap\|re-run' <<< "$output"
+}
+
+@test "carry-forward: --from with argument injection refused, no file created" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S24" "$sha")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S24 --row "Code Review" \
+    --from "--output=/tmp/x" --to "$sha" --scope "src/**"
+  [ "$status" -ne 0 ]
+  [ ! -f /tmp/x ]
+}
+
+@test "carry-forward: review-gate-check treats to-SHA as bound (COMPLETE)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
   local sha_b
   sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
 
-  local impl="${PROJECT_PATH}/docs/implementation-artifacts"
+  local impl="$PROJECT_PATH/docs/implementation-artifacts"
   mkdir -p "$impl"
-  local story="${impl}/E900-S7-test-story.md"
+  local story="$impl/E900-S25-test.md"
   cat > "$story" <<STORY
 ---
 template: 'story'
-key: "E900-S7"
-title: "Test Story 7"
+key: "E900-S25"
+title: "Test Story"
 status: review
 ---
 ## Review Gate
@@ -400,77 +644,15 @@ status: review
 
 > Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
 
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "add story"
-
-  # Carry forward Code Review from A to B — diff has no src/ files
-  run bash "$gate" carry-forward \
-    --story E900-S7 \
-    --row "Code Review" \
-    --from "$sha_a" \
-    --to "$sha_b" \
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S25 --row "Code Review" --from "$sha_a" --to "$sha_b" \
     --scope "src/**"
   [ "$status" -eq 0 ]
 
-  # The row should now reference sha_b
-  grep "$sha_b" "$story" | grep "Code Review"
-}
-
-@test "carry-forward refuses caller-supplied evidence" {
-  local gate="${PLUGIN_ROOT}/scripts/review-gate.sh"
-  [ -f "$gate" ]
-
-  git -C "$PROJECT_PATH" init -q
-  git -C "$PROJECT_PATH" config user.email "test@test.local"
-  git -C "$PROJECT_PATH" config user.name "Test"
-  mkdir -p "$PROJECT_PATH/src"
-  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "commit A"
-  local sha_a
-  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
-
-  printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "commit B"
-  local sha_b
-  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
-
-  local impl="${PROJECT_PATH}/docs/implementation-artifacts"
-  mkdir -p "$impl"
-  local story="${impl}/E900-S8-test-story.md"
-  cat > "$story" <<STORY
----
-template: 'story'
-key: "E900-S8"
-title: "Test Story 8"
-status: review
----
-## Review Gate
-
-| Review | Status | Report | Reviewed SHA |
-|--------|--------|--------|--------------|
-| Code Review | PASSED | cr.md | ${sha_a} |
-| QA Tests | UNVERIFIED | — |  |
-| Security Review | UNVERIFIED | — |  |
-| Test Automation | UNVERIFIED | — |  |
-| Test Review | UNVERIFIED | — |  |
-| Performance Review | UNVERIFIED | — |  |
-
-> Story moves to \`done\` only when ALL reviews show PASSED.
-STORY
-
-  git -C "$PROJECT_PATH" add .
-  git -C "$PROJECT_PATH" commit -q -m "add story"
-
-  # Attempt carry-forward with caller-supplied evidence
-  run bash "$gate" carry-forward \
-    --story E900-S8 \
-    --row "Code Review" \
-    --from "$sha_a" \
-    --to "$sha_b" \
-    --evidence "fabricated-evidence"
-  [ "$status" -ne 0 ]
-  grep -qi 'refuse\|reject\|not.*accept\|caller.*evidence.*denied' <<< "$output"
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_b" --ci-sha none --story "$story"
+  [ "$status" -eq 0 ]
+  grep -qi 'complete' <<< "$output"
 }
