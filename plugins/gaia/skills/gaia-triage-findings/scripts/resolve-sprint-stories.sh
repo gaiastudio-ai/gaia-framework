@@ -152,7 +152,7 @@ for _ssf in "${_SPRINT_STATUS_FILES[@]}"; do
 done
 
 if [ "$_any_runnable" -eq 0 ]; then
-  printf 'resolve-sprint-stories.sh: no runnable sprint found; pass --all to scan all stories\n' >&2
+  printf 'resolve-sprint-stories.sh: runnable sprint not found; pass --all to scan all stories\n' >&2
   exit 0
 fi
 
