@@ -836,3 +836,4 @@
 4	review-gate-commit-bound.bats	105
 2	concurrent-sprint-lifecycle-scoped.bats	17
 2	concurrent-sprint-lifecycle-scoped.bats	29
+2	concurrent-sprint-lifecycle-scoped.bats	62
