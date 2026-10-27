@@ -3379,6 +3379,8 @@ _cmd_rollover_concurrent() {
   local phase_a_passed_keys=()
   local phase_a_failed_keys=()
   local phase_a_rc=0
+  local _phase_a_out
+  _phase_a_out="$(mktemp "${state_dir}/.rollover-phaseA.XXXXXX")" || die "rollover: mktemp failed"
 
   (
     if ! acquire_lock "$l4_path" "${GAIA_LOCK_L4_TIMEOUT:-10}" 8 --strict; then
@@ -3401,49 +3403,49 @@ _cmd_rollover_concurrent() {
       exit 1
     fi
 
-    # Run per-key independence check against every active sprint other
-    # than the source. Build the comma-separated keys list for the batch.
-    local keys_csv=""
-    for key in "${passed_keys[@]}"; do
-      keys_csv="${keys_csv}${keys_csv:+,}${key}"
-    done
-
-    # The independence check is read-only (no writes).
-    # Fail closed when the script is missing or not executable.
+    # Per-key independence check: each key is checked individually so
+    # independent keys can carry over while failing keys stay. The check
+    # is read-only (no writes). Fail closed when the script is missing.
     if [ ! -x "$ic_script" ]; then
       printf 'rollover: independence-check.sh missing or not executable at %s — refusing (fail closed)\n' "$ic_script" >&2
       exit 1
     fi
-    local ic_rc=0
-    PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
-    CLAUDE_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
-      "$ic_script" \
-        --candidate "$to_sprint" \
-        --candidate-stories "$keys_csv" \
-        --from-sprint "$from_sprint" 2>&1 || ic_rc=$?
+    local _any_fail=0
+    for key in "${passed_keys[@]}"; do
+      local _key_rc=0
+      PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+      CLAUDE_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+        "$ic_script" \
+          --candidate "$to_sprint" \
+          --candidate-stories "$key" \
+          --from-sprint "$from_sprint" 2>&1 || _key_rc=$?
 
-    if [ "$ic_rc" -ne 0 ]; then
-      # Independence check failed. Mark all keys as failed.
-      for key in "${passed_keys[@]}"; do
+      if [ "$_key_rc" -ne 0 ]; then
         printf 'FAIL independence: %s\n' "$key"
-      done
+        _any_fail=1
+      else
+        printf 'PASS independence: %s\n' "$key"
+      fi
+    done
+    # Exit non-zero when any key failed (caller parses per-key lines).
+    if [ "$_any_fail" -ne 0 ]; then
       exit 1
     fi
-
-    # All passed keys survived the independence check.
-    for key in "${passed_keys[@]}"; do
-      printf 'PASS independence: %s\n' "$key"
-    done
     exit 0
-  ) || phase_a_rc=$?
+  ) > "$_phase_a_out" 2>&1 || phase_a_rc=$?
 
-  if [ "$phase_a_rc" -ne 0 ]; then
-    # Phase A failed: all passed_keys are blocked.
-    phase_a_failed_keys=("${passed_keys[@]}")
-    phase_a_passed_keys=()
-  else
-    phase_a_passed_keys=("${passed_keys[@]}")
-  fi
+  # Parse per-key results from Phase A output.
+  local _pk
+  for _pk in "${passed_keys[@]}"; do
+    if /usr/bin/grep -q "^PASS independence: ${_pk}\$" "$_phase_a_out" 2>/dev/null; then
+      phase_a_passed_keys+=("$_pk")
+    else
+      phase_a_failed_keys+=("$_pk")
+    fi
+  done
+  # Echo Phase A output to stderr for diagnostics.
+  cat "$_phase_a_out" >&2 2>/dev/null || true
+  rm -f "$_phase_a_out"
 
   # ---- Phase B: L1 of target — inject + phase reset (per passing key) ----
   local phase_b_passed=() phase_b_failed=()
