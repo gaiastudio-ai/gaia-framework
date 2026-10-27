@@ -59,6 +59,8 @@ _IC_ACTIVE_LIST=""      # comma-separated or empty (discover)
 _IC_OVERLAY_FILES=""    # newline-separated overlay file paths
 _IC_SKIP_KEY_SPRINT=""  # "key:sprint_id" — skip this key in comparisons
                         # involving that sprint (carry-over in flight, R77)
+_IC_CANDIDATE_STORIES="" # comma-separated story keys for carry-over mode
+_IC_FROM_SPRINT=""       # source sprint in carry-over mode (excluded from checks)
 
 # Project root for file resolution.
 _IC_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
@@ -90,11 +92,21 @@ _ic_die() {
 _ic_usage() {
   cat <<'USAGE'
 Usage: independence-check.sh --candidate <sprint_id> [--active <id>[,<id>...]]
+       independence-check.sh --candidate <to_sprint> --candidate-stories <k1,k2,...>
+                             [--from-sprint <src>] [--active <id>[,<id>...]]
 
 Options:
-  --candidate <id>       Sprint to check for activation (required)
-  --active <id>[,<id>]   Active sprints to check against (discovered if omitted)
-  -h, --help             Show this help
+  --candidate <id>           Sprint to check against (required)
+  --candidate-stories <keys> Carry-over mode: check these story keys (not the
+                             full candidate sprint) against all active sprints
+  --from-sprint <id>         Source sprint to exclude from the comparison set
+  --active <id>[,<id>]       Active sprints to check against (discovered if omitted)
+  -h, --help                 Show this help
+
+Carry-over mode (--candidate-stories) checks a set of stories for safe
+carry-over into the candidate sprint. The comparison set is every active
+sprint other than --from-sprint (including --candidate when active).
+Per-key results: PASS or FAIL with rule (a)...(d) diagnostics.
 USAGE
   exit 0
 }
@@ -106,6 +118,8 @@ _ic_parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --candidate) _IC_CANDIDATE="${2:-}"; shift 2 ;;
+      --candidate-stories) _IC_CANDIDATE_STORIES="${2:-}"; shift 2 ;;
+      --from-sprint) _IC_FROM_SPRINT="${2:-}"; shift 2 ;;
       --active)    _IC_ACTIVE_LIST="${2:-}"; shift 2 ;;
       --overlay)
         _IC_OVERLAY_FILES="${_IC_OVERLAY_FILES}${_IC_OVERLAY_FILES:+
@@ -1868,10 +1882,23 @@ main() {
   epics_file="${planning_paths%%	*}"
   shards_dir="${planning_paths#*	}"
 
-  # Resolve candidate state file and read keys.
+  # ------------------------------------------------------------------
+  # Carry-over mode: --candidate-stories overrides the candidate's keys.
+  # ------------------------------------------------------------------
+  local _ic_carryover_mode=0
   local candidate_state_file candidate_keys
-  candidate_state_file="$(_ic_resolve_state_file "$_IC_CANDIDATE")"
-  candidate_keys="$(_ic_read_sprint_keys "$candidate_state_file")"
+  if [ -n "$_IC_CANDIDATE_STORIES" ]; then
+    _ic_carryover_mode=1
+    # In carry-over mode the candidate keys are the provided story keys,
+    # not the stories listed in the candidate sprint's state file.
+    candidate_keys="$(printf '%s' "$_IC_CANDIDATE_STORIES" | tr ',' '\n')"
+    # Still resolve the candidate state file (the target sprint) because
+    # the target's existing stories form part of the comparison context.
+    candidate_state_file="$(_ic_resolve_state_file "$_IC_CANDIDATE" 2>/dev/null)" || true
+  else
+    candidate_state_file="$(_ic_resolve_state_file "$_IC_CANDIDATE")"
+    candidate_keys="$(_ic_read_sprint_keys "$candidate_state_file")"
+  fi
 
   # Resolve active sprints.
   local active_csv="$_IC_ACTIVE_LIST"
@@ -1879,8 +1906,29 @@ main() {
     active_csv="$(_ic_discover_active_sprints)"
   fi
 
+  # In carry-over mode, exclude the source sprint from the active set
+  # and include the candidate/target sprint if it is active.
+  if [ "$_ic_carryover_mode" -eq 1 ] && [ -n "$_IC_FROM_SPRINT" ]; then
+    local _filtered="" _aid
+    while IFS= read -r _aid; do
+      [ -n "$_aid" ] || continue
+      if [ "$_aid" = "$_IC_FROM_SPRINT" ]; then
+        continue  # Exclude source sprint
+      fi
+      _filtered="${_filtered}${_filtered:+,}${_aid}"
+    done <<< "$(printf '%s' "$active_csv" | tr ',' '\n')"
+    active_csv="$_filtered"
+  fi
+
   # No active sprints — candidate passes trivially.
   if [ -z "$active_csv" ]; then
+    if [ "$_ic_carryover_mode" -eq 1 ]; then
+      local _ck
+      while IFS= read -r _ck; do
+        [ -n "$_ck" ] || continue
+        printf 'PASS carry-over: %s (no active sprints to compare)\n' "$_ck"
+      done <<< "$candidate_keys"
+    fi
     exit 0
   fi
 
@@ -1916,6 +1964,21 @@ main() {
     [ -n "$ckey" ] || continue
     printf '%s\t%s\n' "$ckey" "$_IC_CANDIDATE" >> "$membership"
   done <<< "$candidate_keys"
+
+  # In carry-over mode, also register the target sprint's existing stories
+  # (they form context for rule checking against the carried-over keys).
+  if [ "$_ic_carryover_mode" -eq 1 ] && [ -n "$candidate_state_file" ] && [ -f "$candidate_state_file" ]; then
+    local _target_keys _tk
+    _target_keys="$(_ic_read_sprint_keys "$candidate_state_file" 2>/dev/null)" || true
+    while IFS= read -r _tk; do
+      [ -n "$_tk" ] || continue
+      # Avoid duplicating a key that is both a carry-over candidate and
+      # already present in the target sprint (re-run idempotency).
+      if ! /usr/bin/grep -q "^${_tk}	" "$membership" 2>/dev/null; then
+        printf '%s\t%s\n' "$_tk" "$_IC_CANDIDATE" >> "$membership"
+      fi
+    done <<< "$_target_keys"
+  fi
 
   # -------------------------------------------------------------------
   # Register active sprint stories.

@@ -174,13 +174,18 @@ For each open item (highest priority first, then oldest first):
 
 ## Step 3 — Update Tracker
 
-- For each processed item, update the resolved `action-items.yaml` (canonical: `.gaia/state/action-items.yaml`):
-  - `status`: `done` | `invalid` | `deferred` | `in-progress` (based on the decision)
-  - `resolution`: reasoning from the deciding agent / user (blank is invalid)
-  - `resolved_date`: current date (for `done` / `invalid`)
-  - `related_stories`: append any newly created story keys
-  - Update the `last_updated` timestamp at the top of the file
-- Save the updated `action-items.yaml` via the `Edit` tool (surgical updates — do not regenerate the entire file).
+- For each processed item, update the resolved `action-items.yaml` (canonical: `.gaia/state/action-items.yaml`) via the scripted resolve subcommand:
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/action-items-write.sh" resolve \
+    --target ".gaia/state/action-items.yaml" \
+    --item "<item-id>" \
+    --status "<done|invalid|resolved|deferred|in-progress|dismissed>" \
+    --resolution "<reasoning from the deciding agent / user>" \
+    --resolved-date "<YYYY-MM-DD>" \
+    --related-stories "<key1,key2,...>"
+  ```
+  The script sets `status`, `resolution`, `resolved_date` (only for done/invalid/resolved), `related_stories`, and bumps `last_updated` — all via strenv() (no value splicing). When running in concurrent-sprint mode (session bound to a sprint), pass `--resolved-in <sprint-id>` with the bound sprint id to record cross-sprint resolution provenance. When `--sprint` filtering is active, process only items whose `sprint_id` matches; when `--sprint` is absent, process all items (this command never refuses for missing sprint context).
+- Do NOT use the `Edit` tool for status changes — all updates go through the scripted path.
 - Save to Val memory (`.gaia/memory/validator-sidecar/decision-log.md`):
 
   ```

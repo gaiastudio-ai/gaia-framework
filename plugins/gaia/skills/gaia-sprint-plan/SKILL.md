@@ -395,6 +395,25 @@ fi
 - After all clears, call `pflag_record_cleared` from the same script to append a `priority_flag_cleared:` block to `sprint-status.yaml` listing the cleared story keys. If no stories were cleared, record an empty array.
 - Emit a summary line: `"priority_flag cleared on {N} included stories; {M} deselected flagged stories retained their flag."`
 
+### Step 6d -- Carry-Over Safety (concurrent mode)
+
+When a closing sprint has incomplete stories to carry over, invoke the rollover:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh rollover \
+  --from <closed-sprint-id> --to <target-sprint-id> --keys <key1,key2,...>
+```
+
+In concurrent mode the rollover runs a three-phase protocol:
+1. **Phase A** checks every active sprint for independence (file-touch overlap, dependency edges, shared epics, config section overlap) and refuses if a closing marker is in progress.
+2. **Phase B** rewrites `sprint_id` and injects each passing key into the target sprint.
+3. **Phase C** removes each passing key from the source sprint.
+
+When the rollover reports failures:
+- **Independence failure (exit 1):** offer the operator three options: (a) pick another target sprint, (b) create a new sprint, or (c) defer to the backlog. When the operator declines all options, return the story to the backlog via `sprint-state.sh set-story-sprint --story {key} --clear`, record the reason as a Findings row on the story file, and emit a `story_returned_to_backlog` lifecycle event via `lifecycle-event.sh` (payload: `story_key`, `from_sprint`, `failed_sprints`, `failed_rules`).
+- **Missing touch-set (exit 2):** prompt the operator to populate `predicted_touch_set` on the story file, then retry the rollover.
+- **Closing marker (exit 1 with "sprint close in progress" diagnostic):** wait for the close to finish and retry.
+
 ### Step 7 -- Save Sprint Plan Document
 
 - Run `mkdir -p .gaia/artifacts/implementation-artifacts/sprint-plan/` so the nested directory exists on first run.
