@@ -669,7 +669,7 @@ teardown() {
   action_section="$(awk '/^## Action/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
 
   # The Action section must contain "accept ONLY" (case-sensitive).
-  printf '%s' "$action_section" | /usr/bin/grep -q 'accept ONLY'
+  /usr/bin/grep -q 'accept ONLY' <<<"$action_section"
 }
 
 @test "close-then-finalize order is enforced in SKILL.md" {
@@ -698,8 +698,8 @@ teardown() {
   action_section="$(awk '/^## Action/{found=1;next} /^## /{if(found)exit} found' "$skill_md")"
 
   # The Action section must refuse quote characters (single and double).
-  printf '%s' "$action_section" | /usr/bin/grep -q "'"
-  printf '%s' "$action_section" | /usr/bin/grep -q '"'
+  /usr/bin/grep -q "'" <<<"$action_section"
+  /usr/bin/grep -q '"' <<<"$action_section"
 }
 
 # ---------- Triage snippet quoting (story AC6) ----------
