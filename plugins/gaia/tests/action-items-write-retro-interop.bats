@@ -374,7 +374,7 @@ EOF
 }
 
 # ===========================================================================
-# aiw_check_dedup — nested-map immunity (AC4)
+# aiw_check_dedup — nested-map immunity
 # ===========================================================================
 
 @test "aiw_check_dedup ignores sprint_id inside nested map (no false match)" {
@@ -418,7 +418,7 @@ EOF
 }
 
 # ===========================================================================
-# aiw_check_dedup — inline YAML comment stripping (AC5)
+# aiw_check_dedup — inline YAML comment stripping
 # ===========================================================================
 
 @test "aiw_check_dedup matches entry with trailing inline comment on sprint_id" {
@@ -459,6 +459,78 @@ EOF
   # sprint-50 appears in the comment but the actual value is sprint-49
   run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
   [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — blank-line resilience (regression)
+# ===========================================================================
+
+@test "aiw_check_dedup matches entry with blank line between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '  status: open\n'
+    printf '\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with multiple blank lines between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "s1"\n'
+    printf '\n'
+    printf '\n'
+    printf '    classification: "bug"\n'
+    printf '\n'
+    printf '    finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with whitespace-only line between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '   \n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_write does not duplicate entry when blank lines exist in the file" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf '# header\nitems:\n'
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '  status: open\n'
+    printf '\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  local got
+  got="$(aiw_write --target "$target" --sprint-id "s1" \
+    --classification "bug" --text "dup probe" \
+    --ref-key "finding_id" --ref-value "F-1")"
+  grep -q 'status=skipped_idempotent' <<<"$got"
+  # File must still have exactly one finding_id: "F-1"
+  local count
+  count="$(/usr/bin/grep -c 'finding_id: "F-1"' "$target")"
+  [ "$count" -eq 1 ]
 }
 
 # ===========================================================================
@@ -900,22 +972,23 @@ EOF
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 
-@test "no test in this file writes outside its temp directory (plugin tree unchanged)" {
-  _load_aiw
+@test "litter guard detects a planted file under the plugin tree" {
+  # Verifies the shared teardown_file litter guard catches writes outside
+  # temp dirs. We plant a file, check that git status sees it, then remove
+  # it (the guard runs at file teardown, not per-test; this test proves the
+  # detection mechanism works).
   local repo_root
   repo_root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  # Snapshot the plugin scripts directory state before a representative write
-  local before after
-  before="$(git -C "$repo_root" status --porcelain -- plugins/gaia/scripts/ 2>/dev/null || echo "NOGIT")"
-  local target="$TEST_TMP/litter-check.yaml"
-  aiw_write --target "$target" --sprint-id "sprint-50" \
-    --classification "process" --text "litter test" \
-    --ref-key "story_key" --ref-value "E900-S1" >/dev/null
-  after="$(git -C "$repo_root" status --porcelain -- plugins/gaia/scripts/ 2>/dev/null || echo "NOGIT")"
-  [ "$before" = "$after" ]
-  # Verify the write went to the temp dir, not the plugin tree
-  [ -f "$target" ]
-  grep -q 'litter test' "$target"
+  if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    skip "not inside a git work tree"
+  fi
+  local planted="$repo_root/plugins/gaia/scripts/.litter-probe-$$"
+  echo "probe" > "$planted"
+  local status_out
+  status_out="$(git -C "$repo_root" status --porcelain --untracked-files=all -- plugins/gaia/scripts/.litter-probe-$$ 2>/dev/null || true)"
+  rm -f "$planted"
+  # The planted file must have appeared in git status (proves detection works)
+  [ -n "$status_out" ]
 }
 
 @test "no machine-specific paths leak into this test file" {

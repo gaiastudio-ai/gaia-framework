@@ -470,17 +470,19 @@ HEADER
 # aiw_next_id — single awk pass (performance rewrite)
 # ===========================================================================
 
-@test "aiw_next_id: awk rewrite produces same result as 300-entry file" {
+@test "aiw_next_id: returns max+1 from non-ascending ids in a large file" {
   _load_aiw
   local target="$TEST_TMP/action-items-perf.yaml"
   aiw_bootstrap_file "$target"
+  # Insert 300 entries with non-ascending ids; max is 500 but appears early
+  printf '  - id: AI-500\n    text: "the max"\n    status: open\n' >> "$target"
   local i
-  for i in $(seq 1 300); do
+  for i in $(seq 1 299); do
     printf '  - id: AI-%d\n    text: "entry %d"\n    status: open\n' "$i" "$i" >> "$target"
   done
   local got
   got="$(aiw_next_id "$target")"
-  [ "$got" = "AI-301" ]
+  [ "$got" = "AI-501" ]
 }
 
 # ===========================================================================
@@ -539,9 +541,12 @@ HEADER
   [ ! -e "$target" ] || ! grep -q 'before' "$target"
 }
 
-@test "aiw_write: rejects NEL in ref-value" {
+@test "aiw_write: rejects NEL in ref-value and leaves file unchanged" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  local before
+  before="$(cat "$target")"
   local nel_val
   nel_val="$(printf 'F\xc2\x851')"
   run aiw_write --target "$target" --sprint-id "sprint-50" \
@@ -549,11 +554,15 @@ HEADER
     --ref-key "finding_id" --ref-value "$nel_val"
   [ "$status" -eq 1 ]
   grep -q 'NEL' <<<"$output"
+  [ "$(cat "$target")" = "$before" ]
 }
 
-@test "aiw_write: rejects NEL in sprint-id" {
+@test "aiw_write: rejects NEL in sprint-id and leaves file unchanged" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  local before
+  before="$(cat "$target")"
   local nel_sprint
   nel_sprint="$(printf 'sprint\xc2\x8550')"
   run aiw_write --target "$target" --sprint-id "$nel_sprint" \
@@ -561,16 +570,94 @@ HEADER
     --ref-key "finding_id" --ref-value "F-1"
   [ "$status" -eq 1 ]
   grep -q 'NEL' <<<"$output"
+  [ "$(cat "$target")" = "$before" ]
 }
 
-@test "aiw_write: rejects invalid UTF-8 (0xFE) in ref-value" {
+@test "aiw_write: rejects invalid UTF-8 (0xFE) in ref-value and leaves file unchanged" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  local before
+  before="$(cat "$target")"
   local bad_val
   bad_val="$(printf 'F-\xfe1')"
   run aiw_write --target "$target" --sprint-id "sprint-50" \
     --classification "bug" --text "clean" \
     --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  [ "$(cat "$target")" = "$before" ]
+}
+
+@test "aiw_write: rejects codepoint above U+10FFFF (F4 90 80 80) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_text
+  bad_text="$(printf 'x\xf4\x90\x80\x80y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'x' "$target"
+}
+
+@test "aiw_write: rejects F5 lead byte in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_val
+  bad_val="$(printf 'F-\xf5\x80\x80\x801')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+}
+
+@test "aiw_write: rejects 5-byte form (F8 88 80 80 80) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_sprint
+  bad_sprint="$(printf 's\xf8\x88\x80\x80\x80p')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+}
+
+@test "aiw_write: rejects overlong C0 80 in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_text
+  bad_text="$(printf 'x\xc0\x80y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+}
+
+@test "aiw_write: rejects surrogate ED A0 80 in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_text
+  bad_text="$(printf 'x\xed\xa0\x80y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+}
+
+@test "aiw_write: rejects truncated 2-byte sequence (bare C3) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_text
+  bad_text="$(printf 'x\xc3')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
   [ "$status" -eq 1 ]
   grep -q 'invalid UTF-8' <<<"$output"
 }
@@ -644,5 +731,22 @@ HEADER
     source '$ACTION_ITEMS_WRITE_SH'
     _aiw_has_control_chars 'clean text'
   "
+  [ "$status" -eq 0 ]
+}
+
+@test "_aiw_check_unicode_safety: rejects when od is absent (fail closed)" {
+  _load_aiw
+  local shim_dir="$TEST_TMP/no-od"
+  mkdir -p "$shim_dir"
+  # Create a PATH that excludes od: copy only essential tools
+  for cmd in bash awk printf cat; do
+    local p
+    p="$(command -v "$cmd" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$shim_dir/"
+  done
+  run env PATH="$shim_dir" bash -c "
+    source '$ACTION_ITEMS_WRITE_SH'
+    _aiw_check_unicode_safety 'perfectly valid text'
+  "
+  # Function should return 0 (unsafe / reject) when od is absent
   [ "$status" -eq 0 ]
 }

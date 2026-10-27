@@ -112,8 +112,10 @@ aiw_check_dedup() {
       next
     }
     in_entry {
-      # Detect end-of-entry: line with less indent than the field level
-      # (but not a new entry, which is handled above)
+      # Skip blank / whitespace-only lines (not an entry boundary)
+      if ($0 ~ /^[[:space:]]*$/) next
+      # Detect end-of-entry: non-blank line with less indent than fields
+      # (new entries handled above; comments at column 0 end the entry)
       match($0, /^[[:space:]]*/)
       li = RLENGTH
       if (li < field_indent) {
@@ -127,19 +129,22 @@ aiw_check_dedup() {
       colon = index(line, ":")
       if (colon > 0) {
         fk = substr(line, 1, colon - 1)
+        # Only extract values for the three compared keys (performance)
+        if (fk != "sprint_id" && fk != "classification" && fk != rk) next
         raw = substr(line, colon + 1)
         sub(/^[[:space:]]+/, "", raw)
-        # Extract value: handle quoted and unquoted forms
+        # Extract value: handle quoted and unquoted forms.
+        # Only reached for compared keys (3 per entry), so the walk is cheap.
         if (substr(raw, 1, 1) == "\"") {
           # Quoted: walk to find unescaped closing quote
-          fv = ""; rest = substr(raw, 2); i = 1
-          while (i <= length(rest)) {
-            c = substr(rest, i, 1)
-            if (c == "\\" && i < length(rest)) {
-              fv = fv substr(rest, i, 2); i += 2; continue
+          fv = ""; rest = substr(raw, 2); j = 1
+          while (j <= length(rest)) {
+            ch = substr(rest, j, 1)
+            if (ch == "\\" && j < length(rest)) {
+              fv = fv substr(rest, j, 2); j += 2; continue
             }
-            if (c == "\"") break
-            fv = fv c; i++
+            if (ch == "\"") break
+            fv = fv ch; j++
           }
         } else {
           # Unquoted: strip inline YAML comment
@@ -239,6 +244,7 @@ _aiw_has_control_chars() {
 # ---------------------------------------------------------------------------
 _aiw_check_unicode_safety() {
   local s="$1"
+  [ -z "$s" ] && return 1
   local LC_ALL=C
   # NEL (U+0085): UTF-8 bytes 0xC2 0x85
   case "$s" in *$'\xc2\x85'*)
@@ -249,11 +255,48 @@ _aiw_check_unicode_safety() {
   # U+FFFF: UTF-8 bytes 0xEF 0xBF 0xBF
   case "$s" in *$'\xef\xbf\xbf'*)
     printf 'non-character U+FFFF\n'; return 0 ;; esac
-  # Invalid UTF-8: validate with iconv (fail closed if unavailable)
-  if ! command -v iconv >/dev/null 2>&1; then
-    printf 'invalid UTF-8 (iconv unavailable for validation)\n'; return 0
-  fi
-  if ! printf '%s' "$s" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+  # Structural UTF-8 validation via od + awk byte-level state machine.
+  # Rejects overlongs (C0-C1, E0 80-9F, F0 80-8F), surrogates (ED A0-BF),
+  # codepoints > U+10FFFF (F4 90+), F5-FF lead bytes, truncated sequences,
+  # and 5+ byte forms. Portable: od and awk are POSIX; no strtonum needed.
+  # Fails closed: if od or awk is absent, the pipeline errors and we reject.
+  if ! printf '%s' "$s" | LC_ALL=C od -An -tx1 | awk '
+    function hv(h,  a,b) {
+      a = index("0123456789abcdef", substr(h,1,1)) - 1
+      b = index("0123456789abcdef", substr(h,2,1)) - 1
+      return a * 16 + b
+    }
+    { for (i = 1; i <= NF; i++) {
+        b = hv($i)
+        if (need > 0) {
+          if (b < 128 || b > 191) exit 1
+          need--
+          if (need == fn - 1) {
+            if (blo > 0 && b < blo) exit 1
+            if (bhi > 0 && b > bhi) exit 1
+          }
+        } else if (b <= 127) {
+          ;
+        } else if (b >= 194 && b <= 223) {
+          need = 1; fn = 1; blo = 0; bhi = 0
+        } else if (b == 224) {
+          need = 2; fn = 2; blo = 160; bhi = 0
+        } else if (b >= 225 && b <= 236) {
+          need = 2; fn = 2; blo = 0; bhi = 0
+        } else if (b == 237) {
+          need = 2; fn = 2; blo = 0; bhi = 159
+        } else if (b >= 238 && b <= 239) {
+          need = 2; fn = 2; blo = 0; bhi = 0
+        } else if (b == 240) {
+          need = 3; fn = 3; blo = 144; bhi = 0
+        } else if (b >= 241 && b <= 243) {
+          need = 3; fn = 3; blo = 0; bhi = 0
+        } else if (b == 244) {
+          need = 3; fn = 3; blo = 0; bhi = 143
+        } else { exit 1 }
+    } }
+    END { if (need > 0) exit 1 }
+  '; then
     printf 'invalid UTF-8 byte sequence\n'; return 0
   fi
   return 1
