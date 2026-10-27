@@ -2023,7 +2023,10 @@ do_inject_locked() {
   yaml_sprint_id=$(read_yaml_sprint_id "$SPRINT_STATUS_YAML") \
     || die "inject: sprint-status.yaml at $SPRINT_STATUS_YAML missing top-level sprint_id"
 
-  if [ "$fm_sprint_id" != "$yaml_sprint_id" ]; then
+  # During rollover Phase B the story file still carries the source sprint's
+  # id (the rewrite happens in Phase C after inject succeeds). Skip the
+  # mismatch check when the rollover suppression flag is set.
+  if [ "${_GAIA_ROLLOVER_INJECT:-0}" != "1" ] && [ "$fm_sprint_id" != "$yaml_sprint_id" ]; then
     die "inject: sprint-id mismatch — story file frontmatter sprint_id='$fm_sprint_id' but sprint-status.yaml sprint_id='$yaml_sprint_id'; refusing to write"
   fi
 
@@ -3309,10 +3312,10 @@ cmd_rollover() {
   return 0
 }
 
-# Concurrent-mode rollover: three-phase protocol (R65/R72).
-# Phase A: L4 strict — closing-marker check + independence check (read-only).
-# Phase B: L1 of target — inject + phase reset (per passing key).
-# Phase C: L1 of source — remove + sprint_id rewrite (per passing key).
+# Concurrent-mode rollover: three-phase protocol.
+# Phase A: lifecycle lock (strict) — closing-marker check + independence check (read-only).
+# Phase B: per-sprint lock on target — inject + phase reset (per passing key).
+# Phase C: per-sprint lock on source — remove key + sprint_id rewrite (per passing key).
 # No two locks are ever held at once.
 _cmd_rollover_concurrent() {
   local from_sprint="$1" to_sprint="$2"
@@ -3341,7 +3344,7 @@ _cmd_rollover_concurrent() {
       continue
     fi
 
-    # Check predicted_touch_set presence (AC7).
+    # Stories entering concurrent mode must have a touch-set; refuse if absent.
     local has_touchset
     has_touchset="$(awk '
       BEGIN { in_fm=0; found=0 }
@@ -3406,22 +3409,25 @@ _cmd_rollover_concurrent() {
     done
 
     # The independence check is read-only (no writes).
-    if [ -x "$ic_script" ]; then
-      local ic_rc=0
-      PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
-      CLAUDE_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
-        "$ic_script" \
-          --candidate "$to_sprint" \
-          --candidate-stories "$keys_csv" \
-          --from-sprint "$from_sprint" 2>&1 || ic_rc=$?
+    # Fail closed when the script is missing or not executable.
+    if [ ! -x "$ic_script" ]; then
+      printf 'rollover: independence-check.sh missing or not executable at %s — refusing (fail closed)\n' "$ic_script" >&2
+      exit 1
+    fi
+    local ic_rc=0
+    PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+    CLAUDE_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+      "$ic_script" \
+        --candidate "$to_sprint" \
+        --candidate-stories "$keys_csv" \
+        --from-sprint "$from_sprint" 2>&1 || ic_rc=$?
 
-      if [ "$ic_rc" -ne 0 ]; then
-        # Independence check failed. Mark all keys as failed.
-        for key in "${passed_keys[@]}"; do
-          printf 'FAIL independence: %s\n' "$key"
-        done
-        exit 1
-      fi
+    if [ "$ic_rc" -ne 0 ]; then
+      # Independence check failed. Mark all keys as failed.
+      for key in "${passed_keys[@]}"; do
+        printf 'FAIL independence: %s\n' "$key"
+      done
+      exit 1
     fi
 
     # All passed keys survived the independence check.
@@ -3449,44 +3455,21 @@ _cmd_rollover_concurrent() {
     for key in "${phase_a_passed_keys[@]}"; do
       local inject_rc=0
 
-      # Phase B: rewrite sprint_id, inject into target, reset phase.
-      # cmd_inject and cmd_set_phase each acquire L1 in their own subshells,
-      # so we do NOT hold L1 ourselves (no two locks at once).
+      # Phase B: inject the story into the target sprint + reset phase.
+      # The sprint_id rewrite happens in Phase C (after inject succeeds)
+      # so we never leave the story file pointing at a sprint that lacks
+      # the key. cmd_inject and cmd_set_phase acquire L1 in their own
+      # subshells; we do NOT hold L1 ourselves (no two locks at once).
+      # The inject's sprint-id mismatch check is suppressed because the
+      # story file still carries the source sprint_id at this point.
       (
-        # Rewrite the story file's sprint_id BEFORE inject so the
-        # sprint-id mismatch check passes. Accepts either source or
-        # target as current value (re-run idempotency).
-        . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
-        local sf
-        sf="$(resolve_story_file "$key" 2>/dev/null)" || exit 1
-        [ -f "$sf" ] || exit 1
-        local tmp
-        tmp="$(mktemp "${sf}.XXXXXX")" || exit 1
-        awk -v from="$from_sprint" -v to="$to_sprint" '
-          /^sprint_id:/ {
-            if ($0 ~ ("^sprint_id:[[:space:]]*\"" from "\"") || \
-                $0 ~ ("^sprint_id:[[:space:]]*\"" to "\"")   || \
-                $0 ~ /^sprint_id:[[:space:]]*null[[:space:]]*$/) {
-              print "sprint_id: \"" to "\""
-              next
-            }
-          }
-          { print }
-        ' "$sf" > "$tmp" || { rm -f "$tmp"; exit 1; }
-        if ! grep -q "^sprint_id:[[:space:]]*\"$to_sprint\"" "$tmp"; then
-          rm -f "$tmp"; exit 1
-        fi
-        mv -f "$tmp" "$sf" || { rm -f "$tmp"; exit 1; }
-
-        # Point SPRINT_STATUS_YAML at the target's per-sprint file so
-        # cmd_inject and cmd_set_phase write to the correct file.
+        # Point SPRINT_STATUS_YAML at the target's per-sprint file.
         SPRINT_STATUS_YAML="$to_yaml"
         SPRINT_STATUS_LOCK="${to_yaml}.lock"
         _GAIA_SPRINT_ARG="$to_sprint"
 
-        # Inject the story into the target sprint (idempotent).
-        # cmd_inject takes L1 internally in its own subshell.
-        # Suppress the inject independence gate — Phase A already checked.
+        # Suppress the inject independence gate and sprint-id mismatch
+        # check — Phase A already verified independence.
         _GAIA_ROLLOVER_INJECT=1
         cmd_inject "$key" "" >/dev/null 2>&1 || exit 1
 
@@ -3513,14 +3496,24 @@ _cmd_rollover_concurrent() {
     for key in "${phase_b_passed[@]}"; do
       local remove_rc=0
 
-      # Phase C: remove key from source yaml + confirm sprint_id rewrite.
-      # _remove_story_from_yaml does its own lock-free yq+mv; the
-      # sprint_id was already rewritten in Phase B. The re-read here is
-      # an idempotent safety net (accepts either source or target).
+      # Phase C: take L1 of source, remove key from source yaml, rewrite
+      # the story file's sprint_id to the target. The sprint_id rewrite
+      # happens here (after inject succeeded in Phase B) so we never
+      # leave a state where sprint_id names a sprint that lacks the key.
+      # Accepts either source or target as current sprint_id value so a
+      # re-run after a crash between phases completes idempotently.
       (
+        if ! acquire_lock "$from_lock" 5 9; then
+          die "rollover Phase C: lock timeout acquiring $from_lock"
+        fi
+        trap 'release_lock 9 2>/dev/null || true' EXIT
+        trap 'release_lock 9 2>/dev/null || true; exit 130' INT
+        trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
+
+        # Remove the key from the source sprint yaml (idempotent).
         _remove_story_from_yaml "$from_yaml" "$key"
 
-        # Idempotent sprint_id confirmation (already rewritten in Phase B).
+        # Rewrite sprint_id in the story file (mktemp + mv).
         . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
         local sf
         sf="$(resolve_story_file "$key" 2>/dev/null)" || exit 1
@@ -5195,7 +5188,7 @@ _cmd_set_story_sprint_clear() {
         trap 'release_lock 9 2>/dev/null || true; exit 130' INT
         trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
         _remove_story_from_yaml "$cur_yaml" "$story_key"
-      ) || printf '%s: warning: failed to remove %s from %s\n' "$SCRIPT_NAME" "$story_key" "$cur_yaml" >&2
+      ) || die "set-story-sprint --clear: failed to remove $story_key from $cur_yaml"
     fi
   fi
 

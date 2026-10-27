@@ -488,37 +488,32 @@ aiw_write() {
 }
 
 # ---------------------------------------------------------------------------
-# aiw_resolve — update an existing action item's status fields via yq
+# aiw_resolve — update an existing action item's status fields in place
 # ---------------------------------------------------------------------------
 #
 # Public function (direct unit test required).
+#
+# Uses awk-based field-level editing to modify ONLY the target item's lines,
+# preserving all other bytes (comments, blank lines, formatting). Never
+# re-serialises the file. All values are escaped via _aiw_yaml_escape.
 #
 # Usage:
 #   aiw_resolve --target <path> --item <id> --status <status> \
 #     [--resolution <text>] [--resolved-date <YYYY-MM-DD>] \
 #     [--resolved-in <sprint-id>] [--related-stories <key,...>]
 #
-# All yq writes use strenv()/--arg — no value splicing. Sets:
-#   status           — always (required)
-#   resolution       — when --resolution is passed
-#   resolved_date    — only for done/invalid/resolved statuses
-#   related_stories  — when --related-stories is passed
-#   resolved_in      — only when --resolved-in is passed (concurrent mode)
-#
-# Bumps the tracker-level `last_updated` to today.
-#
 # Exit codes:
 #   0 — resolved
-#   1 — error (missing arg, item not found, yq failure)
+#   1 — error (missing arg, item not found, write failure)
 aiw_resolve() {
-  local target="" item="" status="" resolution="" resolved_date=""
+  local target="" item="" _resolve_status="" resolution="" resolved_date=""
   local resolved_in="" related_stories=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --target)           target="$2"; shift 2 ;;
       --item)             item="$2"; shift 2 ;;
-      --status)           status="$2"; shift 2 ;;
+      --status)           _resolve_status="$2"; shift 2 ;;
       --resolution)       resolution="$2"; shift 2 ;;
       --resolved-date)    resolved_date="$2"; shift 2 ;;
       --resolved-in)      resolved_in="$2"; shift 2 ;;
@@ -529,144 +524,214 @@ aiw_resolve() {
 
   # Validate required args.
   if [ -z "$target" ]; then
-    printf 'status=error\nreason=aiw_resolve: --target is required\n'
-    return 1
+    printf 'status=error\nreason=aiw_resolve: --target is required\n'; return 1
   fi
   if [ -z "$item" ]; then
-    printf 'status=error\nreason=aiw_resolve: --item is required\n'
-    return 1
+    printf 'status=error\nreason=aiw_resolve: --item is required\n'; return 1
   fi
-  if [ -z "$status" ]; then
-    printf 'status=error\nreason=aiw_resolve: --status is required\n'
-    return 1
+  if [ -z "$_resolve_status" ]; then
+    printf 'status=error\nreason=aiw_resolve: --status is required\n'; return 1
   fi
 
   # Validate status vocabulary.
-  case "$status" in
+  case "$_resolve_status" in
     done|invalid|resolved|deferred|in-progress|dismissed) : ;;
     *)
-      printf 'status=error\nreason=aiw_resolve: invalid status "%s"; allowed: done, invalid, resolved, deferred, in-progress, dismissed\n' "$status"
-      return 1
-      ;;
+      printf 'status=error\nreason=aiw_resolve: invalid status "%s"; allowed: done, invalid, resolved, deferred, in-progress, dismissed\n' "$_resolve_status"
+      return 1 ;;
   esac
 
   # Validate target file exists and is not a symlink.
   if [ ! -f "$target" ]; then
-    printf 'status=error\nreason=aiw_resolve: target file not found: %s\n' "$target"
-    return 1
+    printf 'status=error\nreason=aiw_resolve: target file not found: %s\n' "$target"; return 1
   fi
   if [ -L "$target" ]; then
-    printf 'status=error\nreason=aiw_resolve: target is a symlink; refusing\n'
-    return 1
+    printf 'status=error\nreason=aiw_resolve: target is a symlink; refusing\n'; return 1
   fi
 
-  # Require yq.
-  if ! command -v yq >/dev/null 2>&1; then
-    printf 'status=error\nreason=aiw_resolve: yq is required but not found\n'
-    return 1
+  # Reject control characters in values.
+  local _val
+  for _val in "$_resolve_status" "$resolution" "$resolved_date" "$resolved_in" "$related_stories"; do
+    if _aiw_has_control_chars "$_val"; then
+      printf 'status=error\nreason=aiw_resolve: value contains disallowed control characters\n'; return 1
+    fi
+  done
+
+  # Escape values for double-quoted YAML scalars.
+  local safe_status safe_resolution safe_rd safe_ri
+  safe_status="$(_aiw_yaml_escape "$_resolve_status")"
+  safe_resolution="$(_aiw_yaml_escape "$resolution")"
+  safe_ri="$(_aiw_yaml_escape "$resolved_in")"
+
+  # Resolved date: only for done/invalid/resolved.
+  local rd=""
+  case "$_resolve_status" in
+    done|invalid|resolved) rd="${resolved_date:-$(date -u +%Y-%m-%d)}" ;;
+  esac
+  safe_rd="$(_aiw_yaml_escape "$rd")"
+
+  # Build related_stories as a YAML inline sequence: ["k1", "k2"].
+  local safe_rs=""
+  if [ -n "$related_stories" ]; then
+    local _rs_build=""
+    local OLDIFS="$IFS"; IFS=','
+    for _rk in $related_stories; do
+      _rk="${_rk# }"; _rk="${_rk% }"
+      [ -n "$_rk" ] || continue
+      local _erk
+      _erk="$(_aiw_yaml_escape "$_rk")"
+      if [ -n "$_rs_build" ]; then
+        _rs_build="${_rs_build}, \"${_erk}\""
+      else
+        _rs_build="\"${_erk}\""
+      fi
+    done
+    IFS="$OLDIFS"
+    safe_rs="[${_rs_build}]"
   fi
 
-  # Verify the item exists. yq v4 uses environment variables + strenv().
-  local idx
-  idx="$(AIW_ID="$item" yq -r \
-    '(.items // []) | to_entries | map(select(.value.id == strenv(AIW_ID))) | .[0].key // ""' \
-    "$target" 2>/dev/null)" || {
-    printf 'status=error\nreason=aiw_resolve: yq read failed\n'
-    return 1
+  # Awk-based in-place edit: only the target item's fields are changed.
+  # Every other byte in the file is preserved verbatim. Fields that don't
+  # exist on the item are appended after the last field in that item block.
+  local tmp
+  tmp="$(mktemp "${target}.XXXXXX")" || {
+    printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
   }
-  if [ -z "$idx" ]; then
+
+  # Pass values via ENVIRON to avoid awk -v backslash interpretation.
+  local awk_rc=0
+  AIW_ITEM="$item" \
+  AIW_STATUS="$safe_status" \
+  AIW_RESOLUTION="$safe_resolution" \
+  AIW_RD="$safe_rd" \
+  AIW_RI="$safe_ri" \
+  AIW_RS="$safe_rs" \
+  awk '
+    BEGIN {
+      item = ENVIRON["AIW_ITEM"]
+      new_status = ENVIRON["AIW_STATUS"]
+      new_resolution = ENVIRON["AIW_RESOLUTION"]
+      new_rd = ENVIRON["AIW_RD"]
+      new_ri = ENVIRON["AIW_RI"]
+      new_rs = ENVIRON["AIW_RS"]
+      in_target = 0; found = 0; done_editing = 0
+      wrote_status = 0; wrote_resolution = 0; wrote_rd = 0
+      wrote_ri = 0; wrote_rs = 0
+      indent = "  "  # default field indent
+    }
+
+    # Detect start of an item block: line starting with "- id:"
+    /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
+      # Flush pending fields from previous target block.
+      if (in_target) { _flush_pending(); done_editing = 1 }
+      in_target = 0
+
+      # Check if this is our target item (first match only).
+      if (!done_editing) {
+        line = $0
+        sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", line)
+        gsub(/^["'"'"']+|["'"'"']+$/, "", line)
+        if (line == item) {
+          in_target = 1; found = 1
+          wrote_status = 0; wrote_resolution = 0; wrote_rd = 0
+          wrote_ri = 0; wrote_rs = 0
+          # Detect indent from this line.
+          match($0, /^[[:space:]]*/)
+          indent = substr($0, 1, RLENGTH) "  "
+        }
+      }
+      print; next
+    }
+
+    # Inside the target item: replace or note existing fields.
+    in_target && /^[[:space:]]+status:[[:space:]]/ {
+      printf "%sstatus: \"%s\"\n", indent, new_status
+      wrote_status = 1; next
+    }
+    in_target && /^[[:space:]]+resolution:[[:space:]]/ {
+      if (new_resolution != "") {
+        printf "%sresolution: \"%s\"\n", indent, new_resolution
+        wrote_resolution = 1
+      } else { print }
+      next
+    }
+    in_target && /^[[:space:]]+resolved_date:[[:space:]]/ {
+      if (new_rd != "") {
+        printf "%sresolved_date: \"%s\"\n", indent, new_rd
+        wrote_rd = 1
+      } else { print }
+      next
+    }
+    in_target && /^[[:space:]]+resolved_in:[[:space:]]/ {
+      if (new_ri != "") {
+        printf "%sresolved_in: \"%s\"\n", indent, new_ri
+        wrote_ri = 1
+      } else { print }
+      next
+    }
+    in_target && /^[[:space:]]+related_stories:[[:space:]]/ {
+      if (new_rs != "") {
+        printf "%srelated_stories: %s\n", indent, new_rs
+        wrote_rs = 1
+      } else { print }
+      next
+    }
+
+    # End of target item block: next item or non-indented line.
+    in_target && (/^[[:space:]]*-[[:space:]]+id:/ || /^[^[:space:]#]/) {
+      _flush_pending()
+      in_target = 0
+    }
+
+    { print }
+
+    END {
+      if (in_target) _flush_pending()
+      if (!found) { printf "NOTFOUND\n" > "/dev/stderr"; exit 1 }
+    }
+
+    function _flush_pending() {
+      if (!wrote_status) printf "%sstatus: \"%s\"\n", indent, new_status
+      if (new_resolution != "" && !wrote_resolution) printf "%sresolution: \"%s\"\n", indent, new_resolution
+      if (new_rd != "" && !wrote_rd) printf "%sresolved_date: \"%s\"\n", indent, new_rd
+      if (new_ri != "" && !wrote_ri) printf "%sresolved_in: \"%s\"\n", indent, new_ri
+      if (new_rs != "" && !wrote_rs) printf "%srelated_stories: %s\n", indent, new_rs
+    }
+  ' "$target" > "$tmp" || awk_rc=$?
+
+  if [ "$awk_rc" -ne 0 ]; then
+    rm -f "$tmp"
     printf 'status=error\nreason=aiw_resolve: item %s not found in %s\n' "$item" "$target"
     return 1
   fi
 
-  # Atomic update via mktemp + mv (avoids partial writes on yq failure).
-  local tmp
-  tmp="$(mktemp "${target}.XXXXXX")" || {
-    printf 'status=error\nreason=aiw_resolve: mktemp failed\n'
-    return 1
-  }
-  # Clean up temp on any exit from this function scope.
-  local _aiw_tmp="$tmp"
-
-  cp "$target" "$tmp" || { rm -f "$tmp"; printf 'status=error\nreason=aiw_resolve: cp failed\n'; return 1; }
-
-  # Write status (always). All yq writes use strenv() — no value splicing.
-  if ! AIW_VAL="$status" yq -i \
-    ".items[$idx].status = strenv(AIW_VAL)" "$tmp" 2>/dev/null; then
+  # Sanity: the output must contain the item id and the new status.
+  if ! /usr/bin/grep -q "id:.*${item}" "$tmp" 2>/dev/null; then
     rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: yq write status failed\n'
+    printf 'status=error\nreason=aiw_resolve: sanity check failed — item missing from output\n'
     return 1
   fi
 
-  # Write resolution (when provided).
-  if [ -n "$resolution" ]; then
-    if ! AIW_VAL="$resolution" yq -i \
-      ".items[$idx].resolution = strenv(AIW_VAL)" "$tmp" 2>/dev/null; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: yq write resolution failed\n'
-      return 1
-    fi
-  fi
+  # Take the action-items lock (same lock as aiw_write uses).
+  local lockdir="${target}.lockdir"
+  _do_mv() { mv -f "$tmp" "$target"; }
 
-  # Write resolved_date (only for done/invalid/resolved).
-  case "$status" in
-    done|invalid|resolved)
-      local rd="${resolved_date:-$(date -u +%Y-%m-%d)}"
-      if ! AIW_VAL="$rd" yq -i \
-        ".items[$idx].resolved_date = strenv(AIW_VAL)" "$tmp" 2>/dev/null; then
-        rm -f "$tmp"
-        printf 'status=error\nreason=aiw_resolve: yq write resolved_date failed\n'
-        return 1
-      fi
-      ;;
-  esac
-
-  # Write related_stories (when provided) as a proper YAML sequence.
-  if [ -n "$related_stories" ]; then
-    # Build a newline-separated list of keys from comma-separated input.
-    local _rs_tmp="${tmp}.rs"
-    printf '%s' "$related_stories" | tr ',' '\n' | while IFS= read -r _rk; do
-      _rk="${_rk# }"; _rk="${_rk% }"
-      [ -n "$_rk" ] && printf '- "%s"\n' "$_rk"
-    done > "$_rs_tmp"
-    if ! AIW_RS="$(cat "$_rs_tmp")" yq -i \
-      ".items[$idx].related_stories = (strenv(AIW_RS) | @yamld)" "$tmp" 2>/dev/null; then
-      # Fallback: write as single-element array.
-      if ! AIW_VAL="$related_stories" yq -i \
-        ".items[$idx].related_stories = [strenv(AIW_VAL)]" "$tmp" 2>/dev/null; then
-        rm -f "$tmp" "$_rs_tmp"
-        printf 'status=error\nreason=aiw_resolve: yq write related_stories failed\n'
-        return 1
-      fi
-    fi
-    rm -f "$_rs_tmp"
-  fi
-
-  # Write resolved_in (only when --resolved-in is passed).
-  if [ -n "$resolved_in" ]; then
-    if ! AIW_VAL="$resolved_in" yq -i \
-      ".items[$idx].resolved_in = strenv(AIW_VAL)" "$tmp" 2>/dev/null; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: yq write resolved_in failed\n'
-      return 1
-    fi
-  fi
-
-  # Bump tracker-level last_updated to today.
-  local today
-  today="$(date -u +%Y-%m-%d)"
-  if ! AIW_VAL="$today" yq -i \
-    ".last_updated = strenv(AIW_VAL)" "$tmp" 2>/dev/null; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: yq write last_updated failed\n'
-    return 1
-  fi
-
-  # Commit: atomic mv.
-  if ! mv -f "$tmp" "$target"; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: mv failed\n'
-    return 1
+  if command -v flock >/dev/null 2>&1; then
+    local lockfile="${target}.lock"
+    (
+      flock -x 9
+      _do_mv
+    ) 9>"$lockfile"
+    rm -f "$lockfile"
+  else
+    local tries=0
+    while ! mkdir "$lockdir" 2>/dev/null; do
+      tries=$((tries + 1))
+      [ "$tries" -gt 600 ] && { rmdir "$lockdir" 2>/dev/null || true; break; }
+      sleep 0.02
+    done
+    _do_mv
+    rmdir "$lockdir" 2>/dev/null || true
   fi
 
   printf 'status=ok\nitem=%s\ntarget=%s\n' "$item" "$target"
@@ -679,7 +744,7 @@ aiw_resolve() {
 # When this script is executed directly (not sourced), parse CLI and dispatch.
 # Existing aiw_write callers that source this file keep working — they call
 # aiw_write / aiw_resolve directly after sourcing.
-if [ "${BASH_SOURCE[0]}" = "$0" ] 2>/dev/null || [ "${BASH_SOURCE[0]:-}" = "${0##*/}" ] 2>/dev/null; then
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ] 2>/dev/null; then
   _aiw_subcmd="${1:-}"
   case "$_aiw_subcmd" in
     resolve)
