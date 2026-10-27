@@ -305,9 +305,13 @@ _mk_aged_dead_sibling() {
   git -C "$wt" add work.txt
   git -C "$wt" commit -qm "local work"
 
+  # Use an old timestamp so the age check does NOT short-circuit; the
+  # commits-ahead guard must be the one that rejects.
   local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   local branch="refs/heads/feat/R5-S1-slug"
+  local old_ts=1000000000
   local reason; reason="$(_sw_lock_reason "R5-S1" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
 
   run _sw_reapable "$primary" "$wt" "$reason" "$branch"
   [ "$status" -ne 0 ] \
@@ -501,10 +505,11 @@ _mk_aged_dead_sibling() {
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(worktree_create "$primary" "V1-S1" "slug")"
 
-  # Commit so the branch has history.
+  # Commit so the branch has history; record the sha for later verification.
   printf 'data\n' > "$wt/data.txt"
   git -C "$wt" add data.txt
   git -C "$wt" commit -qm "some work"
+  local pre_vanish_sha; pre_vanish_sha="$(git -C "$wt" rev-parse HEAD)"
 
   # Simulate directory vanishing (manual rm -rf) while the lock survives.
   rm -rf "$wt"
@@ -521,8 +526,31 @@ _mk_aged_dead_sibling() {
   run worktree_create "$primary" "V1-S1" "slug"
   [ "$status" -eq 0 ] \
     || { echo "worktree_create failed on vanished directory (exit $status): ${lines[*]}"; return 1; }
+
+  # The returned path must match the expected worktree path.
+  # worktree_create echoes the path on stdout; `run` also captures stderr
+  # (log messages), so the path is in the last line.
+  local returned_path="${lines[${#lines[@]}-1]}"
+  [ "$returned_path" = "$wt" ] \
+    || { echo "output path mismatch: expected $wt, got $returned_path"; return 1; }
+
+  # The directory must exist and be a proper git worktree on the right branch.
   [ -d "$wt" ] \
     || { echo "worktree was not re-created at $wt"; return 1; }
+  local head_ref; head_ref="$(git -C "$wt" symbolic-ref HEAD 2>/dev/null)" \
+    || { echo "HEAD is not a symbolic ref (worktree may be detached)"; return 1; }
+  [ "$head_ref" = "refs/heads/feat/V1-S1-slug" ] \
+    || { echo "wrong branch: expected refs/heads/feat/V1-S1-slug, got $head_ref"; return 1; }
+
+  # The pre-vanish commit must be preserved (not lost by the re-create).
+  local post_sha; post_sha="$(git -C "$wt" rev-parse HEAD)"
+  [ "$post_sha" = "$pre_vanish_sha" ] \
+    || { echo "HEAD changed: expected $pre_vanish_sha, got $post_sha"; return 1; }
+
+  # The record must be re-locked (ownership recorded for reap safety).
+  local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A5 -F "$wt" || true)"
+  printf '%s\n' "$rec" | /usr/bin/grep -q '^locked' \
+    || { echo "worktree record is not locked after re-create"; return 1; }
 }
 
 # ---------------------------------------------------------------------------
@@ -534,11 +562,16 @@ _mk_aged_dead_sibling() {
   local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
   local wt; wt="$(_mk_aged_dead_sibling "$primary" "D1-S1")"
 
-  # Commit, then detach so the porcelain listing has no branch line.
+  # Detach first, THEN commit so the commit is reachable only from the
+  # worktree's detached HEAD — not from any branch ref.
+  git -C "$wt" checkout --detach HEAD 2>/dev/null
   printf 'work\n' > "$wt/work.txt"
   git -C "$wt" add work.txt
   git -C "$wt" commit -qm "detached work"
-  git -C "$wt" checkout --detach HEAD 2>/dev/null
+  local detached_sha; detached_sha="$(git -C "$wt" rev-parse HEAD)"
+
+  # Delete the branch so the commit is truly unreachable from any ref.
+  git -C "$primary" branch -D "feat/D1-S1-slug" 2>/dev/null || true
 
   # Remove the directory; the git record and lock survive.
   rm -rf "$wt"
@@ -553,6 +586,11 @@ _mk_aged_dead_sibling() {
   local count; count="$(_wt_count "$primary" "$wt")"
   [ "$count" -ge 1 ] \
     || { echo "detached vanished sibling with commits was unregistered (reaped)"; return 1; }
+
+  # The detached commit must still be reachable even after a gc prune.
+  git -C "$primary" gc --prune=now 2>/dev/null || true
+  git -C "$primary" cat-file -e "$detached_sha" 2>/dev/null \
+    || { echo "detached commit $detached_sha was lost after gc"; return 1; }
 }
 
 @test "a detached vanished sibling with no commits ahead IS reaped" {
