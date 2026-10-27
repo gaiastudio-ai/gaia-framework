@@ -510,6 +510,22 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+@test "aiw_check_dedup matches entry with single-space line between fields" {
+  # A whitespace-only line shorter than the field indent must not end
+  # the entry — it is still part of the same entry's block.
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf ' \n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
 @test "aiw_write does not duplicate entry when blank lines exist in the file" {
   _load_aiw
   local target="$TEST_TMP/action-items.yaml"
@@ -972,23 +988,29 @@ EOF
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 
-@test "litter guard detects a planted file under the plugin tree" {
-  # Verifies the shared teardown_file litter guard catches writes outside
-  # temp dirs. We plant a file, check that git status sees it, then remove
-  # it (the guard runs at file teardown, not per-test; this test proves the
-  # detection mechanism works).
-  local repo_root
-  repo_root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
-  if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    skip "not inside a git work tree"
-  fi
-  local planted="$repo_root/plugins/gaia/scripts/.litter-probe-$$"
-  echo "probe" > "$planted"
-  local status_out
-  status_out="$(git -C "$repo_root" status --porcelain --untracked-files=all -- plugins/gaia/scripts/.litter-probe-$$ 2>/dev/null || true)"
-  rm -f "$planted"
-  # The planted file must have appeared in git status (proves detection works)
-  [ -n "$status_out" ]
+@test "litter guard detects a planted file in a temp git repo" {
+  # Exercises the shared _litter_check_after guard against a throwaway git
+  # repo in BATS_TEST_TMPDIR — never writes into the real plugin tree.
+  local fake_repo="$BATS_TEST_TMPDIR/fake-repo-$$"
+  mkdir -p "$fake_repo/plugins/gaia/scripts"
+  git -C "$fake_repo" init -q
+  git -C "$fake_repo" add .
+  git -C "$fake_repo" commit -q -m 'init' --allow-empty
+
+  # Override the module-level vars and call the guard functions directly.
+  # Snapshot before planting.
+  _LITTER_REPO_ROOT="$fake_repo"
+  _LITTER_SNAPSHOT=""
+  _litter_snapshot_before
+
+  # Plant a file under the guarded subtree.
+  echo "probe" > "$fake_repo/plugins/gaia/scripts/.litter-probe-$$"
+
+  # The guard must detect the planted file and return non-zero.
+  run _litter_check_after
+  [ "$status" -ne 0 ]
+  # Verify the output names the planted file.
+  [[ "$output" == *".litter-probe-"* ]]
 }
 
 @test "no machine-specific paths leak into this test file" {

@@ -662,6 +662,277 @@ HEADER
   grep -q 'invalid UTF-8' <<<"$output"
 }
 
+@test "aiw_write: rejects E0 overlong (E0 80 AF) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'x\xe0\x80\xafy')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects E0 overlong (E0 80 AF) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'F-\xe0\x80\xaf1')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects E0 overlong (E0 80 AF) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 's\xe0\x80\xafp')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects F0 overlong (F0 80 80 80) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'x\xf0\x80\x80\x80y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects F0 overlong (F0 80 80 80) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'F-\xf0\x80\x80\x801')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects F0 overlong (F0 80 80 80) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 's\xf0\x80\x80\x80p')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects bad continuation (C3 followed by C3) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'a\xc3\xc3b')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects bad continuation (C3 followed by C3) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'F-\xc3\xc3b')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects bad continuation (C3 followed by C3) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 's\xc3\xc3p')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects stray continuation byte (0x80) as lead in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'x\x80y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects stray continuation byte (0xBF) as lead in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'F-\xbf1')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects stray continuation byte (0x80) as lead in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 's\x80p')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: accepts long repeated multibyte run (emoji run)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  local long_text
+  long_text="$(printf 'x'; for _i in $(seq 1 30); do printf '\xf0\x9f\x94\xa5'; done)"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$long_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 0 ]
+  grep -q 'status=ok' <<<"$output"
+  yq '.items[0].text' "$target" | grep -q '🔥'
+}
+
+@test "aiw_write: accepts long repeated 2-byte run (accented latin)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  local long_text
+  long_text="$(printf 'x'; for _i in $(seq 1 60); do printf '\xc3\xa9'; done)"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$long_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 0 ]
+  grep -q 'status=ok' <<<"$output"
+  yq '.items[0].text' "$target" | grep -q 'é'
+}
+
+@test "aiw_write: rejects invalid bytes hidden by repeated lines (od bypass)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  # Craft a value where stray continuation bytes hide in a line that would be
+  # collapsed by od without -v: 14 a's + valid U+10000 (4 bytes) + 14 a's +
+  # stray 0x80 0x80 + 14 a's. Without -v the stray bytes are hidden.
+  local bad_text
+  bad_text="$(printf 'aaaaaaaaaaaaaa\xf0\x90\x80\x80aaaaaaaaaaaaaa\x80\x80aaaaaaaaaaaaaaend')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects invalid bytes hidden by repeated lines in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'aaaaaaaaaaaaaa\xf0\x90\x80\x80aaaaaaaaaaaaaa\x80\x80aaaaaaaaaaaaaaend')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects invalid bytes hidden by repeated lines in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 'aaaaaaaaaaaaaa\xf0\x90\x80\x80aaaaaaaaaaaaaa\x80\x80aaaaaaaaaaaaaaend')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
 # ===========================================================================
 # DEL and ESC rejection (existing code, new test coverage)
 # ===========================================================================
@@ -748,5 +1019,22 @@ HEADER
     _aiw_check_unicode_safety 'perfectly valid text'
   "
   # Function should return 0 (unsafe / reject) when od is absent
+  [ "$status" -eq 0 ]
+}
+
+@test "_aiw_check_unicode_safety: rejects when od is absent even without pipefail" {
+  _load_aiw
+  local shim_dir="$TEST_TMP/no-od-nopf"
+  mkdir -p "$shim_dir"
+  for cmd in bash awk printf cat; do
+    local p
+    p="$(command -v "$cmd" 2>/dev/null)" && [ -n "$p" ] && ln -sf "$p" "$shim_dir/"
+  done
+  run env PATH="$shim_dir" bash -c "
+    source '$ACTION_ITEMS_WRITE_SH'
+    set +o pipefail
+    _aiw_check_unicode_safety 'perfectly valid text'
+  "
+  # Must still return 0 (reject) even without pipefail
   [ "$status" -eq 0 ]
 }

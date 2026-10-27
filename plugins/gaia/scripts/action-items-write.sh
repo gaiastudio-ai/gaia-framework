@@ -240,7 +240,7 @@ _aiw_has_control_chars() {
 # _aiw_check_unicode_safety — return 0 (unsafe) if string contains NEL
 # (U+0085), non-character codepoints U+FFFE/U+FFFF, or invalid UTF-8 byte
 # sequences. Prints the character class to stdout on match. Fails closed:
-# if iconv is unavailable, the string is rejected.
+# if od or awk is unavailable, the string is rejected.
 # ---------------------------------------------------------------------------
 _aiw_check_unicode_safety() {
   local s="$1"
@@ -260,7 +260,15 @@ _aiw_check_unicode_safety() {
   # codepoints > U+10FFFF (F4 90+), F5-FF lead bytes, truncated sequences,
   # and 5+ byte forms. Portable: od and awk are POSIX; no strtonum needed.
   # Fails closed: if od or awk is absent, the pipeline errors and we reject.
-  if ! printf '%s' "$s" | LC_ALL=C od -An -tx1 | awk '
+  # The -v flag prevents od from collapsing repeated 16-byte lines to '*',
+  # which would hide invalid bytes and cause false rejections of valid text.
+  # Explicit exit-status capture ensures fail-closed even without pipefail.
+  local _od_out _od_rc=0
+  _od_out="$(printf '%s' "$s" | LC_ALL=C od -v -An -tx1)" || _od_rc=$?
+  if [ "$_od_rc" -ne 0 ]; then
+    printf 'invalid UTF-8 byte sequence\n'; return 0
+  fi
+  if ! printf '%s\n' "$_od_out" | awk '
     function hv(h,  a,b) {
       a = index("0123456789abcdef", substr(h,1,1)) - 1
       b = index("0123456789abcdef", substr(h,2,1)) - 1
