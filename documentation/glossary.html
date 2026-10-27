@@ -391,13 +391,17 @@
 
         <dt id="review-gate">Review Gate</dt>
         <dd>
-          A table in a story file that tracks the status of six review
-          types: Code Review, QA Tests, Security Review, Test Automation,
-          Test Review, and Performance Review.
-          Each row starts as UNVERIFIED and is updated to PASSED or FAILED
-          when the corresponding review command runs. A story cannot
+          A four-column table in a story file
+          (<code>Review | Status | Report | Reviewed SHA</code>) that
+          tracks the status of six review types: Code Review, QA Tests,
+          Security Review, Test Automation, Test Review, and Performance
+          Review. Each row starts as UNVERIFIED and is updated to PASSED
+          or FAILED when the corresponding review command runs. The fourth
+          column binds each verdict to the commit SHA it was reviewed on;
+          a verdict reviewed on an older SHA is stale. A story cannot
           transition to <code>done</code> status until all Review Gate rows
-          are PASSED. Checked by
+          are PASSED and bound to the current head. Checked by
+          <code>review-gate-check.sh</code> and
           <a href="commands/gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>.
         </dd>
 

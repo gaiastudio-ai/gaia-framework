@@ -126,14 +126,14 @@ N/A — no manual verification required for this story.
 
 ## Review Gate
 
-| Review | Status | Report |
-|--------|--------|--------|
-| Code Review | UNVERIFIED | — |
-| QA Tests | UNVERIFIED | — |
-| Security Review | UNVERIFIED | — |
-| Test Automation | UNVERIFIED | — |
-| Test Review | UNVERIFIED | — |
-| Performance Review | UNVERIFIED | — |
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — |  |
+| QA Tests | UNVERIFIED | — |  |
+| Security Review | UNVERIFIED | — |  |
+| Test Automation | UNVERIFIED | — |  |
+| Test Review | UNVERIFIED | — |  |
+| Performance Review | UNVERIFIED | — |  |
 
 > Story moves to `done` only when ALL reviews show PASSED.
 
