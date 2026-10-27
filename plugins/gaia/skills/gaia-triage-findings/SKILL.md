@@ -55,11 +55,7 @@ the file set via:
   [--all]
 ```
 
-The helper reads the **top-level** `sprint_id` and the **top-level `stories:`**
-list from `.gaia/state/sprint-status.yaml`, gates on the top-level `status:`
-lifecycle value (`active` or `review` sprint-scopes; `closed`/`planned` emits
-nothing with an informational stderr message), resolves each committed key to its file
-path via `resolve-story-file.sh`, and emits one path per line.
+The helper discovers sprint-status files: per-sprint files (`sprint-status-{id}.yaml`) and the main `sprint-status.yaml` (included when its sprint has no per-sprint counterpart). It reads the **top-level** `sprint_id` and **top-level `stories:`** list from each, gates on the top-level `status:` lifecycle value (`active` or `review` sprint-scopes; `closed`/`planned` are skipped), unions and deduplicates story keys across sprints, resolves each committed key to its file path via `resolve-story-file.sh`, and emits one path per line.
 
 - **`--all` flag** restores the legacy full historical sweep (every `*.md`
   under implementation-artifacts). Pass it when the operator explicitly wants

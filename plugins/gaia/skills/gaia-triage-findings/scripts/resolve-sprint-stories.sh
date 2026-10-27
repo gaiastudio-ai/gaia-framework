@@ -2,18 +2,20 @@
 # resolve-sprint-stories.sh — emit the set of story files /gaia-triage-findings
 # should scan.
 #
-# DEFAULT (sprint-scoped): read the current sprint from sprint-status.yaml and
-# emit the file paths of ONLY its committed stories. This is the token-budget /
-# performance fix — historical stories from prior sprints have already been
-# triaged and re-scanning them wastes context.
+# DEFAULT (sprint-scoped): discover all runnable sprints from per-sprint state
+# files (sprint-status-{id}.yaml) and the main sprint-status.yaml (when its
+# sprint has no per-sprint counterpart), then emit the file paths of their
+# committed stories. This is the token-budget / performance fix — historical
+# stories from prior sprints have already been triaged and re-scanning them
+# wastes context.
 #
-#   - The current sprint is read from the TOP-LEVEL `sprint_id:` key.
+#   - Per-sprint files and the main file are both read; keys are unioned and
+#     deduplicated across sprints.
 #   - The committed stories are read from the TOP-LEVEL `stories:` sequence
 #     (each entry has a `key:`).
-#   - Gating: the sprint must be in a runnable lifecycle state (`active` or
-#     `review`) for sprint-scoped resolution to proceed. A `closed`/`planned`
-#     sprint emits nothing with an informational message on stderr (the caller
-#     decides whether to fall back to --all).
+#   - Gating: each sprint must be in a runnable lifecycle state (`active` or
+#     `review`). Closed/planned sprints are skipped. When no runnable sprint
+#     is found, nothing is emitted with an informational stderr message.
 #
 # --all (full historical sweep): emit every `*.md` story file under the
 # implementation-artifacts tree — the legacy behavior, preserved on demand.
@@ -67,24 +69,38 @@ if [ -n "$SPRINT_STATUS" ]; then
   fi
   _SPRINT_STATUS_FILES=("$SPRINT_STATUS")
 else
-  # Discover per-sprint state files for concurrent-sprint support.
+  # Discover per-sprint state files AND the main file for concurrent-sprint
+  # support. The main file is included when its sprint has no per-sprint file
+  # (same union rule as sprint-progress-snapshot.sh).
   _state_dir="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state"
+  _main_file="${_state_dir}/sprint-status.yaml"
+  _has_per_sprint=0
   if [ -d "$_state_dir" ]; then
     for _psf in "$_state_dir"/sprint-status-*.yaml; do
       [ -f "$_psf" ] || continue
       # Skip lock/result files.
       case "$_psf" in *.lock|*.result) continue ;; esac
       _SPRINT_STATUS_FILES+=("$_psf")
+      _has_per_sprint=1
     done
   fi
-  # Fall back to the main file when no per-sprint files exist.
-  if [ "${#_SPRINT_STATUS_FILES[@]}" -eq 0 ]; then
-    SPRINT_STATUS="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml"
-    if [ ! -f "$SPRINT_STATUS" ]; then
-      printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2
-      exit 0
+  # Always include the main file when it exists and its sprint has no
+  # per-sprint counterpart (prevents a stale closed per-sprint file from
+  # hiding an active main-file sprint).
+  if [ -f "$_main_file" ]; then
+    if [ "$_has_per_sprint" -eq 0 ]; then
+      _SPRINT_STATUS_FILES=("$_main_file")
+    else
+      # Check if the main file's sprint already has a per-sprint file.
+      _main_sid=""
+      _main_sid=$(awk -F: '/^sprint_id[[:space:]]*:/ { sub(/^sprint_id[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); print; exit }' "$_main_file" 2>/dev/null) || _main_sid=""
+      if [ -n "$_main_sid" ] && [ ! -f "${_state_dir}/sprint-status-${_main_sid}.yaml" ]; then
+        _SPRINT_STATUS_FILES+=("$_main_file")
+      fi
     fi
-    _SPRINT_STATUS_FILES=("$SPRINT_STATUS")
+  elif [ "${#_SPRINT_STATUS_FILES[@]}" -eq 0 ]; then
+    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$_main_file" >&2
+    exit 0
   fi
 fi
 
@@ -111,8 +127,8 @@ _any_runnable=0
 for _ssf in "${_SPRINT_STATUS_FILES[@]}"; do
   [ -f "$_ssf" ] || continue
 
-  # Top-level lifecycle status.
-  _ssf_status=$(awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); print; exit }' "$_ssf")
+  # Top-level lifecycle status (trimmed: inline comments, trailing whitespace, CR).
+  _ssf_status=$(awk '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'"'"'"]/, ""); sub(/[[:space:]]*#.*$/, ""); sub(/[[:space:]]*$/, ""); gsub(/\r/, ""); print; exit }' "$_ssf")
   case "${_ssf_status:-}" in
     active|review) _any_runnable=1 ;;
     *) continue ;;  # skip non-runnable sprints

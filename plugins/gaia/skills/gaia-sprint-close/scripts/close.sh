@@ -394,15 +394,17 @@ fi
 
 # Cross-check: when SPRINT_STATUS_YAML bypassed the resolver, verify the
 # sprint ID in the file against the session binding (if any).
+# A mismatch is refused (fail closed) — a stale env override must not close
+# a sprint other than the bound one.
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
   if [ "$SPRINT_ID" != "$GAIA_BOUND_SPRINT_ID" ]; then
-    warn "WARNING: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$GAIA_BOUND_SPRINT_ID'"
+    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$GAIA_BOUND_SPRINT_ID'"
   fi
 elif [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
   _cross_bound=""
   _cross_bound="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null | tr -d '\n')" || _cross_bound=""
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
-    warn "WARNING: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_cross_bound'"
+    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_cross_bound'"
   fi
 fi
 

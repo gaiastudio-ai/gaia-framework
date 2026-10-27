@@ -808,11 +808,13 @@ resolve_sprint_arg() {
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
     bound_id="$GAIA_BOUND_SPRINT_ID"
     # Shape-validate the bound ID (same pattern as --sprint).
-    if ! printf '%s' "$bound_id" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      printf '%s: error: bound sprint ID has invalid shape: %s\n' \
-        "$_SB_SCRIPT_NAME" "$bound_id" >&2
-      return "$SPRINT_INVALID_ID"
-    fi
+    # Use case glob (not line-based grep) so multi-line values are rejected.
+    case "$bound_id" in
+      *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+        printf '%s: error: bound sprint ID has invalid shape: %s\n' \
+          "$_SB_SCRIPT_NAME" "$bound_id" >&2
+        return "$SPRINT_INVALID_ID" ;;
+    esac
     # Check if the bound sprint is closed
     local bs_status=""
     bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
@@ -823,11 +825,13 @@ resolve_sprint_arg() {
     bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || bound_id=""
     if [ -n "$bound_id" ]; then
       # Shape-validate the bound ID from the binding file.
-      if ! printf '%s' "$bound_id" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-        printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
-          "$_SB_SCRIPT_NAME" "$bound_id" >&2
-        return "$SPRINT_INVALID_ID"
-      fi
+      # Use case glob (not line-based grep) so multi-line values are rejected.
+      case "$bound_id" in
+        *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+          printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
+            "$_SB_SCRIPT_NAME" "$bound_id" >&2
+          return "$SPRINT_INVALID_ID" ;;
+      esac
       local bs_status=""
       bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
       if [ "$bs_status" = "closed" ]; then
