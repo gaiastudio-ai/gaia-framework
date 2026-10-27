@@ -69,12 +69,14 @@ aiw_next_id() {
   local target="$1"
   local max_n=0
   if [ -f "$target" ]; then
-    local n
-    while IFS= read -r n; do
-      if [ "$n" -gt "$max_n" ] 2>/dev/null; then
-        max_n="$n"
-      fi
-    done < <(grep -E '^[[:space:]]*-[[:space:]]+id:[[:space:]]+"?AI-[0-9]+"?[[:space:]]*$' "$target" | grep -oE 'AI-[0-9]+' | grep -oE '[0-9]+')
+    max_n="$(awk '
+      /^[[:space:]]*-[[:space:]]+id:[[:space:]]+"?AI-[0-9]+"?[[:space:]]*$/ {
+        match($0, /AI-[0-9]+/)
+        n = substr($0, RSTART + 3, RLENGTH - 3) + 0
+        if (n > max) max = n
+      }
+      END { print max + 0 }
+    ' "$target")"
   fi
   printf 'AI-%d\n' "$((max_n + 1))"
 }
@@ -103,19 +105,48 @@ aiw_check_dedup() {
     BEGIN { sid=ENVIRON["AIW_SID"]; cls=ENVIRON["AIW_CLS"]; rk=ENVIRON["AIW_RK"]; rv=ENVIRON["AIW_RV"] }
     /^[[:space:]]*- id:/ {
       if (in_entry && s_match && c_match && r_match) { matched=1; exit }
-      in_entry=1; s_match=0; c_match=0; r_match=0; next
-    }
-    in_entry && /^[^[:space:]]/ && !/^[[:space:]]*- id:/ {
-      if (s_match && c_match && r_match) { matched=1; exit }
-      in_entry=0; next
+      in_entry=1; s_match=0; c_match=0; r_match=0
+      # Record the field indent: indent of "- " plus 2
+      match($0, /^[[:space:]]*/)
+      field_indent = RLENGTH + 2
+      next
     }
     in_entry {
+      # Detect end-of-entry: line with less indent than the field level
+      # (but not a new entry, which is handled above)
+      match($0, /^[[:space:]]*/)
+      li = RLENGTH
+      if (li < field_indent) {
+        if (s_match && c_match && r_match) { matched=1; exit }
+        in_entry=0; next
+      }
+      # Skip nested-map lines (deeper indent than entry fields)
+      if (li > field_indent) next
+
       line = $0; sub(/^[[:space:]]+/, "", line); sub(/\r$/, "", line)
       colon = index(line, ":")
       if (colon > 0) {
         fk = substr(line, 1, colon - 1)
-        fv = substr(line, colon + 1)
-        sub(/^[[:space:]]*"?/, "", fv); sub(/"?[[:space:]]*$/, "", fv)
+        raw = substr(line, colon + 1)
+        sub(/^[[:space:]]+/, "", raw)
+        # Extract value: handle quoted and unquoted forms
+        if (substr(raw, 1, 1) == "\"") {
+          # Quoted: walk to find unescaped closing quote
+          fv = ""; rest = substr(raw, 2); i = 1
+          while (i <= length(rest)) {
+            c = substr(rest, i, 1)
+            if (c == "\\" && i < length(rest)) {
+              fv = fv substr(rest, i, 2); i += 2; continue
+            }
+            if (c == "\"") break
+            fv = fv c; i++
+          }
+        } else {
+          # Unquoted: strip inline YAML comment
+          fv = raw
+          sub(/[[:space:]]+#.*$/, "", fv)
+          sub(/[[:space:]]+$/, "", fv)
+        }
         if (fk == "sprint_id" && fv == sid) s_match=1
         if (fk == "classification" && fv == cls) c_match=1
         if (fk == rk && fv == rv) r_match=1
@@ -196,6 +227,34 @@ _aiw_has_control_chars() {
   remainder="$(printf '%s' "$1" | LC_ALL=C tr -d '\011\012\015\040-\176\200-\377')" || return 0
   if [ -n "$remainder" ]; then
     return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# _aiw_check_unicode_safety — return 0 (unsafe) if string contains NEL
+# (U+0085), non-character codepoints U+FFFE/U+FFFF, or invalid UTF-8 byte
+# sequences. Prints the character class to stdout on match. Fails closed:
+# if iconv is unavailable, the string is rejected.
+# ---------------------------------------------------------------------------
+_aiw_check_unicode_safety() {
+  local s="$1"
+  local LC_ALL=C
+  # NEL (U+0085): UTF-8 bytes 0xC2 0x85
+  case "$s" in *$'\xc2\x85'*)
+    printf 'NEL (U+0085)\n'; return 0 ;; esac
+  # U+FFFE: UTF-8 bytes 0xEF 0xBF 0xBE
+  case "$s" in *$'\xef\xbf\xbe'*)
+    printf 'non-character U+FFFE\n'; return 0 ;; esac
+  # U+FFFF: UTF-8 bytes 0xEF 0xBF 0xBF
+  case "$s" in *$'\xef\xbf\xbf'*)
+    printf 'non-character U+FFFF\n'; return 0 ;; esac
+  # Invalid UTF-8: validate with iconv (fail closed if unavailable)
+  if ! command -v iconv >/dev/null 2>&1; then
+    printf 'invalid UTF-8 (iconv unavailable for validation)\n'; return 0
+  fi
+  if ! printf '%s' "$s" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+    printf 'invalid UTF-8 byte sequence\n'; return 0
   fi
   return 1
 }
@@ -325,6 +384,15 @@ aiw_write() {
   for _val in "$text" "$ref_value" "$sprint_id"; do
     if _aiw_has_control_chars "$_val"; then
       printf 'status=error\nreason=value contains disallowed control characters\n'
+      return 1
+    fi
+  done
+
+  # Reject unsafe Unicode: NEL, non-character codepoints, invalid UTF-8
+  local _unicode_reason
+  for _val in "$text" "$ref_value" "$sprint_id"; do
+    if _unicode_reason="$(_aiw_check_unicode_safety "$_val")"; then
+      printf 'status=error\nreason=value contains disallowed character: %s\n' "$_unicode_reason"
       return 1
     fi
   done

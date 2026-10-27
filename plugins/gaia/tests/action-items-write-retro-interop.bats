@@ -374,6 +374,94 @@ EOF
 }
 
 # ===========================================================================
+# aiw_check_dedup — nested-map immunity (AC4)
+# ===========================================================================
+
+@test "aiw_check_dedup ignores sprint_id inside nested map (no false match)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # Entry where sprint_id appears as a nested field under metadata,
+  # not as the entry's own sprint_id
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "sprint-49"\n'
+    printf '    classification: "process"\n'
+    printf '    metadata:\n'
+    printf '      sprint_id: "sprint-100"\n'
+    printf '      note: "nested value"\n'
+    printf '    story_key: "E900-S1"\n'
+  } > "$target"
+  # Query sprint-100: must NOT match (it is nested, not the entry's own sprint_id)
+  run aiw_check_dedup "$target" "sprint-100" "process" "story_key" "E900-S1"
+  [ "$status" -eq 1 ]
+  # Query sprint-49: must match (the entry's actual sprint_id)
+  run aiw_check_dedup "$target" "sprint-49" "process" "story_key" "E900-S1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup ignores classification inside nested block" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "sprint-50"\n'
+    printf '    classification: "bug"\n'
+    printf '    context:\n'
+    printf '      classification: "process"\n'
+    printf '    finding_id: "F-1"\n'
+  } > "$target"
+  # The nested classification is "process" but entry-level is "bug"
+  run aiw_check_dedup "$target" "sprint-50" "process" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — inline YAML comment stripping (AC5)
+# ===========================================================================
+
+@test "aiw_check_dedup matches entry with trailing inline comment on sprint_id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "sprint-99" # was sprint-98\n'
+    printf '  classification: bug\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "sprint-99" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with trailing inline comment on unquoted value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: sprint-99 # comment\n'
+    printf '  classification: bug # type\n'
+    printf '  finding_id: F-1 # ref\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "sprint-99" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup does not false-match when comment text contains query value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: sprint-49 # should be sprint-50\n'
+    printf '  classification: bug\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  # sprint-50 appears in the comment but the actual value is sprint-49
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
 # YAML escaping — prevents entry forging via newline/quote injection
 # ===========================================================================
 
@@ -812,8 +900,22 @@ EOF
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 
-@test "test fixtures are created under BATS_TEST_TMPDIR" {
-  [[ "$TEST_TMP" == "$BATS_TEST_TMPDIR"* ]]
+@test "no test in this file writes outside its temp directory (plugin tree unchanged)" {
+  _load_aiw
+  local repo_root
+  repo_root="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  # Snapshot the plugin scripts directory state before a representative write
+  local before after
+  before="$(git -C "$repo_root" status --porcelain -- plugins/gaia/scripts/ 2>/dev/null || echo "NOGIT")"
+  local target="$TEST_TMP/litter-check.yaml"
+  aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "process" --text "litter test" \
+    --ref-key "story_key" --ref-value "E900-S1" >/dev/null
+  after="$(git -C "$repo_root" status --porcelain -- plugins/gaia/scripts/ 2>/dev/null || echo "NOGIT")"
+  [ "$before" = "$after" ]
+  # Verify the write went to the temp dir, not the plugin tree
+  [ -f "$target" ]
+  grep -q 'litter test' "$target"
 }
 
 @test "no machine-specific paths leak into this test file" {

@@ -465,3 +465,184 @@ HEADER
     --ref-key "story_key" --ref-value "E1-S1"
   [ "$status" -eq 1 ]
 }
+
+# ===========================================================================
+# aiw_next_id — single awk pass (performance rewrite)
+# ===========================================================================
+
+@test "aiw_next_id: awk rewrite produces same result as 300-entry file" {
+  _load_aiw
+  local target="$TEST_TMP/action-items-perf.yaml"
+  aiw_bootstrap_file "$target"
+  local i
+  for i in $(seq 1 300); do
+    printf '  - id: AI-%d\n    text: "entry %d"\n    status: open\n' "$i" "$i" >> "$target"
+  done
+  local got
+  got="$(aiw_next_id "$target")"
+  [ "$got" = "AI-301" ]
+}
+
+# ===========================================================================
+# NEL, U+FFFE, U+FFFF, invalid UTF-8 rejection
+# ===========================================================================
+
+@test "aiw_write: rejects NEL (U+0085) in text with error mentioning character class" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local nel_text
+  nel_text="$(printf 'before\xc2\x85after')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$nel_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'NEL' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'before' "$target"
+}
+
+@test "aiw_write: rejects U+FFFE in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local fffe_text
+  fffe_text="$(printf 'before\xef\xbf\xbeafter')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$fffe_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'U+FFFE' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'before' "$target"
+}
+
+@test "aiw_write: rejects U+FFFF in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local ffff_text
+  ffff_text="$(printf 'before\xef\xbf\xbfafter')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$ffff_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'U+FFFF' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'before' "$target"
+}
+
+@test "aiw_write: rejects invalid UTF-8 (bare 0xFF) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_text
+  bad_text="$(printf 'before\xffafter')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'before' "$target"
+}
+
+@test "aiw_write: rejects NEL in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local nel_val
+  nel_val="$(printf 'F\xc2\x851')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$nel_val"
+  [ "$status" -eq 1 ]
+  grep -q 'NEL' <<<"$output"
+}
+
+@test "aiw_write: rejects NEL in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local nel_sprint
+  nel_sprint="$(printf 'sprint\xc2\x8550')"
+  run aiw_write --target "$target" --sprint-id "$nel_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'NEL' <<<"$output"
+}
+
+@test "aiw_write: rejects invalid UTF-8 (0xFE) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local bad_val
+  bad_val="$(printf 'F-\xfe1')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+}
+
+# ===========================================================================
+# DEL and ESC rejection (existing code, new test coverage)
+# ===========================================================================
+
+@test "aiw_write: rejects DEL (0x7F) in text and no file is written" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local del_text
+  del_text="$(printf 'has\x7Fdel')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$del_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'has' "$target"
+}
+
+@test "aiw_write: rejects ESC (0x1B) in text and no file is written" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local esc_text
+  esc_text="$(printf 'has\x1besc')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$esc_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+  [ ! -e "$target" ] || ! grep -q 'has' "$target"
+}
+
+@test "aiw_write: rejects DEL (0x7F) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local del_val
+  del_val="$(printf 'F-\x7f1')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$del_val"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+}
+
+@test "aiw_write: rejects ESC (0x1B) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  local esc_sprint
+  esc_sprint="$(printf 'sprint-\x1b50')"
+  run aiw_write --target "$target" --sprint-id "$esc_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'control characters' <<<"$output"
+}
+
+# ===========================================================================
+# tr fail-closed path
+# ===========================================================================
+
+@test "_aiw_has_control_chars: returns 0 (reject) when tr fails (fail closed)" {
+  _load_aiw
+  local tr_shim_dir="$TEST_TMP/shims"
+  mkdir -p "$tr_shim_dir"
+  printf '#!/bin/sh\nexit 1\n' > "$tr_shim_dir/tr"
+  chmod +x "$tr_shim_dir/tr"
+  # Run with shimmed tr at front of PATH
+  run env PATH="$tr_shim_dir:$PATH" bash -c "
+    source '$ACTION_ITEMS_WRITE_SH'
+    _aiw_has_control_chars 'clean text'
+  "
+  [ "$status" -eq 0 ]
+}
