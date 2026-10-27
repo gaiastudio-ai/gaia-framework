@@ -598,7 +598,11 @@ aiw_resolve() {
     printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
   }
 
-  # Pass values via ENVIRON to avoid awk -v backslash interpretation.
+  # The entire read-edit-write must happen under the lock to prevent
+  # concurrent resolves from overwriting each other's changes.
+  local lockdir="${target}.lockdir"
+
+  _do_resolve_locked() {
   local awk_rc=0
   AIW_ITEM="$item" \
   AIW_STATUS="$safe_status" \
@@ -712,17 +716,24 @@ aiw_resolve() {
     return 1
   fi
 
-  # Take the action-items lock (same lock as aiw_write uses).
-  local lockdir="${target}.lockdir"
-  _do_mv() { mv -f "$tmp" "$target"; }
+  mv -f "$tmp" "$target"
+  return 0
+  }  # end _do_resolve_locked
 
+  # Take the action-items lock (same lock as aiw_write uses) around the
+  # entire read-edit-write to prevent concurrent resolves losing updates.
   if command -v flock >/dev/null 2>&1; then
     local lockfile="${target}.lock"
     (
       flock -x 9
-      _do_mv
+      _do_resolve_locked
     ) 9>"$lockfile"
+    local _flock_rc=$?
     rm -f "$lockfile"
+    if [ "$_flock_rc" -ne 0 ]; then
+      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
+      return 1
+    fi
   else
     local tries=0
     while ! mkdir "$lockdir" 2>/dev/null; do
@@ -730,8 +741,13 @@ aiw_resolve() {
       [ "$tries" -gt 600 ] && { rmdir "$lockdir" 2>/dev/null || true; break; }
       sleep 0.02
     done
-    _do_mv
+    _do_resolve_locked
+    local _mkdir_rc=$?
     rmdir "$lockdir" 2>/dev/null || true
+    if [ "$_mkdir_rc" -ne 0 ]; then
+      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
+      return 1
+    fi
   fi
 
   printf 'status=ok\nitem=%s\ntarget=%s\n' "$item" "$target"

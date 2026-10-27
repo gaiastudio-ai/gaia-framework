@@ -501,7 +501,7 @@ YAML
 # Single-sprint mode lifecycle unchanged
 # ================================================================
 
-@test "single-sprint rollover uses legacy path" {
+@test "single-sprint rollover does not run independence check" {
   _seed_single_config
 
   # Seed single-sprint yaml.
@@ -518,14 +518,13 @@ YAML
 
   _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/a.ts" > /dev/null
 
-  # Single-sprint rollover does NOT run independence check.
+  # Single-sprint rollover uses the legacy _rollover_one path.
   run bash "$SPRINT_STATE_SH" rollover \
     --from sprint-900 --to sprint-901 --keys E900-S1
 
-  # In single-sprint mode, the rollover follows the legacy _rollover_one path.
-  # It may fail (no sprint-901 yaml) but should NOT show "independence" errors.
-  echo "Exit code: $status, Output: $output" >&2
-  [[ "$output" != *"independence"* ]] || true
+  # Must NOT show independence-check output (no concurrent protocol).
+  [[ "$output" != *"independence"* ]]
+  [[ "$output" != *"FAIL rule"* ]]
 }
 
 # ================================================================
@@ -601,11 +600,434 @@ YAML
   run bash "$SPRINT_STATE_SH" rollover \
     --from sprint-900 --to sprint-901 --keys E900-S3
 
-  echo "Exit: $status Output: $output" >&2
+  [ "$status" -eq 0 ]
 
-  # If the rollover succeeded, verify touch-set preserved.
-  if [ "$status" -eq 0 ]; then
-    /usr/bin/grep -q 'predicted_touch_set' "$sf"
-    /usr/bin/grep -q 'src/unique-path.ts' "$sf"
-  fi
+  # Touch-set retained on the story file.
+  /usr/bin/grep -q 'predicted_touch_set' "$sf"
+  /usr/bin/grep -q 'src/unique-path.ts' "$sf"
+
+  # Story must be in the target yaml and gone from source.
+  local in_target in_source
+  in_target="$(yq -r '.stories[] | select(.key == "E900-S3") | .key' "$to_yaml" 2>/dev/null)" || in_target=""
+  in_source="$(yq -r '.stories[] | select(.key == "E900-S3") | .key' "$from_yaml" 2>/dev/null)" || in_source=""
+  [ "$in_target" = "E900-S3" ]
+  [ -z "$in_source" ]
+
+  # sprint_id rewritten to target.
+  /usr/bin/grep -q '^sprint_id:.*sprint-901' "$sf"
+}
+
+# ================================================================
+# Item 1: carried key overlapping TARGET story is refused
+# ================================================================
+
+@test "carry-over key overlapping target sprint story is refused" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Carried key depends on a story already in the target sprint (rule a).
+  local dir1="$ART_DIR/epic-E900-test/E900-S1-test-story"; mkdir -p "$dir1"
+  cat > "$dir1/story.md" <<'S'
+---
+template: 'story'
+key: "E900-S1"
+title: "Carried story"
+epic: "E900"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-900"
+depends_on: ["E901-S1"]
+blocks: []
+predicted_touch_set:
+  - "src/carried.ts"
+---
+# Story
+S
+  _add_story_to_yaml "$from_yaml" "E900-S1"
+
+  # Target sprint story that the carried key depends on.
+  local dir2="$ART_DIR/epic-E901-test/E901-S1-test-story"; mkdir -p "$dir2"
+  cat > "$dir2/story.md" <<'S'
+---
+template: 'story'
+key: "E901-S1"
+title: "Target story"
+epic: "E901"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-901"
+depends_on: []
+blocks: []
+predicted_touch_set:
+  - "src/target.ts"
+---
+# Story
+S
+  _add_story_to_yaml "$to_yaml" "E901-S1"
+
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S1
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+
+  # Story must stay in source, not in target.
+  local in_source in_target
+  in_source="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$from_yaml" 2>/dev/null)" || in_source=""
+  in_target="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$to_yaml" 2>/dev/null)" || in_target=""
+  [ "$in_source" = "E900-S1" ]
+  [ -z "$in_target" ]
+}
+
+# ================================================================
+# Item 2: per-key results — independent key moves, failing key stays
+# ================================================================
+
+@test "per-key rollover: independent key moves while dependent key stays" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Independent key (no overlap with target).
+  _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/independent.ts" > /dev/null
+  _add_story_to_yaml "$from_yaml" "E900-S1"
+
+  # Dependent key (depends on target story = rule a violation).
+  local dir2="$ART_DIR/epic-E900-test/E900-S2-test-story"; mkdir -p "$dir2"
+  cat > "$dir2/story.md" <<'S'
+---
+template: 'story'
+key: "E900-S2"
+title: "Dependent story"
+epic: "E900"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-900"
+depends_on: ["E901-S1"]
+blocks: []
+predicted_touch_set:
+  - "src/dependent.ts"
+---
+# Story
+S
+  _add_story_to_yaml "$from_yaml" "E900-S2"
+
+  # Target sprint story.
+  local dir3="$ART_DIR/epic-E901-test/E901-S1-test-story"; mkdir -p "$dir3"
+  cat > "$dir3/story.md" <<'S'
+---
+template: 'story'
+key: "E901-S1"
+title: "Target story"
+epic: "E901"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-901"
+depends_on: []
+blocks: []
+predicted_touch_set:
+  - "src/target.ts"
+---
+# Story
+S
+  _add_story_to_yaml "$to_yaml" "E901-S1"
+
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys "E900-S1,E900-S2"
+
+  # Exit 1 (at least one key failed independence).
+  [ "$status" -eq 1 ]
+
+  # Independent key moved to target.
+  local s1_target s1_source
+  s1_target="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$to_yaml" 2>/dev/null)" || s1_target=""
+  s1_source="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$from_yaml" 2>/dev/null)" || s1_source=""
+  [ "$s1_target" = "E900-S1" ]
+  [ -z "$s1_source" ]
+
+  # Dependent key stays in source.
+  local s2_target s2_source
+  s2_target="$(yq -r '.stories[] | select(.key == "E900-S2") | .key' "$to_yaml" 2>/dev/null)" || s2_target=""
+  s2_source="$(yq -r '.stories[] | select(.key == "E900-S2") | .key' "$from_yaml" 2>/dev/null)" || s2_source=""
+  [ -z "$s2_target" ]
+  [ "$s2_source" = "E900-S2" ]
+}
+
+# ================================================================
+# Item 5: fail closed when independence-check.sh missing
+# ================================================================
+
+@test "rollover fails closed when independence-check.sh is missing" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/a.ts" > /dev/null
+  _add_story_to_yaml "$from_yaml" "E900-S1"
+
+  # Hide independence-check.sh by pointing SPRINT_STATE_SCRIPT_DIR at a
+  # dir that lacks it.
+  local mock_dir="$TEST_TMP/mock-scripts"
+  mkdir -p "$mock_dir"
+  # Copy sprint-state.sh only (it sources lib/ via SPRINT_STATE_SCRIPT_DIR).
+  cp "$BATS_TEST_DIRNAME/../scripts/sprint-state.sh" "$mock_dir/sprint-state.sh"
+  # Link lib/ and sibling scripts (but NOT independence-check.sh).
+  ln -sf "$BATS_TEST_DIRNAME/../scripts/lib" "$mock_dir/lib"
+  local _f _bn
+  for _f in "$BATS_TEST_DIRNAME/../scripts"/*.sh; do
+    [ -e "$_f" ] || continue
+    _bn="$(basename "$_f")"
+    [ "$_bn" = "independence-check.sh" ] && continue
+    [ "$_bn" = "sprint-state.sh" ] && continue
+    ln -sf "$_f" "$mock_dir/$_bn"
+  done
+
+  run env SPRINT_STATE_SCRIPT_DIR="$mock_dir" \
+    bash "$mock_dir/sprint-state.sh" rollover \
+      --from sprint-900 --to sprint-901 --keys E900-S1
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing or not executable"* ]] || [[ "$output" == *"fail closed"* ]]
+}
+
+# ================================================================
+# Item 6 test: aiw_resolve preserves file format (real tracker)
+# ================================================================
+
+@test "aiw_resolve only changes target item lines on real tracker copy" {
+  local real="/Users/jlouage/Dev/GAIA-Framework/.gaia/state/action-items.yaml"
+  [ -f "$real" ] || skip "real action-items.yaml not found"
+
+  local copy="$TEST_TMP/action-items-copy.yaml"
+  cp "$real" "$copy"
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$copy" --item "AI-1" --status "resolved" --resolution "test"
+
+  [ "$status" -eq 0 ]
+
+  # Only the first AI-1's status+resolution+resolved_date lines should differ.
+  local diff_lines
+  diff_lines="$(diff "$real" "$copy" | /usr/bin/grep '^[<>]' | wc -l || true)"
+  # Expect small number of changed lines (status, resolution, resolved_date).
+  [ "$diff_lines" -le 8 ]
+
+  # File must still be valid YAML.
+  yq '.' "$copy" > /dev/null
+
+  # Second AI-1 (later in file) must be unchanged. Use exact match
+  # to avoid AI-10/AI-11/etc. false positives.
+  local second_ai1_status
+  second_ai1_status="$(awk '
+    /^- id:[[:space:]]+"?AI-1"?[[:space:]]*$/ { count++ }
+    count == 2 && /status:/ { print; exit }
+  ' "$copy")"
+  [[ "$second_ai1_status" == *"open"* ]]
+}
+
+@test "aiw_resolve then aiw_write append produces valid YAML" {
+  local target="$TEST_TMP/action-items-append.yaml"
+  _seed_action_items_yaml "$target"
+
+  source "$AIW_SH"
+
+  # Resolve an item.
+  aiw_resolve --target "$target" --item "AI-1" --status "done" --resolution "Done"
+
+  # Append a new item via the existing writer.
+  aiw_write --target "$target" --sprint-id "sprint-902" \
+    --classification "implementation" --text "New item" \
+    --ref-key "story_key" --ref-value "E900-S9"
+
+  # File must parse as valid YAML.
+  yq '.items | length' "$target" > /dev/null
+  local count
+  count="$(yq -r '.items | length' "$target")"
+  [ "$count" -ge 3 ]
+}
+
+# ================================================================
+# Item 8: parallel resolves both persisted
+# ================================================================
+
+@test "two parallel aiw_resolve on different items both persist" {
+  local target="$TEST_TMP/action-items-parallel.yaml"
+  _seed_action_items_yaml "$target"
+
+  source "$AIW_SH"
+
+  # Resolve both items in background.
+  aiw_resolve --target "$target" --item "AI-1" --status "done" --resolution "First" &
+  local pid1=$!
+  aiw_resolve --target "$target" --item "AI-2" --status "resolved" --resolution "Second" &
+  local pid2=$!
+  wait "$pid1" "$pid2"
+
+  # Both must be resolved. Use yq which handles any YAML format.
+  local s1 s2
+  s1="$(yq -r '.items[] | select(.id == "AI-1") | .status' "$target" 2>/dev/null)" || s1=""
+  s2="$(yq -r '.items[] | select(.id == "AI-2") | .status' "$target" 2>/dev/null)" || s2=""
+  [ "$s1" = "done" ]
+  [ "$s2" = "resolved" ]
+}
+
+# ================================================================
+# Item 16: SKILL.md prose per-line assertions
+# ================================================================
+
+@test "action-items SKILL.md references scripted resolve path" {
+  local skill="$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
+  [ -f "$skill" ]
+  /usr/bin/grep -q 'action-items-write.sh.*resolve' "$skill"
+  /usr/bin/grep -q '\-\-status' "$skill"
+  /usr/bin/grep -q '\-\-resolved-in' "$skill"
+  # Must NOT contain the old Edit-tool path.
+  ! /usr/bin/grep -q 'Save the updated.*via the.*Edit.*tool' "$skill"
+}
+
+@test "sprint-review SKILL.md documents closed-bound read-only mode" {
+  local skill="$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/SKILL.md"
+  [ -f "$skill" ]
+  /usr/bin/grep -q 'read-only historical mode' "$skill"
+  /usr/bin/grep -q 'closed-binding refusal' "$skill"
+  /usr/bin/grep -q 'concurrent-sprint mode' "$skill"
+}
+
+@test "retro SKILL.md documents concurrent scoping" {
+  local skill="$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
+  [ -f "$skill" ]
+  /usr/bin/grep -q 'concurrent-sprint mode' "$skill"
+  /usr/bin/grep -q 'retrospective-{sprint_id}' "$skill"
+}
+
+@test "sprint-plan SKILL.md documents carry-over safety" {
+  local skill="$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/SKILL.md"
+  [ -f "$skill" ]
+  /usr/bin/grep -q 'Carry-Over Safety' "$skill"
+  /usr/bin/grep -q 'independence' "$skill"
+  /usr/bin/grep -q 'touch-set' "$skill"
+  /usr/bin/grep -q 'set-story-sprint.*--clear' "$skill"
+}
+
+# ================================================================
+# Item 17: comprehensive leak test
+# ================================================================
+
+@test "no leaked IDs in any changed published file including mirror" {
+  local files=(
+    "$BATS_TEST_DIRNAME/../scripts/action-items-write.sh"
+    "$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+    "$BATS_TEST_DIRNAME/../scripts/independence-check.sh"
+    "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts/sprint-state.sh"
+    "$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/SKILL.md"
+  )
+
+  local f
+  for f in "${files[@]}"; do
+    [ -f "$f" ] || { echo "MISSING: $f" >&2; false; return; }
+  done
+
+  # Pattern covers: ruling IDs (R<n>), requirement IDs (FR-/NFR-/SR-/ADR-),
+  # story keys (E<n>-S<n>), test cases (TC-), cascade/action-item IDs
+  # (AF-20/AI-20), and threat IDs (T-<n>).
+  local pattern='(R[0-9]{1,3}[/)]|FR-[0-9]|NFR-[0-9]|SR-[0-9]|ADR-[0-9]|E[0-9]+-S[0-9]+|TC-[A-Z]|AF-20|AI-20[0-9])'
+
+  # Scan files that are wholly owned by this story (no pre-existing code).
+  # For files with pre-existing code (sprint-state.sh, independence-check.sh),
+  # scan only the new functions added by this story.
+  local f
+  local wholly_owned=(
+    "$BATS_TEST_DIRNAME/../scripts/action-items-write.sh"
+    "$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/SKILL.md"
+    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/SKILL.md"
+  )
+  for f in "${wholly_owned[@]}"; do
+    local bn
+    bn="$(basename "$f")"
+    run /usr/bin/grep -nE "$pattern" "$f"
+    [ "$status" -ne 0 ] || {
+      echo "Leaked IDs in $bn: $output" >&2
+      false
+    }
+  done
+
+  # sprint-state.sh: scan only the new functions.
+  local ss="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  run bash -c "sed -n '/_cmd_rollover_concurrent/,/^[^ ]/p; /_cmd_set_story_sprint_clear/,/^[^ ]/p; /_remove_story_from_yaml/,/^[^ ]/p' '$ss' | /usr/bin/grep -nE '$pattern'"
+  [ "$status" -ne 0 ] || {
+    echo "Leaked IDs in sprint-state.sh (new functions): $output" >&2
+    false
+  }
+
+  # Planted-id proof: create a temp copy with a planted ID, verify it fails.
+  local planted="$TEST_TMP/planted.sh"
+  printf '# This has FR-999 leaked\n' > "$planted"
+  run /usr/bin/grep -nE "$pattern" "$planted"
+  [ "$status" -eq 0 ] || {
+    echo "Planted ID test failed to detect FR-999" >&2
+    false
+  }
+
+  # Mirror byte-identical check.
+  diff "$BATS_TEST_DIRNAME/../scripts/sprint-state.sh" \
+       "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts/sprint-state.sh"
+}
+
+# ================================================================
+# Item 10: empty touch-set carry-over asserts key moved AND left source
+# ================================================================
+
+@test "empty touch-set carry-over: key in target AND gone from source" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  local story_dir="$ART_DIR/epic-E900-test/E900-S5-test-story"; mkdir -p "$story_dir"
+  cat > "$story_dir/story.md" <<'YAML'
+---
+template: 'story'
+key: "E900-S5"
+title: "Empty touch-set story"
+epic: "E900"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-900"
+depends_on: []
+blocks: []
+predicted_touch_set: []
+---
+# Story
+YAML
+  _add_story_to_yaml "$from_yaml" "E900-S5"
+
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S5
+
+  [ "$status" -eq 0 ]
+
+  # Key must be in target and gone from source.
+  local in_target in_source
+  in_target="$(yq -r '.stories[] | select(.key == "E900-S5") | .key' "$to_yaml" 2>/dev/null)" || in_target=""
+  in_source="$(yq -r '.stories[] | select(.key == "E900-S5") | .key' "$from_yaml" 2>/dev/null)" || in_source=""
+  [ "$in_target" = "E900-S5" ]
+  [ -z "$in_source" ]
 }

@@ -835,3 +835,4 @@
 2	dotted-path-handling.bats	21
 4	review-gate-commit-bound.bats	105
 2	concurrent-sprint-lifecycle-scoped.bats	17
+2	concurrent-sprint-lifecycle-scoped.bats	29
