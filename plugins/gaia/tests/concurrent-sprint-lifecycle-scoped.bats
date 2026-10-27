@@ -172,11 +172,11 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-5b: Cross-sprint action item resolution via scripted
+# Cross-sprint action item resolution via scripted
 # resolve subcommand
 # ================================================================
 
-@test "aiw_resolve sets status, resolution, resolved_date, resolved_in via strenv (TC-CONC-LIFE-5b)" {
+@test "aiw_resolve sets status, resolution, resolved_date, resolved_in via strenv" {
   local target="$TEST_TMP/action-items.yaml"
   _seed_action_items_yaml "$target"
 
@@ -224,10 +224,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-5c: resolved_in absent in single-sprint mode
+# resolved_in absent in single-sprint mode
 # ================================================================
 
-@test "aiw_resolve without --resolved-in does not add resolved_in field (TC-CONC-LIFE-5c)" {
+@test "aiw_resolve without --resolved-in does not add resolved_in field" {
   local target="$TEST_TMP/action-items.yaml"
   _seed_action_items_yaml "$target"
 
@@ -258,10 +258,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-EC7: YAML injection via sprint_id in resolve
+# YAML injection via sprint_id in resolve
 # ================================================================
 
-@test "aiw_resolve uses strenv for special characters in sprint_id (TC-CONC-LIFE-EC7)" {
+@test "aiw_resolve uses strenv for special characters in sprint_id" {
   local target="$TEST_TMP/action-items.yaml"
   _seed_action_items_yaml "$target"
 
@@ -317,7 +317,7 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-5c: resolved_date only for done/invalid/resolved
+# resolved_date only for done/invalid/resolved
 # ================================================================
 
 @test "aiw_resolve does not set resolved_date for deferred status" {
@@ -368,10 +368,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-6d: Carry-over without predicted_touch_set
+# Carry-over without predicted_touch_set
 # ================================================================
 
-@test "concurrent rollover refuses story without predicted_touch_set (TC-CONC-LIFE-6d)" {
+@test "concurrent rollover refuses story without predicted_touch_set" {
   _seed_config 2
 
   local from_yaml
@@ -391,10 +391,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-6f: Explicit empty touch-set is valid
+# Explicit empty touch-set is valid
 # ================================================================
 
-@test "concurrent rollover accepts explicit empty touch-set (TC-CONC-LIFE-6f)" {
+@test "concurrent rollover accepts explicit empty touch-set" {
   _seed_config 2
 
   local from_yaml
@@ -433,10 +433,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-EXIT: Mixed-batch exit precedence
+# Mixed-batch exit precedence
 # ================================================================
 
-@test "mixed-batch exit precedence: exit 2 for touch-set missing over exit 1 (TC-CONC-LIFE-EXIT)" {
+@test "mixed-batch exit precedence: exit 2 for touch-set missing over exit 1" {
   _seed_config 2
 
   local from_yaml
@@ -498,10 +498,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-EC8: Single-sprint mode lifecycle unchanged
+# Single-sprint mode lifecycle unchanged
 # ================================================================
 
-@test "single-sprint rollover uses legacy path (TC-CONC-LIFE-EC8)" {
+@test "single-sprint rollover uses legacy path" {
   _seed_single_config
 
   # Seed single-sprint yaml.
@@ -529,10 +529,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-SCRUB: Internal ID scrub on published files
+# Internal ID scrub on published files
 # ================================================================
 
-@test "no leaked internal IDs in files changed by this story (TC-CONC-LIFE-SCRUB)" {
+@test "no leaked internal IDs in files changed by this story" {
   # Check action-items-write.sh for leaked IDs.
   local f="$BATS_TEST_DIRNAME/../scripts/action-items-write.sh"
   run /usr/bin/grep -nE '(FR-[0-9]|NFR-[0-9]|SR-[0-9]|ADR-[0-9]|E[0-9]+-S[0-9]+|TC-|AF-20|AI-20|T-[0-9])' "$f"
@@ -552,10 +552,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-L4: Three-phase rollover closing-marker refusal
+# Three-phase rollover closing-marker refusal
 # ================================================================
 
-@test "concurrent rollover refuses when closing marker exists (TC-CONC-LIFE-L4)" {
+@test "concurrent rollover refuses when closing marker exists" {
   _seed_config 2
 
   local from_yaml
@@ -580,10 +580,10 @@ YAML
 }
 
 # ================================================================
-# TC-CONC-LIFE-6e: Carry-over passes independence, touch-set retained
+# Carry-over passes independence, touch-set retained
 # ================================================================
 
-@test "carried-over story retains predicted_touch_set (TC-CONC-LIFE-6e)" {
+@test "carried-over story retains predicted_touch_set" {
   _seed_config 2
 
   local from_yaml
