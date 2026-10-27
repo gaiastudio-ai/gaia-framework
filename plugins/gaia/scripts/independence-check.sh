@@ -1906,18 +1906,40 @@ main() {
     active_csv="$(_ic_discover_active_sprints)"
   fi
 
-  # In carry-over mode, exclude the source sprint from the active set
-  # and include the candidate/target sprint if it is active.
-  if [ "$_ic_carryover_mode" -eq 1 ] && [ -n "$_IC_FROM_SPRINT" ]; then
-    local _filtered="" _aid
-    while IFS= read -r _aid; do
-      [ -n "$_aid" ] || continue
-      if [ "$_aid" = "$_IC_FROM_SPRINT" ]; then
-        continue  # Exclude source sprint
+  # In carry-over mode, the comparison set is every active sprint OTHER
+  # THAN the source, INCLUDING the candidate/target (whose existing stories
+  # may conflict with the carry-over keys). The discovery function already
+  # excluded the candidate, so re-add it here.
+  if [ "$_ic_carryover_mode" -eq 1 ]; then
+    # Re-add the candidate/target sprint to the active set (discovery
+    # excluded it because in activation mode it shouldn't compare against
+    # itself; carry-over mode is different).
+    local _state_dir="${_IC_PROJECT_ROOT:+${_IC_PROJECT_ROOT%/}/}.gaia/state"
+    local _cand_file="${_state_dir}/sprint-status-${_IC_CANDIDATE}.yaml"
+    if [ -f "$_cand_file" ]; then
+      local _cand_st=""
+      _cand_st="$(awk '/^status:/ { v=$0; sub(/^status:[[:space:]]*/, "", v); gsub(/["'"'"'[:space:]]/, "", v); print v; exit }' "$_cand_file" 2>/dev/null)" || true
+      if [ "$_cand_st" = "active" ]; then
+        if [ -n "$active_csv" ]; then
+          active_csv="${active_csv},${_IC_CANDIDATE}"
+        else
+          active_csv="${_IC_CANDIDATE}"
+        fi
       fi
-      _filtered="${_filtered}${_filtered:+,}${_aid}"
-    done <<< "$(printf '%s' "$active_csv" | tr ',' '\n')"
-    active_csv="$_filtered"
+    fi
+
+    # Now exclude the source sprint.
+    if [ -n "$_IC_FROM_SPRINT" ]; then
+      local _filtered="" _aid
+      while IFS= read -r _aid; do
+        [ -n "$_aid" ] || continue
+        if [ "$_aid" = "$_IC_FROM_SPRINT" ]; then
+          continue  # Exclude source sprint
+        fi
+        _filtered="${_filtered}${_filtered:+,}${_aid}"
+      done <<< "$(printf '%s' "$active_csv" | tr ',' '\n')"
+      active_csv="$_filtered"
+    fi
   fi
 
   # No active sprints — candidate passes trivially.
@@ -1959,26 +1981,19 @@ main() {
   # -------------------------------------------------------------------
   # Register candidate stories.
   # -------------------------------------------------------------------
+  # In carry-over mode, use a synthetic candidate id so the graph analysis
+  # compares the carry-over keys against every active sprint (including the
+  # target) without self-comparison issues. Save the real candidate for output.
+  local _ic_real_candidate="$_IC_CANDIDATE"
+  if [ "$_ic_carryover_mode" -eq 1 ]; then
+    _IC_CANDIDATE="_carryover_${_ic_real_candidate}"
+  fi
+
   local ckey
   while IFS= read -r ckey; do
     [ -n "$ckey" ] || continue
     printf '%s\t%s\n' "$ckey" "$_IC_CANDIDATE" >> "$membership"
   done <<< "$candidate_keys"
-
-  # In carry-over mode, also register the target sprint's existing stories
-  # (they form context for rule checking against the carried-over keys).
-  if [ "$_ic_carryover_mode" -eq 1 ] && [ -n "$candidate_state_file" ] && [ -f "$candidate_state_file" ]; then
-    local _target_keys _tk
-    _target_keys="$(_ic_read_sprint_keys "$candidate_state_file" 2>/dev/null)" || true
-    while IFS= read -r _tk; do
-      [ -n "$_tk" ] || continue
-      # Avoid duplicating a key that is both a carry-over candidate and
-      # already present in the target sprint (re-run idempotency).
-      if ! /usr/bin/grep -q "^${_tk}	" "$membership" 2>/dev/null; then
-        printf '%s\t%s\n' "$_tk" "$_IC_CANDIDATE" >> "$membership"
-      fi
-    done <<< "$_target_keys"
-  fi
 
   # -------------------------------------------------------------------
   # Register active sprint stories.

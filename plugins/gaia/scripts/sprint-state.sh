@@ -1944,7 +1944,9 @@ do_inject_locked() {
   # In concurrent mode, verify the story does not violate independence
   # rules before writing it into the sprint. The gate only reads (no lock
   # acquisition), so no lock nesting occurs.
-  if _is_concurrent_mode; then
+  # Suppressed during rollover Phase B: the rollover's Phase A already ran
+  # the independence check for the carried-over keys specifically.
+  if _is_concurrent_mode && [ "${_GAIA_ROLLOVER_INJECT:-0}" != "1" ]; then
     # Locate the story file using the same glob patterns as locate_story_file
     # but without calling die on failure. Runs in a subshell to avoid
     # clobbering STORY_FILE in the outer scope.
@@ -3373,6 +3375,7 @@ _cmd_rollover_concurrent() {
   # ---- Phase A: L4 strict + closing-marker check + independence check ----
   local phase_a_passed_keys=()
   local phase_a_failed_keys=()
+  local phase_a_rc=0
 
   (
     if ! acquire_lock "$l4_path" "${GAIA_LOCK_L4_TIMEOUT:-10}" 8 --strict; then
@@ -3426,8 +3429,7 @@ _cmd_rollover_concurrent() {
       printf 'PASS independence: %s\n' "$key"
     done
     exit 0
-  )
-  local phase_a_rc=$?
+  ) || phase_a_rc=$?
 
   if [ "$phase_a_rc" -ne 0 ]; then
     # Phase A failed: all passed_keys are blocked.
@@ -3484,6 +3486,8 @@ _cmd_rollover_concurrent() {
 
         # Inject the story into the target sprint (idempotent).
         # cmd_inject takes L1 internally in its own subshell.
+        # Suppress the inject independence gate — Phase A already checked.
+        _GAIA_ROLLOVER_INJECT=1
         cmd_inject "$key" "" >/dev/null 2>&1 || exit 1
 
         # Reset execution phase (stale from source sprint).
