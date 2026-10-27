@@ -258,6 +258,40 @@ YAML
   grep -qi 'not accepted\|ci.*configured\|promotion' <<< "$output"
 }
 
+@test "bind-head: missing canonical row produces error" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  # Create a story missing Performance Review row.
+  local impl="$PROJECT_PATH/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S36-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "E900-S36"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | ${sha} |
+| QA Tests | PASSED | qa.md | ${sha} |
+| Security Review | PASSED | sec.md | ${sha} |
+| Test Automation | PASSED | ta.md | ${sha} |
+| Test Review | PASSED | tr.md | ${sha} |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'missing.*canonical\|Performance Review' <<< "$output"
+}
+
 @test "bind-head: --bind-head none is refused" {
   run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
     --bind-head none --ci-sha none --story /dev/null
