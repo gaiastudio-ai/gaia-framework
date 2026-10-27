@@ -994,8 +994,7 @@ EOF
   local fake_repo="$BATS_TEST_TMPDIR/fake-repo-$$"
   mkdir -p "$fake_repo/plugins/gaia/scripts"
   git -C "$fake_repo" init -q
-  git -C "$fake_repo" add .
-  git -C "$fake_repo" commit -q -m 'init' --allow-empty
+  git -C "$fake_repo" -c user.name='test' -c user.email='t@t' commit -q -m 'init' --allow-empty
 
   # Override the module-level vars and call the guard functions directly.
   # Snapshot before planting.
