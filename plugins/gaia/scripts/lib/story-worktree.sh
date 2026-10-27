@@ -328,9 +328,9 @@ _sw_ts_from_reason() {
   printf '%s' "$ts"
 }
 
-# _sw_reapable <repo> <path> <locked_reason> <branch_ref> — 0 when a locked
-# record left by a finished run may be reaped. Every condition must hold; any
-# probe that cannot be evaluated leaves the record alone.
+# _sw_reapable <repo> <path> <locked_reason> <branch_ref> [porcelain_head]
+# 0 when a locked record left by a finished run may be reaped. Every condition
+# must hold; any probe that cannot be evaluated leaves the record alone.
 #
 # A kill or an out-of-memory stop leaves the worktree DIRECTORY fully intact, so
 # "directory is gone" cannot be the test for an orphan -- that shape is the
@@ -338,8 +338,13 @@ _sw_ts_from_reason() {
 # The directory then decides only whether reaping is SAFE: an empty checkout has
 # nothing to lose, while one holding uncommitted work is kept (see the caller,
 # which warns and leaves it locked).
+#
+# The optional fifth parameter carries the HEAD sha from `git worktree list
+# --porcelain`, which is available even when the worktree directory is gone.
+# Without it, a detached record whose directory was deleted has no way to check
+# for unreachable commits, so the default is to keep it (fail closed).
 _sw_reapable() {
-  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" porcelain_head="${5:-}" pid
 
   [ -n "$path" ] || return 1
   [ -n "$reason" ] || return 1
@@ -413,7 +418,7 @@ _sw_reapable() {
   #
   # Detect the base from the merge-base against the repository's HEAD (the
   # primary checkout's branch, typically staging).
-  if [ -e "$path" ] || [ -n "$branch" ]; then
+  if [ -e "$path" ] || [ -n "$branch" ] || [ -n "$porcelain_head" ]; then
     local ahead base wt_head
     if [ -n "$branch" ]; then
       wt_head="$branch"
@@ -421,6 +426,11 @@ _sw_reapable() {
       # Detached: read the worktree's own HEAD commit.
       wt_head="$(git -C "$path" rev-parse HEAD 2>/dev/null || printf '')"
       [ -n "$wt_head" ] || return 1   # cannot read HEAD: fail closed
+    elif [ -n "$porcelain_head" ]; then
+      # Directory gone, no branch, but the porcelain listing still carries the
+      # HEAD sha. Use it to check for unreachable commits before letting the
+      # record be removed.
+      wt_head="$porcelain_head"
     fi
     if [ -n "${wt_head:-}" ]; then
       base="$(git -C "$repo" merge-base "$wt_head" HEAD 2>/dev/null || printf '')"
@@ -495,17 +505,17 @@ _sw_worktree_is_clean() {
   [ -z "$out" ]
 }
 
-# _sw_prune_flush <repo> <path> <locked_reason> <branch> — decide one record.
-# Unlocks a reapable orphan so the following prune can clear it; announces a
-# crashed run's worktree that still holds uncommitted work instead of silently
-# passing over it, and leaves that one locked.
+# _sw_prune_flush <repo> <path> <locked_reason> <branch> [porcelain_head]
+# Decide one record. Unlocks a reapable orphan so the following prune can clear
+# it; announces a crashed run's worktree that still holds uncommitted work
+# instead of silently passing over it, and leaves that one locked.
 _sw_prune_flush() {
-  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" pid
+  local repo="${1:-}" path="${2:-}" reason="${3:-}" branch="${4:-}" porcelain_head="${5:-}" pid
 
   [ -n "$path" ] || return 0
   [ -n "$reason" ] || return 0
 
-  if _sw_reapable "$repo" "$path" "$reason" "$branch"; then
+  if _sw_reapable "$repo" "$path" "$reason" "$branch" "$porcelain_head"; then
     git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
     # A vanished directory is cleared by the prune that follows; one still on
     # disk is not (prune only clears records whose directory is gone), so remove
@@ -539,7 +549,7 @@ _sw_prune_flush() {
 # as prunable, so a killed run leaves a record that plain pruning keeps forever.
 # Pass B unlocks only those records it can prove are safe, then prunes again.
 worktree_prune_stale() {
-  local repo="${1:-}" listing line current="" locked="" branch=""
+  local repo="${1:-}" listing line current="" locked="" branch="" head_sha=""
   [ -n "$repo" ] || { _sw_log "usage: worktree_prune_stale <code_tree>"; return 1; }
 
   git -C "$repo" worktree prune >/dev/null 2>&1 || true
@@ -548,10 +558,14 @@ worktree_prune_stale() {
   while IFS= read -r line; do
     case "$line" in
       "worktree "*)
-        _sw_prune_flush "$repo" "$current" "$locked" "$branch"
+        _sw_prune_flush "$repo" "$current" "$locked" "$branch" "$head_sha"
         current="${line#worktree }"
         locked=""
         branch=""
+        head_sha=""
+        ;;
+      "HEAD "*)
+        head_sha="${line#HEAD }"
         ;;
       "branch "*)
         branch="${line#branch }"
@@ -567,7 +581,7 @@ worktree_prune_stale() {
 $listing
 EOF
   # The final record has no following "worktree " line to flush it.
-  _sw_prune_flush "$repo" "$current" "$locked" "$branch"
+  _sw_prune_flush "$repo" "$current" "$locked" "$branch" "$head_sha"
 
   git -C "$repo" worktree prune >/dev/null 2>&1 || true
   return 0
@@ -663,12 +677,34 @@ worktree_create() {
     checked-out:*)
       holder="${state#checked-out:}"
       if [ "$holder" = "$path" ]; then
-        # Already ours: re-entry is a no-op that returns the same path.
-        printf '%s' "$path"
-        return 0
+        if [ -d "$path" ]; then
+          # Already ours and the directory exists: re-entry is a no-op.
+          printf '%s' "$path"
+          return 0
+        fi
+        # The record survives but the directory was removed (e.g. manual rm -rf
+        # while the lock kept the git record alive). Remove the stale record so
+        # the branch becomes free, then fall through to re-attach it.
+        _sw_log "worktree directory vanished; removing stale record and re-creating: $path"
+        git -C "$repo" worktree unlock "$path" >/dev/null 2>&1 || true
+        git -C "$repo" worktree prune >/dev/null 2>&1 || true
+        state="$(worktree_branch_state "$repo" "$branch")"
+        case "$state" in
+          free)
+            git -C "$repo" worktree add "$path" "$branch" >/dev/null 2>&1 || {
+              _sw_log "cannot re-create worktree at $path on branch $branch"
+              return 1
+            }
+            ;;
+          *)
+            _sw_log "cannot recover vanished worktree: branch $branch is in state $state after prune"
+            return 1
+            ;;
+        esac
+      else
+        _sw_log "refusing: branch $branch is already checked out at $holder"
+        return 1
       fi
-      _sw_log "refusing: branch $branch is already checked out at $holder"
-      return 1
       ;;
     *)
       _sw_log "cannot determine the state of branch $branch"
