@@ -614,120 +614,6 @@ aiw_resolve() {
   # preventing matches against field names that appear inside block text.
   # Block-list fields (key:\n  - entry) are also handled correctly.
 
-  # --- Pre-check: refuse shapes the awk editor cannot handle safely ---
-  # 1. Nested `- id: <target>` inside another item's block field.
-  # 2. Single-quoted entries in the target item's related_stories inline.
-  # 3. Comma-containing entries in double-quoted related_stories inline.
-  # All three produce valid-but-wrong YAML if the editor proceeds.
-  local _precheck_rc=0
-  AIW_PRE_ITEM="$item" awk '
-    BEGIN {
-      item = ENVIRON["AIW_PRE_ITEM"]
-      # Track whether we are inside a top-level item (depth 0) or a nested
-      # block field whose lines might contain "- id:" at deeper indent.
-      depth = 0; cur_item = ""; in_field_block = 0; field_base = 0
-      item_indent = -1
-      in_target = 0; target_rs_line = ""
-    }
-    {
-      cil = 0; if (match($0, /^[[:space:]]+/)) cil = RLENGTH
-      is_empty = ($0 ~ /^[[:space:]]*$/)
-    }
-
-    # Item-start detection.
-    /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
-      ln = $0; sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", ln)
-      gsub(/^["'"'"']+|["'"'"']+$/, "", ln)
-      # Compute the indent of this item.
-      match($0, /^[[:space:]]*/)
-      this_indent = RLENGTH + 2
-
-      if (depth > 0 && ln == item) {
-        # The target id appears as a nested `- id:` inside another items
-        # block field. This would confuse the editor.
-        printf "NESTED\n" > "/dev/stderr"; exit 1
-      }
-
-      # If we were in a field block of a previous item, this new `- id:`
-      # at the same or shallower indent ends it.
-      if (item_indent >= 0 && cil <= item_indent) {
-        depth = 0; in_field_block = 0
-      }
-
-      cur_item = ln; item_indent = this_indent
-      depth = 0; in_field_block = 0
-      if (ln == item) in_target = 1; else in_target = 0
-      next
-    }
-
-    # Inside an item: track field-level blocks that could contain nested
-    # `- id:` (e.g. `links:` with block list entries).
-    item_indent >= 0 && !is_empty && cil >= item_indent {
-      if (cil == item_indent) {
-        # Top-level field of the current item.
-        fl = $0; sub(/^[[:space:]]+/, "", fl)
-        cp = index(fl, ":")
-        if (cp > 0) {
-          fn = substr(fl, 1, cp - 1)
-          fv = substr(fl, cp + 1); sub(/^[[:space:]]*/, "", fv)
-          sub(/[[:space:]]*$/, "", fv)
-
-          # Check related_stories for single-quoted or comma-in-quotes entries.
-          if (in_target && fn == "related_stories" && fv ~ /^\[/) {
-            target_rs_line = fv
-          }
-
-          # If the value is empty (bare key: → block list or nested map),
-          # mark depth so nested `- id:` is caught. Block scalars (|, >)
-          # are safe — the awk editor tracks those and skips their content.
-          if (fv == "" || fv ~ /^#/) {
-            in_field_block = 1; field_base = item_indent; depth = 1
-          } else {
-            in_field_block = 0; depth = 0
-          }
-        }
-      } else if (cil > item_indent) {
-        # Deeper indent: inside a field block. Mark depth so nested
-        # `- id:` is caught.
-        if (in_field_block) depth = 1
-      }
-    }
-
-    # Exiting the item scope.
-    item_indent >= 0 && !is_empty && cil < item_indent {
-      depth = 0; in_field_block = 0; item_indent = -1
-    }
-
-    END {
-      # Validate target_rs_line if present and we are replacing related_stories.
-      if (target_rs_line != "") {
-        # Single-quoted entry: '\'' inside the bracket sequence.
-        if (target_rs_line ~ /'"'"'/) {
-          printf "SINGLEQUOTE\n" > "/dev/stderr"; exit 1
-        }
-        # Comma inside a double-quoted entry: "a, b" would be split by
-        # the awk comma-split. Detect by looking for ,"...,...",
-        # Simplified check: count opening and closing double-quotes;
-        # if commas appear between matched quotes, refuse.
-        s = target_rs_line; gsub(/^\[|\]$/, "", s)
-        in_dq = 0; prev = ""
-        for (i = 1; i <= length(s); i++) {
-          c = substr(s, i, 1)
-          if (c == "\"" && prev != "\\") in_dq = !in_dq
-          if (c == "," && in_dq) {
-            printf "COMMAINQUOTE\n" > "/dev/stderr"; exit 1
-          }
-          prev = c
-        }
-      }
-    }
-  ' "$target" 2>/dev/null || _precheck_rc=$?
-
-  if [ "$_precheck_rc" -ne 0 ]; then
-    printf 'status=error\nreason=aiw_resolve: file contains an unsupported YAML shape for item %s — file untouched\n' "$item"
-    return 1
-  fi
-
   local tmp
   tmp="$(mktemp "${target}.XXXXXX")" || {
     printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
@@ -1030,28 +916,156 @@ aiw_resolve() {
     return 1
   fi
 
-  # Sanity: the output must contain the item id and the new status.
-  if ! /usr/bin/grep -q "id:.*${item}" "$tmp" 2>/dev/null; then
+  # --- yq structural verification (post-edit, pre-mv) ---
+  # Refuses the edit if the awk output does not match the original file
+  # structurally except in the expected fields of the target item.
+  # yq (mikefarah v4) is a framework prerequisite. Any violation, yq
+  # error, yq absence, or yq of another flavour refuses with rc 1 and
+  # the file untouched.
+  if ! command -v yq >/dev/null 2>&1; then
     rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: sanity check failed — item missing from output\n'
+    printf 'status=error\nreason=aiw_resolve: yq is required but not found — file untouched\n'
     return 1
   fi
-
-  # Parse check: refuse with the file untouched if the output is not valid
-  # YAML. This catches corruption from unhandled shapes (multi-line
-  # continuations, indentless block lists, nested maps, etc.).
-  if command -v yq >/dev/null 2>&1; then
-    if ! yq '.' "$tmp" > /dev/null 2>&1; then
+  # Verify yq is mikefarah flavour (v4+): mikefarah's yq prints a version
+  # string containing "mikefarah" or a version starting with "v4".
+  local _yq_ver
+  _yq_ver="$(yq --version 2>&1)" || true
+  case "$_yq_ver" in
+    *mikefarah*|*" v4."*|*" 4."*) ;;
+    *) rm -f "$tmp"
+       printf 'status=error\nreason=aiw_resolve: yq is not mikefarah v4 (%s) — file untouched\n' "$_yq_ver"
+       return 1 ;;
+  esac
+  # Verify both files parse as valid YAML.
+  if ! yq '.' "$target" > /dev/null 2>&1; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: original file does not parse as YAML — file untouched\n'
+    return 1
+  fi
+  if ! yq '.' "$tmp" > /dev/null 2>&1; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: output YAML does not parse — file untouched\n'
+    return 1
+  fi
+  # (a) Same number of items and same ids in the same order.
+  local _old_ids _new_ids
+  _old_ids="$(yq -r '.items[].id' "$target" 2>/dev/null)" || { rm -f "$tmp"; printf 'status=error\nreason=aiw_resolve: yq failed reading original ids — file untouched\n'; return 1; }
+  _new_ids="$(yq -r '.items[].id' "$tmp" 2>/dev/null)" || { rm -f "$tmp"; printf 'status=error\nreason=aiw_resolve: yq failed reading output ids — file untouched\n'; return 1; }
+  if [ "$_old_ids" != "$_new_ids" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: item ids or order changed — file untouched\n'
+    return 1
+  fi
+  # Find the target item's index (first occurrence, matching the awk editor).
+  local _tgt_idx
+  _tgt_idx="$(AIW_V_ITEM="$item" yq -r 'env(AIW_V_ITEM) as $id | [.items | to_entries[] | select(.value.id == $id) | .key] | .[0]' "$target" 2>/dev/null)"
+  if [ -z "$_tgt_idx" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: target item %s not found by yq — file untouched\n' "$item"
+    return 1
+  fi
+  # (b) Every item other than the target is deep-equal old vs new.
+  # Use JSON output (-o=json) so comment attachment does not affect comparison.
+  local _diff_count
+  _diff_count="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
+    env(AIW_V_IDX) as $idx |
+    [.items | to_entries[] | select(.key != ($idx | tonumber)) | .value]
+  ' "$target" 2>/dev/null | md5sum)"
+  local _diff_count_new
+  _diff_count_new="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
+    env(AIW_V_IDX) as $idx |
+    [.items | to_entries[] | select(.key != ($idx | tonumber)) | .value]
+  ' "$tmp" 2>/dev/null | md5sum)"
+  if [ "$_diff_count" != "$_diff_count_new" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: non-target items were modified — file untouched\n'
+    return 1
+  fi
+  # (c) In the target, only status, resolution, resolved_date, resolved_in,
+  #     related_stories changed. All other keys must be identical.
+  local _old_other _new_other
+  _old_other="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
+    env(AIW_V_IDX) as $idx |
+    .items[$idx | tonumber] | del(.status, .resolution, .resolved_date, .resolved_in, .related_stories)
+  ' "$target" 2>/dev/null | md5sum)"
+  _new_other="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
+    env(AIW_V_IDX) as $idx |
+    .items[$idx | tonumber] | del(.status, .resolution, .resolved_date, .resolved_in, .related_stories)
+  ' "$tmp" 2>/dev/null | md5sum)"
+  if [ "$_old_other" != "$_new_other" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: target item has unexpected field changes — file untouched\n'
+    return 1
+  fi
+  # (d) New related_stories is a superset of old (each old entry still present).
+  if [ -n "$safe_rs" ]; then
+    local _old_rs_file="${tmp}.oldrs" _new_rs_file="${tmp}.newrs"
+    AIW_V_IDX="$_tgt_idx" yq -r '
+      env(AIW_V_IDX) as $idx |
+      .items[$idx | tonumber].related_stories // [] | .[]
+    ' "$target" > "$_old_rs_file" 2>/dev/null || true
+    AIW_V_IDX="$_tgt_idx" yq -r '
+      env(AIW_V_IDX) as $idx |
+      .items[$idx | tonumber].related_stories // [] | .[]
+    ' "$tmp" > "$_new_rs_file" 2>/dev/null || true
+    local _rs_entry _rs_ok=1
+    while IFS= read -r _rs_entry; do
+      [ -n "$_rs_entry" ] || continue
+      if ! /usr/bin/grep -qxF "$_rs_entry" "$_new_rs_file" 2>/dev/null; then
+        _rs_ok=0
+        break
+      fi
+    done < "$_old_rs_file"
+    rm -f "$_old_rs_file" "$_new_rs_file"
+    if [ "$_rs_ok" -ne 1 ]; then
       rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: output YAML does not parse — file untouched\n'
+      printf 'status=error\nreason=aiw_resolve: related_stories entries were removed — file untouched\n'
+      return 1
+    fi
+  fi
+  # (e) The target's new status/resolution/resolved_in equal the requested values.
+  local _new_status_val
+  _new_status_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].status' "$tmp" 2>/dev/null)"
+  if [ "$_new_status_val" != "$_resolve_status" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: target status is "%s", expected "%s" — file untouched\n' "$_new_status_val" "$_resolve_status"
+    return 1
+  fi
+  if [ -n "$resolution" ]; then
+    local _new_res_val
+    _new_res_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].resolution' "$tmp" 2>/dev/null)"
+    if [ "$_new_res_val" != "$resolution" ]; then
+      rm -f "$tmp"
+      printf 'status=error\nreason=aiw_resolve: target resolution mismatch — file untouched\n'
+      return 1
+    fi
+  fi
+  if [ -n "$resolved_in" ]; then
+    local _new_ri_val
+    _new_ri_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].resolved_in' "$tmp" 2>/dev/null)"
+    if [ "$_new_ri_val" != "$resolved_in" ]; then
+      rm -f "$tmp"
+      printf 'status=error\nreason=aiw_resolve: target resolved_in mismatch — file untouched\n'
+      return 1
+    fi
+  fi
+  # (f) last_updated: if the original has last_updated, the output must too,
+  #     and it must be today. If the original lacks it, the output must also
+  #     lack it (never added).
+  local _old_lu _new_lu
+  _old_lu="$(yq -r '.last_updated // ""' "$target" 2>/dev/null)" || true
+  _new_lu="$(yq -r '.last_updated // ""' "$tmp" 2>/dev/null)" || true
+  if [ -n "$_old_lu" ]; then
+    if [ "$_new_lu" != "$_today" ]; then
+      rm -f "$tmp"
+      printf 'status=error\nreason=aiw_resolve: last_updated not bumped to today — file untouched\n'
       return 1
     fi
   else
-    # Fallback: basic structural check — the output must still contain
-    # at least one item entry (- id:).
-    if [ "$(/usr/bin/grep -c '^[[:space:]]*- id:' "$tmp" 2>/dev/null)" -lt 1 ]; then
+    if [ -n "$_new_lu" ]; then
       rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: output structural check failed — file untouched\n'
+      printf 'status=error\nreason=aiw_resolve: last_updated was added but original lacks it — file untouched\n'
       return 1
     fi
   fi

@@ -2688,7 +2688,81 @@ STORY
 }
 
 # ================================================================
-# aiw_resolve: parse-before-mv refuses corrupted output
+# rollover: story whose sprint_id points at a third sprint is refused
+# ================================================================
+
+@test "rollover refuses story whose sprint_id names a third sprint" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Story is in the source yaml, but its sprint_id points at sprint-999
+  # (a sprint that is neither source nor target).
+  _seed_story_file "E900-S1" "E900" '"sprint-999"' "src/third.ts" > /dev/null
+  _add_story_to_yaml "$from_yaml" "E900-S1"
+
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S1
+  [ "$status" -ne 0 ] || {
+    echo "Rollover of third-sprint story should fail" >&2
+    false
+  }
+
+  # Story must still be in the source.
+  local s1_src
+  s1_src="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$from_yaml" 2>/dev/null)" || s1_src=""
+  [ "$s1_src" = "E900-S1" ] || {
+    echo "Story was removed from source despite refusal" >&2
+    false
+  }
+
+  # Story must NOT be in the target.
+  local s1_tgt
+  s1_tgt="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$to_yaml" 2>/dev/null)" || s1_tgt=""
+  [ -z "$s1_tgt" ] || {
+    echo "Story appeared in target despite refusal" >&2
+    false
+  }
+}
+
+# ================================================================
+# aiw_resolve: item after block-list predecessor resolves correctly
+# ================================================================
+
+@test "aiw_resolve handles item after predecessor ending with block list" {
+  local target="$TEST_TMP/ai-prev-blocklist.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    related_stories:
+      - "E900-S1"
+  - id: "AI-2"
+    status: "open"
+YAML
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-2" --status "done" \
+    --resolution "test"
+
+  [ "$status" -eq 0 ] || {
+    echo "Resolve of AI-2 after block-list predecessor failed: $output" >&2
+    false
+  }
+
+  local new_status
+  new_status="$(yq -r '.items[1].status' "$target")"
+  [ "$new_status" = "done" ] || {
+    echo "AI-2 status not set to done: got '$new_status'" >&2
+    false
+  }
+}
+
+# ================================================================
+# aiw_resolve: yq structural verification refuses corrupted output
 # ================================================================
 
 @test "aiw_resolve refuses when output YAML is corrupted" {
@@ -2920,6 +2994,12 @@ YAML
     false
   }
 
+  # Assert none failed.
+  [ "$any_fail" -eq 0 ] || {
+    echo "At least one parallel resolve returned non-zero" >&2
+    false
+  }
+
   # Count how many items have status=done.
   local done_count
   done_count="$(yq -r '[.items[] | select(.status == "done")] | length' "$target")"
@@ -2934,64 +3014,118 @@ YAML
 # ================================================================
 
 @test "mixed parallel resolves and appends preserve all updates" {
-  local target="$TEST_TMP/ai-mixed-race.yaml"
+  source "$AIW_SH"
 
-  # Seed 8 items to resolve.
+  # Run 2 rounds of 16+16 mixed race.
+  local round
+  for round in 1 2; do
+    local target="$TEST_TMP/ai-mixed-race-r${round}.yaml"
+
+    # Seed 16 items to resolve.
+    {
+      printf 'last_updated: "2026-01-01"\nitems:\n'
+      local i
+      for i in $(seq 1 16); do
+        printf '  - id: "AI-R%d-%d"\n    status: "open"\n    text: "Item %d"\n' "$round" "$i" "$i"
+      done
+    } > "$target"
+
+    # 16 parallel resolves.
+    local pids=()
+    for i in $(seq 1 16); do
+      (
+        source "$AIW_SH"
+        aiw_resolve --target "$target" --item "AI-R${round}-$i" --status "done" \
+          --resolution "resolved-$i" > /dev/null 2>&1
+      ) &
+      pids+=($!)
+    done
+
+    # 16 parallel appends.
+    for i in $(seq 1 16); do
+      (
+        source "$AIW_SH"
+        aiw_write --target "$target" --sprint-id "sprint-99" \
+          --classification "implementation" --text "Appended r${round}-$i" \
+          --ref-key "story_key" --ref-value "E999-S$i" > /dev/null 2>&1
+      ) &
+      pids+=($!)
+    done
+
+    # Wait for all.
+    for pid in "${pids[@]}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+
+    yq '.' "$target" > /dev/null || {
+      echo "File is not valid YAML after mixed race round $round" >&2
+      false
+    }
+
+    local done_count total_count
+    done_count="$(yq -r '[.items[] | select(.status == "done")] | length' "$target")"
+    total_count="$(yq -r '.items | length' "$target")"
+
+    # All 16 resolves must persist.
+    [ "$done_count" -eq 16 ] || {
+      echo "Round $round: lost resolves: only $done_count/16 done" >&2
+      false
+    }
+
+    # All 16 appends must persist (total = 16 original + 16 appended = 32).
+    [ "$total_count" -eq 32 ] || {
+      echo "Round $round: lost appends: only $total_count/32 total items" >&2
+      false
+    }
+  done
+
+  # Round 3: same test with mkdir fallback (GAIA_LOCK_FORCE_FALLBACK=1).
+  local target="$TEST_TMP/ai-mixed-race-fallback.yaml"
   {
     printf 'last_updated: "2026-01-01"\nitems:\n'
     local i
-    for i in $(seq 1 8); do
-      printf '  - id: "AI-%d"\n    status: "open"\n    text: "Item %d"\n' "$i" "$i"
+    for i in $(seq 1 16); do
+      printf '  - id: "AI-FB-%d"\n    status: "open"\n    text: "Item %d"\n' "$i" "$i"
     done
   } > "$target"
 
-  source "$AIW_SH"
-
-  # 8 parallel resolves.
   local pids=()
-  for i in $(seq 1 8); do
+  for i in $(seq 1 16); do
     (
+      export GAIA_LOCK_FORCE_FALLBACK=1
       source "$AIW_SH"
-      aiw_resolve --target "$target" --item "AI-$i" --status "done" \
-        --resolution "resolved-$i" > /dev/null 2>&1
+      aiw_resolve --target "$target" --item "AI-FB-$i" --status "done" \
+        --resolution "resolved-fb-$i" > /dev/null 2>&1
     ) &
     pids+=($!)
   done
-
-  # 8 parallel appends.
-  for i in $(seq 1 8); do
+  for i in $(seq 1 16); do
     (
+      export GAIA_LOCK_FORCE_FALLBACK=1
       source "$AIW_SH"
       aiw_write --target "$target" --sprint-id "sprint-99" \
-        --classification "implementation" --text "Appended $i" \
+        --classification "implementation" --text "Appended fb-$i" \
         --ref-key "story_key" --ref-value "E999-S$i" > /dev/null 2>&1
     ) &
     pids+=($!)
   done
-
-  # Wait for all.
   for pid in "${pids[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
 
   yq '.' "$target" > /dev/null || {
-    echo "File is not valid YAML after mixed race" >&2
+    echo "File is not valid YAML after fallback mixed race" >&2
     false
   }
-
   local done_count total_count
   done_count="$(yq -r '[.items[] | select(.status == "done")] | length' "$target")"
   total_count="$(yq -r '.items | length' "$target")"
-
-  # All 8 resolves must persist.
-  [ "$done_count" -eq 8 ] || {
-    echo "Mixed race lost resolves: only $done_count/8 done" >&2
+  [ "$done_count" -eq 16 ] || {
+    echo "Fallback round: lost resolves: only $done_count/16 done" >&2
     false
   }
-
-  # All 8 appends must persist (total = 8 original + 8 appended = 16).
-  [ "$total_count" -eq 16 ] || {
-    echo "Mixed race lost appends: only $total_count/16 total items" >&2
+  [ "$total_count" -eq 32 ] || {
+    echo "Fallback round: lost appends: only $total_count/32 total items" >&2
     false
   }
 }
@@ -3101,6 +3235,10 @@ STORY
     false
   }
 
+  # --- Snapshot sprint-901 BEFORE any lifecycle commands on sprint-900 ---
+  local s901_before="$TEST_TMP/sprint-901-before.yaml"
+  cp "$STATE_DIR/sprint-status-sprint-901.yaml" "$s901_before"
+
   # --- Step 5: Transition E900-S1 through the real path to done ---
   # in-progress -> review -> done, using the real transition writer which
   # checks the Review Gate and DoD.
@@ -3125,6 +3263,13 @@ STORY
   local s900_status
   s900_status="$(yq -r '.status' "$STATE_DIR/sprint-status-sprint-900.yaml")"
   [ "$s900_status" = "review" ]
+
+  # Assert sprint-901 untouched after review transition.
+  diff -q "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" || {
+    echo "Sprint-901 was modified by sprint-900's review transition:" >&2
+    diff "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" >&2
+    false
+  }
 
   # --- Step 7: Retro artifact for sprint-900 ---
   local retro_dir="$ART_DIR/retrospective"
@@ -3154,21 +3299,34 @@ STORY
   ai_ri="$(yq -r '.items[0].resolved_in' "$ai_file")"
   [ "$ai_ri" = "sprint-901" ]
 
-  # --- Step 9: Snapshot sprint-901 before close ---
-  local s901_before="$TEST_TMP/sprint-901-before.yaml"
-  cp "$STATE_DIR/sprint-status-sprint-901.yaml" "$s901_before"
+  # Assert sprint-901 untouched after action-item operations.
+  diff -q "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" || {
+    echo "Sprint-901 was modified by action-item operations:" >&2
+    diff "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" >&2
+    false
+  }
 
   # --- Step 10: Close sprint-900 through close.sh with the real binding ---
-  # Create the sprint-review sentinel (required by close.sh).
+  # Produce the sprint-review sentinel with the real writer.
   local ckpt_dir="$TEST_TMP/.gaia/memory/checkpoints"
   mkdir -p "$ckpt_dir"
-  printf '{"sprint_id":"sprint-900"}' > "$ckpt_dir/sprint-review-sprint-900-val-dispatched.json"
+  local SENTINEL_SH="$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/scripts/write-val-sentinel.sh"
+  [ -x "$SENTINEL_SH" ] || {
+    echo "write-val-sentinel.sh not found or not executable at $SENTINEL_SH" >&2
+    false
+  }
+  local sentinel_out
+  sentinel_out="$(printf '{"status":"PASS","summary":"test","findings":[],"agent":"val"}' \
+    | CHECKPOINT_PATH="$ckpt_dir" bash "$SENTINEL_SH" --sprint-id sprint-900)" || {
+    echo "write-val-sentinel.sh failed: $sentinel_out" >&2; false
+  }
+  [ -f "$ckpt_dir/sprint-review-sprint-900-val-dispatched.json" ] || {
+    echo "Sentinel file not created by write-val-sentinel.sh" >&2; false
+  }
 
-  # Run close.sh. It reads GAIA_BINDING_DIR/bound_sprint_id (written in
-  # step 4) to resolve the bound sprint, checks the retro doc exists,
-  # verifies all stories are done, validates the sprint-review sentinel,
-  # and delegates the status write to sprint-state.sh.
-  run bash "$CLOSE_SH" --force
+  # Run close.sh without --force — the sentinel is now produced by
+  # the real writer, so the gate must pass.
+  run bash "$CLOSE_SH"
   unset CLAUDE_SESSION_ID
   [ "$status" -eq 0 ] || {
     echo "close.sh failed: $output" >&2; false
@@ -3179,7 +3337,7 @@ STORY
   s900_final="$(yq -r '.status' "$STATE_DIR/sprint-status-sprint-900.yaml")"
   [ "$s900_final" = "closed" ]
 
-  # --- Step 11: Assert sprint-901 is byte-identical ---
+  # --- Step 11: Assert sprint-901 is byte-identical after close ---
   diff -q "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" || {
     echo "Sprint-901 was modified by sprint-900's close:" >&2
     diff "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" >&2
