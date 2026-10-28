@@ -15,6 +15,39 @@ load 'test_helper.bash'
 setup() { common_setup; }
 teardown() { common_teardown; }
 
+# Override the shared litter guard to include --ignored paths so that
+# gitignored files planted under plugins/gaia/ are also caught.
+_AIW_INTEROP_LITTER_SNAP=""
+setup_file() {
+  _litter_snapshot_before
+  local repo_root="$_LITTER_REPO_ROOT"
+  if [ -n "$repo_root" ] && \
+     git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    _AIW_INTEROP_LITTER_SNAP="${BATS_FILE_TMPDIR}/litter-ignored-before"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$_AIW_INTEROP_LITTER_SNAP" 2>/dev/null || true
+  fi
+}
+teardown_file() {
+  _litter_check_after
+  if [ -n "$_AIW_INTEROP_LITTER_SNAP" ] && [ -f "$_AIW_INTEROP_LITTER_SNAP" ]; then
+    local repo_root="$_LITTER_REPO_ROOT"
+    local after="${BATS_FILE_TMPDIR}/litter-ignored-after"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$after" 2>/dev/null || true
+    local litter
+    litter="$(comm -13 "$_AIW_INTEROP_LITTER_SNAP" "$after" \
+      | grep -v '\.last-validate-err\.' \
+      | grep -v 'zz-probe-dir/' \
+      || true)"
+    if [ -n "$litter" ]; then
+      printf 'LITTER (ignored): %s left ignored files under the plugin tree:\n%s\n' \
+        "${BATS_TEST_FILENAME##*/}" "$litter" >&2
+      return 1
+    fi
+  fi
+}
+
 ACTION_ITEMS_WRITE_SH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/action-items-write.sh"
 RETRO_SIDECAR_WRITE_SH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/retro-sidecar-write.sh"
 
@@ -371,6 +404,182 @@ EOF
   } > "$target"
   run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
   [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — nested-map immunity
+# ===========================================================================
+
+@test "aiw_check_dedup ignores sprint_id inside nested map (no false match)" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  # Entry where sprint_id appears as a nested field under metadata,
+  # not as the entry's own sprint_id
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "sprint-49"\n'
+    printf '    classification: "process"\n'
+    printf '    metadata:\n'
+    printf '      sprint_id: "sprint-100"\n'
+    printf '      note: "nested value"\n'
+    printf '    story_key: "E900-S1"\n'
+  } > "$target"
+  # Query sprint-100: must NOT match (it is nested, not the entry's own sprint_id)
+  run aiw_check_dedup "$target" "sprint-100" "process" "story_key" "E900-S1"
+  [ "$status" -eq 1 ]
+  # Query sprint-49: must match (the entry's actual sprint_id)
+  run aiw_check_dedup "$target" "sprint-49" "process" "story_key" "E900-S1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup ignores classification inside nested block" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "sprint-50"\n'
+    printf '    classification: "bug"\n'
+    printf '    context:\n'
+    printf '      classification: "process"\n'
+    printf '    finding_id: "F-1"\n'
+  } > "$target"
+  # The nested classification is "process" but entry-level is "bug"
+  run aiw_check_dedup "$target" "sprint-50" "process" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — inline YAML comment stripping
+# ===========================================================================
+
+@test "aiw_check_dedup matches entry with trailing inline comment on sprint_id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "sprint-99" # was sprint-98\n'
+    printf '  classification: bug\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "sprint-99" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with trailing inline comment on unquoted value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: sprint-99 # comment\n'
+    printf '  classification: bug # type\n'
+    printf '  finding_id: F-1 # ref\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "sprint-99" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup does not false-match when comment text contains query value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: sprint-49 # should be sprint-50\n'
+    printf '  classification: bug\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  # sprint-50 appears in the comment but the actual value is sprint-49
+  run aiw_check_dedup "$target" "sprint-50" "bug" "finding_id" "F-1"
+  [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# aiw_check_dedup — blank-line resilience (regression)
+# ===========================================================================
+
+@test "aiw_check_dedup matches entry with blank line between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '  status: open\n'
+    printf '\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with multiple blank lines between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '  - id: AI-1\n'
+    printf '    sprint_id: "s1"\n'
+    printf '\n'
+    printf '\n'
+    printf '    classification: "bug"\n'
+    printf '\n'
+    printf '    finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with whitespace-only line between fields" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '   \n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_check_dedup matches entry with single-space line between fields" {
+  # A whitespace-only line shorter than the field indent must not end
+  # the entry — it is still part of the same entry's block.
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf ' \n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  run aiw_check_dedup "$target" "s1" "bug" "finding_id" "F-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "aiw_write does not duplicate entry when blank lines exist in the file" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  {
+    printf '# header\nitems:\n'
+    printf -- '- id: AI-1\n'
+    printf '  sprint_id: "s1"\n'
+    printf '  classification: "bug"\n'
+    printf '  status: open\n'
+    printf '\n'
+    printf '  finding_id: "F-1"\n'
+  } > "$target"
+  local got
+  got="$(aiw_write --target "$target" --sprint-id "s1" \
+    --classification "bug" --text "dup probe" \
+    --ref-key "finding_id" --ref-value "F-1")"
+  grep -q 'status=skipped_idempotent' <<<"$got"
+  # File must still have exactly one finding_id: "F-1"
+  local count
+  count="$(/usr/bin/grep -c 'finding_id: "F-1"' "$target")"
+  [ "$count" -eq 1 ]
 }
 
 # ===========================================================================
@@ -812,8 +1021,61 @@ EOF
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 
-@test "test fixtures are created under BATS_TEST_TMPDIR" {
-  [[ "$TEST_TMP" == "$BATS_TEST_TMPDIR"* ]]
+@test "litter guard detects a planted file in a temp git repo" {
+  # Exercises the shared _litter_check_after guard against a throwaway git
+  # repo in BATS_TEST_TMPDIR — never writes into the real plugin tree.
+  # Uses its own snapshot file so it does not overwrite the real litter-before.
+  local fake_repo="$BATS_TEST_TMPDIR/fake-repo-$$"
+  mkdir -p "$fake_repo/plugins/gaia/scripts"
+  git -C "$fake_repo" init -q
+  git -C "$fake_repo" -c user.name='test' -c user.email='t@t' commit -q -m 'init' --allow-empty
+
+  # Save and override module-level vars; use a private snapshot path.
+  local saved_root="$_LITTER_REPO_ROOT"
+  local saved_snap="$_LITTER_SNAPSHOT"
+  _LITTER_REPO_ROOT="$fake_repo"
+  _LITTER_SNAPSHOT="${BATS_TEST_TMPDIR}/litter-guard-test-before-$$"
+  git -C "$fake_repo" status --porcelain --untracked-files=all -- plugins/gaia/ \
+    | LC_ALL=C sort > "$_LITTER_SNAPSHOT" 2>/dev/null || true
+
+  # Plant a file under the guarded subtree.
+  echo "probe" > "$fake_repo/plugins/gaia/scripts/.litter-probe-$$"
+
+  # The guard must detect the planted file and return non-zero.
+  run _litter_check_after
+  # Restore module-level vars so teardown_file uses the real snapshot.
+  _LITTER_REPO_ROOT="$saved_root"
+  _LITTER_SNAPSHOT="$saved_snap"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".litter-probe-"* ]]
+}
+
+@test "litter guard detects an ignored file in a temp git repo" {
+  # A .gitignored file planted under the guarded subtree must be caught
+  # when the snapshot uses --ignored.
+  local fake_repo="$BATS_TEST_TMPDIR/fake-repo-ign-$$"
+  mkdir -p "$fake_repo/plugins/gaia/scripts/.gaia/state"
+  printf '.gaia/\n' > "$fake_repo/plugins/gaia/scripts/.gitignore"
+  git -C "$fake_repo" init -q
+  git -C "$fake_repo" add .
+  git -C "$fake_repo" -c user.name='test' -c user.email='t@t' commit -q -m 'init'
+
+  # Snapshot WITH --ignored before planting.
+  local snap="$BATS_TEST_TMPDIR/litter-ign-before-$$"
+  git -C "$fake_repo" status --porcelain --ignored --untracked-files=all \
+    -- plugins/gaia/ | LC_ALL=C sort > "$snap" 2>/dev/null || true
+
+  # Plant an ignored file.
+  echo "probe" > "$fake_repo/plugins/gaia/scripts/.gaia/state/action-items.yaml"
+
+  # Build the "after" snapshot and diff.
+  local after="$BATS_TEST_TMPDIR/litter-ign-after-$$"
+  git -C "$fake_repo" status --porcelain --ignored --untracked-files=all \
+    -- plugins/gaia/ | LC_ALL=C sort > "$after" 2>/dev/null || true
+  local litter
+  litter="$(comm -13 "$snap" "$after" || true)"
+  [ -n "$litter" ]
+  [[ "$litter" == *".gaia/"* ]]
 }
 
 @test "no machine-specific paths leak into this test file" {
