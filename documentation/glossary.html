@@ -400,8 +400,9 @@
           column binds each verdict to the commit SHA it was reviewed on;
           a verdict reviewed on an older SHA is stale. A story cannot
           transition to <code>done</code> status until all Review Gate rows
-          are PASSED and bound to the current head. Checked by
-          <code>review-gate-check.sh</code> and
+          are PASSED. The standalone commit-bound checker
+          (<code>review-gate-check.sh</code>) additionally verifies that
+          each row is bound to the current head SHA. Checked by
           <a href="commands/gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>.
         </dd>
 

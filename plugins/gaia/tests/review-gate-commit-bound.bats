@@ -13,6 +13,14 @@ setup() {
   export PLUGIN_ROOT
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   export REVIEW_GATE_PROOF_OF_EXECUTION=off
+  # Default config with no CI so --ci-sha none is accepted in most tests.
+  # Tests that exercise CI detection override this.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: test
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
 }
 
 teardown() { common_teardown; }
@@ -880,9 +888,8 @@ STORY
   grep -q 'src/\*\*' <<< "$record"
 }
 
-@test "carry-forward: forged table row with no sidecar is NOT bound" {
-  # A row whose table SHA was manually changed to bind-head without
-  # going through carry-forward (no sidecar record).
+@test "stale row with SHA mismatch is PENDING" {
+  # A row reviewed on sha_a, but the head moved to sha_b. No carry-forward.
   _init_git "$PROJECT_PATH"
   local sha_a sha_b
   sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
@@ -890,7 +897,6 @@ STORY
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
   sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
 
-  # Create story with Code Review on sha_a (old), others on sha_b (head).
   local impl="$PROJECT_PATH/docs/implementation-artifacts"
   mkdir -p "$impl"
   local story="$impl/E900-S41-test.md"
@@ -915,15 +921,16 @@ status: review
 > Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
 
-  # Code Review is on sha_a, head is sha_b. No carry-forward done.
-  # The row is stale — no sidecar record to prove a legitimate carry.
+  # Code Review is on sha_a, head is sha_b. The row is stale.
   run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
     --bind-head "$sha_b" --ci-sha none --story "$story"
   [ "$status" -ne 0 ]
   grep -qi 'pending\|stale' <<< "$output"
 }
 
-@test "carry-forward: checker reads sidecar and treats carried row as bound" {
+@test "carry-forward rebinds row to to-SHA and checker returns COMPLETE" {
+  # Carry-forward writes the to-SHA directly into the table row. The checker
+  # reads the table column — no sidecar lookup needed for binding.
   _init_git "$PROJECT_PATH"
   mkdir -p "$PROJECT_PATH/src"
   printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
@@ -962,14 +969,523 @@ STORY
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
   _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
 
-  # Do the carry-forward (writes sidecar).
+  # Carry-forward writes to-SHA into the table row.
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
     --story E900-S42 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -eq 0 ]
 
-  # The checker should now treat Code Review as bound via the carry.
+  # The checker reads the table directly and finds the row bound to sha_b.
   run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
     --bind-head "$sha_b" --ci-sha none --story "$story"
   [ "$status" -eq 0 ]
   grep -qi 'complete' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Per-row scope selection (N23 kill: different globs per gate)
+# ---------------------------------------------------------------------------
+
+@test "carry-forward uses the row's own scope globs, not another row's" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src" "$PROJECT_PATH/docs"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  printf 'v1\n' > "$PROJECT_PATH/docs/guide.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S43" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  # code-review scopes docs/**; qa-tests scopes src/**. Only src/a.sh changed.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<YAML
+review_gate:
+  scope_globs:
+    code-review:
+      - "docs/**"
+    qa-tests:
+      - "src/**"
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  # Carry Code Review should succeed (docs/** has no overlap with src/a.sh).
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S43 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -eq 0 ]
+
+  # Carry QA Tests should FAIL (src/** overlaps with src/a.sh).
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S43 --row "QA Tests" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Glob shape tests (zero-directory **, character classes, renames)
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: globstar matches zero directories (src/**/main.sh matches src/main.sh)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S44" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**/main.sh"
+
+  # src/main.sh changed and src/**/main.sh must match it (zero dirs).
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S44 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+@test "carry-forward: leading **/*.sh matches root-level file" {
+  _init_git "$PROJECT_PATH"
+  printf 'v1\n' > "$PROJECT_PATH/build.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/build.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S45" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "**/*.sh"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S45 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+@test "carry-forward: character class [ab].sh matches a.sh" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S46" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/[ab].sh"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S46 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+@test "carry-forward: renamed-out-of-scope file is caught (--no-renames)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src/auth" "$PROJECT_PATH/lib"
+  printf 'v1\n' > "$PROJECT_PATH/src/auth/check.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  git -C "$PROJECT_PATH" mv "$PROJECT_PATH/src/auth/check.sh" "$PROJECT_PATH/lib/check.sh"
+  printf 'v2\n' >> "$PROJECT_PATH/lib/check.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S47" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/auth/**"
+
+  # The file was moved out of src/auth/, but --no-renames lists the deletion
+  # under the old path, which matches the scope.
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S47 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Table parser: 5-cell row rejection (table-level)
+# ---------------------------------------------------------------------------
+
+@test "table parser rejects 5-cell row in a story table" {
+  local dir="$TEST_TMP/tp5"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S48"
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA | Extra |
+|--------|--------|--------|--------------|-------|
+| Code Review | PASSED | cr.md | abc123 | bad |
+STORY
+
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  run parse_review_gate_table "$dir/story.md"
+  [ "$status" -ne 0 ]
+  grep -qi 'more than 4' <<< "$output"
+}
+
+@test "table parser rejects 2-cell row with error message" {
+  local dir="$TEST_TMP/tp2"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S49"
+---
+## Review Gate
+
+| Review | Status |
+|--------|--------|
+| Code Review | PASSED |
+STORY
+
+  # shellcheck source=/dev/null
+  source "${PLUGIN_ROOT}/scripts/lib/review-gate-table.sh"
+  run parse_review_gate_table "$dir/story.md"
+  [ "$status" -ne 0 ]
+  grep -qi 'fewer than 3' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# CI detection: worktree mode + flow-style
+# ---------------------------------------------------------------------------
+
+@test "ci-sha none refused when config not found (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S50" "$sha")"
+  # Remove config and unset all config env vars.
+  rm -rf "$PROJECT_PATH/.gaia/config"
+  unset PROJECT_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'not accepted' <<< "$output"
+}
+
+@test "ci-sha none refused with flow-style promotion_chain" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S51" "$sha")"
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+ci_cd:
+  promotion_chain: [{id: staging, branch: staging}]
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'not accepted' <<< "$output"
+}
+
+@test "ci-sha none refused in worktree mode (config at project root, not worktree)" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S52" "$sha")"
+
+  # Config lives at PROJECT_PATH (project root), worktree is a subdir.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+YAML
+  local wt="$PROJECT_PATH/wt"
+  mkdir -p "$wt"
+  export PROJECT_PATH="$wt"
+  unset PROJECT_CONFIG PROJECT_ROOT CLAUDE_PROJECT_ROOT
+
+  # The walk-up from wt/ should find PROJECT_PATH/../.gaia/config.
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'not accepted' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Real-writer fixtures: checker on init + update output
+# ---------------------------------------------------------------------------
+
+@test "checker returns COMPLETE on real-writer table (init + update)" {
+  _init_git "$PROJECT_PATH"
+  local sha
+  sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  # Create a story with just the frontmatter (flat layout so update finds it).
+  local impl="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S53-test.md"
+  cat > "$story" <<'STORY'
+---
+template: 'story'
+key: "E900-S53"
+title: "Test Story"
+status: review
+---
+STORY
+
+  # Seed with init-review-gate.sh (the real writer).
+  bash "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh" "$story"
+
+  # Update all 6 gates to PASSED with the real writer.
+  local gate
+  for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+    bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+      --story E900-S53 --gate "$gate" --verdict PASSED --sha "$sha"
+  done
+
+  # The checker should return COMPLETE.
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha" --ci-sha none --story "$story"
+  [ "$status" -eq 0 ]
+  grep -qi 'complete' <<< "$output"
+}
+
+@test "checker returns PENDING on real-writer table after a new commit" {
+  _init_git "$PROJECT_PATH"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local impl="$PROJECT_PATH/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S54-test.md"
+  cat > "$story" <<'STORY'
+---
+template: 'story'
+key: "E900-S54"
+title: "Test Story"
+status: review
+---
+STORY
+
+  bash "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh" "$story"
+  local gate
+  for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+    bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+      --story E900-S54 --gate "$gate" --verdict PASSED --sha "$sha_a"
+  done
+
+  # Make a new commit so HEAD moves.
+  printf 'v2\n' > "$PROJECT_PATH/README.md"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "v2"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  # All rows were reviewed on sha_a but head is now sha_b → PENDING.
+  run "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
+    --bind-head "$sha_b" --ci-sha none --story "$story"
+  [ "$status" -ne 0 ]
+  grep -qi 'pending' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# validate-frontmatter accepts 4-column header (N26 kill)
+# ---------------------------------------------------------------------------
+
+@test "validate-frontmatter accepts 4-column Review Gate header" {
+  local dir="$TEST_TMP/vf4"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S55"
+title: "Test Story"
+status: review
+priority: "P1"
+size: "M"
+points: 3
+risk: "low"
+sprint_id: "sprint-1"
+priority_flag: null
+delivered: false
+deferred_implementation: false
+manual_verification: false
+date: "2026-01-01"
+author: "Test Author"
+---
+
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+| QA Tests | UNVERIFIED | — | absent |
+| Security Review | UNVERIFIED | — | absent |
+| Test Automation | UNVERIFIED | — | absent |
+| Test Review | UNVERIFIED | — | absent |
+| Performance Review | UNVERIFIED | — | absent |
+
+> Story moves to `done` only when ALL reviews show PASSED.
+STORY
+
+  export PROJECT_PATH="$dir"
+  run bash "${PLUGIN_ROOT}/skills/gaia-create-story/scripts/validate-frontmatter.sh" "$dir/story.md"
+  # Must not emit a CRITICAL about Review Gate columns.
+  if grep -qi 'CRITICAL.*review_gate' <<< "$output"; then
+    echo "CRITICAL review_gate finding emitted — 4-column header should be accepted"
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Sidecar: written before row rebind, symlink refused
+# ---------------------------------------------------------------------------
+
+@test "carry-forward refuses symlinked sidecar" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/x.sh"
+  printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S56" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
+
+  # Create a symlink where the sidecar would go.
+  local story_dir
+  story_dir="$(dirname "$story")"
+  ln -sf /tmp/attack-target "${story_dir}/review-gate-carry.jsonl"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S56 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'symlink' <<< "$output"
+}
+
+@test "init-review-gate.sh seeds 4-cell rows under 4-column header" {
+  local dir="$TEST_TMP/init4"
+  mkdir -p "$dir"
+  cat > "$dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S57"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | abc1234 |
+
+> Story moves to `done` only when ALL reviews show PASSED.
+STORY
+
+  bash "${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh" "$dir/story.md"
+
+  # All seeded rows must be 4-cell (pipe-delimited, 4 data columns).
+  local seeded_count
+  seeded_count="$(awk '
+    /^## Review Gate/ { in_s = 1; next }
+    in_s && /^## / { in_s = 0 }
+    in_s && /^\| / && !/^[[:space:]]*\|[[:space:]]*-/ {
+      line = $0
+      sub(/^[[:space:]]*\|/, "", line)
+      sub(/\|[[:space:]]*$/, "", line)
+      n = split(line, c, /\|/)
+      if (n == 4 || (n >= 4 && c[1] !~ /Review/)) count++
+    }
+    END { print count+0 }
+  ' "$dir/story.md")"
+  # 1 existing + 5 seeded = 6 rows, all with 4 columns.
+  [ "$seeded_count" -ge 6 ]
+
+  # No 3-cell data row should exist.
+  local three_cell
+  three_cell="$(awk '
+    /^## Review Gate/ { in_s = 1; next }
+    in_s && /^## / { in_s = 0 }
+    in_s && /^\| / && !/^[[:space:]]*\|[[:space:]]*-/ && !/Review.*Status.*Report/ {
+      line = $0
+      sub(/^[[:space:]]*\|/, "", line)
+      sub(/\|[[:space:]]*$/, "", line)
+      n = split(line, c, /\|/)
+      if (n < 4) count++
+    }
+    END { print count+0 }
+  ' "$dir/story.md")"
+  [ "$three_cell" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# YAML inline comment in scope globs is stripped
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: YAML inline comment in scope glob is stripped" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/main.sh"
+  printf 'v1\n' > "$PROJECT_PATH/unrelated.txt"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/main.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S58" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  # Write config with a trailing YAML comment.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - "src/**"  # app code
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  # src/main.sh changed, glob "src/**" (after stripping comment) should match.
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S58 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
 }

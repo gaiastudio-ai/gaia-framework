@@ -1556,6 +1556,39 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_project_kind" ;;
     review_gate.manual_test_mode)
       printf '%s\n' "$v_review_gate_manual_test_mode" ;;
+    review_gate.scope_globs.*)
+      # Dynamic 3-deep key: review_gate.scope_globs.<gate-slug>.
+      # Returns one glob per line (block-style list items).
+      local _rg_slug="${FIELD#review_gate.scope_globs.}"
+      local _rg_val=""
+      _rg_val=$(_merge_3deep review_gate scope_globs "$_rg_slug" 2>/dev/null) || _rg_val=""
+      if [ -z "$_rg_val" ]; then
+        # Try reading as a YAML list under scope_globs.<slug>.
+        local _rg_file="${SHARED_PATH}"
+        [ "$LOCAL_EXISTS" -eq 1 ] && _rg_file="$LOCAL_PATH"
+        if [ -f "$_rg_file" ]; then
+          _rg_val="$(awk -v slug="$_rg_slug" '
+            /^review_gate:/ { in_rg = 1; next }
+            in_rg && /^[^ ]/ { in_rg = 0 }
+            in_rg && /scope_globs:/ { in_sg = 1; next }
+            in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
+            in_sg {
+              if ($0 ~ slug ":") { in_gate = 1; next }
+              if (in_gate && /^[[:space:]]*- /) {
+                val = $0
+                sub(/^[[:space:]]*- [[:space:]]*/, "", val)
+                sub(/[[:space:]]+#.*$/, "", val)
+                sub(/[[:space:]]*$/, "", val)
+                gsub(/"/, "", val)
+                gsub(/'\''/, "", val)
+                if (val != "") print val
+              }
+              if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
+            }
+          ' "$_rg_file" 2>/dev/null)"
+        fi
+      fi
+      printf '%s\n' "$_rg_val" ;;
     ci_cd.ci_wait_timeout_minutes)
       printf '%s\n' "$v_ci_cd_ci_wait_timeout_minutes" ;;
     sprint.max_concurrent_active)

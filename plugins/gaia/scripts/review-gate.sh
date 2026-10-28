@@ -147,6 +147,39 @@ resolve_ledger_path() {
 
 # ---------- Helpers ----------
 
+# Resolve the project-config.yaml path by walking up from a given directory.
+# Checks PROJECT_CONFIG, then PROJECT_ROOT/CLAUDE_PROJECT_ROOT, then walks
+# up from the given path looking for .gaia/config/project-config.yaml.
+# Prints the resolved path or empty if not found.
+_resolve_config_path() {
+  local from="${1:-.}"
+  # Explicit env wins.
+  if [ -n "${PROJECT_CONFIG:-}" ] && [ -f "${PROJECT_CONFIG}" ]; then
+    printf '%s' "$PROJECT_CONFIG"
+    return 0
+  fi
+  # Try the roots.
+  local root
+  for root in "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}"; do
+    if [ -n "$root" ] && [ -f "$root/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$root/.gaia/config/project-config.yaml"
+      return 0
+    fi
+  done
+  # Walk up from the given directory.
+  local dir
+  dir="$(cd "$from" 2>/dev/null && pwd)" || dir=""
+  while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$dir/.gaia/config/project-config.yaml"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+
 die() {
   # message…  (always exit 1)
   printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2
@@ -203,6 +236,7 @@ Usage:
   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
   review-gate.sh review-gate-check --story <key>
+  review-gate.sh carry-forward     --story <key> --row <gate> --from <sha> --to <sha>
   review-gate.sh --help
 
 Subcommands:
@@ -213,7 +247,9 @@ Subcommands:
                     table. Only the Status and Report cells of the matched
                     gate are changed — all other bytes of the story file are
                     preserved (headers, blank lines, other rows, trailing
-                    content). Writes are serialized via flock. When --plan-id
+                    content). The fourth column (Reviewed SHA) is bound to
+                    the worktree HEAD by default, or to an explicit --sha
+                    value. Writes are serialized via flock. When --plan-id
                     is provided, the verdict is written to the ledger file
                     instead (tab-separated: story_key gate plan_id verdict).
   status            Print a single JSON object to stdout via jq -nc. Without
@@ -234,11 +270,25 @@ Subcommands:
                     Read-only: zero file writes, zero lockfile or tempfile
                     creation. Safe to invoke under a subagent read-only
                     allowlist of Read, Grep, Bash.
+  carry-forward     Re-bind a PASSED review verdict from one commit to
+                    another when the diff has no files in the row's configured
+                    scope globs. Evidence is self-computed from the git diff;
+                    caller-supplied evidence is refused. Writes a sidecar
+                    record (review-gate-carry.jsonl) with the carry evidence
+                    before rebinding the row. Requires scope_globs to be
+                    configured for the row in project-config.yaml.
 
 Flags:
   --story <key>      Story key (required for all subcommands).
   --gate <name>      Gate name (required for update; optional for status).
   --verdict <V>      Verdict value (required for update).
+  --sha <sha>        Commit SHA to bind the verdict to (update only).
+                     Defaults to the worktree HEAD; 'none' outside a git
+                     work tree.
+  --row <gate>       Gate name for carry-forward.
+  --from <sha>       Source SHA for carry-forward (must match the row's
+                     current Reviewed SHA).
+  --to <sha>         Target SHA for carry-forward.
   --plan-id <id>     Plan identifier for ledger-keyed verdicts.
                      Must match [A-Za-z0-9._:+-]+. Required for the
                      "test-automate-plan" gate; optional for canonical gates.
@@ -1440,7 +1490,7 @@ main() {
       # Carry-forward: re-bind a PASSED review verdict from one SHA to another
       # when the diff between the two SHAs has no files in the row's configured
       # scope globs. Evidence is ALWAYS self-computed from the diff — caller-
-      # supplied evidence is refused (security mitigation per threat model).
+      # supplied evidence is refused (security: self-computed only).
       #
       # Pre-conditions (all must hold or the carry is refused):
       #   1. Row must currently be PASSED
@@ -1509,12 +1559,13 @@ main() {
       gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
       local config_scope=""
       # Read scope globs from project config (the sole source; no CLI override).
-      local config_file="${PROJECT_CONFIG:-}"
-      if [ -z "$config_file" ]; then
-        local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
-        config_file="$root/.gaia/config/project-config.yaml"
+      # Uses the same walk-up as _resolve_config_path().
+      local config_file
+      config_file="$(_resolve_config_path "$pp")"
+      if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
+        die "carry-forward: cannot locate project-config.yaml — refusing (fail closed)"
       fi
-      if [ -f "$config_file" ] && command -v awk >/dev/null 2>&1; then
+      if command -v awk >/dev/null 2>&1; then
         config_scope="$(awk -v slug="$gate_slug" '
           /^review_gate:/ { in_rg = 1; next }
           in_rg && /^[^ ]/ { in_rg = 0 }
@@ -1523,16 +1574,20 @@ main() {
           in_sg {
             # Look for the gate slug key followed by a list.
             if ($0 ~ slug ":") { in_gate = 1; next }
-            if (in_gate && $0 ~ /^      - /) {
+            if (in_gate && /^[[:space:]]*- /) {
               val = $0
               sub(/^[[:space:]]*- [[:space:]]*/, "", val)
+              # Strip trailing YAML inline comments (# ...).
+              sub(/[[:space:]]+#.*$/, "", val)
               sub(/[[:space:]]*$/, "", val)
               gsub(/"/, "", val)
               gsub(/'\''/, "", val)
-              if (out != "") out = out "\n"
-              out = out val
+              if (val != "") {
+                if (out != "") out = out "\n"
+                out = out val
+              }
             }
-            if (in_gate && $0 !~ /^      / && $0 !~ /^[[:space:]]*$/) { in_gate = 0 }
+            if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
           }
           END { if (out != "") print out }
         ' "$config_file" 2>/dev/null)" || config_scope=""
@@ -1542,41 +1597,49 @@ main() {
       fi
 
       # Pre-condition 4: compute the diff and check for scope overlap.
-      local diff_files
-      diff_files="$(git -C "$pp" diff --name-only "$carry_from" "$carry_to" 2>/dev/null)" \
-        || die "carry-forward: git diff failed between $carry_from and $carry_to"
+      # Uses git diff with :(glob) pathspecs for correct glob semantics:
+      # ** matches zero or more directories, * doesn't cross /, ? matches
+      # one char, [abc] is a character class. --no-renames ensures renamed
+      # files appear as delete + add (a file moved out of scope is caught).
+      # -z avoids C-quoting of non-ASCII / special chars.
 
-      local has_overlap=0
-      if [ -n "$diff_files" ]; then
-        # Check each scope glob against the diff files.
-        local scope_line
-        while IFS= read -r scope_line; do
-          [ -z "$scope_line" ] && continue
-          # Convert the glob to a portable grep pattern:
-          #   1. Escape regex metacharacters (dots, brackets, etc.)
-          #   2. Convert ** to match any path segment(s)
-          #   3. Convert * to match within a single path segment
-          local pat="$scope_line"
-          # Escape dots, brackets, parens, plus, question marks
-          pat="$(printf '%s' "$pat" | sed 's/\./\\./g; s/\[/\\[/g; s/\]/\\]/g; s/(/\\(/g; s/)/\\)/g; s/+/\\+/g; s/?/[^\/]/g')"
-          # Replace ** with a placeholder, then * with single-segment match
-          pat="$(printf '%s' "$pat" | sed 's|\*\*|__GLOBSTAR__|g; s|\*|[^/]*|g; s|__GLOBSTAR__|.*|g')"
-          # Anchor the pattern
-          if printf '%s\n' "$diff_files" | grep -qE "^${pat}$"; then
-            has_overlap=1
-            break
-          fi
-        done <<< "$config_scope"
+      # Build the pathspec arguments from scope globs.
+      local -a pathspec_args=()
+      local scope_line
+      while IFS= read -r scope_line; do
+        [ -z "$scope_line" ] && continue
+        pathspec_args+=(":(glob)${scope_line}")
+      done <<< "$config_scope"
+
+      # Check for overlap: if git diff with the scope pathspecs returns any
+      # paths, there is an overlap and the carry-forward must be refused.
+      local overlap_output overlap_rc
+      overlap_output="$(git -C "$pp" diff -z --no-renames --name-only \
+        "$carry_from" "$carry_to" -- "${pathspec_args[@]}" 2>&1)" \
+        && overlap_rc=0 || overlap_rc=$?
+      if [ "$overlap_rc" -ne 0 ] && [ "$overlap_rc" -ne 1 ]; then
+        # rc=1 means no diff (empty output); rc > 1 or error text → tool failure.
+        # Any tool error → refuse (fail closed).
+        die "carry-forward: git diff with scope pathspecs failed (rc=$overlap_rc) — refusing (fail closed)"
       fi
-
-      if [ "$has_overlap" -eq 1 ]; then
+      if [ -n "$overlap_output" ]; then
         die "carry-forward: diff between $carry_from and $carry_to includes files in scope — review must be re-run"
       fi
 
-      # Build the evidence: list of changed paths and the configured scope globs.
+      # Get the full diff (all paths, no pathspec filter) for evidence.
+      local diff_output diff_rc
+      diff_output="$(git -C "$pp" diff -z --no-renames --name-only \
+        "$carry_from" "$carry_to" 2>&1)" \
+        && diff_rc=0 || diff_rc=$?
+      if [ "$diff_rc" -ne 0 ]; then
+        die "carry-forward: git diff failed between $carry_from and $carry_to (rc=$diff_rc)"
+      fi
+
+      # Build the evidence JSON arrays.
       local changed_json="[]"
-      if [ -n "$diff_files" ]; then
-        changed_json="$(printf '%s\n' "$diff_files" | awk '
+      if [ -n "$diff_output" ]; then
+        # NUL-separated → JSON array.
+        changed_json="$(printf '%s' "$diff_output" | awk -v RS='\0' '
           BEGIN { printf "[" }
           NR > 1 { printf "," }
           { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
@@ -1587,14 +1650,39 @@ main() {
       globs_json="$(printf '%s\n' "$config_scope" | awk '
         BEGIN { printf "[" }
         /^[[:space:]]*$/ { next }
-        NR > 1 { printf "," }
+        c++ > 0 { printf "," }
         { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
         END { printf "]" }
       ')"
 
-      # Persist the carry-forward: update the row's SHA to the to-SHA.
-      # Keep the existing report path (do NOT overwrite with "carry-forward").
-      # Parse the current report value from the table to preserve it.
+      # Write carry-forward sidecar record FIRST (before rebinding the row).
+      # If the sidecar write fails, the row keeps its old SHA — no binding
+      # without a record.
+      local story_dir
+      story_dir="$(dirname "$STORY_FILE")"
+      local sidecar="${story_dir}/review-gate-carry.jsonl"
+
+      # Refuse to write through a symlink (the sidecar must be a regular file).
+      if [ -L "$sidecar" ]; then
+        die "carry-forward: sidecar path is a symlink — refusing (security policy)"
+      fi
+
+      local ts
+      ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      local record
+      record="$(printf '{"row":"%s","from_sha":"%s","to_sha":"%s","evidence":{"changed_paths":%s,"scope_globs":%s},"timestamp":"%s"}' \
+        "$carry_row" "$carry_from" "$carry_to" "$changed_json" "$globs_json" "$ts")"
+      # Atomic append via temp file + cat (safe on concurrent appends).
+      local sidecar_tmp
+      sidecar_tmp="$(mktemp "${story_dir}/.carry-tmp.XXXXXX")"
+      printf '%s\n' "$record" > "$sidecar_tmp"
+      cat "$sidecar_tmp" >> "$sidecar" || {
+        rm -f "$sidecar_tmp"
+        die "carry-forward: failed to write sidecar record — refusing to rebind row"
+      }
+      rm -f "$sidecar_tmp"
+
+      # Now rebind the row's SHA to the to-SHA. Keep the existing report path.
       local current_report="—"
       local parsed_gate parsed_status parsed_report parsed_sha
       while IFS=$'\t' read -r parsed_gate _parsed_status2 parsed_report parsed_sha; do
@@ -1605,23 +1693,6 @@ main() {
       done < <(parse_gate_rows "$STORY_FILE")
 
       cmd_update "$STORY_FILE" "$carry_row" "PASSED" "$current_report" "$carry_to"
-
-      # Write carry-forward sidecar record (JSONL, one line per carry).
-      # The sidecar lives next to the story file in the same directory.
-      local story_dir
-      story_dir="$(dirname "$STORY_FILE")"
-      local sidecar="${story_dir}/review-gate-carry.jsonl"
-      local ts
-      ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-      local record
-      record="$(printf '{"row":"%s","from_sha":"%s","to_sha":"%s","evidence":{"changed_paths":%s,"scope_globs":%s},"timestamp":"%s"}' \
-        "$carry_row" "$carry_from" "$carry_to" "$changed_json" "$globs_json" "$ts")"
-      # Atomic append via temp file + cat (safe on concurrent appends).
-      local sidecar_tmp
-      sidecar_tmp="$(mktemp "${story_dir}/.carry-tmp.XXXXXX")"
-      printf '%s\n' "$record" > "$sidecar_tmp"
-      cat "$sidecar_tmp" >> "$sidecar"
-      rm -f "$sidecar_tmp"
 
       printf 'carry-forward: %s bound from %s to %s\n' \
         "$carry_row" "$carry_from" "$carry_to"

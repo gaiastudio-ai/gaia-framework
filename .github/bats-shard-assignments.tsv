@@ -833,5 +833,4 @@
 2	resolve-sprint-stories-review-status.bats	5
 3	worktree-val-sentinel-path.bats	18
 2	dotted-path-handling.bats	21
-4	review-gate-commit-bound.bats	14
-4	review-gate-reader-compat.bats	75
+4	review-gate-commit-bound.bats	59

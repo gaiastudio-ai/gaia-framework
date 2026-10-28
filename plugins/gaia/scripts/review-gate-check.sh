@@ -80,22 +80,60 @@ CANONICAL_GATES=(
   "Performance Review"
 )
 
-# Check whether CI is configured by reading the promotion chain from config.
-_has_ci_configured() {
-  local config_file="${PROJECT_CONFIG:-}"
-  if [ -z "$config_file" ]; then
-    local root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
-    config_file="$root/.gaia/config/project-config.yaml"
+# Resolve the project-config.yaml path by walking up from a given directory.
+# Checks PROJECT_CONFIG, then PROJECT_ROOT/CLAUDE_PROJECT_ROOT, then walks up
+# from the CWD looking for .gaia/config/project-config.yaml.
+# Prints the resolved path or empty if not found.
+_resolve_config_path() {
+  # Explicit env wins.
+  if [ -n "${PROJECT_CONFIG:-}" ] && [ -f "${PROJECT_CONFIG}" ]; then
+    printf '%s' "$PROJECT_CONFIG"
+    return 0
   fi
-  if [ ! -f "$config_file" ]; then
-    return 1
+  # Try the roots.
+  local root
+  for root in "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}"; do
+    if [ -n "$root" ] && [ -f "$root/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$root/.gaia/config/project-config.yaml"
+      return 0
+    fi
+  done
+  # Walk up from PROJECT_PATH (or CWD).
+  local dir
+  dir="$(cd "${PROJECT_PATH:-.}" 2>/dev/null && pwd)" || dir=""
+  while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$dir/.gaia/config/project-config.yaml"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+# Check whether CI is configured by reading the promotion chain from config.
+# Fail closed: if the config cannot be found or parsed, treat as CI configured
+# (--ci-sha none is refused). This prevents an attacker from bypassing the CI
+# check by hiding or corrupting the config file.
+_has_ci_configured() {
+  local config_file
+  config_file="$(_resolve_config_path)" || config_file=""
+  if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
+    # Cannot find config → fail closed: treat as CI configured.
+    return 0
   fi
   # Check for ci_cd.promotion_chain with at least one entry.
+  # Handles both block-style and flow-style YAML.
   if grep -q 'promotion_chain:' "$config_file" 2>/dev/null; then
+    # Block style: look for "- id:" under ci_cd.promotion_chain.
     if awk '
       /^ci_cd:/ { in_ci = 1; next }
       in_ci && /^[^ ]/ { in_ci = 0 }
-      in_ci && /promotion_chain:/ { in_pc = 1; next }
+      in_ci && /promotion_chain:/ {
+        # Check for flow-style list on the same line.
+        if ($0 ~ /\[/) { found = 1; exit }
+        in_pc = 1; next
+      }
       in_pc && /^[^ ]/ && !/^    / { in_pc = 0 }
       in_pc && /- id:/ { found = 1; exit }
       END { exit (found ? 0 : 1) }
@@ -180,43 +218,10 @@ main() {
     fi
   done
 
-  # Read carry-forward sidecar if it exists (audit trail for carried rows).
-  local story_dir
-  story_dir="$(dirname "$story_file")"
-  local sidecar="${story_dir}/review-gate-carry.jsonl"
-  local has_sidecar=0
-  # Build a newline-separated list of "row\tto_sha" from the sidecar.
-  local sidecar_entries=""
-  if [ -f "$sidecar" ]; then
-    has_sidecar=1
-    # Parse each JSONL line (portable: no jq dependency — use awk).
-    sidecar_entries="$(awk '
-      {
-        row = ""; to = ""
-        if (match($0, /"row":"[^"]*"/)) {
-          row = substr($0, RSTART + 7, RLENGTH - 8)
-        }
-        if (match($0, /"to_sha":"[^"]*"/)) {
-          to = substr($0, RSTART + 10, RLENGTH - 11)
-        }
-        if (row != "" && to != "") printf "%s\t%s\n", row, to
-      }
-    ' "$sidecar" 2>/dev/null)" || sidecar_entries=""
-  fi
-
-  # Helper: check if a carry-forward sidecar record exists for (row, to_sha).
-  _has_carry_record() {
-    local check_row="$1" check_sha="$2"
-    [ -n "$sidecar_entries" ] || return 1
-    printf '%s\n' "$sidecar_entries" | while IFS=$'\t' read -r sr st; do
-      if [ "$sr" = "$check_row" ] && [ "$st" = "$check_sha" ]; then
-        return 0
-      fi
-    done
-    return 1
-  }
-
   # Classify each row.
+  # Binding comes from the table's Reviewed SHA column: carry-forward writes
+  # the to-SHA directly into the table row (and the sidecar is the audit record,
+  # not the binding source). No sidecar lookup is needed here.
   local has_failed=0 has_pending=0
   local pending_list="" blocked_list=""
   i=0
@@ -242,20 +247,16 @@ main() {
       has_pending=1
       pending_list="${pending_list}  - ${g} (unverified)\n"
     elif [ "$s" = "PASSED" ]; then
-      # Check SHA binding.
+      # Check SHA binding. Binding is determined solely from the table's
+      # Reviewed SHA column (carry-forward writes the to-SHA into the table).
       if [ "$row_sha" = "absent" ] || [ -z "$row_sha" ]; then
         has_pending=1
         pending_list="${pending_list}  - ${g} (no SHA — stale)\n"
       elif [ "$row_sha" != "$bind_head" ]; then
-        # Row SHA doesn't match bind-head. Check for carry-forward.
-        if [ "$has_sidecar" -eq 1 ] && _has_carry_record "$g" "$bind_head"; then
-          : # Carried to bind-head via sidecar — bound.
-        else
-          has_pending=1
-          pending_list="${pending_list}  - ${g} (reviewed on ${row_sha}, head is ${bind_head} — stale)\n"
-        fi
+        has_pending=1
+        pending_list="${pending_list}  - ${g} (reviewed on ${row_sha}, head is ${bind_head} — stale)\n"
       fi
-      # If SHA matches bind-head, the row is directly bound — no sidecar needed.
+      # If SHA matches bind-head, the row is directly bound.
     else
       has_pending=1
       pending_list="${pending_list}  - ${g} (unknown verdict: ${s})\n"

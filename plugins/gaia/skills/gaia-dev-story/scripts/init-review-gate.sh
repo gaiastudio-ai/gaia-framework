@@ -82,9 +82,9 @@ if [ "$has_section" -eq 0 ]; then
     cat "$TMP"
     printf '\n\n## Review Gate\n\n'
     printf '| Review | Status | Report | Reviewed SHA |\n'
-    printf '|--------|--------|--------|--------------|  \n'
+    printf '|--------|--------|--------|--------------|\n'
     for g in "${CANONICAL_GATES[@]}"; do
-      printf '| %s | UNVERIFIED | — |  |\n' "$g"
+      printf '| %s | UNVERIFIED | — | absent |\n' "$g"
     done
     printf '\n> Story moves to `done` only when ALL reviews show PASSED.\n'
   } > "${TMP}.new"
@@ -124,6 +124,24 @@ done < <(awk '
   }
 ' "$STORY_FILE")
 
+# Detect whether the existing table uses 4-column format (has Reviewed SHA).
+# If the header has 4 pipe-delimited columns, seed 4-cell rows to match.
+has_four_cols=0
+if awk '
+  /^## Review Gate[[:space:]]*$/ { in_s = 1; next }
+  in_s && /^## / { in_s = 0 }
+  in_s && /^[[:space:]]*\|/ {
+    line = $0
+    sub(/^[[:space:]]*\|/, "", line)
+    sub(/\|[[:space:]]*$/, "", line)
+    n = split(line, c, /\|/)
+    if (n >= 4) { found = 1; exit }
+  }
+  END { exit (found ? 0 : 1) }
+' "$STORY_FILE" 2>/dev/null; then
+  has_four_cols=1
+fi
+
 # Build the list of missing rows into a temp file.
 missing_count=0
 : > "$MISSING_FILE"
@@ -131,7 +149,11 @@ for g in "${CANONICAL_GATES[@]}"; do
   case "$existing_gates" in
     *"|${g}|"*) ;;
     *)
-      printf '| %s | UNVERIFIED | — |\n' "$g" >> "$MISSING_FILE"
+      if [ "$has_four_cols" -eq 1 ]; then
+        printf '| %s | UNVERIFIED | — | absent |\n' "$g" >> "$MISSING_FILE"
+      else
+        printf '| %s | UNVERIFIED | — |\n' "$g" >> "$MISSING_FILE"
+      fi
       missing_count=$((missing_count + 1))
       ;;
   esac

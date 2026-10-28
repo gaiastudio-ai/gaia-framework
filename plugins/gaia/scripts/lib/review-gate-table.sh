@@ -119,7 +119,7 @@ parse_review_gate_table() {
   fi
 
   awk '
-    BEGIN { in_section = 0; in_table = 0; saw_sep = 0; rows = 0 }
+    BEGIN { in_section = 0; in_table = 0; saw_sep = 0; rows = 0; errors = 0 }
     /^## Review Gate[[:space:]]*$/ { in_section = 1; in_table = 0; saw_sep = 0; next }
     in_section && /^## / { in_section = 0; in_table = 0; next }
     !in_section { next }
@@ -139,7 +139,16 @@ parse_review_gate_table() {
       sub(/^[[:space:]]*\|/, "", line)
       sub(/\|[[:space:]]*$/, "", line)
       n = split(line, cells, /\|/)
-      if (n < 3) next
+      if (n < 3) {
+        printf "review-gate-table.sh: malformed row: fewer than 3 columns\n" > "/dev/stderr"
+        errors++
+        next
+      }
+      if (n > 4) {
+        printf "review-gate-table.sh: malformed row: more than 4 columns\n" > "/dev/stderr"
+        errors++
+        next
+      }
 
       for (i = 1; i <= n; i++) {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[i])
@@ -152,6 +161,6 @@ parse_review_gate_table() {
       rows++
     }
 
-    END { if (rows == 0) exit 1 }
+    END { if (rows == 0 || errors > 0) exit 1 }
   ' "$file"
 }
