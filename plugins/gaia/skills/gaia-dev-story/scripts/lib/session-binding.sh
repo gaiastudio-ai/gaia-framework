@@ -803,40 +803,57 @@ resolve_sprint_arg() {
   fi
 
   # --- Read the session binding ---
+  # The binding FILE is authoritative; the env var is only a cache.  When a
+  # readable binding file exists, its value wins.  If the env var is also set
+  # and disagrees with the file, refuse (same contract as validate_binding).
   local bound_id=""
   local binding_closed=false
+  local _file_bound_id=""
+
+  # 1. Read the binding file first (authoritative source).
+  if [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
+    _file_bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || _file_bound_id=""
+    if [ -n "$_file_bound_id" ]; then
+      # Shape-validate the bound ID from the binding file.
+      # Use case glob (not line-based grep) so multi-line values are rejected.
+      case "$_file_bound_id" in
+        *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+          printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
+            "$_SB_SCRIPT_NAME" "$_file_bound_id" >&2
+          return "$SPRINT_INVALID_ID" ;;
+      esac
+    fi
+  fi
+
+  # 2. Shape-validate the env var (when set).
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
-    bound_id="$GAIA_BOUND_SPRINT_ID"
-    # Shape-validate the bound ID (same pattern as --sprint).
-    # Use case glob (not line-based grep) so multi-line values are rejected.
-    case "$bound_id" in
+    case "$GAIA_BOUND_SPRINT_ID" in
       *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
         printf '%s: error: bound sprint ID has invalid shape: %s\n' \
-          "$_SB_SCRIPT_NAME" "$bound_id" >&2
+          "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" >&2
         return "$SPRINT_INVALID_ID" ;;
     esac
-    # Check if the bound sprint is closed
+    # If the binding file is also present and disagrees, refuse.
+    if [ -n "$_file_bound_id" ] && [ "$GAIA_BOUND_SPRINT_ID" != "$_file_bound_id" ]; then
+      printf '%s: error: binding_mismatch — env GAIA_BOUND_SPRINT_ID=%s differs from binding file=%s\n' \
+        "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" "$_file_bound_id" >&2
+      return "$SPRINT_BOUND_MISMATCH"
+    fi
+  fi
+
+  # 3. Binding file wins when present; fall back to the env var.
+  if [ -n "$_file_bound_id" ]; then
+    bound_id="$_file_bound_id"
+  elif [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
+    bound_id="$GAIA_BOUND_SPRINT_ID"
+  fi
+
+  # Check if the bound sprint is closed.
+  if [ -n "$bound_id" ]; then
     local bs_status=""
     bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
     if [ "$bs_status" = "closed" ]; then
       binding_closed=true
-    fi
-  elif [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
-    bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || bound_id=""
-    if [ -n "$bound_id" ]; then
-      # Shape-validate the bound ID from the binding file.
-      # Use case glob (not line-based grep) so multi-line values are rejected.
-      case "$bound_id" in
-        *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
-          printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
-            "$_SB_SCRIPT_NAME" "$bound_id" >&2
-          return "$SPRINT_INVALID_ID" ;;
-      esac
-      local bs_status=""
-      bs_status="$(_sb_sprint_status "$bound_id" "$state_dir")"
-      if [ "$bs_status" = "closed" ]; then
-        binding_closed=true
-      fi
     fi
   fi
 
