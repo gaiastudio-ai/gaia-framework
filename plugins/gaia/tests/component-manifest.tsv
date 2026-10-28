@@ -366,6 +366,7 @@ core	skill-rename-preflight.bats
 core	skills/gaia-statusline-skill-md.bats
 core	skills/selective-tests-by-component-docs.bats
 core	skills/test-no-bare-name-persona-spawn.bats
+core	sprint-close-resolver.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
 core	sprint-progress-snapshot-hook.bats
@@ -890,7 +891,6 @@ skills	promotion-chain-guard.bats
 skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
 skills	skills/gaia-doctor-stray-snapshots.bats
-skills	sprint-close-resolver.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats
