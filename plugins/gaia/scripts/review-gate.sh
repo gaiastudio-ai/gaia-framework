@@ -824,7 +824,7 @@ cmd_review_gate_check() {
 
   if [ "$has_sha" -eq 1 ]; then
     printf '| Review | Status | Report | Reviewed SHA |\n'
-    printf '|--------|--------|--------|--------------|  \n'
+    printf '|--------|--------|--------|--------------|\n'
     i=0
     while [ $i -lt "${#ROW_GATES[@]}" ]; do
       printf '| %s | %s | %s | %s |\n' \
