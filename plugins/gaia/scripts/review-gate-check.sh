@@ -16,8 +16,9 @@
 #
 # Flags:
 #   --bind-head <sha>  The commit SHA that all reviews must be bound to.
-#                      Must be a real hex SHA (not "none"), normalized to
-#                      full length.
+#                      Must be a real hex SHA (not "none"). Compared
+#                      literally against the stored SHA — callers should
+#                      pass the full-length SHA for a reliable match.
 #   --ci-sha <sha>     The SHA of the CI run. Must match --bind-head for
 #                      COMPLETE, or "none" ONLY when no CI is configured
 #                      (no promotion chain in project config).
@@ -112,9 +113,9 @@ _resolve_config_path() {
 }
 
 # Check whether CI is configured by reading the promotion chain from config.
-# Fail closed: if the config cannot be found or parsed, treat as CI configured
-# (--ci-sha none is refused). This prevents an attacker from bypassing the CI
-# check by hiding or corrupting the config file.
+# Fail closed: if the config cannot be found, read, or parsed, treat as CI
+# configured (--ci-sha none is refused). This prevents an attacker from
+# bypassing the CI check by hiding, corrupting or reshaping the config file.
 _has_ci_configured() {
   local config_file
   config_file="$(_resolve_config_path)" || config_file=""
@@ -122,26 +123,88 @@ _has_ci_configured() {
     # Cannot find config → fail closed: treat as CI configured.
     return 0
   fi
-  # Check for ci_cd.promotion_chain with at least one entry.
-  # Handles both block-style and flow-style YAML.
-  if grep -q 'promotion_chain:' "$config_file" 2>/dev/null; then
-    # Block style: look for "- id:" under ci_cd.promotion_chain.
-    if awk '
-      /^ci_cd:/ { in_ci = 1; next }
-      in_ci && /^[^ ]/ { in_ci = 0 }
-      in_ci && /promotion_chain:/ {
-        # Check for flow-style list on the same line.
-        if ($0 ~ /\[/) { found = 1; exit }
-        in_pc = 1; next
-      }
-      in_pc && /^[^ ]/ && !/^    / { in_pc = 0 }
-      in_pc && /- id:/ { found = 1; exit }
-      END { exit (found ? 0 : 1) }
-    ' "$config_file" 2>/dev/null; then
+
+  # Fail closed: unreadable file → treat as CI configured.
+  if [ ! -r "$config_file" ]; then
+    return 0
+  fi
+
+  # Fail closed: binary or garbled content → treat as CI configured.
+  # A valid YAML config is always a text file. If it contains NUL bytes
+  # or cannot be read, refuse --ci-sha none.
+  local content
+  content="$(cat "$config_file" 2>/dev/null)" || return 0
+  if printf '%s' "$content" | LC_ALL=C /usr/bin/grep -qP '\x00' 2>/dev/null; then
+    return 0
+  fi
+
+  # Check if GAIA_SHARED_CONFIG also has CI (the framework resolver
+  # honours it). If the shared config has a promotion chain, CI is
+  # configured even when the walk-up file does not have one.
+  local shared_file="${GAIA_SHARED_CONFIG:-}"
+  if [ -n "$shared_file" ] && [ -f "$shared_file" ] && [ -r "$shared_file" ]; then
+    if _config_has_promotion_chain "$shared_file"; then
       return 0
     fi
   fi
-  return 1
+
+  _config_has_promotion_chain "$config_file"
+}
+
+# _config_has_promotion_chain <file>
+# Return 0 if the file has a ci_cd.promotion_chain with at least one
+# entry (block or flow style). Fail closed: if the key is present but
+# the shape is unrecognised, treat as configured (return 0).
+_config_has_promotion_chain() {
+  local file="$1"
+
+  # First check: does the file mention promotion_chain at all?
+  if ! /usr/bin/grep -q 'promotion_chain' "$file" 2>/dev/null; then
+    # Also check for ci_cd in any form (quoted, flow-mapped, etc.).
+    if ! /usr/bin/grep -q 'ci_cd' "$file" 2>/dev/null; then
+      return 1
+    fi
+    # ci_cd present but no promotion_chain → no CI chain.
+    return 1
+  fi
+
+  # promotion_chain is mentioned. Now determine if it is null or empty.
+  # Check for explicit null / empty list patterns that mean "no CI".
+  # Only these exact patterns count as "no CI":
+  #   promotion_chain: null
+  #   promotion_chain: ~
+  #   promotion_chain:           (nothing after colon)
+  #   promotion_chain: []
+  if /usr/bin/grep -qE 'promotion_chain:[[:space:]]*(null|~|)[[:space:]]*$' "$file" 2>/dev/null; then
+    # Could be null or bare empty — check it's not followed by list items.
+    # If there are list items after promotion_chain: in the ci_cd section,
+    # it is configured. Use awk for context.
+    if ! awk '
+      /^[[:space:]]*ci_cd[[:space:]]*:/ || /^"ci_cd"[[:space:]]*:/ { in_ci = 1; next }
+      in_ci && /^[^ \t]/ && !/^[[:space:]]/ { in_ci = 0 }
+      in_ci && /promotion_chain[[:space:]]*:/ {
+        # Check same-line for null/empty/~
+        if ($0 ~ /promotion_chain[[:space:]]*:[[:space:]]*(null|~|)[[:space:]]*$/) {
+          in_pc = 1; next
+        }
+      }
+      in_pc && /^[[:space:]]*-/ { found = 1; exit }
+      in_pc && /^[^ \t]/ { exit }
+      in_pc && /^[[:space:]]*[A-Za-z_]/ { exit }
+      END { exit (found ? 0 : 1) }
+    ' "$file" 2>/dev/null; then
+      return 1
+    fi
+  fi
+
+  # Check for explicit empty list: promotion_chain: []
+  if /usr/bin/grep -qE 'promotion_chain:[[:space:]]*\[\][[:space:]]*$' "$file" 2>/dev/null; then
+    return 1
+  fi
+
+  # promotion_chain is present and not provably null or empty.
+  # Fail closed: treat as CI configured.
+  return 0
 }
 
 main() {

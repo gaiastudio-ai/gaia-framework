@@ -128,12 +128,12 @@ N/A — no manual verification required for this story.
 
 | Review | Status | Report | Reviewed SHA |
 |--------|--------|--------|--------------|
-| Code Review | UNVERIFIED | — |  |
-| QA Tests | UNVERIFIED | — |  |
-| Security Review | UNVERIFIED | — |  |
-| Test Automation | UNVERIFIED | — |  |
-| Test Review | UNVERIFIED | — |  |
-| Performance Review | UNVERIFIED | — |  |
+| Code Review | UNVERIFIED | — | absent |
+| QA Tests | UNVERIFIED | — | absent |
+| Security Review | UNVERIFIED | — | absent |
+| Test Automation | UNVERIFIED | — | absent |
+| Test Review | UNVERIFIED | — | absent |
+| Performance Review | UNVERIFIED | — | absent |
 
 > Story moves to `done` only when ALL reviews show PASSED.
 

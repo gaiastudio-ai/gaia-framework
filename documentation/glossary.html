@@ -404,6 +404,43 @@
           (<code>review-gate-check.sh</code>) additionally verifies that
           each row is bound to the current head SHA. Checked by
           <a href="commands/gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>.
+          <br><br>
+          <strong>Scope globs</strong>
+          (<code>review_gate.scope_globs</code> in
+          <code>project-config.yaml</code>): per-gate file-scope
+          configuration for the carry-forward verb. Each gate slug
+          (<code>code-review</code>, <code>qa-tests</code>,
+          <code>security-review</code>, <code>test-automation</code>,
+          <code>test-review</code>, <code>performance-review</code>)
+          maps to a list of git glob pathspecs that define the files
+          relevant to that review. When a PASSED review is carried
+          forward from one commit to another, the writer computes the
+          diff between the two commits and checks for overlap with
+          the configured scope globs. If any changed file matches,
+          the carry is refused (the review must be re-run).
+          <br><br>
+          Glob semantics follow git glob pathspecs:
+          <code>**/</code> matches zero or more directories,
+          <code>*</code> matches within a single path segment
+          (does not cross <code>/</code>),
+          <code>?</code> matches one character, and
+          <code>[abc]</code> is a character class. Patterns are
+          anchored to the repository root. If no scope globs are
+          configured for a gate, carry-forward is refused (fail
+          closed).
+          <br><br>
+          Example configuration:
+<pre><code>review_gate:
+  scope_globs:
+    code-review:
+      - "src/**"
+      - "lib/**"
+    security-review:
+      - "src/**"
+      - "config/**"
+    qa-tests:
+      - "src/**"
+      - "tests/**"</code></pre>
         </dd>
 
         <dt id="rubric">Rubric</dt>

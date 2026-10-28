@@ -10,7 +10,7 @@
 # Invocation contract (stable for bats-core authors):
 #
 #   review-gate.sh check             --story <key>
-#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
+#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
 #   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
 #   review-gate.sh review-gate-check --story <key>
 #   review-gate.sh --help
@@ -233,7 +233,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   review-gate.sh check             --story <key>
-  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
+  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
   review-gate.sh review-gate-check --story <key>
   review-gate.sh carry-forward     --story <key> --row <gate> --from <sha> --to <sha>
@@ -244,9 +244,11 @@ Subcommands:
                     exit 1 and list the non-PASSED gate names on stderr (one
                     per line).
   update            Atomically rewrite exactly one row of the Review Gate
-                    table. Only the Status and Report cells of the matched
-                    gate are changed — all other bytes of the story file are
-                    preserved (headers, blank lines, other rows, trailing
+                    table. The Status, Report and Reviewed SHA cells of the
+                    matched gate are changed. When a three-column table is
+                    updated, the header and separator are upgraded to the
+                    four-column format. All other bytes of the story file
+                    are preserved (blank lines, other rows, trailing
                     content). The fourth column (Reviewed SHA) is bound to
                     the worktree HEAD by default, or to an explicit --sha
                     value. Writes are serialized via flock. When --plan-id
@@ -1558,40 +1560,23 @@ main() {
       local gate_slug
       gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
       local config_scope=""
-      # Read scope globs from project config (the sole source; no CLI override).
-      # Uses the same walk-up as _resolve_config_path().
+      # Read scope globs from the shared config resolver (resolve-config.sh).
+      # This honours GAIA_SHARED_CONFIG, local overrides and YAML escapes —
+      # the same precedence as every other config key. The config path is
+      # resolved here (walk-up + PROJECT_CONFIG + env roots) and passed via
+      # --shared so the resolver does not need to re-discover it.
+      local resolver="${_RG_DIR}/resolve-config.sh"
+      if [ ! -f "$resolver" ]; then
+        die "carry-forward: cannot locate resolve-config.sh — refusing (fail closed)"
+      fi
       local config_file
       config_file="$(_resolve_config_path "$pp")"
       if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
         die "carry-forward: cannot locate project-config.yaml — refusing (fail closed)"
       fi
-      if command -v awk >/dev/null 2>&1; then
-        config_scope="$(awk -v slug="$gate_slug" '
-          /^review_gate:/ { in_rg = 1; next }
-          in_rg && /^[^ ]/ { in_rg = 0 }
-          in_rg && /scope_globs:/ { in_sg = 1; next }
-          in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
-          in_sg {
-            # Look for the gate slug key followed by a list.
-            if ($0 ~ slug ":") { in_gate = 1; next }
-            if (in_gate && /^[[:space:]]*- /) {
-              val = $0
-              sub(/^[[:space:]]*- [[:space:]]*/, "", val)
-              # Strip trailing YAML inline comments (# ...).
-              sub(/[[:space:]]+#.*$/, "", val)
-              sub(/[[:space:]]*$/, "", val)
-              gsub(/"/, "", val)
-              gsub(/'\''/, "", val)
-              if (val != "") {
-                if (out != "") out = out "\n"
-                out = out val
-              }
-            }
-            if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
-          }
-          END { if (out != "") print out }
-        ' "$config_file" 2>/dev/null)" || config_scope=""
-      fi
+      config_scope="$(bash "$resolver" --shared "$config_file" \
+        --field "review_gate.scope_globs.${gate_slug}" 2>/dev/null)" \
+        || config_scope=""
       if [ -z "$config_scope" ]; then
         die "carry-forward: no scope globs configured for row '$carry_row' (gate slug: $gate_slug) — cannot determine file overlap; refusing (fail closed)"
       fi
@@ -1604,17 +1589,31 @@ main() {
       # -z avoids C-quoting of non-ASCII / special chars.
 
       # Build the pathspec arguments from scope globs.
+      # Validate each glob: refuse patterns with unclosed brackets (which
+      # git silently treats as matching nothing, causing a fail-open).
       local -a pathspec_args=()
       local scope_line
       while IFS= read -r scope_line; do
         [ -z "$scope_line" ] && continue
+        # Detect unclosed bracket: count unescaped '[' and ']'.
+        local _open _close
+        _open="$(printf '%s' "$scope_line" | tr -cd '[' | wc -c)"
+        _close="$(printf '%s' "$scope_line" | tr -cd ']' | wc -c)"
+        _open="${_open##* }"
+        _close="${_close##* }"
+        if [ "$_open" -ne "$_close" ]; then
+          die "carry-forward: invalid scope glob pattern '$scope_line' (unclosed bracket) — refusing (fail closed)"
+        fi
         pathspec_args+=(":(glob)${scope_line}")
       done <<< "$config_scope"
 
       # Check for overlap: if git diff with the scope pathspecs returns any
       # paths, there is an overlap and the carry-forward must be refused.
+      # Unset pathspec-mode env vars that would disable :(glob) magic.
       local overlap_output overlap_rc
-      overlap_output="$(git -C "$pp" diff -z --no-renames --name-only \
+      overlap_output="$(env -u GIT_LITERAL_PATHSPECS -u GIT_NOGLOB_PATHSPECS \
+        -u GIT_ICASE_PATHSPECS -u GIT_GLOB_PATHSPECS \
+        git -C "$pp" diff -z --no-renames --name-only \
         "$carry_from" "$carry_to" -- "${pathspec_args[@]}" 2>&1)" \
         && overlap_rc=0 || overlap_rc=$?
       if [ "$overlap_rc" -ne 0 ] && [ "$overlap_rc" -ne 1 ]; then
@@ -1627,24 +1626,28 @@ main() {
       fi
 
       # Get the full diff (all paths, no pathspec filter) for evidence.
-      local diff_output diff_rc
-      diff_output="$(git -C "$pp" diff -z --no-renames --name-only \
-        "$carry_from" "$carry_to" 2>&1)" \
-        && diff_rc=0 || diff_rc=$?
-      if [ "$diff_rc" -ne 0 ]; then
-        die "carry-forward: git diff failed between $carry_from and $carry_to (rc=$diff_rc)"
-      fi
+      # Read via process substitution with NUL delimiter to preserve paths
+      # that contain spaces, tabs, newlines or non-ASCII characters.
+      # Command substitution drops NUL bytes, so we use read -d '' instead.
+      local -a diff_paths=()
+      while IFS= read -r -d '' p; do
+        diff_paths+=("$p")
+      done < <(git -C "$pp" diff -z --no-renames --name-only \
+        "$carry_from" "$carry_to" 2>/dev/null)
 
       # Build the evidence JSON arrays.
       local changed_json="[]"
-      if [ -n "$diff_output" ]; then
-        # NUL-separated → JSON array.
-        changed_json="$(printf '%s' "$diff_output" | awk -v RS='\0' '
-          BEGIN { printf "[" }
-          NR > 1 { printf "," }
-          { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
-          END { printf "]" }
-        ')"
+      if [ "${#diff_paths[@]}" -gt 0 ]; then
+        changed_json="["
+        local _i
+        for _i in "${!diff_paths[@]}"; do
+          [ "$_i" -gt 0 ] && changed_json="${changed_json},"
+          local _escaped="${diff_paths[$_i]}"
+          _escaped="${_escaped//\\/\\\\}"
+          _escaped="${_escaped//\"/\\\"}"
+          changed_json="${changed_json}\"${_escaped}\""
+        done
+        changed_json="${changed_json}]"
       fi
       local globs_json
       globs_json="$(printf '%s\n' "$config_scope" | awk '
@@ -1684,8 +1687,8 @@ main() {
 
       # Now rebind the row's SHA to the to-SHA. Keep the existing report path.
       local current_report="—"
-      local parsed_gate parsed_status parsed_report parsed_sha
-      while IFS=$'\t' read -r parsed_gate _parsed_status2 parsed_report parsed_sha; do
+      local parsed_gate _parsed_status parsed_report parsed_sha
+      while IFS=$'\t' read -r parsed_gate _parsed_status parsed_report parsed_sha; do
         if [ "$parsed_gate" = "$carry_row" ]; then
           current_report="$parsed_report"
           break

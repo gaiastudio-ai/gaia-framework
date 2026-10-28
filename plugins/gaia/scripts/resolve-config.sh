@@ -1272,23 +1272,29 @@ v_creative_artifacts="$(_resolve_rel "$v_creative_artifacts" "$v_project_root")"
 unset _config_anchor
 
 # ---------- Required-field check (post-merge, post-env) ----------
+#
+# Skip when --field targets a dynamic key that can be resolved from the raw
+# YAML without the full config surface (e.g. review_gate.scope_globs.*).
+# This lets callers query a single key from a minimal config file.
 
-[ -z "$v_checkpoint_path" ]          && die "missing required field: checkpoint_path"
-[ -z "$v_date" ]                     && die "missing required field: date"
-[ -z "$v_framework_version" ]        && die "missing required field: framework_version"
-[ -z "$v_installed_path" ]           && die "missing required field: installed_path"
-[ -z "$v_memory_path" ]              && die "missing required field: memory_path"
-[ -z "$v_project_path" ]             && die "missing required field: project_path"
-[ -z "$v_project_root" ]             && die "missing required field: project_root"
-# Artifact-dir required fields. These always resolve because the default block
-# above populates them from {project_root}/docs/… when nothing else supplied a
-# value. The explicit checks stay for parity with the rest of the required-field
-# surface and to catch any future regression where the default block is bypassed
-# (e.g., someone sets them to empty string).
-[ -z "$v_test_artifacts" ]           && die "missing required field: test_artifacts"
-[ -z "$v_planning_artifacts" ]       && die "missing required field: planning_artifacts"
-[ -z "$v_implementation_artifacts" ] && die "missing required field: implementation_artifacts"
-[ -z "$v_creative_artifacts" ]       && die "missing required field: creative_artifacts"
+if [ -z "$FIELD" ]; then
+  [ -z "$v_checkpoint_path" ]          && die "missing required field: checkpoint_path"
+  [ -z "$v_date" ]                     && die "missing required field: date"
+  [ -z "$v_framework_version" ]        && die "missing required field: framework_version"
+  [ -z "$v_installed_path" ]           && die "missing required field: installed_path"
+  [ -z "$v_memory_path" ]              && die "missing required field: memory_path"
+  [ -z "$v_project_path" ]             && die "missing required field: project_path"
+  [ -z "$v_project_root" ]             && die "missing required field: project_root"
+  # Artifact-dir required fields. These always resolve because the default block
+  # above populates them from {project_root}/docs/… when nothing else supplied a
+  # value. The explicit checks stay for parity with the rest of the required-field
+  # surface and to catch any future regression where the default block is bypassed
+  # (e.g., someone sets them to empty string).
+  [ -z "$v_test_artifacts" ]           && die "missing required field: test_artifacts"
+  [ -z "$v_planning_artifacts" ]       && die "missing required field: planning_artifacts"
+  [ -z "$v_implementation_artifacts" ] && die "missing required field: implementation_artifacts"
+  [ -z "$v_creative_artifacts" ]       && die "missing required field: creative_artifacts"
+fi
 
 # ---------- Framework version drift detection ----------
 #
@@ -1559,34 +1565,52 @@ if [ -n "$FIELD" ]; then
     review_gate.scope_globs.*)
       # Dynamic 3-deep key: review_gate.scope_globs.<gate-slug>.
       # Returns one glob per line (block-style list items).
-      local _rg_slug="${FIELD#review_gate.scope_globs.}"
-      local _rg_val=""
-      _rg_val=$(_merge_3deep review_gate scope_globs "$_rg_slug" 2>/dev/null) || _rg_val=""
-      if [ -z "$_rg_val" ]; then
-        # Try reading as a YAML list under scope_globs.<slug>.
-        local _rg_file="${SHARED_PATH}"
-        [ "$LOCAL_EXISTS" -eq 1 ] && _rg_file="$LOCAL_PATH"
-        if [ -f "$_rg_file" ]; then
-          _rg_val="$(awk -v slug="$_rg_slug" '
-            /^review_gate:/ { in_rg = 1; next }
-            in_rg && /^[^ ]/ { in_rg = 0 }
-            in_rg && /scope_globs:/ { in_sg = 1; next }
-            in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
-            in_sg {
-              if ($0 ~ slug ":") { in_gate = 1; next }
-              if (in_gate && /^[[:space:]]*- /) {
-                val = $0
-                sub(/^[[:space:]]*- [[:space:]]*/, "", val)
-                sub(/[[:space:]]+#.*$/, "", val)
-                sub(/[[:space:]]*$/, "", val)
-                gsub(/"/, "", val)
-                gsub(/'\''/, "", val)
-                if (val != "") print val
+      # No `local` here — this case runs at top level, not inside a function.
+      # Gate slugs contain hyphens which parse_yaml_3deep does not handle,
+      # and the value is a YAML list (not a scalar), so read it directly
+      # with an awk list parser that handles both block and flow styles.
+      _rg_slug="${FIELD#review_gate.scope_globs.}"
+      _rg_val=""
+      _rg_file="${SHARED_PATH}"
+      [ "$LOCAL_EXISTS" -eq 1 ] && _rg_file="$LOCAL_PATH"
+      if [ -f "$_rg_file" ]; then
+        _rg_val="$(awk -v slug="$_rg_slug" '
+          /^review_gate:/ { in_rg = 1; next }
+          in_rg && /^[^ ]/ { in_rg = 0 }
+          in_rg && /scope_globs:/ { in_sg = 1; next }
+          in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
+          in_sg {
+            if ($0 ~ slug ":") {
+              # Check for flow-style list on the same line: slug: ["a", "b"]
+              if ($0 ~ /\[/) {
+                line = $0
+                sub(/.*\[/, "", line)
+                sub(/\].*/, "", line)
+                n = split(line, items, ",")
+                for (i = 1; i <= n; i++) {
+                  v = items[i]
+                  gsub(/^[[:space:]]*/, "", v)
+                  gsub(/[[:space:]]*$/, "", v)
+                  gsub(/"/, "", v)
+                  gsub(/'\''/, "", v)
+                  if (v != "") print v
+                }
+                exit
               }
-              if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
+              in_gate = 1; next
             }
-          ' "$_rg_file" 2>/dev/null)"
-        fi
+            if (in_gate && /^[[:space:]]*- /) {
+              val = $0
+              sub(/^[[:space:]]*- [[:space:]]*/, "", val)
+              sub(/[[:space:]]+#.*$/, "", val)
+              sub(/[[:space:]]*$/, "", val)
+              gsub(/"/, "", val)
+              gsub(/'\''/, "", val)
+              if (val != "") print val
+            }
+            if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
+          }
+        ' "$_rg_file" 2>/dev/null)"
       fi
       printf '%s\n' "$_rg_val" ;;
     ci_cd.ci_wait_timeout_minutes)
