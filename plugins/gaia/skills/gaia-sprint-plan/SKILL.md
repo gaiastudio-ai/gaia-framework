@@ -406,8 +406,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh rollover \
 
 In concurrent mode the rollover runs a three-phase protocol:
 1. **Phase A** checks every active sprint for independence (file-touch overlap, dependency edges, shared epics, config section overlap) and refuses if a closing marker is in progress.
-2. **Phase B** rewrites `sprint_id` and injects each passing key into the target sprint.
-3. **Phase C** removes each passing key from the source sprint.
+2. **Phase B** injects each passing key into the target sprint and resets its execution phase.
+3. **Phase C** rewrites each passing key's `sprint_id` to the target and removes it from the source sprint.
 
 When the rollover reports failures:
 - **Independence failure (exit 1):** offer the operator three options: (a) pick another target sprint, (b) create a new sprint, or (c) defer to the backlog. When the operator declines all options, return the story to the backlog via `sprint-state.sh set-story-sprint --story {key} --clear`, record the reason as a Findings row on the story file, and emit a `story_returned_to_backlog` lifecycle event via `lifecycle-event.sh` (payload: `story_key`, `from_sprint`, `failed_sprints`, `failed_rules`).

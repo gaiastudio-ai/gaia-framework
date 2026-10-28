@@ -570,7 +570,9 @@ aiw_resolve() {
   esac
   safe_rd="$(_aiw_yaml_escape "$rd")"
 
-  # Build related_stories as a YAML inline sequence: ["k1", "k2"].
+  # Build the new related_stories entries as a comma-separated list of
+  # escaped values (without brackets). The awk merges these with any
+  # existing entries and writes an inline YAML sequence.
   local safe_rs=""
   if [ -n "$related_stories" ]; then
     local _rs_build=""
@@ -581,18 +583,33 @@ aiw_resolve() {
       local _erk
       _erk="$(_aiw_yaml_escape "$_rk")"
       if [ -n "$_rs_build" ]; then
-        _rs_build="${_rs_build}, \"${_erk}\""
+        _rs_build="${_rs_build},${_erk}"
       else
-        _rs_build="\"${_erk}\""
+        _rs_build="${_erk}"
       fi
     done
     IFS="$OLDIFS"
-    safe_rs="[${_rs_build}]"
+    safe_rs="$_rs_build"
   fi
 
-  # Awk-based in-place edit: only the target item's fields are changed.
-  # Every other byte in the file is preserved verbatim. Fields that don't
-  # exist on the item are appended after the last field in that item block.
+  # Today's date for the last_updated bump (only when the key exists).
+  local _today
+  _today="$(date -u +%Y-%m-%d)"
+
+  # Preserve original file mode so mv does not change permissions.
+  local _orig_mode=""
+  if stat -f '%Lp' "$target" >/dev/null 2>&1; then
+    _orig_mode="$(stat -f '%Lp' "$target")"  # BSD stat
+  elif stat -c '%a' "$target" >/dev/null 2>&1; then
+    _orig_mode="$(stat -c '%a' "$target")"    # GNU stat
+  fi
+
+  # Awk-based in-place edit: only the target item's top-level fields are
+  # changed. Every other byte in the file is preserved verbatim. The editor
+  # is block-scalar-aware: it tracks YAML block scalar indicators (|, >,
+  # and their variants) and skips continuation lines at deeper indentation,
+  # preventing matches against field names that appear inside block text.
+  # Block-list fields (key:\n  - entry) are also handled correctly.
   local tmp
   tmp="$(mktemp "${target}.XXXXXX")" || {
     printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
@@ -610,96 +627,274 @@ aiw_resolve() {
   AIW_RD="$safe_rd" \
   AIW_RI="$safe_ri" \
   AIW_RS="$safe_rs" \
+  AIW_TODAY="$_today" \
   awk '
     BEGIN {
-      item = ENVIRON["AIW_ITEM"]
-      new_status = ENVIRON["AIW_STATUS"]
-      new_resolution = ENVIRON["AIW_RESOLUTION"]
-      new_rd = ENVIRON["AIW_RD"]
-      new_ri = ENVIRON["AIW_RI"]
-      new_rs = ENVIRON["AIW_RS"]
+      item        = ENVIRON["AIW_ITEM"]
+      new_status  = ENVIRON["AIW_STATUS"]
+      new_res     = ENVIRON["AIW_RESOLUTION"]
+      new_rd      = ENVIRON["AIW_RD"]
+      new_ri      = ENVIRON["AIW_RI"]
+      new_rs_csv  = ENVIRON["AIW_RS"]
+      today       = ENVIRON["AIW_TODAY"]
+
       in_target = 0; found = 0; done_editing = 0
-      wrote_status = 0; wrote_resolution = 0; wrote_rd = 0
+      wrote_st = 0; wrote_res = 0; wrote_rd = 0
       wrote_ri = 0; wrote_rs = 0
-      indent = "  "  # default field indent
+      indent = "    "; indent_len = 4
+      # Block-scalar tracker (applies to ALL items, not just the target,
+      # so that "- id:" inside a block scalar is never misread as an item).
+      in_blk = 0; blk_base = 0
+      # eating_blk: we replaced a block-scalar field and are consuming its
+      # continuation lines (suppress output).
+      eating_blk = 0; eat_base = 0
+      # consuming_rs_block: accumulating block-list entries for related_stories.
+      consuming_rs = 0; rs_base = 0; rs_existing = ""
+      bumped_lu = 0
     }
 
-    # Detect start of an item block: line starting with "- id:"
-    /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
-      # Flush pending fields from previous target block.
-      if (in_target) { _flush_pending(); done_editing = 1 }
-      in_target = 0
+    {
+      # -- indentation of the current line --
+      cil = 0
+      if (match($0, /^[[:space:]]+/)) cil = RLENGTH
+      is_empty = ($0 ~ /^[[:space:]]*$/)
+    }
 
-      # Check if this is our target item (first match only).
+    # ---- State 1: eating replaced block-scalar continuation ----
+    eating_blk {
+      if (is_empty) next                # blank inside eaten block
+      if (cil > eat_base) next          # continuation: eat
+      eating_blk = 0                    # fell out — process normally below
+    }
+
+    # ---- State 2: inside a preserved block scalar ----
+    in_blk {
+      if (is_empty) { print; next }     # blank inside block
+      if (cil > blk_base) { print; next }   # continuation
+      in_blk = 0                        # fell out
+    }
+
+    # ---- State 3: consuming block-list entries for related_stories ----
+    consuming_rs {
+      if (is_empty) next
+      if (cil > rs_base) {
+        # Block-list entry: "  - value"
+        e = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", e)
+        gsub(/^["'"'"']+|["'"'"']+$/, "", e); sub(/[[:space:]]*$/, "", e)
+        if (e != "") _rs_add_existing(e)
+        next
+      }
+      # Block list ended — write the merged inline sequence.
+      _write_merged_rs()
+      consuming_rs = 0
+      # Fall through to process this line normally.
+    }
+
+    # ---- Top-level last_updated: bump in place when present ----
+    !in_target && !bumped_lu && today != "" && /^last_updated:/ {
+      printf "last_updated: \"%s\"\n", today
+      bumped_lu = 1; next
+    }
+
+    # ---- Item-start detection (suppressed inside block scalars) ----
+    !in_blk && !eating_blk && /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
+      if (in_target) { _flush(); done_editing = 1; in_target = 0 }
+
       if (!done_editing) {
-        line = $0
-        sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", line)
-        gsub(/^["'"'"']+|["'"'"']+$/, "", line)
-        if (line == item) {
+        ln = $0
+        sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", ln)
+        gsub(/^["'"'"']+|["'"'"']+$/, "", ln)
+        if (ln == item) {
           in_target = 1; found = 1
-          wrote_status = 0; wrote_resolution = 0; wrote_rd = 0
-          wrote_ri = 0; wrote_rs = 0
-          # Detect indent from this line.
+          wrote_st = 0; wrote_res = 0; wrote_rd = 0
+          wrote_ri = 0; wrote_rs = 0; rs_existing = ""
           match($0, /^[[:space:]]*/)
-          indent = substr($0, 1, RLENGTH) "  "
+          indent_len = RLENGTH + 2
+          indent = ""; for (_z = 0; _z < indent_len; _z++) indent = indent " "
         }
       }
       print; next
     }
 
-    # Inside the target item: replace or note existing fields.
-    in_target && /^[[:space:]]+status:[[:space:]]/ {
-      printf "%sstatus: \"%s\"\n", indent, new_status
-      wrote_status = 1; next
-    }
-    in_target && /^[[:space:]]+resolution:[[:space:]]/ {
-      if (new_resolution != "") {
-        printf "%sresolution: \"%s\"\n", indent, new_resolution
-        wrote_resolution = 1
-      } else { print }
-      next
-    }
-    in_target && /^[[:space:]]+resolved_date:[[:space:]]/ {
-      if (new_rd != "") {
-        printf "%sresolved_date: \"%s\"\n", indent, new_rd
-        wrote_rd = 1
-      } else { print }
-      next
-    }
-    in_target && /^[[:space:]]+resolved_in:[[:space:]]/ {
-      if (new_ri != "") {
-        printf "%sresolved_in: \"%s\"\n", indent, new_ri
-        wrote_ri = 1
-      } else { print }
-      next
-    }
-    in_target && /^[[:space:]]+related_stories:[[:space:]]/ {
-      if (new_rs != "") {
-        printf "%srelated_stories: %s\n", indent, new_rs
-        wrote_rs = 1
-      } else { print }
-      next
+    # ---- Inside the target item ----
+    in_target {
+      # Blank or comment lines: preserve.
+      if (is_empty || $0 ~ /^[[:space:]]*#/) { print; next }
+
+      # Line at less than field indent: item ended.
+      if (cil < indent_len) {
+        _flush(); in_target = 0; done_editing = 1
+        print; next
+      }
+
+      # Line deeper than field indent: nested content (map, etc.). Preserve.
+      if (cil > indent_len) { print; next }
+
+      # At exactly field indent: this is a top-level field of the item.
+      fl = $0; sub(/^[[:space:]]+/, "", fl)
+      cp = index(fl, ":")
+      if (cp < 1) { print; next }
+      fn = substr(fl, 1, cp - 1)
+      fv = substr(fl, cp + 1); sub(/^[[:space:]]*/, "", fv); sub(/[[:space:]]*$/, "", fv)
+      is_bs = _is_blk(fv)
+
+      # -- status --
+      if (fn == "status") {
+        printf "%sstatus: \"%s\"\n", indent, new_status; wrote_st = 1
+        if (is_bs) { eating_blk = 1; eat_base = indent_len }
+        next
+      }
+      # -- resolution --
+      if (fn == "resolution") {
+        if (new_res != "") {
+          printf "%sresolution: \"%s\"\n", indent, new_res; wrote_res = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- resolved_date --
+      if (fn == "resolved_date") {
+        if (new_rd != "") {
+          printf "%sresolved_date: \"%s\"\n", indent, new_rd; wrote_rd = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- resolved_in --
+      if (fn == "resolved_in") {
+        if (new_ri != "") {
+          printf "%sresolved_in: \"%s\"\n", indent, new_ri; wrote_ri = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- related_stories --
+      if (fn == "related_stories") {
+        if (new_rs_csv != "") {
+          if (fv == "" || fv ~ /^#/) {
+            # Block-list form: consume entries, then merge.
+            consuming_rs = 1; rs_base = indent_len
+            next
+          }
+          # Inline form: parse existing, merge, deduplicate, write.
+          _parse_inline_rs(fv)
+          _write_merged_rs(); wrote_rs = 1
+          next
+        }
+        # Not replacing — preserve, but track block forms.
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        else if (fv == "" || fv ~ /^#/) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+
+      # Any other field: if block scalar, track it so continuation lines
+      # are not mistaken for fields.
+      if (is_bs) { in_blk = 1; blk_base = indent_len }
+      else if (fv == "" || fv ~ /^#/) {
+        # Bare key ending with colon (block-list or nested map): track.
+        in_blk = 1; blk_base = indent_len
+      }
+      print; next
     }
 
-    # End of target item block: next item or non-indented line.
-    in_target && (/^[[:space:]]*-[[:space:]]+id:/ || /^[^[:space:]#]/) {
-      _flush_pending()
-      in_target = 0
+    # ---- Outside target: track block scalars so "- id:" inside them is
+    #      never misread as an item start. Only actual block scalar
+    #      indicators (|, >) are tracked — bare "key:" (block sequence or
+    #      mapping start, e.g. "items:") must NOT suppress item detection.
+    !in_target {
+      if (!is_empty && $0 !~ /^[[:space:]]*#/) {
+        fl2 = $0; sub(/^[[:space:]]+/, "", fl2)
+        cp2 = index(fl2, ":")
+        if (cp2 > 0) {
+          fv2 = substr(fl2, cp2 + 1); sub(/^[[:space:]]*/, "", fv2); sub(/[[:space:]]*$/, "", fv2)
+          if (_is_blk(fv2)) {
+            in_blk = 1; blk_base = cil
+          }
+        }
+      }
     }
 
     { print }
 
     END {
-      if (in_target) _flush_pending()
+      if (consuming_rs) _write_merged_rs()
+      if (in_target) _flush()
       if (!found) { printf "NOTFOUND\n" > "/dev/stderr"; exit 1 }
     }
 
-    function _flush_pending() {
-      if (!wrote_status) printf "%sstatus: \"%s\"\n", indent, new_status
-      if (new_resolution != "" && !wrote_resolution) printf "%sresolution: \"%s\"\n", indent, new_resolution
-      if (new_rd != "" && !wrote_rd) printf "%sresolved_date: \"%s\"\n", indent, new_rd
-      if (new_ri != "" && !wrote_ri) printf "%sresolved_in: \"%s\"\n", indent, new_ri
-      if (new_rs != "" && !wrote_rs) printf "%srelated_stories: %s\n", indent, new_rs
+    function _is_blk(v,    t) {
+      t = v; sub(/[[:space:]]*#.*$/, "", t)
+      if (t == "|" || t == ">" || t == "|-" || t == "|+" || t == ">-" || t == ">+") return 1
+      if (t ~ /^[|>][+-]?[0-9]+$/ || t ~ /^[|>][0-9]+[+-]?$/) return 1
+      return 0
+    }
+
+    function _flush() {
+      if (!wrote_st)                           printf "%sstatus: \"%s\"\n",          indent, new_status
+      if (new_res != ""  && !wrote_res)        printf "%sresolution: \"%s\"\n",      indent, new_res
+      if (new_rd  != ""  && !wrote_rd)         printf "%sresolved_date: \"%s\"\n",   indent, new_rd
+      if (new_ri  != ""  && !wrote_ri)         printf "%sresolved_in: \"%s\"\n",     indent, new_ri
+      if (new_rs_csv != "" && !wrote_rs)       _write_merged_rs()
+    }
+
+    # Accumulate one entry into rs_existing (comma-separated, deduplicated).
+    function _rs_add_existing(e) {
+      if (_rs_has(rs_existing, e)) return
+      if (rs_existing != "") rs_existing = rs_existing "," e
+      else rs_existing = e
+    }
+
+    # Parse entries from an inline YAML sequence [...] into rs_existing.
+    function _parse_inline_rs(val,    s, n, parts, i, e) {
+      s = val; gsub(/^\[|\]$/, "", s)
+      n = split(s, parts, ",")
+      for (i = 1; i <= n; i++) {
+        e = parts[i]; sub(/^[[:space:]]*"?/, "", e); sub(/"?[[:space:]]*$/, "", e)
+        if (e != "") _rs_add_existing(e)
+      }
+    }
+
+    # Check if entry is already in the comma-separated list.
+    function _rs_has(lst, entry,    parts, n, i) {
+      if (lst == "") return 0
+      n = split(lst, parts, ",")
+      for (i = 1; i <= n; i++) if (parts[i] == entry) return 1
+      return 0
+    }
+
+    # Merge rs_existing with new_rs_csv and write the inline YAML sequence.
+    function _write_merged_rs(    s, n, parts, i, e, merged, mn, mp, j, first) {
+      merged = rs_existing
+      if (new_rs_csv != "") {
+        n = split(new_rs_csv, parts, ",")
+        for (i = 1; i <= n; i++) {
+          e = parts[i]; sub(/^[[:space:]]*/, "", e); sub(/[[:space:]]*$/, "", e)
+          if (e != "" && !_rs_has(merged, e)) {
+            if (merged != "") merged = merged "," e
+            else merged = e
+          }
+        }
+      }
+      if (merged == "") {
+        printf "%srelated_stories: []\n", indent
+      } else {
+        mn = split(merged, mp, ",")
+        printf "%srelated_stories: [", indent
+        first = 1
+        for (j = 1; j <= mn; j++) {
+          if (!first) printf ", "
+          printf "\"%s\"", mp[j]
+          first = 0
+        }
+        printf "]\n"
+      }
+      wrote_rs = 1
     }
   ' "$target" > "$tmp" || awk_rc=$?
 
@@ -717,11 +912,18 @@ aiw_resolve() {
   fi
 
   mv -f "$tmp" "$target"
+  # Restore the original file mode (mktemp + mv may change it).
+  if [ -n "$_orig_mode" ]; then
+    chmod "$_orig_mode" "$target" 2>/dev/null || true
+  fi
   return 0
   }  # end _do_resolve_locked
 
   # Take the action-items lock (same lock as aiw_write uses) around the
   # entire read-edit-write to prevent concurrent resolves losing updates.
+  # The lock file is NOT removed after release — unlinking a held inode
+  # lets a newcomer lock a fresh file while a waiter still holds the
+  # unlinked one, breaking mutual exclusion with three or more contenders.
   if command -v flock >/dev/null 2>&1; then
     local lockfile="${target}.lock"
     (
@@ -729,7 +931,6 @@ aiw_resolve() {
       _do_resolve_locked
     ) 9>"$lockfile"
     local _flock_rc=$?
-    rm -f "$lockfile"
     if [ "$_flock_rc" -ne 0 ]; then
       printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
       return 1

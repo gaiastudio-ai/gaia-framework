@@ -1107,7 +1107,7 @@ _ic_run_rules_cd() {
         sid = sprint[key]
         sf = sfile[key]
 
-        # Missing predicted_touch_set on any story fails closed (R33/AC1).
+        # Missing predicted_touch_set on any story fails closed.
         if (meta_ts[key] != 1) {
           printf "FAIL indeterminate: missing predicted_touch_set: %s %s", sid, sf
           exit 0
@@ -1997,6 +1997,10 @@ main() {
 
   # -------------------------------------------------------------------
   # Register active sprint stories.
+  # In carry-over mode, exclude carry-over candidate keys from the
+  # target sprint's membership so a re-run (where the key is already
+  # in the target from a previous Phase B) does not compare the key
+  # against its own copy and fail rule (b)/(c).
   # -------------------------------------------------------------------
   local aid
   while IFS= read -r aid; do
@@ -2006,6 +2010,16 @@ main() {
     active_keys="$(_ic_read_sprint_keys "$active_state_file")"
     while IFS= read -r akey; do
       [ -n "$akey" ] || continue
+      # In carry-over mode, skip carry-over candidates in the target
+      # sprint so a completed or partial rollover can be re-run.
+      if [ "$_ic_carryover_mode" -eq 1 ] && [ "$aid" = "$_ic_real_candidate" ]; then
+        local _skip_key=0 _ck2
+        while IFS= read -r _ck2; do
+          [ -n "$_ck2" ] || continue
+          if [ "$_ck2" = "$akey" ]; then _skip_key=1; break; fi
+        done <<< "$candidate_keys"
+        [ "$_skip_key" -eq 1 ] && continue
+      fi
       printf '%s\t%s\n' "$akey" "$aid" >> "$membership"
     done <<< "$active_keys"
   done <<< "$active_ids"

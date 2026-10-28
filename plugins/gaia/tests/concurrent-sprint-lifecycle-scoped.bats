@@ -343,7 +343,7 @@ YAML
 # Sourced-versus-executed dispatch guard
 # ================================================================
 
-@test "action-items-write.sh resolve subcommand dispatches correctly" {
+@test "action-items-write.sh resolve subcommand routes correctly" {
   local target="$TEST_TMP/action-items.yaml"
   _seed_action_items_yaml "$target"
 
@@ -618,7 +618,7 @@ YAML
 }
 
 # ================================================================
-# Item 1: carried key overlapping TARGET story is refused
+# Carried key overlapping target story is refused
 # ================================================================
 
 @test "carry-over key overlapping target sprint story is refused" {
@@ -685,7 +685,7 @@ S
 }
 
 # ================================================================
-# Item 2: per-key results — independent key moves, failing key stays
+# Per-key results — independent key moves, failing key stays
 # ================================================================
 
 @test "per-key rollover: independent key moves while dependent key stays" {
@@ -763,7 +763,7 @@ S
 }
 
 # ================================================================
-# Item 5: fail closed when independence-check.sh missing
+# Fail closed when independence-check.sh missing
 # ================================================================
 
 @test "rollover fails closed when independence-check.sh is missing" {
@@ -802,38 +802,96 @@ S
 }
 
 # ================================================================
-# Item 6 test: aiw_resolve preserves file format (real tracker)
+# aiw_resolve preserves file format on complex YAML shapes
 # ================================================================
 
-@test "aiw_resolve only changes target item lines on real tracker copy" {
-  local real="/Users/jlouage/Dev/GAIA-Framework/.gaia/state/action-items.yaml"
-  [ -f "$real" ] || skip "real action-items.yaml not found"
-
-  local copy="$TEST_TMP/action-items-copy.yaml"
-  cp "$real" "$copy"
+@test "aiw_resolve only changes target item lines on complex YAML shapes" {
+  # Fixture mimicking real tracker shapes: block scalars, block-list
+  # related_stories, nested maps, duplicate IDs.
+  local target="$TEST_TMP/tracker-complex.yaml"
+  cat > "$target" <<'FIXTURE'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-T1"
+    created: "2026-05-15T19:35:00Z"
+    type: feature
+    status: open
+    context_for_target: |
+      Some context with embedded YAML-like content.
+        status: invalid with resolution explaining the bug.
+        - id: AI-FAKE
+          status: fake
+      End of block.
+    resolution: |
+      Old resolution text that spans
+      multiple lines and should be
+      replaced entirely.
+    assignee: "someone"
+  - id: "AI-T2"
+    status: done
+    related_stories:
+      - E900-S1
+      - E900-S5
+    resolution: "Prior resolution."
+    context_for_target: |
+      Another block scalar.
+  - id: "AI-T3"
+    status: resolved
+    resolution: "Existing resolution."
+    related_stories: ["E900-S65"]
+  - id: "AI-T4"
+    sprint_id: "sprint-100"
+    status: open
+    text: "Simple item"
+  - id: "AI-T1"
+    sprint_id: "sprint-55"
+    status: open
+    text: "Duplicate ID entry"
+FIXTURE
 
   source "$AIW_SH"
-  run aiw_resolve --target "$copy" --item "AI-1" --status "resolved" --resolution "test"
 
+  # Resolve AI-T1 (block scalar shape).
+  run aiw_resolve --target "$target" --item "AI-T1" --status "done" \
+    --resolution "Fixed" --resolved-date "2026-10-28"
   [ "$status" -eq 0 ]
 
-  # Only the first AI-1's status+resolution+resolved_date lines should differ.
-  local diff_lines
-  diff_lines="$(diff "$real" "$copy" | /usr/bin/grep '^[<>]' | wc -l || true)"
-  # Expect small number of changed lines (status, resolution, resolved_date).
-  [ "$diff_lines" -le 8 ]
-
   # File must still be valid YAML.
-  yq '.' "$copy" > /dev/null
+  yq '.' "$target" > /dev/null
 
-  # Second AI-1 (later in file) must be unchanged. Use exact match
-  # to avoid AI-10/AI-11/etc. false positives.
-  local second_ai1_status
-  second_ai1_status="$(awk '
-    /^- id:[[:space:]]+"?AI-1"?[[:space:]]*$/ { count++ }
-    count == 2 && /status:/ { print; exit }
-  ' "$copy")"
-  [[ "$second_ai1_status" == *"open"* ]]
+  # AI-T1 status and resolution changed.
+  local t1_status t1_res
+  t1_status="$(yq -r '.items[0].status' "$target")"
+  [ "$t1_status" = "done" ]
+  t1_res="$(yq -r '.items[0].resolution' "$target")"
+  [ "$t1_res" = "Fixed" ]
+
+  # Block scalar preserved (context_for_target still contains the embedded text).
+  local ctx
+  ctx="$(yq -r '.items[0].context_for_target' "$target")"
+  [[ "$ctx" == *"status: invalid"* ]]
+  [[ "$ctx" == *"- id: AI-FAKE"* ]]
+
+  # AI-T2 block-list related_stories preserved.
+  local t2_rs
+  t2_rs="$(yq -r '.items[1].related_stories | length' "$target")"
+  [ "$t2_rs" -ge 2 ]
+
+  # Duplicate AI-T1 unchanged.
+  local dup_status
+  dup_status="$(yq -r '.items[4].status' "$target")"
+  [ "$dup_status" = "open" ]
+
+  # last_updated bumped.
+  local lu
+  lu="$(yq -r '.last_updated' "$target")"
+  [ "$lu" = "$(date -u +%Y-%m-%d)" ]
+
+  # Append after resolve still produces valid YAML.
+  aiw_write --target "$target" --sprint-id "sprint-99" \
+    --classification "implementation" --text "New" \
+    --ref-key "story_key" --ref-value "E999-S1"
+  yq '.' "$target" > /dev/null
 }
 
 @test "aiw_resolve then aiw_write append produces valid YAML" {
@@ -858,7 +916,7 @@ S
 }
 
 # ================================================================
-# Item 8: parallel resolves both persisted
+# Parallel resolves both persisted
 # ================================================================
 
 @test "two parallel aiw_resolve on different items both persist" {
@@ -883,7 +941,7 @@ S
 }
 
 # ================================================================
-# Item 16: SKILL.md prose per-line assertions
+# SKILL.md prose per-line assertions
 # ================================================================
 
 @test "action-items SKILL.md references scripted resolve path" {
@@ -921,7 +979,7 @@ S
 }
 
 # ================================================================
-# Item 17: comprehensive leak test
+# Comprehensive leak test
 # ================================================================
 
 @test "no leaked IDs in any changed published file including mirror" {
@@ -990,7 +1048,7 @@ S
 }
 
 # ================================================================
-# Item 10: empty touch-set carry-over asserts key moved AND left source
+# Empty touch-set carry-over asserts key moved AND left source
 # ================================================================
 
 @test "empty touch-set carry-over: key in target AND gone from source" {
@@ -1033,7 +1091,7 @@ YAML
 }
 
 # ================================================================
-# Item 11: lock-sequencing tests — three-phase rollover
+# Lock-sequencing tests — three-phase rollover
 # ================================================================
 
 @test "three-phase rollover: rollover locks are sequenced (flock path)" {
@@ -1136,7 +1194,7 @@ YAML
   [ -z "$in_source" ]
 }
 
-@test "Phase C holds source L1: contender on source lock makes Phase C wait or fail" {
+@test "Phase C holds source L1: debug log proves source lock acquired" {
   _seed_config 2
 
   local from_yaml to_yaml
@@ -1146,51 +1204,32 @@ YAML
   _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/phase-c.ts" > /dev/null
   _add_story_to_yaml "$from_yaml" "E900-S1"
 
-  # Take the source L1 lock as a contender (hold for 10s in background).
-  local from_lock="${from_yaml}.lock"
-  source "$LOCK_LIB"
-  (
-    acquire_lock "$from_lock" 5 9
-    # Hold the lock for 10 seconds.
-    sleep 10
-    release_lock 9
-  ) &
-  local holder_pid=$!
-  # Give the holder time to acquire.
-  sleep 0.5
+  local debug_log="$TEST_TMP/phase-c-lock-debug.log"
+  export ACQUIRE_LOCK_DEBUG=1
+  export ACQUIRE_LOCK_DEBUG_LOG="$debug_log"
 
-  # Rollover should fail or wait (with a 5s L1 timeout it will timeout).
-  export GAIA_LOCK_L1_TIMEOUT=2
   run bash "$SPRINT_STATE_SH" rollover \
     --from sprint-900 --to sprint-901 --keys E900-S1
+  [ "$status" -eq 0 ]
 
-  # Phase C could not complete — either lock timeout (non-zero) or the
-  # rollover reported failure for Phase C.
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
-
-  # The rollover should NOT have succeeded fully (Phase C blocked).
-  # Either exit non-zero, OR the key was not removed from source.
-  if [ "$status" -eq 0 ]; then
-    # If it succeeded, Phase C got through somehow — check source.
-    local in_source
-    in_source="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$from_yaml" 2>/dev/null)" || in_source=""
-    # If key is still in source, Phase C did not complete.
-    [ -z "$in_source" ] || {
-      echo "Phase C did not acquire source lock (key still in source)" >&2
-      false
-    }
-  fi
-  # If non-zero, that is the expected outcome (Phase C lock timeout).
-  true
+  # The debug log must contain an acquire for the source sprint lock file.
+  [ -s "$debug_log" ] || {
+    echo "ACQUIRE_LOCK_DEBUG_LOG is empty — no locks recorded" >&2
+    false
+  }
+  /usr/bin/grep -q "sprint-status-sprint-900.yaml.lock" "$debug_log" || {
+    echo "Phase C did not acquire source L1 (sprint-900 lock not in debug log)" >&2
+    cat "$debug_log" >&2
+    false
+  }
 }
 
 # ================================================================
-# Item 11: invocation pinning — Phase A calls independence-check with
+# Invocation pinning — Phase A uses independence-check with
 # --candidate-stories / --from-sprint
 # ================================================================
 
-@test "Phase A invokes independence-check.sh with --candidate-stories and --from-sprint" {
+@test "Phase A exercises independence-check.sh with --candidate-stories and --from-sprint" {
   _seed_config 2
 
   local from_yaml to_yaml
@@ -1252,7 +1291,7 @@ SHIM
 }
 
 # ================================================================
-# Item 12: AC8 integration test — two concurrent sprints with
+# AC8 integration test — two concurrent sprints with
 # real writers (sprint-state.sh init/inject), cross-resolve,
 # retro naming, carry-over
 # ================================================================
@@ -1305,7 +1344,10 @@ SHIM
   # which creates a conflict detectable at rollover time.
   local sf2
   sf2="$(find "$ART_DIR" -name "story.md" -path "*E900-S2*" | head -1)"
-  sed -i '' 's/depends_on: \[\]/depends_on: ["E901-S1"]/' "$sf2"
+  local _tmp_sf2
+  _tmp_sf2="$(mktemp "${sf2}.XXXXXX")"
+  awk '{gsub(/depends_on: \[\]/, "depends_on: [\"E901-S1\"]"); print}' "$sf2" > "$_tmp_sf2"
+  mv -f "$_tmp_sf2" "$sf2"
 
   # Verify stories injected.
   local s1_in_900 s2_in_900
@@ -1379,7 +1421,7 @@ SHIM
 }
 
 # ================================================================
-# Item 13: SKILL.md per-line assertions (deletion + reword mutants)
+# SKILL.md per-line assertions (deletion + reword mutants)
 # ================================================================
 
 @test "retro SKILL.md: per-sprint scoping line present" {
@@ -1467,27 +1509,22 @@ SHIM
   /usr/bin/grep -q 'concurrent-sprint mode' "$skill"
 }
 
-@test "action-items SKILL.md: strenv editing path (no Edit tool)" {
+@test "action-items SKILL.md: safe-value editing path (no Edit tool)" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
-  /usr/bin/grep -qF 'strenv()' "$skill"
+  # The SKILL.md must document safe value handling and forbid the Edit tool.
+  /usr/bin/grep -qF 'escaped for safe' "$skill" || /usr/bin/grep -qF 'strenv()' "$skill"
   /usr/bin/grep -qF 'Do NOT use the' "$skill"
   # Must NOT contain the old Edit-tool path.
   ! /usr/bin/grep -qF 'Save the updated' "$skill"
 }
 
 # ================================================================
-# Item 13: rollover_target_sprint: null and closed-bound session
+# rollover_target_sprint: null and closed-bound session
 # are NOT changed by this story's diff — owned by already-merged code.
-# Evidence: git diff origin/staging -- plugins/gaia/skills/gaia-sprint-close/SKILL.md
-# produces empty output (that file is unchanged in this branch).
-# The sprint-close SKILL.md at origin/staging:165 already has:
-#   "rollover_target_sprint is null for this story; a later rollover story
-#    will populate it."
-# No test needed for behaviour we did not change.
 # ================================================================
 
 # ================================================================
-# Survived mutants: target closing-marker check (M11/M10 variants)
+# Target closing-marker check
 # ================================================================
 
 @test "concurrent rollover refuses when TARGET sprint has closing marker" {
@@ -1515,7 +1552,7 @@ SHIM
 }
 
 # ================================================================
-# Survived mutant: L4 lock acquisition removed (M11)
+# L4 lock acquisition
 # ================================================================
 
 @test "Phase A acquires L4 lifecycle lock" {
@@ -1545,7 +1582,7 @@ SHIM
 }
 
 # ================================================================
-# Survived mutant: Phase B skips phase reset (M6)
+# Phase B resets execution phase
 # ================================================================
 
 @test "Phase B resets execution phase on carried-over story" {
@@ -1558,11 +1595,22 @@ SHIM
   _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/phase-reset.ts" > /dev/null
   _add_story_to_yaml "$from_yaml" "E900-S1"
 
-  # Set a phase on the story in source sprint.
-  SPRINT_STATUS_YAML="$from_yaml" SPRINT_STATUS_LOCK="${from_yaml}.lock" \
+  # Simulate a partial previous rollover: the story is already in the
+  # target with a stale phase (crash between Phase B and C). The re-run
+  # must reset the phase.
+  _add_story_to_yaml "$to_yaml" "E900-S1"
+  SPRINT_STATUS_YAML="$to_yaml" SPRINT_STATUS_LOCK="${to_yaml}.lock" \
     bash "$SPRINT_STATE_SH" set-phase --story E900-S1 --phase 3 2>/dev/null || true
 
-  # Rollover.
+  # Verify phase was set on target.
+  local phase_before
+  phase_before="$(yq -r '.stories[] | select(.key == "E900-S1") | .phase // "null"' "$to_yaml" 2>/dev/null)" || phase_before="null"
+  [ "$phase_before" = "3" ] || [ "$phase_before" = "\"3\"" ] || {
+    echo "Phase not set on target before rollover: $phase_before" >&2
+    false
+  }
+
+  # Rollover (re-run scenario).
   run bash "$SPRINT_STATE_SH" rollover \
     --from sprint-900 --to sprint-901 --keys E900-S1
   [ "$status" -eq 0 ]
@@ -1577,7 +1625,7 @@ SHIM
 }
 
 # ================================================================
-# Survived mutant: related_stories never written (M16/M17)
+# related_stories written by resolve
 # ================================================================
 
 @test "aiw_resolve writes related_stories correctly" {
@@ -1608,15 +1656,47 @@ SHIM
 }
 
 # ================================================================
-# Survived mutant: last_updated preserved by resolve (M15/M18)
-# The resolve function edits ONLY the target entry's fields (per the
-# fix-pass data-integrity requirement). last_updated is a top-level
-# key, not an entry field — resolve must NOT rewrite it. A mutant
-# that changes last_updated would break the "only target entry lines
-# change" invariant.
+# Resolution and resolved_in escaping
 # ================================================================
 
-@test "aiw_resolve preserves last_updated unchanged" {
+@test "aiw_resolve escapes special characters in resolution and resolved_in" {
+  local target="$TEST_TMP/action-items-esc.yaml"
+  _seed_action_items_yaml "$target"
+
+  source "$AIW_SH"
+
+  # Resolution with quotes, colons, and backslashes.
+  run aiw_resolve \
+    --target "$target" \
+    --item "AI-1" \
+    --status "resolved" \
+    --resolution 'Fixed: "quoted value" with \backslash and colon: here' \
+    --resolved-in 'sprint: special"chars'
+
+  [ "$status" -eq 0 ]
+
+  # File must be valid YAML.
+  yq '.' "$target" > /dev/null
+
+  # Resolution preserved as literal.
+  local res
+  res="$(yq -r '.items[0].resolution' "$target")"
+  [[ "$res" == *'"quoted value"'* ]]
+  [[ "$res" == *'\backslash'* ]]
+
+  # resolved_in preserved as literal.
+  local ri
+  ri="$(yq -r '.items[0].resolved_in' "$target")"
+  [ "$ri" = 'sprint: special"chars' ]
+}
+
+# ================================================================
+# last_updated bump on resolve
+# Per user ruling: resolve updates the tracker's top-level last_updated
+# in place to today when that key exists; when absent, nothing is added.
+# ================================================================
+
+@test "aiw_resolve bumps last_updated to today when key exists" {
   local target="$TEST_TMP/action-items-lu.yaml"
   _seed_action_items_yaml "$target"
 
@@ -1628,23 +1708,28 @@ SHIM
   source "$AIW_SH"
   aiw_resolve --target "$target" --item "AI-1" --status "done" --resolution "done"
 
-  # last_updated must NOT change (resolve edits only item fields).
-  local after
+  # last_updated must be bumped to today.
+  local after today
   after="$(yq -r '.last_updated' "$target")"
-  [ "$after" = "2026-01-01" ]
+  today="$(date -u +%Y-%m-%d)"
+  [ "$after" = "$today" ] || {
+    echo "last_updated not bumped: expected $today, got $after" >&2
+    false
+  }
 }
 
 # ================================================================
-# Survived mutant: resolved_in via strenv (M10/M17 — newline injection)
+# resolved_in via safe escaping (newline injection)
 # ================================================================
 
-@test "aiw_resolve handles newline in resolved_in via strenv" {
+@test "aiw_resolve safely escapes newline in resolved_in" {
   local target="$TEST_TMP/action-items-nl.yaml"
   _seed_action_items_yaml "$target"
 
   source "$AIW_SH"
 
-  # A value with a newline would corrupt YAML without strenv.
+  # A value with a newline must be safely escaped (newlines are allowed
+  # by the control-char check; they are escaped to \n by _aiw_yaml_escape).
   run aiw_resolve \
     --target "$target" \
     --item "AI-1" \
@@ -1653,24 +1738,26 @@ SHIM
     --resolved-in "sprint-900
 injected: true"
 
-  # Should either succeed with the literal escaped, or reject control chars.
-  if [ "$status" -eq 0 ]; then
-    # File must be valid YAML.
-    yq '.' "$target" > /dev/null
-    # The literal must be stored as a single value, not as two YAML lines.
-    local ri
-    ri="$(yq -r '.items[0].resolved_in' "$target")"
-    [[ "$ri" != "sprint-900" ]] || {
-      echo "Newline was stripped — possible injection" >&2
-      false
-    }
-  fi
-  # Either rejection (control char) or safe storage is acceptable.
-  true
+  [ "$status" -eq 0 ]
+
+  # File must still be valid YAML.
+  yq '.' "$target" > /dev/null
+
+  # The resolved_in must be stored as a single value containing a
+  # literal newline — not split across two YAML keys.
+  local ri
+  ri="$(yq -r '.items[0].resolved_in' "$target")"
+  # It must NOT be just "sprint-900" (newline was truncated/injected).
+  [[ "$ri" != "sprint-900" ]] || {
+    echo "Newline was stripped — possible YAML injection" >&2
+    false
+  }
+  # "injected:" must not appear as a separate key.
+  ! yq -r '.items[0].injected // "ABSENT"' "$target" | /usr/bin/grep -q 'true'
 }
 
 # ================================================================
-# Survived mutant: symlink guard removed (M20)
+# Symlink guard on resolve target
 # ================================================================
 
 @test "aiw_resolve rejects symlink target" {
@@ -1692,7 +1779,7 @@ injected: true"
 }
 
 # ================================================================
-# Survived mutant: Phase C removes key from source (M4/M5/M14)
+# Phase C removes key from source
 # ================================================================
 
 @test "Phase C removes passed key from source yaml" {
@@ -1731,7 +1818,7 @@ injected: true"
 }
 
 # ================================================================
-# Survived mutant: --clear removes from per-sprint state (M7/M13)
+# --clear removes from per-sprint state
 # ================================================================
 
 @test "set-story-sprint --clear removes story from per-sprint yaml" {
@@ -1765,7 +1852,7 @@ injected: true"
 }
 
 # ================================================================
-# Survived mutant: all-fail moves nothing (M5 — Phase A failure)
+# All-fail moves nothing (Phase A failure)
 # ================================================================
 
 @test "when all keys fail independence, none move to target" {
@@ -1858,7 +1945,7 @@ S
 }
 
 # ================================================================
-# Survived mutant: single-sprint routed to concurrent (M10)
+# Single-sprint not routed to concurrent path
 # ================================================================
 
 @test "single-sprint mode rejects concurrent rollover path" {
@@ -1888,7 +1975,7 @@ YAML
 }
 
 # ================================================================
-# Survived mutant: missing touch-set fails only that key (M9)
+# Missing touch-set fails only that key
 # ================================================================
 
 @test "missing touch-set fails only that key, others proceed" {
@@ -1937,6 +2024,7 @@ YAML
     "$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
     "$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/SKILL.md"
     "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/SKILL.md"
+    "$BATS_TEST_DIRNAME/concurrent-sprint-lifecycle-scoped.bats"
   )
 
   local f
@@ -1944,39 +2032,45 @@ YAML
     [ -f "$f" ] || { echo "MISSING: $f" >&2; false; return; }
   done
 
-  # Ruling IDs: R<digits> at word boundary followed by / or ).
-  # AF-YYYY, AI-YYYY patterns.
-  local pattern='(R[0-9]{1,3}[/)]|AF-20[0-9]{2}|AI-20[0-9]{2})'
+  # Patterns: (R<digits>) followed by / or ), AF-YYYY, AI-YYYY,
+  # /Users/ paths.
+  local pattern='(\(R[0-9]{1,3}[/)]|AF-20[0-9]{2}|AI-20[0-9]{2}|/Users/[a-z])'
 
-  local wholly_owned=(
-    "$BATS_TEST_DIRNAME/../scripts/action-items-write.sh"
-    "$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
-    "$BATS_TEST_DIRNAME/../skills/gaia-retro/SKILL.md"
-    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/SKILL.md"
-    "$BATS_TEST_DIRNAME/../skills/gaia-sprint-plan/SKILL.md"
-  )
-  for f in "${wholly_owned[@]}"; do
+  for f in "${files[@]}"; do
     run /usr/bin/grep -nE "$pattern" "$f"
     [ "$status" -ne 0 ] || {
-      echo "Leaked ruling/cascade IDs in $(basename "$f"): $output" >&2
+      echo "Leaked IDs in $(basename "$f"): $output" >&2
       false
     }
   done
 
-  # Planted ID proof.
-  local planted="$TEST_TMP/planted-ruling.sh"
-  printf '# This has R65) leaked\n' > "$planted"
-  run /usr/bin/grep -nE "$pattern" "$planted"
+  # Planted-ID proof: insert a ruling ID into a COPY of a real scanned
+  # file and verify the scan catches it. Strings are built dynamically
+  # so the literal patterns do not appear in THIS file's source.
+  local planted_file="$TEST_TMP/planted-check.sh"
+  local _R="R" _AF="AF" _US="/Users"
+
+  cp "${files[0]}" "$planted_file"
+  printf '\n# This has (%s65) leaked\n' "$_R" >> "$planted_file"
+  run /usr/bin/grep -nE "$pattern" "$planted_file"
   [ "$status" -eq 0 ] || {
     echo "Planted ruling ID not detected" >&2
     false
   }
 
-  # AF- pattern proof.
-  printf '# AF-2026 cascade\n' > "$planted"
-  run /usr/bin/grep -nE "$pattern" "$planted"
+  cp "${files[0]}" "$planted_file"
+  printf '\n# %s-2026 cascade\n' "$_AF" >> "$planted_file"
+  run /usr/bin/grep -nE "$pattern" "$planted_file"
   [ "$status" -eq 0 ] || {
-    echo "Planted AF-YYYY not detected" >&2
+    echo "Planted cascade ID not detected" >&2
+    false
+  }
+
+  cp "${files[0]}" "$planted_file"
+  printf '\n# %s/jlouage/path\n' "$_US" >> "$planted_file"
+  run /usr/bin/grep -nE "$pattern" "$planted_file"
+  [ "$status" -eq 0 ] || {
+    echo "Planted path leak not detected" >&2
     false
   }
 }

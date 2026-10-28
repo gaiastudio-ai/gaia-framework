@@ -84,6 +84,11 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Reset the rollover-inject suppression flag so it cannot be inherited
+# from the caller's environment and bypass the inject independence gate.
+# Phase B sets it explicitly in its own subshell when needed.
+unset _GAIA_ROLLOVER_INJECT 2>/dev/null || true
+
 SCRIPT_NAME="sprint-state.sh"
 
 # Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
@@ -3512,10 +3517,9 @@ _cmd_rollover_concurrent() {
         trap 'release_lock 9 2>/dev/null || true; exit 130' INT
         trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
 
-        # Remove the key from the source sprint yaml (idempotent).
-        _remove_story_from_yaml "$from_yaml" "$key"
-
-        # Rewrite sprint_id in the story file (mktemp + mv).
+        # Rewrite sprint_id in the story file BEFORE removing from
+        # source, so a crash never leaves the key only in the target
+        # with the old sprint_id.
         . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
         local sf
         sf="$(resolve_story_file "$key" 2>/dev/null)" || exit 1
@@ -3524,8 +3528,11 @@ _cmd_rollover_concurrent() {
         tmp="$(mktemp "${sf}.XXXXXX")" || exit 1
         awk -v from="$from_sprint" -v to="$to_sprint" '
           /^sprint_id:/ {
-            if ($0 ~ ("^sprint_id:[[:space:]]*\"" from "\"") || \
-                $0 ~ ("^sprint_id:[[:space:]]*\"" to "\"")   || \
+            # Accept both quoted and unquoted forms of sprint_id so
+            # the rewrite handles the 201 real story files that use
+            # unquoted sprint_id: sprint-NNN.
+            if ($0 ~ ("^sprint_id:[[:space:]]*\"?" from "\"?[[:space:]]*$") || \
+                $0 ~ ("^sprint_id:[[:space:]]*\"?" to "\"?[[:space:]]*$")   || \
                 $0 ~ /^sprint_id:[[:space:]]*null[[:space:]]*$/) {
               print "sprint_id: \"" to "\""
               next
@@ -3537,6 +3544,12 @@ _cmd_rollover_concurrent() {
           rm -f "$tmp"; exit 1
         fi
         mv -f "$tmp" "$sf" || { rm -f "$tmp"; exit 1; }
+
+        # Remove the key from the source sprint yaml (idempotent).
+        # Done after the sprint_id rewrite so a crash between the two
+        # leaves the key in both sprints with the correct sprint_id,
+        # which a re-run can complete.
+        _remove_story_from_yaml "$from_yaml" "$key"
       ) || remove_rc=$?
 
       if [ "$remove_rc" -eq 0 ]; then

@@ -184,7 +184,7 @@ For each open item (highest priority first, then oldest first):
     --resolved-date "<YYYY-MM-DD>" \
     --related-stories "<key1,key2,...>"
   ```
-  The script sets `status`, `resolution`, `resolved_date` (only for done/invalid/resolved), `related_stories`, and bumps `last_updated` — all via strenv() (no value splicing). When running in concurrent-sprint mode (session bound to a sprint), pass `--resolved-in <sprint-id>` with the bound sprint id to record cross-sprint resolution provenance. When `--sprint` filtering is active, process only items whose `sprint_id` matches; when `--sprint` is absent, process all items (this command never refuses for missing sprint context).
+  The script sets `status`, `resolution`, `resolved_date` (only for done/invalid/resolved), and `related_stories` (appended to any existing entries, deduplicated). It updates the tracker's top-level `last_updated` to today when that key already exists; when the file has no such key, nothing is added. All values are escaped for safe double-quoted YAML scalars (no value splicing). When running in concurrent-sprint mode (session bound to a sprint), pass `--resolved-in <sprint-id>` with the bound sprint id to record cross-sprint resolution provenance. When `--sprint` filtering is active, process only items whose `sprint_id` matches; when `--sprint` is absent, process all items (this command never refuses for missing sprint context).
 - Do NOT use the `Edit` tool for status changes — all updates go through the scripted path.
 - Save to Val memory (`.gaia/memory/validator-sidecar/decision-log.md`):
 
