@@ -23,6 +23,39 @@ load 'test_helper.bash'
 setup() { common_setup; }
 teardown() { common_teardown; }
 
+# Override the shared litter guard to include --ignored paths so that
+# gitignored files planted under plugins/gaia/ are also caught.
+_AIW_UNITS_LITTER_SNAP=""
+setup_file() {
+  _litter_snapshot_before
+  local repo_root="$_LITTER_REPO_ROOT"
+  if [ -n "$repo_root" ] && \
+     git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    _AIW_UNITS_LITTER_SNAP="${BATS_FILE_TMPDIR}/litter-ignored-before"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$_AIW_UNITS_LITTER_SNAP" 2>/dev/null || true
+  fi
+}
+teardown_file() {
+  _litter_check_after
+  if [ -n "$_AIW_UNITS_LITTER_SNAP" ] && [ -f "$_AIW_UNITS_LITTER_SNAP" ]; then
+    local repo_root="$_LITTER_REPO_ROOT"
+    local after="${BATS_FILE_TMPDIR}/litter-ignored-after"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$after" 2>/dev/null || true
+    local litter
+    litter="$(comm -13 "$_AIW_UNITS_LITTER_SNAP" "$after" \
+      | grep -v '\.last-validate-err\.' \
+      | grep -v 'zz-probe-dir/' \
+      || true)"
+    if [ -n "$litter" ]; then
+      printf 'LITTER (ignored): %s left ignored files under the plugin tree:\n%s\n' \
+        "${BATS_TEST_FILENAME##*/}" "$litter" >&2
+      return 1
+    fi
+  fi
+}
+
 ACTION_ITEMS_WRITE_SH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/action-items-write.sh"
 
 # ---------------------------------------------------------------------------
@@ -852,6 +885,102 @@ HEADER
   grep -q 'invalid UTF-8' <<<"$output"
   cmp -s "$target" "$target.before"
   yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects 2-byte lead followed by ASCII (C3 41) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'x\xc3\x41y')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects 2-byte lead followed by ASCII (C3 41) in ref-value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_val
+  bad_val="$(printf 'F-\xc3\x41z')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "$bad_val"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects 2-byte lead followed by ASCII (C3 41) in sprint-id" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_sprint
+  bad_sprint="$(printf 's\xc3\x41p')"
+  run aiw_write --target "$target" --sprint-id "$bad_sprint" \
+    --classification "bug" --text "clean" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects 3-byte lead followed by ASCII (E2 41 80) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'a\xe2\x41\x80b')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+@test "aiw_write: rejects 4-byte lead followed by ASCII (F0 41 80 80) in text" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  cp "$target" "$target.before"
+  local bad_text
+  bad_text="$(printf 'a\xf0\x41\x80\x80b')"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "$bad_text" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 1 ]
+  grep -q 'invalid UTF-8' <<<"$output"
+  cmp -s "$target" "$target.before"
+  yq '.items | length' "$target" >/dev/null
+}
+
+# ===========================================================================
+# Empty --text (M14 coverage)
+# ===========================================================================
+
+@test "aiw_write: accepts empty --text value" {
+  _load_aiw
+  local target="$TEST_TMP/action-items.yaml"
+  aiw_bootstrap_file "$target"
+  run aiw_write --target "$target" --sprint-id "sprint-50" \
+    --classification "bug" --text "" \
+    --ref-key "finding_id" --ref-value "F-1"
+  [ "$status" -eq 0 ]
+  grep -q 'status=ok' <<<"$output"
+  yq '.items[0].text' "$target" >/dev/null
 }
 
 @test "aiw_write: accepts long repeated multibyte run (emoji run)" {

@@ -15,6 +15,39 @@ load 'test_helper.bash'
 setup() { common_setup; }
 teardown() { common_teardown; }
 
+# Override the shared litter guard to include --ignored paths so that
+# gitignored files planted under plugins/gaia/ are also caught.
+_AIW_INTEROP_LITTER_SNAP=""
+setup_file() {
+  _litter_snapshot_before
+  local repo_root="$_LITTER_REPO_ROOT"
+  if [ -n "$repo_root" ] && \
+     git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    _AIW_INTEROP_LITTER_SNAP="${BATS_FILE_TMPDIR}/litter-ignored-before"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$_AIW_INTEROP_LITTER_SNAP" 2>/dev/null || true
+  fi
+}
+teardown_file() {
+  _litter_check_after
+  if [ -n "$_AIW_INTEROP_LITTER_SNAP" ] && [ -f "$_AIW_INTEROP_LITTER_SNAP" ]; then
+    local repo_root="$_LITTER_REPO_ROOT"
+    local after="${BATS_FILE_TMPDIR}/litter-ignored-after"
+    git -C "$repo_root" status --porcelain --ignored --untracked-files=all \
+      -- plugins/gaia/ | LC_ALL=C sort > "$after" 2>/dev/null || true
+    local litter
+    litter="$(comm -13 "$_AIW_INTEROP_LITTER_SNAP" "$after" \
+      | grep -v '\.last-validate-err\.' \
+      | grep -v 'zz-probe-dir/' \
+      || true)"
+    if [ -n "$litter" ]; then
+      printf 'LITTER (ignored): %s left ignored files under the plugin tree:\n%s\n' \
+        "${BATS_TEST_FILENAME##*/}" "$litter" >&2
+      return 1
+    fi
+  fi
+}
+
 ACTION_ITEMS_WRITE_SH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/action-items-write.sh"
 RETRO_SIDECAR_WRITE_SH="$(cd "$BATS_TEST_DIRNAME/../scripts" && pwd)/retro-sidecar-write.sh"
 
@@ -991,25 +1024,58 @@ EOF
 @test "litter guard detects a planted file in a temp git repo" {
   # Exercises the shared _litter_check_after guard against a throwaway git
   # repo in BATS_TEST_TMPDIR — never writes into the real plugin tree.
+  # Uses its own snapshot file so it does not overwrite the real litter-before.
   local fake_repo="$BATS_TEST_TMPDIR/fake-repo-$$"
   mkdir -p "$fake_repo/plugins/gaia/scripts"
   git -C "$fake_repo" init -q
   git -C "$fake_repo" -c user.name='test' -c user.email='t@t' commit -q -m 'init' --allow-empty
 
-  # Override the module-level vars and call the guard functions directly.
-  # Snapshot before planting.
+  # Save and override module-level vars; use a private snapshot path.
+  local saved_root="$_LITTER_REPO_ROOT"
+  local saved_snap="$_LITTER_SNAPSHOT"
   _LITTER_REPO_ROOT="$fake_repo"
-  _LITTER_SNAPSHOT=""
-  _litter_snapshot_before
+  _LITTER_SNAPSHOT="${BATS_TEST_TMPDIR}/litter-guard-test-before-$$"
+  git -C "$fake_repo" status --porcelain --untracked-files=all -- plugins/gaia/ \
+    | LC_ALL=C sort > "$_LITTER_SNAPSHOT" 2>/dev/null || true
 
   # Plant a file under the guarded subtree.
   echo "probe" > "$fake_repo/plugins/gaia/scripts/.litter-probe-$$"
 
   # The guard must detect the planted file and return non-zero.
   run _litter_check_after
+  # Restore module-level vars so teardown_file uses the real snapshot.
+  _LITTER_REPO_ROOT="$saved_root"
+  _LITTER_SNAPSHOT="$saved_snap"
   [ "$status" -ne 0 ]
-  # Verify the output names the planted file.
   [[ "$output" == *".litter-probe-"* ]]
+}
+
+@test "litter guard detects an ignored file in a temp git repo" {
+  # A .gitignored file planted under the guarded subtree must be caught
+  # when the snapshot uses --ignored.
+  local fake_repo="$BATS_TEST_TMPDIR/fake-repo-ign-$$"
+  mkdir -p "$fake_repo/plugins/gaia/scripts/.gaia/state"
+  printf '.gaia/\n' > "$fake_repo/plugins/gaia/scripts/.gitignore"
+  git -C "$fake_repo" init -q
+  git -C "$fake_repo" add .
+  git -C "$fake_repo" -c user.name='test' -c user.email='t@t' commit -q -m 'init'
+
+  # Snapshot WITH --ignored before planting.
+  local snap="$BATS_TEST_TMPDIR/litter-ign-before-$$"
+  git -C "$fake_repo" status --porcelain --ignored --untracked-files=all \
+    -- plugins/gaia/ | LC_ALL=C sort > "$snap" 2>/dev/null || true
+
+  # Plant an ignored file.
+  echo "probe" > "$fake_repo/plugins/gaia/scripts/.gaia/state/action-items.yaml"
+
+  # Build the "after" snapshot and diff.
+  local after="$BATS_TEST_TMPDIR/litter-ign-after-$$"
+  git -C "$fake_repo" status --porcelain --ignored --untracked-files=all \
+    -- plugins/gaia/ | LC_ALL=C sort > "$after" 2>/dev/null || true
+  local litter
+  litter="$(comm -13 "$snap" "$after" || true)"
+  [ -n "$litter" ]
+  [[ "$litter" == *".gaia/"* ]]
 }
 
 @test "no machine-specific paths leak into this test file" {
