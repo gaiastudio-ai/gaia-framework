@@ -1001,6 +1001,283 @@ teardown() {
   [ -d "$session_dir" ]
 }
 
+# ---------- Resolver binding-file-wins rule (no SPRINT_STATUS_YAML) ----------
+#
+# Verifies that resolve_sprint_arg reads the binding FILE first and
+# uses it as the authoritative source.  When the env var disagrees
+# with the file, the resolver refuses (rc 15).  Two active sprints
+# are built via the real sprint-state.sh writer (inject + transition).
+
+# Helper: concurrent fixture with two active sprints (sprint-900 and
+# sprint-901), each with a single done story, built via the real writer.
+# All close.sh preconditions (retro, sprint-review sentinel, triage
+# sentinel) are satisfied for both sprints.
+_build_concurrent_for_resolver() {
+  local root="$1"
+  local sprint_state_sh="$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+  [ -f "$sprint_state_sh" ] || { echo "sprint-state.sh not found" >&2; return 1; }
+
+  # Build each sprint in a separate root via the real single-mode writer.
+  local aux1="$BATS_TEST_TMPDIR/rsa-aux1-$$"
+  _build_sprint_with_inject "$aux1" sprint-900 DEMO-S1 done
+  local aux2="$BATS_TEST_TMPDIR/rsa-aux2-$$"
+  _build_sprint_with_inject "$aux2" sprint-901 DEMO-S2 done
+
+  # Assemble the concurrent layout in $root.
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state"
+  mkdir -p "$root/.gaia/memory/checkpoints"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts/sprint-archive"
+
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+sprint:
+  max_concurrent_active: 2
+YAML
+
+  cp "$aux1/.gaia/state/sprint-status.yaml" \
+    "$root/.gaia/state/sprint-status-sprint-900.yaml"
+  cp "$aux2/.gaia/state/sprint-status.yaml" \
+    "$root/.gaia/state/sprint-status-sprint-901.yaml"
+  cp "$root/.gaia/state/sprint-status-sprint-901.yaml" \
+    "$root/.gaia/state/sprint-status.yaml"
+
+  # Close preconditions for both sprints.
+  touch "$root/.gaia/artifacts/implementation-artifacts/retrospective-sprint-900-2026-10-21.md"
+  touch "$root/.gaia/artifacts/implementation-artifacts/retrospective-sprint-901-2026-10-21.md"
+  cat > "$root/.gaia/memory/checkpoints/sprint-review-sprint-900-val-dispatched.json" <<'JSON'
+{"agent":"val","status":"PASSED","summary":"test","findings":[]}
+JSON
+  cat > "$root/.gaia/memory/checkpoints/sprint-review-sprint-901-val-dispatched.json" <<'JSON'
+{"agent":"val","status":"PASSED","summary":"test","findings":[]}
+JSON
+  cat > "$root/.gaia/memory/checkpoints/triage-findings-sprint-900-completed.json" <<'JSON'
+{"sprint_id":"sprint-900","completed_at":"2026-10-21T00:00:00Z"}
+JSON
+  cat > "$root/.gaia/memory/checkpoints/triage-findings-sprint-901-completed.json" <<'JSON'
+{"sprint_id":"sprint-901","completed_at":"2026-10-21T00:00:00Z"}
+JSON
+}
+
+@test "resolver binding-file-wins: env-only closes the env-bound sprint" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Use a session ID so provision_binding_dir creates the dir at the
+  # derived path.  No binding file in the dir -> env-only path.
+  local sid="rsa-env-only-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-900"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  # sprint-901 must still be active.
+  local s901_status
+  s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_status" = "active" ]
+}
+
+@test "resolver binding-file-wins: file-only closes the file-bound sprint" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Pre-create the binding dir at the derived path with a binding file.
+  local sid="rsa-file-only-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-901' > "$bind_dir/bound_sprint_id"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-901"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  # sprint-900 must still be active.
+  local s900_status
+  s900_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  [ "$s900_status" = "active" ]
+}
+
+@test "resolver binding-file-wins: env and file agree closes the bound sprint" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Both env and file set to the same sprint.
+  local sid="rsa-agree-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-900' > "$bind_dir/bound_sprint_id"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-900"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  # sprint-901 must still be active.
+  local s901_status
+  s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_status" = "active" ]
+}
+
+@test "resolver binding-file-wins: env disagrees with file refuses with no state change" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # File says sprint-901; env says sprint-900.
+  local sid="rsa-disagree-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-901' > "$bind_dir/bound_sprint_id"
+
+  # Snapshot state files before.
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 15 ]
+  [[ "$output" == *"binding_mismatch"* ]]
+
+  # Both sprints must still be unchanged.
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+
+  # No archive created.
+  local arc
+  arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" \
+    -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$arc" -eq 0 ]
+}
+
+@test "resolver binding-file-wins: file disagrees with env refuses with no state change" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # File says sprint-900; env says sprint-901 (reverse direction).
+  local sid="rsa-disagree-rev-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-901"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-900' > "$bind_dir/bound_sprint_id"
+
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 15 ]
+  [[ "$output" == *"binding_mismatch"* ]]
+
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+
+  local arc
+  arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" \
+    -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$arc" -eq 0 ]
+}
+
+@test "resolver binding-file-wins: CRLF binding file refuses" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Binding file with CRLF, no env.
+  local sid="rsa-crlf-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
+
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 16 ]
+  [[ "$output" == *"invalid"* ]]
+
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+}
+
+@test "resolver binding-file-wins: manual GAIA_BINDING_DIR with stale env refuses" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # No session id: provision_binding_dir exits 1 (non-fatal), so
+  # the manually set GAIA_BINDING_DIR stays in effect.
+  # File says sprint-901; stale env says sprint-900.
+  unset CLAUDE_CODE_SESSION_ID
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/rsa-manual-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-901' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 15 ]
+  [[ "$output" == *"binding_mismatch"* ]]
+
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+
+  local arc
+  arc="$(find "$TEST_TMP/.gaia/artifacts/implementation-artifacts/sprint-archive" \
+    -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$arc" -eq 0 ]
+}
+
 # ---------- Triage resolver concurrent-sprint support (story AC10) ----------
 
 # Helper: build a single-sprint active state file via the real writer,
