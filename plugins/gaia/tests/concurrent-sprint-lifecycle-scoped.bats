@@ -2074,25 +2074,25 @@ YAML
     false
   }
 
-  # L4/L4b: the pattern must also catch story keys (E<n>-S<n>) and
+  # The pattern must also catch story keys (E<n>-S<n>) and
   # requirement IDs (FR-<n>) that might appear in header comments.
   # Build the pattern fragments dynamically so they do not appear as
   # literals in THIS file's source (the leak scan covers this file too).
   local _E="E" _FR="FR"
   local extended='('"$_E"'[0-9]+-S[0-9]+|'"$_FR"'-[0-9])'
 
-  # Planted story key.
+  # Planted story key (synthetic, outside the live range).
   cp "${files[1]}" "$planted_file"
-  printf '\n# carry-over helper for %s134-S14\n' "$_E" >> "$planted_file"
+  printf '\n# carry-over helper for %s999-S99\n' "$_E" >> "$planted_file"
   run /usr/bin/grep -nE "$extended" "$planted_file"
   [ "$status" -eq 0 ] || {
     echo "Planted story key not detected" >&2
     false
   }
 
-  # Planted requirement ID.
+  # Planted requirement ID (synthetic, outside the live range).
   cp "${files[1]}" "$planted_file"
-  printf '\n# implements %s-901\n' "$_FR" >> "$planted_file"
+  printf '\n# implements %s-9999\n' "$_FR" >> "$planted_file"
   run /usr/bin/grep -nE "$extended" "$planted_file"
   [ "$status" -eq 0 ] || {
     echo "Planted requirement ID not detected" >&2
@@ -2114,7 +2114,7 @@ YAML
 }
 
 # ================================================================
-# aiw_resolve: last_updated not added when key is absent (AC3 amended)
+# aiw_resolve: last_updated not added when key is absent
 # ================================================================
 
 @test "aiw_resolve does not add last_updated when key is absent" {
@@ -2143,7 +2143,7 @@ YAML
 
 # ================================================================
 # aiw_resolve: last_updated bumped when it follows the items list
-# and the target is the last item (AC3 amended, B4 fix)
+# and the target is the last item
 # ================================================================
 
 @test "aiw_resolve bumps last_updated after items list when target is last item" {
@@ -2189,11 +2189,17 @@ YAML
   _seed_story_file "E901-S1" "E901" '"sprint-901"' "src/a.ts" > /dev/null
   _add_story_to_yaml "$to_yaml" "E901-S1"
 
+  # Point SPRINT_STATUS_YAML at the target so inject reaches the
+  # independence gate (without it, inject refuses with "missing yaml").
+  export SPRINT_STATUS_YAML="$to_yaml"
+  export SPRINT_STATUS_LOCK="${to_yaml}.lock"
+
   # The inject should refuse because of the overlap. Exporting the
   # internal flag must not bypass the gate.
   export _GAIA_ROLLOVER_INJECT=1
   run bash "$SPRINT_STATE_SH" inject --story E900-S1
   unset _GAIA_ROLLOVER_INJECT
+  unset SPRINT_STATUS_YAML SPRINT_STATUS_LOCK
 
   # The inject must still be refused (exit non-zero).
   [ "$status" -ne 0 ] || {
@@ -2299,6 +2305,10 @@ YAML
 
 @test "aiw_resolve does not misread item start inside a block scalar" {
   local target="$TEST_TMP/ai-blk-outside.yaml"
+  # The block scalar embeds `- id: AI-TARGET` — the SAME id as the real
+  # target item below it. Without block-scalar tracking, the editor would
+  # treat the embedded line as the target and edit AI-OUTER's context
+  # instead of the real AI-TARGET.
   cat > "$target" <<'YAML'
 last_updated: "2026-01-01"
 items:
@@ -2306,7 +2316,7 @@ items:
     status: "open"
     context: |
       This block scalar contains an embedded item marker:
-      - id: AI-FAKE
+      - id: AI-TARGET
         status: fake
   - id: "AI-TARGET"
     status: "open"
@@ -2329,10 +2339,11 @@ YAML
   o_st="$(yq -r '.items[0].status' "$target")"
   [ "$o_st" = "open" ]
 
-  # The block scalar content must be preserved.
+  # The block scalar content must be preserved (it contains the same
+  # id as the real target — the editor must not consume it).
   local ctx
   ctx="$(yq -r '.items[0].context' "$target")"
-  [[ "$ctx" == *"AI-FAKE"* ]]
+  [[ "$ctx" == *"AI-TARGET"* ]]
 }
 
 # ================================================================
@@ -2403,7 +2414,7 @@ YAML
 }
 
 # ================================================================
-# SKILL.md prose: resolved-in passed only in concurrent mode (S9)
+# SKILL.md prose: resolved-in passed only in concurrent mode
 # ================================================================
 
 @test "action-items SKILL.md: resolved-in is passed only in concurrent mode" {
@@ -2423,7 +2434,7 @@ YAML
 }
 
 # ================================================================
-# SKILL.md prose: /gaia-action-items never refuses (S12/S11tr)
+# SKILL.md prose: /gaia-action-items never refuses
 # ================================================================
 
 @test "action-items SKILL.md: command never refuses for missing sprint context" {
@@ -2443,7 +2454,7 @@ YAML
 }
 
 # ================================================================
-# set-story-sprint --clear: removal failure is an error (C8)
+# set-story-sprint --clear: removal failure is an error
 # ================================================================
 
 @test "set-story-sprint --clear treats removal failure as an error" {
@@ -2474,7 +2485,7 @@ YAML
 }
 
 # ================================================================
-# rollover: Phase C rewrites unquoted sprint_id (NX4)
+# rollover: Phase C rewrites unquoted sprint_id
 # ================================================================
 
 @test "rollover rewrites unquoted sprint_id in story file" {
@@ -2522,7 +2533,7 @@ STORY
 }
 
 # ================================================================
-# rollover: Phase C rewrite-before-remove ordering (NX3)
+# rollover: Phase C rewrite-before-remove ordering
 # ================================================================
 
 @test "rollover rewrites sprint_id before removing from source (crash safety)" {
@@ -2566,7 +2577,7 @@ STORY
 }
 
 # ================================================================
-# rollover: wrong --from is refused, nothing moved (B1 fix)
+# rollover: wrong --from is refused, nothing moved
 # ================================================================
 
 @test "rollover with wrong --from refuses and moves nothing" {
@@ -2600,6 +2611,80 @@ STORY
   local s1_902
   s1_902="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$yaml_902" 2>/dev/null)" || s1_902=""
   [ "$s1_902" = "E900-S1" ]
+}
+
+# ================================================================
+# rollover: backlog story (sprint_id null, not in any sprint) with
+# wrong --from is refused before injection
+# ================================================================
+
+@test "rollover refuses a backlog story with null sprint_id and wrong --from" {
+  _seed_config 2
+
+  local yaml_900 yaml_901
+  yaml_900="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  yaml_901="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Story has sprint_id: null and is NOT in any sprint's yaml.
+  _seed_story_file "E900-S7" "E900" 'null' "src/backlog.ts" > /dev/null
+
+  # Rollover with --from sprint-900 — the key is not in sprint-900.
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S7
+
+  # Must be refused.
+  [ "$status" -ne 0 ] || {
+    echo "Backlog story with null sprint_id was injected into target" >&2
+    false
+  }
+
+  # Target sprint must be empty.
+  local tgt_count
+  tgt_count="$(yq -r '.stories | length' "$yaml_901" 2>/dev/null)" || tgt_count=0
+  [ "$tgt_count" -eq 0 ] || {
+    echo "Target sprint has stories after refusal: $tgt_count" >&2
+    false
+  }
+}
+
+# ================================================================
+# rollover: story in target only with old sprint_id re-runs and completes
+# ================================================================
+
+@test "rollover re-run completes when story is in target only with source sprint_id" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Simulate a crash state: story is in the TARGET only, but its
+  # sprint_id still points at the SOURCE. A re-run should complete
+  # (rewrite sprint_id to target, remove from source if present).
+  _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/rerun.ts" > /dev/null
+  _add_story_to_yaml "$to_yaml" "E900-S1"
+
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S1
+  [ "$status" -eq 0 ] || {
+    echo "Re-run with story in target only failed: $output" >&2
+    false
+  }
+
+  # sprint_id must be rewritten to the target.
+  local sf
+  sf="$(find "$ART_DIR" -name "story.md" -path "*E900-S1*" | head -1)"
+  local sid
+  sid="$(awk '/^sprint_id:/ { sub(/^sprint_id:[[:space:]]*/, ""); gsub(/"/, ""); print; exit }' "$sf")"
+  [ "$sid" = "sprint-901" ] || {
+    echo "sprint_id not rewritten on re-run: got '$sid'" >&2
+    false
+  }
+
+  # Story must be in target.
+  local s1_tgt
+  s1_tgt="$(yq -r '.stories[] | select(.key == "E900-S1") | .key' "$to_yaml" 2>/dev/null)" || s1_tgt=""
+  [ "$s1_tgt" = "E900-S1" ]
 }
 
 # ================================================================
@@ -2647,7 +2732,156 @@ YAML
 }
 
 # ================================================================
-# Multi-writer race test: >=16 parallel resolves (NX5b/A8/K10)
+# aiw_resolve: single-quoted related_stories entries are refused
+# ================================================================
+
+@test "aiw_resolve refuses single-quoted related_stories entries" {
+  local target="$TEST_TMP/ai-sq-rs.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    related_stories: ['E900-S1', "E900-S2", E900-S3]
+YAML
+
+  local orig_sha
+  orig_sha="$(shasum "$target" | cut -d' ' -f1)"
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-1" --status "done" \
+    --resolution "test" --related-stories "E900-S4"
+
+  # Must be refused (non-zero exit).
+  [ "$status" -ne 0 ] || {
+    echo "Single-quoted related_stories accepted (should refuse)" >&2
+    false
+  }
+
+  # File must be untouched.
+  local after_sha
+  after_sha="$(shasum "$target" | cut -d' ' -f1)"
+  [ "$orig_sha" = "$after_sha" ] || {
+    echo "File was modified despite refusal" >&2
+    false
+  }
+}
+
+# ================================================================
+# aiw_resolve: comma-containing related_stories entries are refused
+# ================================================================
+
+@test "aiw_resolve refuses comma-containing related_stories entries" {
+  local target="$TEST_TMP/ai-cq-rs.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    related_stories: ["a, b", "c"]
+YAML
+
+  local orig_sha
+  orig_sha="$(shasum "$target" | cut -d' ' -f1)"
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-1" --status "done" \
+    --resolution "test" --related-stories "E900-S1"
+
+  # Must be refused.
+  [ "$status" -ne 0 ] || {
+    echo "Comma-containing related_stories accepted (should refuse)" >&2
+    false
+  }
+
+  # File must be untouched.
+  local after_sha
+  after_sha="$(shasum "$target" | cut -d' ' -f1)"
+  [ "$orig_sha" = "$after_sha" ] || {
+    echo "File was modified despite refusal" >&2
+    false
+  }
+}
+
+# ================================================================
+# aiw_resolve: nested - id: inside another item is refused
+# ================================================================
+
+@test "aiw_resolve refuses when target id appears as nested entry in another item" {
+  local target="$TEST_TMP/ai-nested-id.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    links:
+      - id: AI-2
+        label: "related"
+  - id: "AI-2"
+    status: "open"
+YAML
+
+  local orig_sha
+  orig_sha="$(shasum "$target" | cut -d' ' -f1)"
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-2" --status "done" \
+    --resolution "test"
+
+  # Must be refused.
+  [ "$status" -ne 0 ] || {
+    echo "Nested - id: target accepted (should refuse)" >&2
+    false
+  }
+
+  # File must be untouched.
+  local after_sha
+  after_sha="$(shasum "$target" | cut -d' ' -f1)"
+  [ "$orig_sha" = "$after_sha" ] || {
+    echo "File was modified despite refusal" >&2
+    false
+  }
+}
+
+# ================================================================
+# aiw_resolve: pre-Phase-B rejects prefix-sibling keys
+# ================================================================
+
+@test "pre-Phase-B key match rejects prefix-sibling keys" {
+  _seed_config 2
+
+  local from_yaml to_yaml
+  from_yaml="$(_seed_per_sprint_yaml "sprint-900" "active")"
+  to_yaml="$(_seed_per_sprint_yaml "sprint-901" "active")"
+
+  # Source sprint has only E900-S10, NOT E900-S1.
+  _seed_story_file "E900-S10" "E900" '"sprint-900"' "src/ten.ts" > /dev/null
+  _add_story_to_yaml "$from_yaml" "E900-S10"
+
+  # E900-S1 is a backlog story not in any sprint.
+  _seed_story_file "E900-S1" "E900" 'null' "src/one.ts" > /dev/null
+
+  # Rollover E900-S1 from sprint-900: must be refused because E900-S1
+  # is not in sprint-900 (only E900-S10 is).
+  run bash "$SPRINT_STATE_SH" rollover \
+    --from sprint-900 --to sprint-901 --keys E900-S1
+
+  [ "$status" -ne 0 ] || {
+    echo "Prefix-sibling key E900-S1 matched E900-S10 (should be refused)" >&2
+    false
+  }
+
+  # Target must be empty.
+  local tgt_count
+  tgt_count="$(yq -r '.stories | length' "$to_yaml" 2>/dev/null)" || tgt_count=0
+  [ "$tgt_count" -eq 0 ] || {
+    echo "Target has stories after prefix-sibling refusal: $tgt_count" >&2
+    false
+  }
+}
+
+# ================================================================
+# Multi-writer race test: >=16 parallel resolves
 # ================================================================
 
 @test "parallel resolves with 16 writers preserve all updates" {
@@ -2763,16 +2997,19 @@ YAML
 }
 
 # ================================================================
-# AC8 integration: review, retro naming, close with bound session
+# AC8 integration: review, close with bound sprint, other sprint untouched
 # ================================================================
 
 @test "AC8 integration: review, close with bound sprint, other sprint untouched" {
   _seed_config 2
 
   local CLOSE_SH="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
-  [ -x "$CLOSE_SH" ] || skip "close.sh not executable"
+  [ -x "$CLOSE_SH" ] || {
+    echo "close.sh not found or not executable at $CLOSE_SH" >&2
+    false
+  }
 
-  # --- Step 1: Create two active sprints ---
+  # --- Step 1: Create two active sprints via sprint-state.sh ---
   run bash "$SPRINT_STATE_SH" init --sprint-id sprint-900
   [ "$status" -eq 0 ]
   run bash "$SPRINT_STATE_SH" transition --sprint sprint-900 --to active
@@ -2783,10 +3020,59 @@ YAML
   run bash "$SPRINT_STATE_SH" transition --sprint sprint-901 --to active
   [ "$status" -eq 0 ]
 
-  # --- Step 2: Inject stories (all done for the close target) ---
-  _seed_story_file "E900-S1" "E900" '"sprint-900"' "src/a.ts" > /dev/null
+  # --- Step 2: Seed story files for each sprint ---
+  # Sprint-900's story needs full Review Gate (all PASSED) and DoD (all
+  # checked) so the real transition path can move it to done.
+  local sf_dir="$ART_DIR/epic-E900-test/E900-S1-test-story"
+  mkdir -p "$sf_dir"
+  cat > "$sf_dir/story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S1"
+title: "Test story E900-S1"
+epic: "E900"
+status: in-progress
+points: 3
+risk: medium
+sprint_id: "sprint-900"
+depends_on: []
+blocks: []
+predicted_touch_set:
+  - "src/a.ts"
+---
+# Story: Test story E900-S1
+
+> **Status:** in-progress
+
+## Review Gate
+
+| Review | Status | Report |
+|--------|--------|--------|
+| Code Review | PASSED | — |
+| QA Tests | PASSED | — |
+| Security Review | PASSED | — |
+| Test Automation | PASSED | — |
+| Test Review | PASSED | — |
+| Performance Review | PASSED | — |
+
+## Definition of Done
+
+### Acceptance
+
+- [x] All acceptance criteria verified
+
+### Testing
+
+- [x] All tests pass
+
+### Code Quality & CI
+
+- [x] Code compiles without errors
+STORY
+
   _seed_story_file "E901-S1" "E901" '"sprint-901"' "src/b.ts" > /dev/null
 
+  # --- Step 3: Inject stories via sprint-state.sh inject ---
   export SPRINT_STATUS_YAML="$STATE_DIR/sprint-status-sprint-900.yaml"
   export SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
   run bash "$SPRINT_STATE_SH" inject --story E900-S1
@@ -2798,40 +3084,60 @@ YAML
   [ "$status" -eq 0 ]
   unset SPRINT_STATUS_YAML SPRINT_STATUS_LOCK
 
-  # Transition stories to done (sprint-900 only — needed for review transition).
+  # --- Step 4: Bind the session to sprint-900 BEFORE the review transition ---
+  # The binding can only be written when the sprint is active; close.sh
+  # then uses it to resolve the bound sprint.
+  export CLAUDE_SESSION_ID="test-ac8-session-$$"
+  local SB_SH="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$SB_SH"
+  provision_binding_dir
+  write_binding "sprint-900" "$STATE_DIR"
+
+  # Verify the binding is readable.
+  local bound_sprint
+  bound_sprint="$(cat "$GAIA_BINDING_DIR/bound_sprint_id" 2>/dev/null | tr -d '\n')"
+  [ "$bound_sprint" = "sprint-900" ] || {
+    echo "Binding not written correctly: got '$bound_sprint'" >&2
+    false
+  }
+
+  # --- Step 5: Transition E900-S1 through the real path to done ---
+  # in-progress -> review -> done, using the real transition writer which
+  # checks the Review Gate and DoD.
   export SPRINT_STATUS_YAML="$STATE_DIR/sprint-status-sprint-900.yaml"
   export SPRINT_STATUS_LOCK="${SPRINT_STATUS_YAML}.lock"
+  run bash "$SPRINT_STATE_SH" transition --story E900-S1 --to review
+  [ "$status" -eq 0 ] || {
+    echo "story in-progress->review failed: $output" >&2; false
+  }
   run bash "$SPRINT_STATE_SH" transition --story E900-S1 --to done
+  [ "$status" -eq 0 ] || {
+    echo "story review->done failed: $output" >&2; false
+  }
   unset SPRINT_STATUS_YAML SPRINT_STATUS_LOCK
-  # May fail if review-gate not present; proceed with force.
 
-  # --- Step 3: Transition sprint-900 to review ---
+  # --- Step 6: Transition sprint-900 to review ---
   run bash "$SPRINT_STATE_SH" transition --sprint sprint-900 --to review
-  # If this fails because stories aren't done, seed done status directly.
-  if [ "$status" -ne 0 ]; then
-    local yaml_900="$STATE_DIR/sprint-status-sprint-900.yaml"
-    GAIA_V="done" yq -i '.stories[0].status = strenv(GAIA_V)' "$yaml_900" 2>/dev/null
-    run bash "$SPRINT_STATE_SH" transition --sprint sprint-900 --to review
-  fi
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || {
+    echo "sprint active->review failed: $output" >&2; false
+  }
 
-  # Verify sprint-900 is now in review.
   local s900_status
   s900_status="$(yq -r '.status' "$STATE_DIR/sprint-status-sprint-900.yaml")"
   [ "$s900_status" = "review" ]
 
-  # --- Step 4: Retro artifact for sprint-900 (per-sprint naming) ---
+  # --- Step 7: Retro artifact for sprint-900 ---
   local retro_dir="$ART_DIR/retrospective"
   mkdir -p "$retro_dir"
   local retro_file="$retro_dir/retrospective-sprint-900-2026-10-28.md"
   printf '# Retrospective sprint-900\n\nScoped to sprint-900 stories.\n' > "$retro_file"
   [ -f "$retro_file" ]
 
-  # Separate retro for sprint-901 (should not be clobbered).
+  # Separate retro for sprint-901.
   local retro_901="$retro_dir/retrospective-sprint-901-2026-10-28.md"
   printf '# Retrospective sprint-901\n' > "$retro_901"
 
-  # --- Step 5: Create action items and resolve cross-sprint ---
+  # --- Step 8: Create action items and resolve cross-sprint ---
   local ai_file="$STATE_DIR/action-items.yaml"
   source "$AIW_SH"
   aiw_write --target "$ai_file" --sprint-id "sprint-900" \
@@ -2848,51 +3154,43 @@ YAML
   ai_ri="$(yq -r '.items[0].resolved_in' "$ai_file")"
   [ "$ai_ri" = "sprint-901" ]
 
-  # --- Step 6: Close sprint-900 with the sprint-state close writer ---
-  # The close writer is what close.sh delegates to. Use it directly to
-  # avoid close.sh's full resolver/binding infrastructure in a unit test.
-  # Seed the sprint-review sentinel.
+  # --- Step 9: Snapshot sprint-901 before close ---
+  local s901_before="$TEST_TMP/sprint-901-before.yaml"
+  cp "$STATE_DIR/sprint-status-sprint-901.yaml" "$s901_before"
+
+  # --- Step 10: Close sprint-900 through close.sh with the real binding ---
+  # Create the sprint-review sentinel (required by close.sh).
   local ckpt_dir="$TEST_TMP/.gaia/memory/checkpoints"
   mkdir -p "$ckpt_dir"
   printf '{"sprint_id":"sprint-900"}' > "$ckpt_dir/sprint-review-sprint-900-val-dispatched.json"
 
-  # Set up a binding directory for the bound-sprint test.
-  local bind_dir="$STATE_DIR/.gaia-session-bindings/test-session"
-  mkdir -p "$bind_dir"
-  printf 'sprint-900\n' > "$bind_dir/sprint-binding.txt"
-  export GAIA_BINDING_DIR="$bind_dir"
-
-  # Close via the sprint-state close writer (what close.sh calls internally).
-  export GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL=1
-  run bash "$SPRINT_STATE_SH" transition --sprint sprint-900 --to closed
-  unset GAIA_ALLOW_SPRINT_REVIEW_TO_CLOSED_WITHOUT_SENTINEL
-  unset GAIA_BINDING_DIR
-  [ "$status" -eq 0 ]
+  # Run close.sh. It reads GAIA_BINDING_DIR/bound_sprint_id (written in
+  # step 4) to resolve the bound sprint, checks the retro doc exists,
+  # verifies all stories are done, validates the sprint-review sentinel,
+  # and delegates the status write to sprint-state.sh.
+  run bash "$CLOSE_SH" --force
+  unset CLAUDE_SESSION_ID
+  [ "$status" -eq 0 ] || {
+    echo "close.sh failed: $output" >&2; false
+  }
 
   # Sprint-900 must be closed.
   local s900_final
   s900_final="$(yq -r '.status' "$STATE_DIR/sprint-status-sprint-900.yaml")"
   [ "$s900_final" = "closed" ]
 
-  # --- Step 7: Assert sprint-901 is untouched ---
-  local s901_status
-  s901_status="$(yq -r '.status' "$STATE_DIR/sprint-status-sprint-901.yaml")"
-  [ "$s901_status" = "active" ] || {
-    echo "Sprint-901 status changed: expected 'active', got '$s901_status'" >&2
+  # --- Step 11: Assert sprint-901 is byte-identical ---
+  diff -q "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" || {
+    echo "Sprint-901 was modified by sprint-900's close:" >&2
+    diff "$s901_before" "$STATE_DIR/sprint-status-sprint-901.yaml" >&2
     false
   }
-
-  # Sprint-901 must still have its story.
-  local s901_story
-  s901_story="$(yq -r '.stories[] | select(.key == "E901-S1") | .key' \
-    "$STATE_DIR/sprint-status-sprint-901.yaml" 2>/dev/null)" || s901_story=""
-  [ "$s901_story" = "E901-S1" ]
 
   # Both retro files must exist (no clobber).
   [ -f "$retro_file" ]
   [ -f "$retro_901" ]
 
-  # Sprint-close glob finds the right retro (verify the pattern).
+  # Sprint-close glob finds the right retro.
   local retro_count
   retro_count="$(find "$retro_dir" -name "retrospective-sprint-900-*.md" | wc -l | tr -d ' ')"
   [ "$retro_count" -ge 1 ]

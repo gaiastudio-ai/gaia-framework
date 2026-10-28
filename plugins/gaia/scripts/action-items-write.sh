@@ -613,6 +613,121 @@ aiw_resolve() {
   # and their variants) and skips continuation lines at deeper indentation,
   # preventing matches against field names that appear inside block text.
   # Block-list fields (key:\n  - entry) are also handled correctly.
+
+  # --- Pre-check: refuse shapes the awk editor cannot handle safely ---
+  # 1. Nested `- id: <target>` inside another item's block field.
+  # 2. Single-quoted entries in the target item's related_stories inline.
+  # 3. Comma-containing entries in double-quoted related_stories inline.
+  # All three produce valid-but-wrong YAML if the editor proceeds.
+  local _precheck_rc=0
+  AIW_PRE_ITEM="$item" awk '
+    BEGIN {
+      item = ENVIRON["AIW_PRE_ITEM"]
+      # Track whether we are inside a top-level item (depth 0) or a nested
+      # block field whose lines might contain "- id:" at deeper indent.
+      depth = 0; cur_item = ""; in_field_block = 0; field_base = 0
+      item_indent = -1
+      in_target = 0; target_rs_line = ""
+    }
+    {
+      cil = 0; if (match($0, /^[[:space:]]+/)) cil = RLENGTH
+      is_empty = ($0 ~ /^[[:space:]]*$/)
+    }
+
+    # Item-start detection.
+    /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
+      ln = $0; sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", ln)
+      gsub(/^["'"'"']+|["'"'"']+$/, "", ln)
+      # Compute the indent of this item.
+      match($0, /^[[:space:]]*/)
+      this_indent = RLENGTH + 2
+
+      if (depth > 0 && ln == item) {
+        # The target id appears as a nested `- id:` inside another items
+        # block field. This would confuse the editor.
+        printf "NESTED\n" > "/dev/stderr"; exit 1
+      }
+
+      # If we were in a field block of a previous item, this new `- id:`
+      # at the same or shallower indent ends it.
+      if (item_indent >= 0 && cil <= item_indent) {
+        depth = 0; in_field_block = 0
+      }
+
+      cur_item = ln; item_indent = this_indent
+      depth = 0; in_field_block = 0
+      if (ln == item) in_target = 1; else in_target = 0
+      next
+    }
+
+    # Inside an item: track field-level blocks that could contain nested
+    # `- id:` (e.g. `links:` with block list entries).
+    item_indent >= 0 && !is_empty && cil >= item_indent {
+      if (cil == item_indent) {
+        # Top-level field of the current item.
+        fl = $0; sub(/^[[:space:]]+/, "", fl)
+        cp = index(fl, ":")
+        if (cp > 0) {
+          fn = substr(fl, 1, cp - 1)
+          fv = substr(fl, cp + 1); sub(/^[[:space:]]*/, "", fv)
+          sub(/[[:space:]]*$/, "", fv)
+
+          # Check related_stories for single-quoted or comma-in-quotes entries.
+          if (in_target && fn == "related_stories" && fv ~ /^\[/) {
+            target_rs_line = fv
+          }
+
+          # If the value is empty (bare key: → block list or nested map),
+          # mark depth so nested `- id:` is caught. Block scalars (|, >)
+          # are safe — the awk editor tracks those and skips their content.
+          if (fv == "" || fv ~ /^#/) {
+            in_field_block = 1; field_base = item_indent; depth = 1
+          } else {
+            in_field_block = 0; depth = 0
+          }
+        }
+      } else if (cil > item_indent) {
+        # Deeper indent: inside a field block. Mark depth so nested
+        # `- id:` is caught.
+        if (in_field_block) depth = 1
+      }
+    }
+
+    # Exiting the item scope.
+    item_indent >= 0 && !is_empty && cil < item_indent {
+      depth = 0; in_field_block = 0; item_indent = -1
+    }
+
+    END {
+      # Validate target_rs_line if present and we are replacing related_stories.
+      if (target_rs_line != "") {
+        # Single-quoted entry: '\'' inside the bracket sequence.
+        if (target_rs_line ~ /'"'"'/) {
+          printf "SINGLEQUOTE\n" > "/dev/stderr"; exit 1
+        }
+        # Comma inside a double-quoted entry: "a, b" would be split by
+        # the awk comma-split. Detect by looking for ,"...,...",
+        # Simplified check: count opening and closing double-quotes;
+        # if commas appear between matched quotes, refuse.
+        s = target_rs_line; gsub(/^\[|\]$/, "", s)
+        in_dq = 0; prev = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          if (c == "\"" && prev != "\\") in_dq = !in_dq
+          if (c == "," && in_dq) {
+            printf "COMMAINQUOTE\n" > "/dev/stderr"; exit 1
+          }
+          prev = c
+        }
+      }
+    }
+  ' "$target" 2>/dev/null || _precheck_rc=$?
+
+  if [ "$_precheck_rc" -ne 0 ]; then
+    printf 'status=error\nreason=aiw_resolve: file contains an unsupported YAML shape for item %s — file untouched\n' "$item"
+    return 1
+  fi
+
   local tmp
   tmp="$(mktemp "${target}.XXXXXX")" || {
     printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1

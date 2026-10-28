@@ -3467,10 +3467,14 @@ _cmd_rollover_concurrent() {
     for key in "${phase_a_passed_keys[@]}"; do
       # (a) key must be in source or target yaml.
       local _in_src=0 _in_tgt=0
-      if [ -f "$_pre_from_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${key}[\"']\\{0,1\\}" "$_pre_from_yaml" 2>/dev/null; then
+      # Escape the key for safe use in a grep BRE: quote any characters
+      # that are regex-special (.-based keys are safe, but be defensive).
+      local _esc_key
+      _esc_key="$(printf '%s' "$key" | sed 's/[].\\*^$[]/\\&/g')"
+      if [ -f "$_pre_from_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${_esc_key}[\"']\\{0,1\\}[[:space:]]*$" "$_pre_from_yaml" 2>/dev/null; then
         _in_src=1
       fi
-      if [ -f "$_pre_to_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${key}[\"']\\{0,1\\}" "$_pre_to_yaml" 2>/dev/null; then
+      if [ -f "$_pre_to_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${_esc_key}[\"']\\{0,1\\}[[:space:]]*$" "$_pre_to_yaml" 2>/dev/null; then
         _in_tgt=1
       fi
       if [ "$_in_src" -eq 0 ] && [ "$_in_tgt" -eq 0 ]; then
