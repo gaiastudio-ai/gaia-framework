@@ -147,6 +147,105 @@ resolve_ledger_path() {
 
 # ---------- Helpers ----------
 
+# Validate a glob pattern for use as a git pathspec.
+# Returns 0 if valid, 1 if invalid. Catches:
+#   - unclosed bracket class (e.g. src/[)
+#   - empty bracket class (e.g. src/[], src/[!])
+#   - trailing backslash (e.g. src/\)
+#   - reversed character range (e.g. src/[z-a]*)
+# Accepts POSIX-correct patterns like src/[]a]* (] as first char in class).
+# bash 3.2 compatible (no local -A, no ${x,,}).
+_validate_glob_pattern() {
+  local pattern="$1"
+  local len=${#pattern}
+  local i=0
+  while [ "$i" -lt "$len" ]; do
+    local ch="${pattern:$i:1}"
+    case "$ch" in
+      \\)
+        # Backslash escape: must have a next character.
+        i=$((i + 1))
+        if [ "$i" -ge "$len" ]; then
+          return 1  # trailing backslash
+        fi
+        i=$((i + 1))
+        ;;
+      '[')
+        # Start of bracket class. Walk to the matching ].
+        i=$((i + 1))
+        if [ "$i" -ge "$len" ]; then
+          return 1  # unclosed bracket
+        fi
+        # Check for negation prefix.
+        local bc_ch="${pattern:$i:1}"
+        if [ "$bc_ch" = '!' ] || [ "$bc_ch" = '^' ]; then
+          i=$((i + 1))
+          if [ "$i" -ge "$len" ]; then
+            return 1  # unclosed bracket after negation
+          fi
+        fi
+        # POSIX: ] as the first character (or first after !) is literal.
+        bc_ch="${pattern:$i:1}"
+        if [ "$bc_ch" = ']' ]; then
+          i=$((i + 1))
+          if [ "$i" -ge "$len" ]; then
+            return 1  # unclosed bracket (only ] in class)
+          fi
+        fi
+        local prev_char=""
+        # Walk the rest of the bracket class.
+        while [ "$i" -lt "$len" ]; do
+          bc_ch="${pattern:$i:1}"
+          if [ "$bc_ch" = ']' ]; then
+            # End of bracket class. Check that there is real content.
+            break
+          fi
+          # Backslash inside bracket class: compare with test expression
+          # (case-pattern \\) does not work on bash 3.2 inside the inner loop.
+          if [ "$bc_ch" = $'\\' ]; then
+            i=$((i + 1))
+            if [ "$i" -ge "$len" ]; then
+              return 1  # trailing backslash in class
+            fi
+            prev_char="${pattern:$i:1}"
+            i=$((i + 1))
+            continue
+          fi
+          if [ "$bc_ch" = '-' ] && [ -n "$prev_char" ]; then
+            # Range expression: prev-next. Check that next exists and range is valid.
+            i=$((i + 1))
+            if [ "$i" -ge "$len" ]; then
+              return 1  # unclosed bracket
+            fi
+            local range_end="${pattern:$i:1}"
+            if [ "$range_end" = ']' ]; then
+              # Trailing dash is literal per POSIX, close the class.
+              break
+            fi
+            # Check range order (ASCII comparison).
+            if [ "$(printf '%d' "'$prev_char")" -gt "$(printf '%d' "'$range_end")" ]; then
+              return 1  # reversed range
+            fi
+            prev_char="$range_end"
+          else
+            prev_char="$bc_ch"
+          fi
+          i=$((i + 1))
+        done
+        if [ "$i" -ge "$len" ]; then
+          return 1  # unclosed bracket (never found ])
+        fi
+        # We found ] — move past it.
+        i=$((i + 1))
+        ;;
+      *)
+        i=$((i + 1))
+        ;;
+    esac
+  done
+  return 0
+}
+
 # Resolve the project-config.yaml path by walking up from a given directory.
 # Checks PROJECT_CONFIG, then PROJECT_ROOT/CLAUDE_PROJECT_ROOT, then walks
 # up from the given path looking for .gaia/config/project-config.yaml.
@@ -247,9 +346,10 @@ Subcommands:
                     table. The Status, Report and Reviewed SHA cells of the
                     matched gate are changed. When a three-column table is
                     updated, the header and separator are upgraded to the
-                    four-column format. All other bytes of the story file
-                    are preserved (blank lines, other rows, trailing
-                    content). The fourth column (Reviewed SHA) is bound to
+                    four-column format and non-target rows gain an empty
+                    fourth cell. Other content in the story file is
+                    preserved (blank lines, trailing content). The fourth
+                    column (Reviewed SHA) is bound to
                     the worktree HEAD by default, or to an explicit --sha
                     value. Writes are serialized via flock. When --plan-id
                     is provided, the verdict is written to the ledger file
@@ -1561,10 +1661,9 @@ main() {
       gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
       local config_scope=""
       # Read scope globs from the shared config resolver (resolve-config.sh).
-      # This honours GAIA_SHARED_CONFIG, local overrides and YAML escapes —
-      # the same precedence as every other config key. The config path is
-      # resolved here (walk-up + PROJECT_CONFIG + env roots) and passed via
-      # --shared so the resolver does not need to re-discover it.
+      # The config path is resolved here (walk-up + PROJECT_CONFIG + env
+      # roots) and passed via --shared so the resolver does not need to
+      # re-discover it. The resolver uses yq to parse the YAML file.
       local resolver="${_RG_DIR}/resolve-config.sh"
       if [ ! -f "$resolver" ]; then
         die "carry-forward: cannot locate resolve-config.sh — refusing (fail closed)"
@@ -1589,20 +1688,15 @@ main() {
       # -z avoids C-quoting of non-ASCII / special chars.
 
       # Build the pathspec arguments from scope globs.
-      # Validate each glob: refuse patterns with unclosed brackets (which
-      # git silently treats as matching nothing, causing a fail-open).
+      # Validate each glob: git silently treats malformed patterns as
+      # matching nothing (which would cause a fail-open), so we validate
+      # bracket classes, backslash escapes and character ranges ourselves.
       local -a pathspec_args=()
       local scope_line
       while IFS= read -r scope_line; do
         [ -z "$scope_line" ] && continue
-        # Detect unclosed bracket: count unescaped '[' and ']'.
-        local _open _close
-        _open="$(printf '%s' "$scope_line" | tr -cd '[' | wc -c)"
-        _close="$(printf '%s' "$scope_line" | tr -cd ']' | wc -c)"
-        _open="${_open##* }"
-        _close="${_close##* }"
-        if [ "$_open" -ne "$_close" ]; then
-          die "carry-forward: invalid scope glob pattern '$scope_line' (unclosed bracket) — refusing (fail closed)"
+        if ! _validate_glob_pattern "$scope_line"; then
+          die "carry-forward: invalid scope glob pattern '$scope_line' — refusing (fail closed)"
         fi
         pathspec_args+=(":(glob)${scope_line}")
       done <<< "$config_scope"
@@ -1610,16 +1704,21 @@ main() {
       # Check for overlap: if git diff with the scope pathspecs returns any
       # paths, there is an overlap and the carry-forward must be refused.
       # Unset pathspec-mode env vars that would disable :(glob) magic.
-      local overlap_output overlap_rc
+      # Does not use -z (only checking presence, not parsing paths), which
+      # avoids the bash 5 "ignored null byte" warning on NUL-delimited output.
+      local overlap_errfile overlap_output overlap_rc
+      overlap_errfile="$(mktemp)"
       overlap_output="$(env -u GIT_LITERAL_PATHSPECS -u GIT_NOGLOB_PATHSPECS \
         -u GIT_ICASE_PATHSPECS -u GIT_GLOB_PATHSPECS \
-        git -C "$pp" diff -z --no-renames --name-only \
-        "$carry_from" "$carry_to" -- "${pathspec_args[@]}" 2>&1)" \
+        git -C "$pp" diff --no-renames --name-only \
+        "$carry_from" "$carry_to" -- "${pathspec_args[@]}" 2>"$overlap_errfile")" \
         && overlap_rc=0 || overlap_rc=$?
-      if [ "$overlap_rc" -ne 0 ] && [ "$overlap_rc" -ne 1 ]; then
-        # rc=1 means no diff (empty output); rc > 1 or error text → tool failure.
+      local overlap_stderr
+      overlap_stderr="$(cat "$overlap_errfile")"
+      rm -f "$overlap_errfile"
+      if [ "$overlap_rc" -ne 0 ]; then
         # Any tool error → refuse (fail closed).
-        die "carry-forward: git diff with scope pathspecs failed (rc=$overlap_rc) — refusing (fail closed)"
+        die "carry-forward: git diff with scope pathspecs failed (rc=$overlap_rc: ${overlap_stderr}) — refusing (fail closed)"
       fi
       if [ -n "$overlap_output" ]; then
         die "carry-forward: diff between $carry_from and $carry_to includes files in scope — review must be re-run"
@@ -1635,28 +1734,23 @@ main() {
       done < <(git -C "$pp" diff -z --no-renames --name-only \
         "$carry_from" "$carry_to" 2>/dev/null)
 
-      # Build the evidence JSON arrays.
+      # Build the evidence JSON arrays using jq for correct escaping of
+      # tabs, newlines, control characters, quotes and backslashes.
       local changed_json="[]"
       if [ "${#diff_paths[@]}" -gt 0 ]; then
-        changed_json="["
-        local _i
-        for _i in "${!diff_paths[@]}"; do
-          [ "$_i" -gt 0 ] && changed_json="${changed_json},"
-          local _escaped="${diff_paths[$_i]}"
-          _escaped="${_escaped//\\/\\\\}"
-          _escaped="${_escaped//\"/\\\"}"
-          changed_json="${changed_json}\"${_escaped}\""
-        done
-        changed_json="${changed_json}]"
+        changed_json="$(printf '%s\0' "${diff_paths[@]}" \
+          | jq -R -s '[split("\u0000") | .[] | select(length > 0)]')"
       fi
-      local globs_json
-      globs_json="$(printf '%s\n' "$config_scope" | awk '
-        BEGIN { printf "[" }
-        /^[[:space:]]*$/ { next }
-        c++ > 0 { printf "," }
-        { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf "\"%s\"", $0 }
-        END { printf "]" }
-      ')"
+      local -a _glob_lines=()
+      local _gl
+      while IFS= read -r _gl; do
+        [ -z "$_gl" ] && continue
+        _glob_lines+=("$_gl")
+      done <<< "$config_scope"
+      local globs_json="[]"
+      if [ "${#_glob_lines[@]}" -gt 0 ]; then
+        globs_json="$(jq -nc '$ARGS.positional' --args -- "${_glob_lines[@]}")"
+      fi
 
       # Write carry-forward sidecar record FIRST (before rebinding the row).
       # If the sidecar write fails, the row keeps its old SHA — no binding
@@ -1673,8 +1767,14 @@ main() {
       local ts
       ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
       local record
-      record="$(printf '{"row":"%s","from_sha":"%s","to_sha":"%s","evidence":{"changed_paths":%s,"scope_globs":%s},"timestamp":"%s"}' \
-        "$carry_row" "$carry_from" "$carry_to" "$changed_json" "$globs_json" "$ts")"
+      record="$(jq -nc \
+        --arg row "$carry_row" \
+        --arg from "$carry_from" \
+        --arg to "$carry_to" \
+        --argjson paths "$changed_json" \
+        --argjson globs "$globs_json" \
+        --arg ts "$ts" \
+        '{row:$row,from_sha:$from,to_sha:$to,evidence:{changed_paths:$paths,scope_globs:$globs},timestamp:$ts}')"
       # Atomic append via temp file + cat (safe on concurrent appends).
       local sidecar_tmp
       sidecar_tmp="$(mktemp "${story_dir}/.carry-tmp.XXXXXX")"

@@ -1564,53 +1564,25 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_review_gate_manual_test_mode" ;;
     review_gate.scope_globs.*)
       # Dynamic 3-deep key: review_gate.scope_globs.<gate-slug>.
-      # Returns one glob per line (block-style list items).
-      # No `local` here — this case runs at top level, not inside a function.
-      # Gate slugs contain hyphens which parse_yaml_3deep does not handle,
-      # and the value is a YAML list (not a scalar), so read it directly
-      # with an awk list parser that handles both block and flow styles.
+      # Returns one glob per line. Uses yq (a framework prerequisite) to
+      # parse YAML correctly — comments, flow/block lists, quoted strings,
+      # character classes and anchors are all handled by the YAML parser.
+      # Non-list / non-string values → empty output (caller refuses).
       _rg_slug="${FIELD#review_gate.scope_globs.}"
       _rg_val=""
       _rg_file="${SHARED_PATH}"
       [ "$LOCAL_EXISTS" -eq 1 ] && _rg_file="$LOCAL_PATH"
       if [ -f "$_rg_file" ]; then
-        _rg_val="$(awk -v slug="$_rg_slug" '
-          /^review_gate:/ { in_rg = 1; next }
-          in_rg && /^[^ ]/ { in_rg = 0 }
-          in_rg && /scope_globs:/ { in_sg = 1; next }
-          in_sg && /^[^ ]/ && !/^    / { in_sg = 0 }
-          in_sg {
-            if ($0 ~ slug ":") {
-              # Check for flow-style list on the same line: slug: ["a", "b"]
-              if ($0 ~ /\[/) {
-                line = $0
-                sub(/.*\[/, "", line)
-                sub(/\].*/, "", line)
-                n = split(line, items, ",")
-                for (i = 1; i <= n; i++) {
-                  v = items[i]
-                  gsub(/^[[:space:]]*/, "", v)
-                  gsub(/[[:space:]]*$/, "", v)
-                  gsub(/"/, "", v)
-                  gsub(/'\''/, "", v)
-                  if (v != "") print v
-                }
-                exit
-              }
-              in_gate = 1; next
-            }
-            if (in_gate && /^[[:space:]]*- /) {
-              val = $0
-              sub(/^[[:space:]]*- [[:space:]]*/, "", val)
-              sub(/[[:space:]]+#.*$/, "", val)
-              sub(/[[:space:]]*$/, "", val)
-              gsub(/"/, "", val)
-              gsub(/'\''/, "", val)
-              if (val != "") print val
-            }
-            if (in_gate && !/^[[:space:]]*-/ && !/^[[:space:]]*$/ && !/^      /) { in_gate = 0 }
-          }
-        ' "$_rg_file" 2>/dev/null)"
+        if ! command -v yq >/dev/null 2>&1; then
+          die "yq is required for scope_globs resolution but not found on PATH"
+        fi
+        # yq reads the YAML and outputs each list item on its own line.
+        # --exit-status makes yq exit non-zero on null results.
+        # If the node is not a sequence, the type check rejects it.
+        _rg_node_type="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\" | type" "$_rg_file" 2>/dev/null)" || _rg_node_type=""
+        if [ "$_rg_node_type" = '!!seq' ]; then
+          _rg_val="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\"[]" "$_rg_file" 2>/dev/null)" || _rg_val=""
+        fi
       fi
       printf '%s\n' "$_rg_val" ;;
     ci_cd.ci_wait_timeout_minutes)
