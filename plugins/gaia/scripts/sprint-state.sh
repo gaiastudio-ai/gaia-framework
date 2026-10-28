@@ -3452,14 +3452,71 @@ _cmd_rollover_concurrent() {
   cat "$_phase_a_out" >&2 2>/dev/null || true
   rm -f "$_phase_a_out"
 
+  # ---- Pre-Phase-B: validate each key before any writes ----
+  # For each passing key, verify:
+  #   (a) the key is in the source sprint yaml OR the target sprint yaml
+  #       (the target case covers a re-run where Phase B already succeeded),
+  #   (b) the story file's sprint_id can be parsed as source, target, or null
+  #       (accepts double-quoted, unquoted, single-quoted, trailing-comment).
+  # Keys that fail are refused BEFORE Phase B injects anything.
+  local validated_keys=()
+  if [ "${#phase_a_passed_keys[@]}" -gt 0 ]; then
+    local _pre_from_yaml _pre_to_yaml
+    _pre_from_yaml="$(_sprint_file_path "$state_dir" "$from_sprint")"
+    _pre_to_yaml="$(_sprint_file_path "$state_dir" "$to_sprint")"
+    for key in "${phase_a_passed_keys[@]}"; do
+      # (a) key must be in source or target yaml.
+      local _in_src=0 _in_tgt=0
+      if [ -f "$_pre_from_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${key}[\"']\\{0,1\\}" "$_pre_from_yaml" 2>/dev/null; then
+        _in_src=1
+      fi
+      if [ -f "$_pre_to_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${key}[\"']\\{0,1\\}" "$_pre_to_yaml" 2>/dev/null; then
+        _in_tgt=1
+      fi
+      if [ "$_in_src" -eq 0 ] && [ "$_in_tgt" -eq 0 ]; then
+        printf 'sprint-state.sh rollover: key %s not found in source (%s) or target (%s) — refused\n' \
+          "$key" "$from_sprint" "$to_sprint" >&2
+        phase_a_failed_keys+=("$key")
+        continue
+      fi
+
+      # (b) story file sprint_id must parse as source, target, or null.
+      . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+      local _pre_sf
+      _pre_sf="$(resolve_story_file "$key" 2>/dev/null)" || true
+      if [ -n "$_pre_sf" ] && [ -f "$_pre_sf" ]; then
+        local _cur_sid
+        _cur_sid="$(awk '
+          BEGIN { in_fm=0 }
+          /^---[[:space:]]*$/ { if (!in_fm) { in_fm=1; next } else exit }
+          in_fm && /^sprint_id:/ {
+            v = $0; sub(/^sprint_id:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*$/, "", v)
+            sub(/[[:space:]]*$/, "", v)
+            gsub(/^["'"'"']+|["'"'"']+$/, "", v)
+            print v; exit
+          }
+        ' "$_pre_sf")"
+        if [ -n "$_cur_sid" ] && [ "$_cur_sid" != "$from_sprint" ] \
+           && [ "$_cur_sid" != "$to_sprint" ] && [ "$_cur_sid" != "null" ]; then
+          printf 'sprint-state.sh rollover: %s sprint_id is "%s" (expected %s, %s, or null) — refused\n' \
+            "$key" "$_cur_sid" "$from_sprint" "$to_sprint" >&2
+          phase_a_failed_keys+=("$key")
+          continue
+        fi
+      fi
+      validated_keys+=("$key")
+    done
+  fi
+
   # ---- Phase B: L1 of target — inject + phase reset (per passing key) ----
   local phase_b_passed=() phase_b_failed=()
-  if [ "${#phase_a_passed_keys[@]}" -gt 0 ]; then
+  if [ "${#validated_keys[@]}" -gt 0 ]; then
     local to_yaml
     to_yaml="$(_sprint_file_path "$state_dir" "$to_sprint")"
     local to_lock="${to_yaml}.lock"
 
-    for key in "${phase_a_passed_keys[@]}"; do
+    for key in "${validated_keys[@]}"; do
       local inject_rc=0
 
       # Phase B: inject the story into the target sprint + reset phase.
@@ -3528,12 +3585,15 @@ _cmd_rollover_concurrent() {
         tmp="$(mktemp "${sf}.XXXXXX")" || exit 1
         awk -v from="$from_sprint" -v to="$to_sprint" '
           /^sprint_id:/ {
-            # Accept both quoted and unquoted forms of sprint_id so
-            # the rewrite handles the 201 real story files that use
-            # unquoted sprint_id: sprint-NNN.
-            if ($0 ~ ("^sprint_id:[[:space:]]*\"?" from "\"?[[:space:]]*$") || \
-                $0 ~ ("^sprint_id:[[:space:]]*\"?" to "\"?[[:space:]]*$")   || \
-                $0 ~ /^sprint_id:[[:space:]]*null[[:space:]]*$/) {
+            # Strip quotes (double, single), trailing comment and
+            # whitespace to get the bare value. Accepts all quoting
+            # styles used in real story files (double-quoted, unquoted,
+            # single-quoted, trailing-comment forms).
+            bare = $0; sub(/^sprint_id:[[:space:]]*/, "", bare)
+            sub(/[[:space:]]*#.*$/, "", bare)
+            sub(/[[:space:]]*$/, "", bare)
+            gsub(/^["'"'"']+|["'"'"']+$/, "", bare)
+            if (bare == from || bare == to || bare == "null" || bare == "") {
               print "sprint_id: \"" to "\""
               next
             }

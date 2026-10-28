@@ -360,7 +360,10 @@ aiw_append_entry() {
       flock -x 9
       _do_append
     ) 9>"$lockfile"
-    rm -f "$lockfile"
+    # Do NOT unlink $lockfile — aiw_resolve uses the same lock identity.
+    # Unlinking after release lets a newcomer lock a fresh inode while
+    # a waiter still holds the unlinked one, breaking mutual exclusion
+    # with three or more contenders.
   else
     # macOS fallback — mkdir-based mutex
     local tries=0
@@ -724,6 +727,14 @@ aiw_resolve() {
       # Line at less than field indent: item ended.
       if (cil < indent_len) {
         _flush(); in_target = 0; done_editing = 1
+        # The line that ended the item may be the top-level last_updated
+        # key (when it appears after the items list and this was the last
+        # item). Bump it here instead of letting it pass through unchanged.
+        if (!bumped_lu && today != "" && $0 ~ /^last_updated:/) {
+          printf "last_updated: \"%s\"\n", today
+          bumped_lu = 1
+          next
+        }
         print; next
       }
 
@@ -909,6 +920,25 @@ aiw_resolve() {
     rm -f "$tmp"
     printf 'status=error\nreason=aiw_resolve: sanity check failed — item missing from output\n'
     return 1
+  fi
+
+  # Parse check: refuse with the file untouched if the output is not valid
+  # YAML. This catches corruption from unhandled shapes (multi-line
+  # continuations, indentless block lists, nested maps, etc.).
+  if command -v yq >/dev/null 2>&1; then
+    if ! yq '.' "$tmp" > /dev/null 2>&1; then
+      rm -f "$tmp"
+      printf 'status=error\nreason=aiw_resolve: output YAML does not parse — file untouched\n'
+      return 1
+    fi
+  else
+    # Fallback: basic structural check — the output must still contain
+    # at least one item entry (- id:).
+    if [ "$(/usr/bin/grep -c '^[[:space:]]*- id:' "$tmp" 2>/dev/null)" -lt 1 ]; then
+      rm -f "$tmp"
+      printf 'status=error\nreason=aiw_resolve: output structural check failed — file untouched\n'
+      return 1
+    fi
   fi
 
   mv -f "$tmp" "$target"
