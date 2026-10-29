@@ -43,10 +43,19 @@ LC_ALL=C; export LC_ALL
 
 _MT_SCRIPT_NAME="merge-tail.sh"
 _MT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_MT_MAX_SECONDS=540
+_MT_MAX_SECONDS="${MERGE_TAIL_MAX_SECONDS:-540}"
+_MT_START_SECONDS="$SECONDS"
 
 _mt_log() { printf '%s: %s\n' "$_MT_SCRIPT_NAME" "$*" >&2; }
 _mt_die() { _mt_log "$*"; exit 1; }
+
+# _mt_check_bound — fail if the per-call bound has been exceeded.
+_mt_check_bound() {
+  local elapsed=$(( SECONDS - _MT_START_SECONDS ))
+  if [ "$elapsed" -ge "$_MT_MAX_SECONDS" ]; then
+    _mt_die "per-call bound exceeded (${elapsed}s >= ${_MT_MAX_SECONDS}s)"
+  fi
+}
 
 # Resolve merge-ledger.sh
 _MT_LEDGER_SH="${_MT_SCRIPT_DIR}/merge-ledger.sh"
@@ -105,23 +114,25 @@ _mt_check_resume() {
   intent_state="$(printf '%s' "$intent_output" | sed -n 's/^state: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -1)"
   intent_head="$(printf '%s' "$intent_output" | sed -n 's/^head_sha: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -1)"
 
+  # Terminal intents are done — allow a fresh start regardless of head
+  case "$intent_state" in
+    superseded|finalized)
+      printf 'new'
+      return 0
+      ;;
+  esac
+
   if [ "$intent_head" != "$_mt_head" ]; then
     printf 'superseded'
     return 0
   fi
 
-  case "$intent_state" in
-    superseded|finalized)
-      printf 'new'
-      ;;
-    *)
-      printf 'resume:%s' "$intent_state"
-      ;;
-  esac
+  printf 'resume:%s' "$intent_state"
 }
 
 # --- Verb: gate ---
 _mt_verb_gate() {
+  _mt_check_bound
   if [ -n "$_mt_bypass_confirmation" ]; then
     bash "$_MT_LEDGER_SH" write-gate-bypass \
       --pr "$_mt_pr" --head "$_mt_head" --story "$_mt_story" \
@@ -134,16 +145,23 @@ _mt_verb_gate() {
 
 # --- Verb: merge ---
 _mt_verb_merge() {
+  _mt_check_bound
   # Check for session-kill resilience
   local resume=""
   resume="$(_mt_check_resume)"
 
   case "$resume" in
     superseded)
-      # Close the old intent and re-run the gate
-      _mt_log "head moved: superseding old intent and re-running gate"
-      bash "$_MT_LEDGER_SH" supersede --pr "$_mt_pr" --head "$_mt_head" 2>/dev/null || true
-      # The caller should run the gate verb first with the new head
+      # Close the old intent (read its head first) and tell the caller to
+      # re-run the gate with the new head.
+      _mt_log "head moved: superseding old intent"
+      local _old_intent=""
+      _old_intent="$(bash "$_MT_LEDGER_SH" read-latest --pr "$_mt_pr" 2>/dev/null)" || _old_intent=""
+      local _old_head=""
+      _old_head="$(printf '%s' "$_old_intent" | sed -n 's/^head_sha: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -1)"
+      if [ -n "$_old_head" ]; then
+        bash "$_MT_LEDGER_SH" supersede --pr "$_mt_pr" --head "$_old_head" 2>/dev/null || true
+      fi
       _mt_die "head moved: old intent superseded — re-run gate with the new head"
       ;;
     resume:intent)
@@ -217,6 +235,7 @@ _mt_verb_merge() {
 
 # --- Verb: verify ---
 _mt_verb_verify() {
+  _mt_check_bound
   # Check for session-kill resilience
   local resume=""
   resume="$(_mt_check_resume)"
@@ -266,6 +285,7 @@ _mt_verb_verify() {
 
 # --- Verb: smoke-wait ---
 _mt_verb_smoke_wait() {
+  _mt_check_bound
   # Check for session-kill resilience
   local resume=""
   resume="$(_mt_check_resume)"
@@ -352,6 +372,7 @@ _mt_verb_smoke_wait() {
 
 # --- Verb: finalize ---
 _mt_verb_finalize() {
+  _mt_check_bound
   # Check for session-kill resilience
   local resume=""
   resume="$(_mt_check_resume)"

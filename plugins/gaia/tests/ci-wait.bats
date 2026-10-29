@@ -1718,3 +1718,52 @@ SHIMEOF
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"PR number"* ]]
 }
+
+# --- Per-call bound caps timeout ---
+@test "per-call bound caps a longer timeout" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=300
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 30
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"per-call bound active"* ]]
+  [[ "$stderr" == *"capping"* ]]
+}
+
+@test "per-call bound does not cap a shorter timeout" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=3600
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 5
+  [ "$status" -eq 0 ]
+  # Should NOT see per-call bound message (300s < 3600s)
+  if [[ "$stderr" == *"per-call bound active"* ]]; then echo "FAIL: bound should not cap" >&2; return 1; fi
+  [[ "$stderr" == *"(timeout: 5m)"* ]]
+}
+
+@test "per-call bound zero disables the cap" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=0
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # Should NOT see per-call bound message
+  if [[ "$stderr" == *"per-call bound active"* ]]; then echo "FAIL: bound should be disabled" >&2; return 1; fi
+}
+
+@test "invalid per-call bound is ignored with warning" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND="abc"
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not a non-negative integer"* ]]
+}

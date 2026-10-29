@@ -104,14 +104,57 @@ _ml_intent_id() {
   printf 'mi-%s-%s' "$ts" "$$"
 }
 
+# _ml_validate_yaml_value <field> <value> — reject values that could inject
+# YAML structure.  Each field has a strict shape; anything outside it is
+# refused.  This prevents double-quote / newline / control-char injection
+# without depending on yq at write time.
+_ml_validate_yaml_value() {
+  local field="$1" value="$2"
+  case "$field" in
+    pr)
+      case "$value" in ''|*[!0-9]*) return 1 ;; esac ;;
+    head_sha|merge_sha)
+      case "$value" in ''|*[!0-9a-f]*) return 1 ;; esac
+      if [ ${#value} -lt 7 ] || [ ${#value} -gt 64 ]; then return 1; fi ;;
+    story|intent_id)
+      case "$value" in ''|*[!A-Za-z0-9_-]*) return 1 ;; esac ;;
+    target)
+      case "$value" in ''|*[!A-Za-z0-9_./-]*) return 1 ;; esac ;;
+    mode)
+      case "$value" in story|integration|promotion) ;; *) return 1 ;; esac ;;
+    type)
+      case "$value" in gate_pass|gate_bypass|merge_intent) ;; *) return 1 ;; esac ;;
+    state)
+      _ml_validate_state "$value" || return 1 ;;
+    bypass)
+      case "$value" in true|false) ;; *) return 1 ;; esac ;;
+    bypass_confirmed)
+      case "$value" in ''|*[!A-Za-z0-9_]*) return 1 ;; esac ;;
+    created_at|last_transition|superseded_at|ci_wait_started)
+      # ISO 8601 shape: YYYY-MM-DDTHH:MM:SSZ
+      case "$value" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;; *) return 1 ;; esac ;;
+    *)
+      # Unknown field: reject double-quotes, newlines, control chars
+      case "$value" in *'"'*) return 1 ;; esac
+      # Single-line check: printf %s preserves embedded newlines
+      local _lc=""
+      _lc="$(printf '%s\n' "$value" | wc -l | tr -d ' ')"
+      [ "$_lc" -le 1 ] || return 1
+      ;;
+  esac
+  return 0
+}
+
 # _ml_safe_write_field <file> <field> <value> — write YAML field safely.
-# Uses printf with validated values; never splices into program text.
+# Validates both field name and value shape; never splices into program text.
 _ml_safe_write_field() {
   local file="$1" field="$2" value="$3"
   # Validate field name: alphanumeric + underscore only
   case "$field" in
     *[!a-z_0-9A-Z]*) _ml_die "invalid field name: $field" ;;
   esac
+  _ml_validate_yaml_value "$field" "$value" || \
+    _ml_die "invalid value for field '$field': value rejected by shape validation"
   printf '%s: "%s"\n' "$field" "$value" >> "$file"
 }
 
@@ -204,6 +247,11 @@ _ml_cmd_write_gate_pass() {
   [ -z "$head" ] && _ml_die "write-gate-pass: --head required"
   [ -z "$story" ] && _ml_die "write-gate-pass: --story required"
 
+  # Validate all values before any side-effect
+  _ml_validate_yaml_value pr "$pr" || _ml_die "write-gate-pass: invalid pr value"
+  _ml_validate_yaml_value head_sha "$head" || _ml_die "write-gate-pass: invalid head_sha value"
+  _ml_validate_yaml_value story "$story" || _ml_die "write-gate-pass: invalid story value"
+
   # Run bind-head check before writing the record
   _ml_run_bind_head_check "$pr" "$head" || _ml_die "write-gate-pass: bind-head check failed for PR #${pr}"
 
@@ -216,13 +264,12 @@ _ml_cmd_write_gate_pass() {
   local gate_file=""
   gate_file="$ledger_dir/gate-pass-pr${pr}-$(date -u +%Y%m%d%H%M%S).yaml"
 
-  {
-    printf 'type: "gate_pass"\n'
-    printf 'pr: "%s"\n' "$pr"
-    printf 'head_sha: "%s"\n' "$head"
-    printf 'story: "%s"\n' "$story"
-    printf 'created_at: "%s"\n' "$ts"
-  } > "$gate_file"
+  : > "$gate_file"
+  _ml_safe_write_field "$gate_file" type gate_pass
+  _ml_safe_write_field "$gate_file" pr "$pr"
+  _ml_safe_write_field "$gate_file" head_sha "$head"
+  _ml_safe_write_field "$gate_file" story "$story"
+  _ml_safe_write_field "$gate_file" created_at "$ts"
 
   _ml_log "gate_pass recorded for PR #${pr} at ${head}"
   printf '%s\n' "$gate_file"
@@ -244,6 +291,12 @@ _ml_cmd_write_gate_bypass() {
   [ -z "$story" ] && _ml_die "write-gate-bypass: --story required"
   [ -z "$bypass_confirmation" ] && _ml_die "write-gate-bypass: --bypass-confirmation required"
 
+  # Validate all values before any side-effect
+  _ml_validate_yaml_value pr "$pr" || _ml_die "write-gate-bypass: invalid pr value"
+  _ml_validate_yaml_value head_sha "$head" || _ml_die "write-gate-bypass: invalid head_sha value"
+  _ml_validate_yaml_value story "$story" || _ml_die "write-gate-bypass: invalid story value"
+  _ml_validate_yaml_value bypass_confirmed "$bypass_confirmation" || _ml_die "write-gate-bypass: invalid bypass_confirmation value"
+
   local ledger_dir=""
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
   mkdir -p "$ledger_dir"
@@ -253,14 +306,13 @@ _ml_cmd_write_gate_bypass() {
   local gate_file=""
   gate_file="$ledger_dir/gate-bypass-pr${pr}-$(date -u +%Y%m%d%H%M%S).yaml"
 
-  {
-    printf 'type: "gate_bypass"\n'
-    printf 'pr: "%s"\n' "$pr"
-    printf 'head_sha: "%s"\n' "$head"
-    printf 'story: "%s"\n' "$story"
-    printf 'bypass_confirmed: "%s"\n' "$bypass_confirmation"
-    printf 'created_at: "%s"\n' "$ts"
-  } > "$gate_file"
+  : > "$gate_file"
+  _ml_safe_write_field "$gate_file" type gate_bypass
+  _ml_safe_write_field "$gate_file" pr "$pr"
+  _ml_safe_write_field "$gate_file" head_sha "$head"
+  _ml_safe_write_field "$gate_file" story "$story"
+  _ml_safe_write_field "$gate_file" bypass_confirmed "$bypass_confirmation"
+  _ml_safe_write_field "$gate_file" created_at "$ts"
 
   _ml_log "gate_bypass recorded for PR #${pr} at ${head} (confirmation: ${bypass_confirmation})"
   printf '%s\n' "$gate_file"
@@ -289,6 +341,12 @@ _ml_cmd_write_intent() {
     story|integration|promotion) ;;
     *) _ml_die "write-intent: invalid mode '$mode' (expected story|integration|promotion)" ;;
   esac
+
+  # Validate all values before any side-effect
+  _ml_validate_yaml_value pr "$pr" || _ml_die "write-intent: invalid pr value"
+  _ml_validate_yaml_value head_sha "$head" || _ml_die "write-intent: invalid head_sha value"
+  _ml_validate_yaml_value story "$story" || _ml_die "write-intent: invalid story value"
+  _ml_validate_yaml_value target "$target" || _ml_die "write-intent: invalid target value"
 
   local ledger_dir=""
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
@@ -334,18 +392,17 @@ _ml_cmd_write_intent() {
   intent_id="$(_ml_intent_id)"
   local intent_file="$ledger_dir/intent-pr${pr}-${intent_id}.yaml"
 
-  {
-    printf 'intent_id: "%s"\n' "$intent_id"
-    printf 'type: "merge_intent"\n'
-    printf 'story: "%s"\n' "$story"
-    printf 'pr: "%s"\n' "$pr"
-    printf 'head_sha: "%s"\n' "$head"
-    printf 'target: "%s"\n' "$target"
-    printf 'mode: "%s"\n' "$mode"
-    printf 'state: "intent"\n'
-    printf 'bypass: "%s"\n' "$bypass_flag"
-    printf 'created_at: "%s"\n' "$ts"
-  } > "$intent_file"
+  : > "$intent_file"
+  _ml_safe_write_field "$intent_file" intent_id "$intent_id"
+  _ml_safe_write_field "$intent_file" type merge_intent
+  _ml_safe_write_field "$intent_file" story "$story"
+  _ml_safe_write_field "$intent_file" pr "$pr"
+  _ml_safe_write_field "$intent_file" head_sha "$head"
+  _ml_safe_write_field "$intent_file" target "$target"
+  _ml_safe_write_field "$intent_file" mode "$mode"
+  _ml_safe_write_field "$intent_file" state intent
+  _ml_safe_write_field "$intent_file" bypass "$bypass_flag"
+  _ml_safe_write_field "$intent_file" created_at "$ts"
 
   _ml_log "merge intent created: ${intent_id} for PR #${pr} at ${head}"
   printf '%s\n' "$intent_file"
@@ -365,6 +422,10 @@ _ml_cmd_advance() {
   [ -z "$pr" ] && _ml_die "advance: --pr required"
   [ -z "$head" ] && _ml_die "advance: --head required"
   [ -z "$new_state" ] && _ml_die "advance: --state required"
+
+  if [ -n "$merge_sha" ]; then
+    _ml_validate_yaml_value merge_sha "$merge_sha" || _ml_die "advance: invalid merge_sha value"
+  fi
 
   _ml_validate_state "$new_state" || _ml_die "advance: invalid state '$new_state'"
 
@@ -408,16 +469,16 @@ _ml_cmd_advance() {
 
   # Append merge_sha if provided and transitioning to merged
   if [ "$new_state" = "merged" ] && [ -n "$merge_sha" ]; then
-    printf 'merge_sha: "%s"\n' "$merge_sha" >> "$intent_file"
+    _ml_safe_write_field "$intent_file" merge_sha "$merge_sha"
   fi
 
   # Append transition timestamp
-  printf 'last_transition: "%s"\n' "$ts" >> "$intent_file"
+  _ml_safe_write_field "$intent_file" last_transition "$ts"
 
   # Store CI-wait deadline fields when transitioning to merging
   # (for deadline resume across sessions)
   if [ "$new_state" = "merging" ]; then
-    printf 'ci_wait_started: "%s"\n' "$ts" >> "$intent_file"
+    _ml_safe_write_field "$intent_file" ci_wait_started "$ts"
   fi
 
   _ml_log "advanced PR #${pr} intent: ${current_state} -> ${new_state}"
@@ -488,7 +549,7 @@ _ml_cmd_supersede() {
   local tmp_file="${intent_file}.tmp"
   sed "s/^state: .*/state: \"superseded\"/" "$intent_file" > "$tmp_file"
   mv "$tmp_file" "$intent_file"
-  printf 'superseded_at: "%s"\n' "$ts" >> "$intent_file"
+  _ml_safe_write_field "$intent_file" superseded_at "$ts"
 
   _ml_log "superseded intent for PR #${pr} at ${head}"
   printf '%s\n' "$intent_file"

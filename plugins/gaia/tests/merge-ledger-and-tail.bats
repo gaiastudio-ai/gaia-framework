@@ -588,3 +588,440 @@ RUNNER
   [ -n "$gate_file" ]
   /usr/bin/grep -q 'bypass_confirmed: "operator_tty"' "$gate_file"
 }
+
+# ======================================================================
+# Item 1: workflow filter — non-configured workflow must not count
+# ======================================================================
+
+@test "ci-wait-ref configured workflow check run counts as green" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci,lint-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+
+  # Stub gh that returns a matching check run
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  printf 'build-ci / test|completed|success\n'
+  exit 0
+fi
+if [[ "$*" == *"statuses"* ]]; then
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 5
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"green"* ]]
+}
+
+@test "ci-wait-ref non-configured workflow only does not produce green" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  export CI_WAIT_REF_POLL_INTERVAL=0
+
+  # Stub gh returns a check run from a workflow NOT in configured list
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  printf 'other-workflow / test|completed|success\n'
+  exit 0
+fi
+if [[ "$*" == *"statuses"* ]]; then
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  # With max-seconds=1 and only non-configured checks, should timeout as pending
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 1
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pending"* ]]
+}
+
+@test "ci-wait-ref undeclared commit status context does not count as green" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS=""
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  export CI_WAIT_REF_POLL_INTERVAL=0
+
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  exit 0
+fi
+if [[ "$*" == *"statuses"* ]]; then
+  printf 'some-bot/status|success\n'
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 1
+  # No configured workflows + undeclared context = none-observed → times out
+  [ "$status" -eq 2 ] || [ "$status" -eq 3 ]
+}
+
+@test "ci-wait-ref declared status context counts toward green" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS=""
+  export CI_WAIT_REF_STATUS_CONTEXTS="ci/deploy"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  exit 0
+fi
+if [[ "$*" == *"statuses"* ]]; then
+  printf 'ci/deploy|success\n'
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 5
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"green"* ]]
+}
+
+@test "ci-wait-ref failure in configured workflow returns red" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  printf 'build-ci / test|completed|failure\n'
+  exit 0
+fi
+if [[ "$*" == *"statuses"* ]]; then
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 5
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"red"* ]]
+}
+
+@test "ci-wait-ref deadline resumes from ledger ci_wait_started" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  export CI_WAIT_REF_POLL_INTERVAL=0
+
+  # Set up a ledger intent with ci_wait_started in the past (expired)
+  bash "$LEDGER_SH" write-gate-pass --pr 99 --head abcdef1234567890abcdef1234567890abcdef12 --story E900-S2
+  bash "$LEDGER_SH" write-intent --pr 99 --head abcdef1234567890abcdef1234567890abcdef12 --story E900-S2 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 99 --head abcdef1234567890abcdef1234567890abcdef12 --state merging
+
+  # The intent now has ci_wait_started set to "now". Overwrite it to an old timestamp
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
+
+  # Set ci_wait_started to 600 seconds ago (exceeds 5s max)
+  local past_ts
+  past_ts="$(date -u -v-600S +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '600 seconds ago' +%Y-%m-%dT%H:%M:%SZ)"
+  local tmp="${intent_file}.tmp"
+  sed "s/^ci_wait_started:.*/ci_wait_started: \"${past_ts}\"/" "$intent_file" > "$tmp"
+  mv "$tmp" "$intent_file"
+
+  # Stub gh that returns pending (never green)
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"check-runs"* ]]; then
+  printf 'build-ci / test|in_progress|\n'
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  # With max-seconds=5 and ci_wait_started 600s ago, the deadline is already expired
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567890abcdef1234567890abcdef12 --branch 99 --max-seconds 5
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pending"* ]]
+  # Must mention "already expired" or "resuming" in stderr
+  [[ "${lines[*]}" == *"expired"* ]] || [[ "${lines[*]}" == *"resuming"* ]] || [[ "${output}" == *"expired"* ]]
+}
+
+# ======================================================================
+# Item 3: per-call bound enforcement in merge-tail
+# ======================================================================
+
+@test "merge-tail verb exceeding per-call bound is rejected" {
+  # Set a very short bound (1 second), then have the ledger write take a bit
+  export MERGE_TAIL_MAX_SECONDS=0
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"per-call bound exceeded"* ]]
+}
+
+# ======================================================================
+# Item 5: bind-head check — stubbed gh tests
+# ======================================================================
+
+@test "write-gate-pass with matching head succeeds" {
+  unset MERGE_LEDGER_SKIP_GH
+
+  # Stub gh that returns the expected head SHA via --jq extraction
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  local _sha="abc1234def5678abc1234def5678abc1234def5678"
+  cat > "$stub_dir/gh" <<GH
+#!/usr/bin/env bash
+if [[ "\$*" == *"pr view"* ]]; then
+  printf '%s\n' "$_sha"
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$LEDGER_SH" write-gate-pass \
+    --pr 42 --head "$_sha" --story E900-S1
+  [ "$status" -eq 0 ]
+
+  local gate_files
+  gate_files=$(find "$MERGE_LEDGER_DIR" -name "gate-pass-*.yaml" | wc -l | tr -d ' ')
+  [ "$gate_files" -ge 1 ]
+}
+
+@test "write-gate-pass with head mismatch is refused — no gate record" {
+  unset MERGE_LEDGER_SKIP_GH
+
+  # Stub gh that returns a DIFFERENT head SHA via --jq extraction
+  local stub_dir="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+if [[ "$*" == *"pr view"* ]]; then
+  printf '9999999999999999999999999999999999999999\n'
+  exit 0
+fi
+exit 0
+GH
+  chmod +x "$stub_dir/gh"
+
+  run env PATH="$stub_dir:$PATH" bash "$LEDGER_SH" write-gate-pass \
+    --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bind-head"* ]]
+
+  # No gate record should exist
+  local gate_files
+  gate_files=$(find "$MERGE_LEDGER_DIR" -name "gate-pass-*.yaml" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$gate_files" -eq 0 ]
+}
+
+@test "write-gate-pass with gh unavailable fails closed" {
+  unset MERGE_LEDGER_SKIP_GH
+
+  # Restricted PATH without gh
+  local restricted="${BATS_TEST_TMPDIR}/restricted_bin"
+  mkdir -p "$restricted"
+  ln -sf /bin/bash "$restricted/bash"
+  ln -sf /bin/cat "$restricted/cat"
+  ln -sf /bin/mkdir "$restricted/mkdir"
+  ln -sf /bin/date "$restricted/date"
+  ln -sf /usr/bin/printf "$restricted/printf"
+  ln -sf /usr/bin/sed "$restricted/sed"
+  ln -sf /usr/bin/head "$restricted/head"
+  ln -sf /usr/bin/dirname "$restricted/dirname"
+  ln -sf /usr/bin/basename "$restricted/basename"
+  ln -sf /usr/bin/wc "$restricted/wc"
+  ln -sf /usr/bin/tr "$restricted/tr"
+  local fp; fp="$(command -v find 2>/dev/null)"; [ -n "$fp" ] && ln -sf "$fp" "$restricted/find"
+
+  run env PATH="$restricted" bash "$LEDGER_SH" write-gate-pass \
+    --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failing closed"* ]] || [[ "$output" == *"bind-head"* ]]
+}
+
+# ======================================================================
+# Item 6: head-moved via merge-tail merge verb
+# ======================================================================
+
+@test "merge-tail merge with moved head supersedes old intent" {
+  local SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+  # Create gate + intent for head A
+  bash "$LEDGER_SH" write-gate-pass --pr 50 --head "$SHA_A" --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 50 --head "$SHA_A" --story E900-S1 --target staging --mode story
+
+  # Verify old intent exists at "intent" state
+  local old_intent
+  old_intent=$(find "$MERGE_LEDGER_DIR" -name "intent-*pr50*.yaml" | head -1)
+  /usr/bin/grep -q 'state: "intent"' "$old_intent"
+
+  # Drive merge with head B — should detect head moved and supersede
+  run bash "$TAIL_SH" merge --story E900-S1 --pr 50 --head "$SHA_B" --target staging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"superseded"* ]]
+
+  # Old intent must now be superseded
+  /usr/bin/grep -q 'state: "superseded"' "$old_intent"
+
+  # Create gate for head B (use a different PR to avoid same-second collision)
+  sleep 1
+  bash "$LEDGER_SH" write-gate-pass --pr 50 --head "$SHA_B" --story E900-S1
+  run bash "$TAIL_SH" merge --story E900-S1 --pr 50 --head "$SHA_B" --target staging
+  [ "$status" -eq 0 ]
+}
+
+# ======================================================================
+# Item 7: detach perl fallback PGID assertion
+# ======================================================================
+
+@test "detach perl fallback runs PGID assertion when setsid is hidden" {
+  # Hide setsid from PATH but keep perl
+  local restricted="${BATS_TEST_TMPDIR}/perl_only_bin"
+  mkdir -p "$restricted"
+  ln -sf /bin/bash "$restricted/bash"
+  ln -sf /bin/echo "$restricted/echo"
+  ln -sf /bin/cat "$restricted/cat"
+  ln -sf /usr/bin/printf "$restricted/printf"
+  ln -sf /bin/ps "$restricted/ps"
+  ln -sf /usr/bin/tr "$restricted/tr"
+  ln -sf /bin/kill "$restricted/kill"
+  ln -sf /bin/sleep "$restricted/sleep"
+  local pp; pp="$(command -v perl 2>/dev/null)"; [ -n "$pp" ] && ln -sf "$pp" "$restricted/perl"
+
+  if ! command -v perl >/dev/null 2>&1; then
+    skip "perl not available"
+  fi
+
+  # Create a runner script that writes its PID and PGID
+  local runner_script="${BATS_TEST_TMPDIR}/perl_runner.sh"
+  local pid_file="${BATS_TEST_TMPDIR}/perl_pid"
+  local pgid_file="${BATS_TEST_TMPDIR}/perl_pgid"
+  cat > "$runner_script" <<RUNNER
+#!/bin/bash
+echo \$\$ > "$pid_file"
+ps -o pgid= -p \$\$ | tr -d ' ' > "$pgid_file"
+sleep 2
+RUNNER
+  chmod +x "$runner_script"
+
+  local caller_pgid
+  caller_pgid="$(ps -o pgid= -p $$ | tr -d ' ')"
+
+  run env PATH="$restricted" bash "$DETACH_SH" -- bash "$runner_script"
+  [ "$status" -eq 0 ]
+
+  # Poll for the pgid_file with a bound
+  local _w=0
+  while [ "$_w" -lt 30 ] && [ ! -s "$pgid_file" ]; do
+    sleep 0.1 2>/dev/null || sleep 1
+    _w=$((_w + 1))
+  done
+
+  # Unconditional assertion: the file MUST have been written
+  [ -s "$pgid_file" ]
+  local runner_pgid
+  runner_pgid="$(cat "$pgid_file" | tr -d ' ')"
+  [ "$runner_pgid" != "$caller_pgid" ]
+
+  # Clean up
+  if [ -s "$pid_file" ]; then
+    kill "$(cat "$pid_file")" 2>/dev/null || true
+  fi
+}
+
+@test "detach PGID assertion is unconditional — runner pid always checked" {
+  # Run a known-good detach and verify the output includes a PID
+  local runner_script="${BATS_TEST_TMPDIR}/quick_runner.sh"
+  local pid_file="${BATS_TEST_TMPDIR}/quick_pid"
+  local pgid_file="${BATS_TEST_TMPDIR}/quick_pgid"
+  cat > "$runner_script" <<RUNNER
+#!/bin/bash
+echo \$\$ > "$pid_file"
+ps -o pgid= -p \$\$ | tr -d ' ' > "$pgid_file"
+sleep 2
+RUNNER
+  chmod +x "$runner_script"
+
+  run bash "$DETACH_SH" -- bash "$runner_script"
+  [ "$status" -eq 0 ]
+  # The output must contain a PID (a number)
+  [[ "$output" =~ ^[0-9]+$ ]]
+
+  local _w=0
+  while [ "$_w" -lt 30 ] && [ ! -s "$pgid_file" ]; do
+    sleep 0.1 2>/dev/null || sleep 1
+    _w=$((_w + 1))
+  done
+
+  # Unconditional: pgid_file MUST exist and differ from caller
+  [ -s "$pgid_file" ]
+  local caller_pgid
+  caller_pgid="$(ps -o pgid= -p $$ | tr -d ' ')"
+  local runner_pgid
+  runner_pgid="$(cat "$pgid_file" | tr -d ' ')"
+  [ "$runner_pgid" != "$caller_pgid" ]
+
+  if [ -s "$pid_file" ]; then
+    kill "$(cat "$pid_file")" 2>/dev/null || true
+  fi
+}
+
+# ======================================================================
+# Item 8: ledger YAML injection
+# ======================================================================
+
+@test "ledger rejects story key with double-quote and newline injection" {
+  local injected_key
+  injected_key="$(printf 'E900-S1"\ninjected: "evil')"
+
+  run bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story "$injected_key"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"shape validation"* ]]
+
+  # No gate record should be created
+  local gate_files
+  gate_files=$(find "$MERGE_LEDGER_DIR" -name "gate-*.yaml" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$gate_files" -eq 0 ]
+}
+
+@test "ledger rejects PR number with non-digit characters" {
+  run bash "$LEDGER_SH" write-gate-pass --pr "42; rm -rf /" --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rejected"* ]] || [[ "$output" == *"invalid"* ]] || [[ "$output" == *"shape validation"* ]]
+}
+
+@test "ledger accepts valid story key and stores it literally" {
+  run bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -eq 0 ]
+
+  local gate_file
+  gate_file=$(find "$MERGE_LEDGER_DIR" -name "gate-pass-*.yaml" | head -1)
+  # Verify exact field content
+  /usr/bin/grep -q 'story: "E900-S1"' "$gate_file"
+  # Verify no extra fields injected
+  local field_count
+  field_count=$(/usr/bin/grep -c '^[a-z]' "$gate_file")
+  [ "$field_count" -eq 5 ]
+}

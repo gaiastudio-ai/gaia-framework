@@ -211,13 +211,15 @@ _cwr_is_configured_workflow() {
     # No workflows configured — accept all check runs
     return 0
   fi
-  printf '%s\n' "$_cwr_workflows" | while IFS= read -r wf; do
+  local wf=""
+  while IFS= read -r wf; do
     [ -z "$wf" ] && continue
     # Match if the check run name starts with or equals the workflow name
     case "$name" in
-      "${wf}"*) exit 0 ;;
+      "${wf}"*) return 0 ;;
     esac
-  done
+  done <<< "$_cwr_workflows"
+  return 1
 }
 
 # --- Main poll loop ---

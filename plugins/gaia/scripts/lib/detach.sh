@@ -42,64 +42,50 @@ detach_run() {
   if command -v setsid >/dev/null 2>&1; then
     setsid "$@" &
     runner_pid=$!
-  else
+  elif command -v perl >/dev/null 2>&1; then
     # Method 2: perl POSIX::setsid fallback
-    if command -v perl >/dev/null 2>&1; then
-      perl -e '
-        use POSIX qw(setsid);
-        # Fork to detach from the caller session
-        my $pid = fork();
-        if (!defined $pid) { die "fork failed: $!\n"; }
-        if ($pid) {
-          # Parent: print child PID and exit
-          print "$pid\n";
-          exit 0;
-        }
-        # Child: create new session
-        setsid() or die "setsid failed: $!\n";
-        exec @ARGV or die "exec failed: $!\n";
-      ' -- "$@"
-      local perl_rc=$?
-      if [ "$perl_rc" -ne 0 ]; then
-        _detach_log "detach_failed: perl setsid fallback failed (exit $perl_rc)"
-        return 1
-      fi
-      # perl printed the child PID; we captured it via the backgrounding
-      # path above only for setsid.  For perl, read from the exec path.
-      # The perl parent printed the PID to stdout before exiting.
-      return 0
-    else
-      _detach_log "detach_failed: neither setsid nor perl available"
+    runner_pid="$(perl -e '
+      use POSIX qw(setsid);
+      my $pid = fork();
+      if (!defined $pid) { die "fork failed: $!\n"; }
+      if ($pid) {
+        print "$pid\n";
+        exit 0;
+      }
+      setsid() or die "setsid failed: $!\n";
+      exec @ARGV or die "exec failed: $!\n";
+    ' -- "$@")" || true
+    if [ -z "$runner_pid" ]; then
+      _detach_log "detach_failed: perl setsid fallback failed"
+      return 1
+    fi
+  else
+    _detach_log "detach_failed: neither setsid nor perl available"
+    return 1
+  fi
+
+  # PGID assertion (both setsid and perl paths): wait for the runner to
+  # appear, then verify its PGID differs from the caller's.
+  local _wait_count=0
+  local _wait_limit=50
+  while [ "$_wait_count" -lt "$_wait_limit" ] && ! kill -0 "$runner_pid" 2>/dev/null; do
+    sleep 0.05 2>/dev/null || sleep 1
+    _wait_count=$((_wait_count + 1))
+  done
+
+  if kill -0 "$runner_pid" 2>/dev/null; then
+    local runner_pgid=""
+    runner_pgid="$(ps -o pgid= -p "$runner_pid" 2>/dev/null | tr -d ' ')" || runner_pgid=""
+
+    if [ -n "$caller_pgid" ] && [ -n "$runner_pgid" ] && [ "$caller_pgid" = "$runner_pgid" ]; then
+      _detach_log "detach_failed: runner PGID ($runner_pgid) equals caller PGID ($caller_pgid)"
       return 1
     fi
   fi
+  # Process may have already exited (short-lived command) — that is fine;
+  # setsid / perl setsid guarantee a new session/PGID for the child.
 
-  # Give the runner a moment to start so we can check its PGID
-  # (only needed for the setsid path where we have $runner_pid)
-  if [ -n "$runner_pid" ]; then
-    # Brief wait for the process to appear
-    local _wait_count=0
-    while [ "$_wait_count" -lt 10 ] && ! kill -0 "$runner_pid" 2>/dev/null; do
-      sleep 0.05 2>/dev/null || sleep 1
-      _wait_count=$((_wait_count + 1))
-    done
-
-    # PGID assertion: runner's PGID must differ from caller's
-    if kill -0 "$runner_pid" 2>/dev/null; then
-      local runner_pgid=""
-      runner_pgid="$(ps -o pgid= -p "$runner_pid" 2>/dev/null | tr -d ' ')" || runner_pgid=""
-
-      if [ -n "$caller_pgid" ] && [ -n "$runner_pgid" ] && [ "$caller_pgid" = "$runner_pgid" ]; then
-        _detach_log "detach_failed: runner PGID ($runner_pgid) equals caller PGID ($caller_pgid)"
-        return 1
-      fi
-    fi
-    # Process may have already exited (short-lived command) — that is fine;
-    # setsid guarantees a new session/PGID for the child.
-
-    printf '%s\n' "$runner_pid"
-  fi
-
+  printf '%s\n' "$runner_pid"
   return 0
 }
 

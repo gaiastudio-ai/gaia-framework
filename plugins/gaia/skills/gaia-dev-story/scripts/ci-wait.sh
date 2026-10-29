@@ -156,6 +156,24 @@ if [ -n "${CI_WAIT_TIMEOUT_SECONDS:-}" ]; then
   TIMEOUT_SECONDS="$CI_WAIT_TIMEOUT_SECONDS"
 fi
 
+# --- Per-call bound ---
+# When CI_WAIT_PER_CALL_BOUND is set to a positive integer, it caps the
+# effective timeout so a single invocation never runs longer than that many
+# seconds.  Default 0 = no cap (existing callers are unaffected).  The
+# merge-tail caller sets this to 540 to enforce the per-call contract.
+_PER_CALL_BOUND="${CI_WAIT_PER_CALL_BOUND:-0}"
+case "$_PER_CALL_BOUND" in
+  0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+  *)
+    log "CI_WAIT_PER_CALL_BOUND='$(printf '%s' "$_PER_CALL_BOUND" | head -1)' is not a non-negative integer, ignoring"
+    _PER_CALL_BOUND=0
+    ;;
+esac
+if [ "$_PER_CALL_BOUND" -gt 0 ] && [ "$TIMEOUT_SECONDS" -gt "$_PER_CALL_BOUND" ]; then
+  log "per-call bound active: capping timeout from ${TIMEOUT_SECONDS}s to ${_PER_CALL_BOUND}s"
+  TIMEOUT_SECONDS="$_PER_CALL_BOUND"
+fi
+
 # --- Poll interval validation ---
 # case operates on the whole string (unlike grep which matches per-line),
 # so a multi-line value is correctly rejected.
