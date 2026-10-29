@@ -650,7 +650,8 @@ GH
 @test "ci-wait-ref undeclared commit status context does not count as green" {
   unset CI_WAIT_REF_SKIP_GH
   export CI_WAIT_REF_WORKFLOWS=""
-  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  # Declare only "ci/deploy" — "some-bot/status" is undeclared
+  export CI_WAIT_REF_STATUS_CONTEXTS="ci/deploy"
   export CI_WAIT_REF_POLL_INTERVAL=0
 
   local stub_dir="${BATS_TEST_TMPDIR}/bin"
@@ -669,8 +670,9 @@ GH
   chmod +x "$stub_dir/gh"
 
   run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 1
-  # No configured workflows + undeclared context = none-observed → times out
-  [ "$status" -eq 2 ] || [ "$status" -eq 3 ]
+  # The only status is undeclared — should not count as green → times out
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pending"* ]]
 }
 
 @test "ci-wait-ref declared status context counts toward green" {
