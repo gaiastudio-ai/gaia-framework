@@ -141,6 +141,16 @@ if ! git check-ref-format --allow-onelevel "refs/heads/${BASE_BRANCH}" 2>/dev/nu
 fi
 
 # ---------------------------------------------------------------------------
+# Fetch the target branch for robustness: ensures the local ref is up to
+# date before the API query and the commit-based fallback.
+# ---------------------------------------------------------------------------
+if git fetch origin "$BASE_BRANCH" --quiet 2>/dev/null; then
+  : # fetched successfully
+else
+  warn "git fetch origin ${BASE_BRANCH} failed — proceeding with local refs"
+fi
+
+# ---------------------------------------------------------------------------
 # Primary path: check PR merge status via the GitHub API.
 # ---------------------------------------------------------------------------
 
