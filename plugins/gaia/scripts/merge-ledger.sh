@@ -190,7 +190,7 @@ _ml_run_bind_head_check() {
 
 # --- Sub-commands ---
 
-cmd_write_gate_pass() {
+_ml_cmd_write_gate_pass() {
   local pr="" head="" story=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -228,7 +228,7 @@ cmd_write_gate_pass() {
   printf '%s\n' "$gate_file"
 }
 
-cmd_write_gate_bypass() {
+_ml_cmd_write_gate_bypass() {
   local pr="" head="" story="" bypass_confirmation=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -266,7 +266,7 @@ cmd_write_gate_bypass() {
   printf '%s\n' "$gate_file"
 }
 
-cmd_write_intent() {
+_ml_cmd_write_intent() {
   local pr="" head="" story="" target="" mode=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -351,7 +351,7 @@ cmd_write_intent() {
   printf '%s\n' "$intent_file"
 }
 
-cmd_advance() {
+_ml_cmd_advance() {
   local pr="" head="" new_state="" merge_sha=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -424,7 +424,7 @@ cmd_advance() {
   printf '%s\n' "$intent_file"
 }
 
-cmd_read_latest() {
+_ml_cmd_read_latest() {
   local pr="" head=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -449,7 +449,7 @@ cmd_read_latest() {
   return 0
 }
 
-cmd_supersede() {
+_ml_cmd_supersede() {
   local pr="" head=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -494,7 +494,7 @@ cmd_supersede() {
   printf '%s\n' "$intent_file"
 }
 
-cmd_sole_writer_check() {
+_ml_cmd_sole_writer_check() {
   local check_dir=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -554,12 +554,12 @@ subcmd="$1"
 shift
 
 case "$subcmd" in
-  write-gate-pass)   cmd_write_gate_pass "$@" ;;
-  write-gate-bypass) cmd_write_gate_bypass "$@" ;;
-  write-intent)      cmd_write_intent "$@" ;;
-  advance)           cmd_advance "$@" ;;
-  read-latest)       cmd_read_latest "$@" ;;
-  supersede)         cmd_supersede "$@" ;;
-  sole-writer-check) cmd_sole_writer_check "$@" ;;
+  write-gate-pass)   _ml_cmd_write_gate_pass "$@" ;;
+  write-gate-bypass) _ml_cmd_write_gate_bypass "$@" ;;
+  write-intent)      _ml_cmd_write_intent "$@" ;;
+  advance)           _ml_cmd_advance "$@" ;;
+  read-latest)       _ml_cmd_read_latest "$@" ;;
+  supersede)         _ml_cmd_supersede "$@" ;;
+  sole-writer-check) _ml_cmd_sole_writer_check "$@" ;;
   *) _ml_die "unknown sub-command: $subcmd" ;;
 esac
