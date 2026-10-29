@@ -942,7 +942,7 @@ aiw_resolve() {
   # invariant, and emits a compact JSON object of booleans and short
   # strings. Bash reads the flat JSON and maps each field to a verdict.
   #
-  # Checks (letters match the user ruling):
+  # Checks:
   #   (a) top-level keys other than items/last_updated unchanged
   #   (b) same item count and ids in order
   #   (c) non-target items deep-equal (JSON comparison for comment safety)
@@ -983,7 +983,7 @@ aiw_resolve() {
       ($ors == null) as $rs_null |
       ($rs_null or ($ors | tag == "!!seq")) as $rs_type |
       ($rs_null or ($rs_type | not) or ([$ors | .[]] | map(. as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0) | map(select(. == true)) | length == ([$ors | .[]] | length))) as $d_super |
-      ($exp_rs == "" or ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "") | . as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0] | map(select(. == true)) | length == [($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "")] | length)) as $d_req |
+      ($exp_rs == "" or ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "") | . as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0] | map(select(. == true)) | length == ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "")] | length))) as $d_req |
       (to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $otop |
       ($new | to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $ntop |
       ($otop == $ntop) as $g |
