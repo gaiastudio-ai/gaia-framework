@@ -360,7 +360,10 @@ aiw_append_entry() {
       flock -x 9
       _do_append
     ) 9>"$lockfile"
-    rm -f "$lockfile"
+    # Do NOT unlink $lockfile — aiw_resolve uses the same lock identity.
+    # Unlinking after release lets a newcomer lock a fresh inode while
+    # a waiter still holds the unlinked one, breaking mutual exclusion
+    # with three or more contenders.
   else
     # macOS fallback — mkdir-based mutex
     local tries=0
@@ -486,3 +489,641 @@ aiw_write() {
   printf 'status=ok\nid=%s\ntarget=%s\n' "$next_id" "$target"
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# aiw_resolve — update an existing action item's status fields in place
+# ---------------------------------------------------------------------------
+#
+# Public function (direct unit test required).
+#
+# Uses awk-based field-level editing to modify ONLY the target item's lines,
+# preserving all other bytes (comments, blank lines, formatting). Never
+# re-serialises the file. All values are escaped via _aiw_yaml_escape.
+#
+# Usage:
+#   aiw_resolve --target <path> --item <id> --status <status> \
+#     [--resolution <text>] [--resolved-date <YYYY-MM-DD>] \
+#     [--resolved-in <sprint-id>] [--related-stories <key,...>]
+#
+# Exit codes:
+#   0 — resolved
+#   1 — error (missing arg, item not found, write failure)
+aiw_resolve() {
+  local target="" item="" _resolve_status="" resolution="" resolved_date=""
+  local resolved_in="" related_stories=""
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --target)           target="$2"; shift 2 ;;
+      --item)             item="$2"; shift 2 ;;
+      --status)           _resolve_status="$2"; shift 2 ;;
+      --resolution)       resolution="$2"; shift 2 ;;
+      --resolved-date)    resolved_date="$2"; shift 2 ;;
+      --resolved-in)      resolved_in="$2"; shift 2 ;;
+      --related-stories)  related_stories="$2"; shift 2 ;;
+      *) printf 'status=error\nreason=aiw_resolve: unknown arg: %s\n' "$1"; return 1 ;;
+    esac
+  done
+
+  # Validate required args.
+  if [ -z "$target" ]; then
+    printf 'status=error\nreason=aiw_resolve: --target is required\n'; return 1
+  fi
+  if [ -z "$item" ]; then
+    printf 'status=error\nreason=aiw_resolve: --item is required\n'; return 1
+  fi
+  if [ -z "$_resolve_status" ]; then
+    printf 'status=error\nreason=aiw_resolve: --status is required\n'; return 1
+  fi
+
+  # Validate status vocabulary.
+  case "$_resolve_status" in
+    done|invalid|resolved|deferred|in-progress|dismissed) : ;;
+    *)
+      printf 'status=error\nreason=aiw_resolve: invalid status "%s"; allowed: done, invalid, resolved, deferred, in-progress, dismissed\n' "$_resolve_status"
+      return 1 ;;
+  esac
+
+  # Validate target file exists and is not a symlink.
+  if [ ! -f "$target" ]; then
+    printf 'status=error\nreason=aiw_resolve: target file not found: %s\n' "$target"; return 1
+  fi
+  if [ -L "$target" ]; then
+    printf 'status=error\nreason=aiw_resolve: target is a symlink; refusing\n'; return 1
+  fi
+
+  # Reject control characters in values.
+  local _val
+  for _val in "$_resolve_status" "$resolution" "$resolved_date" "$resolved_in" "$related_stories"; do
+    if _aiw_has_control_chars "$_val"; then
+      printf 'status=error\nreason=aiw_resolve: value contains disallowed control characters\n'; return 1
+    fi
+  done
+
+  # Escape values for double-quoted YAML scalars.
+  local safe_status safe_resolution safe_rd safe_ri
+  safe_status="$(_aiw_yaml_escape "$_resolve_status")"
+  safe_resolution="$(_aiw_yaml_escape "$resolution")"
+  safe_ri="$(_aiw_yaml_escape "$resolved_in")"
+
+  # Resolved date: only for done/invalid/resolved.
+  local rd=""
+  case "$_resolve_status" in
+    done|invalid|resolved) rd="${resolved_date:-$(date -u +%Y-%m-%d)}" ;;
+  esac
+  safe_rd="$(_aiw_yaml_escape "$rd")"
+
+  # Build the new related_stories entries as a comma-separated list of
+  # escaped values (without brackets). The awk merges these with any
+  # existing entries and writes an inline YAML sequence.
+  local safe_rs=""
+  if [ -n "$related_stories" ]; then
+    local _rs_build=""
+    local OLDIFS="$IFS"; IFS=','
+    for _rk in $related_stories; do
+      _rk="${_rk# }"; _rk="${_rk% }"
+      [ -n "$_rk" ] || continue
+      local _erk
+      _erk="$(_aiw_yaml_escape "$_rk")"
+      if [ -n "$_rs_build" ]; then
+        _rs_build="${_rs_build},${_erk}"
+      else
+        _rs_build="${_erk}"
+      fi
+    done
+    IFS="$OLDIFS"
+    safe_rs="$_rs_build"
+  fi
+
+  # Today's date for the last_updated bump (only when the key exists).
+  local _today
+  _today="$(date -u +%Y-%m-%d)"
+
+  # Preserve original file mode so mv does not change permissions.
+  local _orig_mode=""
+  if stat -f '%Lp' "$target" >/dev/null 2>&1; then
+    _orig_mode="$(stat -f '%Lp' "$target")"  # BSD stat
+  elif stat -c '%a' "$target" >/dev/null 2>&1; then
+    _orig_mode="$(stat -c '%a' "$target")"    # GNU stat
+  fi
+
+  # Awk-based in-place edit: only the target item's top-level fields are
+  # changed. Every other byte in the file is preserved verbatim. The editor
+  # is block-scalar-aware: it tracks YAML block scalar indicators (|, >,
+  # and their variants) and skips continuation lines at deeper indentation,
+  # preventing matches against field names that appear inside block text.
+  # Block-list fields (key:\n  - entry) are also handled correctly.
+
+  local tmp
+  tmp="$(mktemp "${target}.XXXXXX")" || {
+    printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
+  }
+
+  # The entire read-edit-write must happen under the lock to prevent
+  # concurrent resolves from overwriting each other's changes.
+  local lockdir="${target}.lockdir"
+
+  _do_resolve_locked() {
+  local awk_rc=0
+  AIW_ITEM="$item" \
+  AIW_STATUS="$safe_status" \
+  AIW_RESOLUTION="$safe_resolution" \
+  AIW_RD="$safe_rd" \
+  AIW_RI="$safe_ri" \
+  AIW_RS="$safe_rs" \
+  AIW_TODAY="$_today" \
+  awk '
+    BEGIN {
+      item        = ENVIRON["AIW_ITEM"]
+      new_status  = ENVIRON["AIW_STATUS"]
+      new_res     = ENVIRON["AIW_RESOLUTION"]
+      new_rd      = ENVIRON["AIW_RD"]
+      new_ri      = ENVIRON["AIW_RI"]
+      new_rs_csv  = ENVIRON["AIW_RS"]
+      today       = ENVIRON["AIW_TODAY"]
+
+      in_target = 0; found = 0; done_editing = 0
+      wrote_st = 0; wrote_res = 0; wrote_rd = 0
+      wrote_ri = 0; wrote_rs = 0
+      indent = "    "; indent_len = 4
+      # Block-scalar tracker (applies to ALL items, not just the target,
+      # so that "- id:" inside a block scalar is never misread as an item).
+      in_blk = 0; blk_base = 0
+      # eating_blk: we replaced a block-scalar field and are consuming its
+      # continuation lines (suppress output).
+      eating_blk = 0; eat_base = 0
+      # consuming_rs_block: accumulating block-list entries for related_stories.
+      consuming_rs = 0; rs_base = 0; rs_existing = ""
+      bumped_lu = 0
+    }
+
+    {
+      # -- indentation of the current line --
+      cil = 0
+      if (match($0, /^[[:space:]]+/)) cil = RLENGTH
+      is_empty = ($0 ~ /^[[:space:]]*$/)
+    }
+
+    # ---- State 1: eating replaced block-scalar continuation ----
+    eating_blk {
+      if (is_empty) next                # blank inside eaten block
+      if (cil > eat_base) next          # continuation: eat
+      eating_blk = 0                    # fell out — process normally below
+    }
+
+    # ---- State 2: inside a preserved block scalar ----
+    in_blk {
+      if (is_empty) { print; next }     # blank inside block
+      if (cil > blk_base) { print; next }   # continuation
+      in_blk = 0                        # fell out
+    }
+
+    # ---- State 3: consuming block-list entries for related_stories ----
+    consuming_rs {
+      if (is_empty) next
+      if (cil > rs_base) {
+        # Block-list entry: "  - value"
+        e = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", e)
+        gsub(/^["'"'"']+|["'"'"']+$/, "", e); sub(/[[:space:]]*$/, "", e)
+        if (e != "") _rs_add_existing(e)
+        next
+      }
+      # Block list ended — write the merged inline sequence.
+      _write_merged_rs()
+      consuming_rs = 0
+      # Fall through to process this line normally.
+    }
+
+    # ---- Top-level last_updated: bump in place when present ----
+    !in_target && !bumped_lu && today != "" && /^last_updated:/ {
+      printf "last_updated: \"%s\"\n", today
+      bumped_lu = 1; next
+    }
+
+    # ---- Item-start detection (suppressed inside block scalars) ----
+    !in_blk && !eating_blk && /^[[:space:]]*-[[:space:]]+id:[[:space:]]/ {
+      if (in_target) { _flush(); done_editing = 1; in_target = 0 }
+
+      if (!done_editing) {
+        ln = $0
+        sub(/^[[:space:]]*-[[:space:]]+id:[[:space:]]*/, "", ln)
+        gsub(/^["'"'"']+|["'"'"']+$/, "", ln)
+        if (ln == item) {
+          in_target = 1; found = 1
+          wrote_st = 0; wrote_res = 0; wrote_rd = 0
+          wrote_ri = 0; wrote_rs = 0; rs_existing = ""
+          match($0, /^[[:space:]]*/)
+          indent_len = RLENGTH + 2
+          indent = ""; for (_z = 0; _z < indent_len; _z++) indent = indent " "
+        }
+      }
+      print; next
+    }
+
+    # ---- Inside the target item ----
+    in_target {
+      # Blank or comment lines: preserve.
+      if (is_empty || $0 ~ /^[[:space:]]*#/) { print; next }
+
+      # Line at less than field indent: item ended.
+      if (cil < indent_len) {
+        _flush(); in_target = 0; done_editing = 1
+        # The line that ended the item may be the top-level last_updated
+        # key (when it appears after the items list and this was the last
+        # item). Bump it here instead of letting it pass through unchanged.
+        if (!bumped_lu && today != "" && $0 ~ /^last_updated:/) {
+          printf "last_updated: \"%s\"\n", today
+          bumped_lu = 1
+          next
+        }
+        print; next
+      }
+
+      # Line deeper than field indent: nested content (map, etc.). Preserve.
+      if (cil > indent_len) { print; next }
+
+      # At exactly field indent: this is a top-level field of the item.
+      fl = $0; sub(/^[[:space:]]+/, "", fl)
+      cp = index(fl, ":")
+      if (cp < 1) { print; next }
+      fn = substr(fl, 1, cp - 1)
+      fv = substr(fl, cp + 1); sub(/^[[:space:]]*/, "", fv); sub(/[[:space:]]*$/, "", fv)
+      is_bs = _is_blk(fv)
+
+      # -- status --
+      if (fn == "status") {
+        printf "%sstatus: \"%s\"\n", indent, new_status; wrote_st = 1
+        if (is_bs) { eating_blk = 1; eat_base = indent_len }
+        next
+      }
+      # -- resolution --
+      if (fn == "resolution") {
+        if (new_res != "") {
+          printf "%sresolution: \"%s\"\n", indent, new_res; wrote_res = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- resolved_date --
+      if (fn == "resolved_date") {
+        if (new_rd != "") {
+          printf "%sresolved_date: \"%s\"\n", indent, new_rd; wrote_rd = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- resolved_in --
+      if (fn == "resolved_in") {
+        if (new_ri != "") {
+          printf "%sresolved_in: \"%s\"\n", indent, new_ri; wrote_ri = 1
+          if (is_bs) { eating_blk = 1; eat_base = indent_len }
+          next
+        }
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+      # -- related_stories --
+      if (fn == "related_stories") {
+        if (new_rs_csv != "") {
+          if (fv == "" || fv ~ /^#/) {
+            # Block-list form: consume entries, then merge.
+            consuming_rs = 1; rs_base = indent_len
+            next
+          }
+          # Inline form: parse existing, merge, deduplicate, write.
+          _parse_inline_rs(fv)
+          _write_merged_rs(); wrote_rs = 1
+          next
+        }
+        # Not replacing — preserve, but track block forms.
+        if (is_bs) { in_blk = 1; blk_base = indent_len }
+        else if (fv == "" || fv ~ /^#/) { in_blk = 1; blk_base = indent_len }
+        print; next
+      }
+
+      # Any other field: if block scalar, track it so continuation lines
+      # are not mistaken for fields.
+      if (is_bs) { in_blk = 1; blk_base = indent_len }
+      else if (fv == "" || fv ~ /^#/) {
+        # Bare key ending with colon (block-list or nested map): track.
+        in_blk = 1; blk_base = indent_len
+      }
+      print; next
+    }
+
+    # ---- Outside target: track block scalars so "- id:" inside them is
+    #      never misread as an item start. Only actual block scalar
+    #      indicators (|, >) are tracked — bare "key:" (block sequence or
+    #      mapping start, e.g. "items:") must NOT suppress item detection.
+    !in_target {
+      if (!is_empty && $0 !~ /^[[:space:]]*#/) {
+        fl2 = $0; sub(/^[[:space:]]+/, "", fl2)
+        cp2 = index(fl2, ":")
+        if (cp2 > 0) {
+          fv2 = substr(fl2, cp2 + 1); sub(/^[[:space:]]*/, "", fv2); sub(/[[:space:]]*$/, "", fv2)
+          if (_is_blk(fv2)) {
+            in_blk = 1; blk_base = cil
+          }
+        }
+      }
+    }
+
+    { print }
+
+    END {
+      if (consuming_rs) _write_merged_rs()
+      if (in_target) _flush()
+      if (!found) { printf "NOTFOUND\n" > "/dev/stderr"; exit 1 }
+    }
+
+    function _is_blk(v,    t) {
+      t = v; sub(/[[:space:]]*#.*$/, "", t)
+      if (t == "|" || t == ">" || t == "|-" || t == "|+" || t == ">-" || t == ">+") return 1
+      if (t ~ /^[|>][+-]?[0-9]+$/ || t ~ /^[|>][0-9]+[+-]?$/) return 1
+      return 0
+    }
+
+    function _flush() {
+      if (!wrote_st)                           printf "%sstatus: \"%s\"\n",          indent, new_status
+      if (new_res != ""  && !wrote_res)        printf "%sresolution: \"%s\"\n",      indent, new_res
+      if (new_rd  != ""  && !wrote_rd)         printf "%sresolved_date: \"%s\"\n",   indent, new_rd
+      if (new_ri  != ""  && !wrote_ri)         printf "%sresolved_in: \"%s\"\n",     indent, new_ri
+      if (new_rs_csv != "" && !wrote_rs)       _write_merged_rs()
+    }
+
+    # Accumulate one entry into rs_existing (comma-separated, deduplicated).
+    function _rs_add_existing(e) {
+      if (_rs_has(rs_existing, e)) return
+      if (rs_existing != "") rs_existing = rs_existing "," e
+      else rs_existing = e
+    }
+
+    # Parse entries from an inline YAML sequence [...] into rs_existing.
+    function _parse_inline_rs(val,    s, n, parts, i, e) {
+      s = val; gsub(/^\[|\]$/, "", s)
+      n = split(s, parts, ",")
+      for (i = 1; i <= n; i++) {
+        e = parts[i]; sub(/^[[:space:]]*"?/, "", e); sub(/"?[[:space:]]*$/, "", e)
+        if (e != "") _rs_add_existing(e)
+      }
+    }
+
+    # Check if entry is already in the comma-separated list.
+    function _rs_has(lst, entry,    parts, n, i) {
+      if (lst == "") return 0
+      n = split(lst, parts, ",")
+      for (i = 1; i <= n; i++) if (parts[i] == entry) return 1
+      return 0
+    }
+
+    # Merge rs_existing with new_rs_csv and write the inline YAML sequence.
+    function _write_merged_rs(    s, n, parts, i, e, merged, mn, mp, j, first) {
+      merged = rs_existing
+      if (new_rs_csv != "") {
+        n = split(new_rs_csv, parts, ",")
+        for (i = 1; i <= n; i++) {
+          e = parts[i]; sub(/^[[:space:]]*/, "", e); sub(/[[:space:]]*$/, "", e)
+          if (e != "" && !_rs_has(merged, e)) {
+            if (merged != "") merged = merged "," e
+            else merged = e
+          }
+        }
+      }
+      if (merged == "") {
+        printf "%srelated_stories: []\n", indent
+      } else {
+        mn = split(merged, mp, ",")
+        printf "%srelated_stories: [", indent
+        first = 1
+        for (j = 1; j <= mn; j++) {
+          if (!first) printf ", "
+          printf "\"%s\"", mp[j]
+          first = 0
+        }
+        printf "]\n"
+      }
+      wrote_rs = 1
+    }
+  ' "$target" > "$tmp" || awk_rc=$?
+
+  if [ "$awk_rc" -ne 0 ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: item %s not found in %s\n' "$item" "$target"
+    return 1
+  fi
+
+  # --- yq structural verification (post-edit, pre-mv) ---
+  # Refuses the edit if the awk output does not match the original file
+  # structurally except in the expected fields of the target item.
+  # yq (mikefarah v4) is a framework prerequisite. Any violation, yq
+  # error, yq absence, or yq of another flavour refuses with rc 1 and
+  # the file untouched.
+  if ! command -v yq >/dev/null 2>&1; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: yq is required but not found — file untouched\n'
+    return 1
+  fi
+  # Verify yq is mikefarah flavour (v4+): mikefarah's yq prints a version
+  # string containing "mikefarah" or a version starting with "v4".
+  local _yq_ver
+  _yq_ver="$(yq --version 2>&1)" || true
+  case "$_yq_ver" in
+    *mikefarah*|*" v4."*|*" 4."*) ;;
+    *) rm -f "$tmp"
+       printf 'status=error\nreason=aiw_resolve: yq is not mikefarah v4 (%s) — file untouched\n' "$_yq_ver"
+       return 1 ;;
+  esac
+  # Single-call structural verification. One yq process loads both the
+  # original and the awk output via load(), computes every structural
+  # invariant, and emits a compact JSON object of booleans and short
+  # strings. Bash reads the flat JSON and maps each field to a verdict.
+  #
+  # Checks:
+  #   (a) top-level keys other than items/last_updated unchanged
+  #   (b) same item count and ids in order
+  #   (c) non-target items deep-equal (JSON comparison for comment safety)
+  #   (d) target: only status/resolution/resolved_date/resolved_in/
+  #       related_stories changed
+  #   (e) old related_stories is null or seq; old ⊆ new; requested present
+  #   (f) status/resolution/resolved_in/resolved_date equal requested
+  #   (g) last_updated: bump when present, never add
+  #
+  # All values passed via strenv(), never env().
+  local _vj
+  _vj="$(
+    AIW_V_NEW="$tmp" \
+    AIW_V_ITEM="$item" \
+    AIW_V_RS="$related_stories" \
+    AIW_V_ST="$_resolve_status" \
+    AIW_V_RES="$resolution" \
+    AIW_V_RI="$resolved_in" \
+    AIW_V_RD="$rd" \
+    AIW_V_TODAY="$_today" \
+    yq -o=json -I0 '
+      load(strenv(AIW_V_NEW)) as $new |
+      strenv(AIW_V_ITEM) as $id |
+      strenv(AIW_V_RS) as $exp_rs |
+      strenv(AIW_V_ST) as $exp_st |
+      strenv(AIW_V_RES) as $exp_res |
+      strenv(AIW_V_RI) as $exp_ri |
+      strenv(AIW_V_RD) as $exp_rd |
+      strenv(AIW_V_TODAY) as $today |
+      .items as $oi |
+      ($new | .items) as $ni |
+      ($oi | [to_entries[] | select(.value.id == $id) | .key] | .[0]) as $idx |
+      ($ni | .[$idx] | .status) as $est |
+      .last_updated as $flu |
+      ($new | .last_updated) as $nlu |
+      ($oi | .[$idx] | .related_stories) as $ors |
+      ($ni | .[$idx] | .related_stories) as $nrs |
+      ($ors == null) as $rs_null |
+      ($rs_null or ($ors | tag == "!!seq")) as $rs_type |
+      ($rs_null or ($rs_type | not) or ([$ors | .[]] | map(. as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0) | map(select(. == true)) | length == ([$ors | .[]] | length))) as $d_super |
+      ($exp_rs == "" or ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "") | . as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0] | map(select(. == true)) | length == ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "")] | length))) as $d_req |
+      (to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $otop |
+      ($new | to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $ntop |
+      ($otop == $ntop) as $g |
+      (($oi | length) == ($ni | length)) as $a1 |
+      (($oi | [.[].id] | tojson) == ($ni | [.[].id] | tojson)) as $a2 |
+      (($oi | [to_entries[] | select(.key != $idx) | .value] | tojson) == ($ni | [to_entries[] | select(.key != $idx) | .value] | tojson)) as $b |
+      (($oi | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson) == ($ni | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson)) as $c |
+      (($est // "") == $exp_st) as $f_st |
+      ($exp_res == "" or (($ni | .[$idx] | .resolution // "") == $exp_res)) as $f_res |
+      ($exp_ri == "" or (($ni | .[$idx] | .resolved_in // "") == $exp_ri)) as $f_ri |
+      ($exp_rd == "" or (($ni | .[$idx] | .resolved_date // "") == $exp_rd)) as $f_rd |
+      ($flu == null or $nlu == $today) as $f_lu_bump |
+      ($flu != null or $nlu == null) as $f_lu_add |
+      {
+        "g": $g, "a1": $a1, "a2": $a2, "b": $b, "c": $c,
+        "idx": ($idx // -1),
+        "rs_type": $rs_type, "d_super": $d_super, "d_req": $d_req,
+        "f_st": $f_st, "f_res": $f_res, "f_ri": $f_ri, "f_rd": $f_rd,
+        "f_lu_bump": $f_lu_bump, "f_lu_add": $f_lu_add
+      }
+    ' "$target"
+  )" || {
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: yq verification failed — file untouched\n'
+    return 1
+  }
+  if [ -z "$_vj" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: yq produced empty output — file untouched\n'
+    return 1
+  fi
+
+  # --- Parse the JSON verdict and check each rule ---
+  # The JSON is flat with boolean, integer, and null values only (no
+  # string values that need JSON unescaping). The _vget helper extracts
+  # a raw JSON token by key name.
+  _vget() {
+    local _s="${_vj#*\"$1\":}" _v
+    _v="${_s%%[,\}]*}"
+    printf '%s' "$_v"
+  }
+
+  local _reason=""
+  # (a) top-level unchanged.
+  [ "$(_vget g)" = "true" ] || _reason="top-level keys were modified"
+  # (b) same count and ids.
+  [ -n "$_reason" ] || { [ "$(_vget a1)" = "true" ] || _reason="item count changed"; }
+  [ -n "$_reason" ] || { [ "$(_vget a2)" = "true" ] || _reason="item ids or order changed"; }
+  # Target found.
+  [ -n "$_reason" ] || { [ "$(_vget idx)" != "-1" ] || _reason="target item $item not found by yq"; }
+  # (c) non-target unchanged.
+  [ -n "$_reason" ] || { [ "$(_vget b)" = "true" ] || _reason="non-target items were modified"; }
+  # (d) target: only allowed fields.
+  [ -n "$_reason" ] || { [ "$(_vget c)" = "true" ] || _reason="target item has unexpected field changes"; }
+  # (e) related_stories: type, superset, requested.
+  [ -n "$_reason" ] || { [ "$(_vget rs_type)" = "true" ] || _reason="related_stories is not a YAML sequence"; }
+  [ -n "$_reason" ] || { [ "$(_vget d_super)" = "true" ] || _reason="related_stories entries were removed"; }
+  [ -n "$_reason" ] || { [ "$(_vget d_req)" = "true" ] || _reason="requested related_stories entry not present"; }
+  # (f) value checks (compared inside yq for safe escaping).
+  [ -n "$_reason" ] || { [ "$(_vget f_st)" = "true" ] || _reason="target status mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_res)" = "true" ] || _reason="target resolution mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_ri)" = "true" ] || _reason="target resolved_in mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_rd)" = "true" ] || _reason="target resolved_date mismatch"; }
+  # (g) last_updated.
+  [ -n "$_reason" ] || { [ "$(_vget f_lu_bump)" = "true" ] || _reason="last_updated not bumped to today"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_lu_add)" = "true" ] || _reason="last_updated was added but original lacks it"; }
+
+  if [ -n "$_reason" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: %s — file untouched\n' "$_reason"
+    return 1
+  fi
+
+  mv -f "$tmp" "$target"
+  # Restore the original file mode (mktemp + mv may change it).
+  if [ -n "$_orig_mode" ]; then
+    chmod "$_orig_mode" "$target" 2>/dev/null || true
+  fi
+  return 0
+  }  # end _do_resolve_locked
+
+  # Take the action-items lock (same lock as aiw_write uses) around the
+  # entire read-edit-write to prevent concurrent resolves losing updates.
+  # The lock file is NOT removed after release — unlinking a held inode
+  # lets a newcomer lock a fresh file while a waiter still holds the
+  # unlinked one, breaking mutual exclusion with three or more contenders.
+  if command -v flock >/dev/null 2>&1; then
+    local lockfile="${target}.lock"
+    (
+      flock -x 9
+      _do_resolve_locked
+    ) 9>"$lockfile"
+    local _flock_rc=$?
+    if [ "$_flock_rc" -ne 0 ]; then
+      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
+      return 1
+    fi
+  else
+    local tries=0
+    while ! mkdir "$lockdir" 2>/dev/null; do
+      tries=$((tries + 1))
+      [ "$tries" -gt 600 ] && { rmdir "$lockdir" 2>/dev/null || true; break; }
+      sleep 0.02
+    done
+    _do_resolve_locked
+    local _mkdir_rc=$?
+    rmdir "$lockdir" 2>/dev/null || true
+    if [ "$_mkdir_rc" -ne 0 ]; then
+      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
+      return 1
+    fi
+  fi
+
+  printf 'status=ok\nitem=%s\ntarget=%s\n' "$item" "$target"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Sourced-versus-executed dispatch guard
+# ---------------------------------------------------------------------------
+# When this script is executed directly (not sourced), parse CLI and dispatch.
+# Existing aiw_write callers that source this file keep working — they call
+# aiw_write / aiw_resolve directly after sourcing.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ] 2>/dev/null; then
+  _aiw_subcmd="${1:-}"
+  case "$_aiw_subcmd" in
+    resolve)
+      shift
+      aiw_resolve "$@"
+      exit $?
+      ;;
+    write)
+      shift
+      aiw_write "$@"
+      exit $?
+      ;;
+    *)
+      printf 'action-items-write.sh: usage: action-items-write.sh <resolve|write> [args...]\n' >&2
+      printf 'action-items-write.sh: when sourced, call aiw_write / aiw_resolve directly.\n' >&2
+      exit 1
+      ;;
+  esac
+fi

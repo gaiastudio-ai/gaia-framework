@@ -1018,6 +1018,69 @@ EOF
 }
 
 # ===========================================================================
+# aiw_resolve — operator-precedence verification for requested stories check
+# ===========================================================================
+
+@test "resolve handles quoted inline list with trailing comment and normal multi-entry" {
+  _load_aiw
+  # -- Part 1: inline list with trailing YAML comment --
+  local target="$TEST_TMP/action-items-comment.yaml"
+  cat > "$target" <<'FIXTURE'
+items:
+  - id: "AI-1"
+    sprint_id: "sprint-150"
+    classification: "process"
+    text: "item with inline list comment"
+    status: "open"
+    related_stories: ["E900-S8"] # note
+FIXTURE
+  local before_cksum
+  before_cksum="$(cksum < "$target")"
+
+  local out rc=0
+  out="$(aiw_resolve --target "$target" --item AI-1 --status done \
+    --related-stories E900-S1 2>&1)" || rc=$?
+
+  if [ "$rc" -ne 0 ]; then
+    # Refused: file must be byte-identical.
+    local after_cksum
+    after_cksum="$(cksum < "$target")"
+    [ "$before_cksum" = "$after_cksum" ]
+  else
+    # Accepted: E900-S1 must be recorded and parseable by yq.
+    run yq '.items[0].related_stories[]' "$target"
+    [ "$status" -eq 0 ]
+    grep -qF 'E900-S1' <<<"$output"
+  fi
+
+  # -- Part 2: normal resolve with related-stories MUST succeed --
+  # Without the operator-precedence fix on the d_req yq expression, the
+  # unparenthesised RHS makes d_req evaluate to 5 (string length of "false")
+  # instead of the boolean true, so the bash guard refuses valid resolves.
+  local target2="$TEST_TMP/action-items-normal.yaml"
+  cat > "$target2" <<'FIXTURE2'
+items:
+  - id: "AI-1"
+    sprint_id: "sprint-150"
+    classification: "process"
+    text: "normal item"
+    status: "open"
+    related_stories: ["E900-S5"]
+FIXTURE2
+
+  local out2
+  out2="$(aiw_resolve --target "$target2" --item AI-1 --status done \
+    --related-stories E900-S1)"
+  grep -qF 'status=ok' <<<"$out2"
+
+  # Both the original and the requested story must be present and parseable.
+  local stories
+  stories="$(yq '.items[0].related_stories[]' "$target2")"
+  grep -qF 'E900-S5' <<<"$stories"
+  grep -qF 'E900-S1' <<<"$stories"
+}
+
+# ===========================================================================
 # Safety: tests use only temp dirs, no machine-specific paths
 # ===========================================================================
 

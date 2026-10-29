@@ -834,3 +834,4 @@
 3	worktree-val-sentinel-path.bats	18
 2	dotted-path-handling.bats	21
 4	review-gate-commit-bound.bats	105
+2	concurrent-sprint-lifecycle-scoped.bats	62

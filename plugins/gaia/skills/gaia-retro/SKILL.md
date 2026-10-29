@@ -52,6 +52,8 @@ SPRINT_ID="$(resolve_sprint_arg --command retro "$@")"
 
 Without `--sprint` or a positional argument, the resolver defaults to the bound sprint or the single active sprint. If the resolver fails (no active sprint, ambiguous), surface the error and ask the user for the sprint ID.
 
+In concurrent-sprint mode the retro is scoped to the resolved sprint's stories only — review artifacts are filtered by their `sprint_id` field. The existing per-sprint artifact naming (`retrospective/retrospective-{sprint_id}-{YYYY-MM-DD}.md`) produces separate files per sprint by construction; sprint-close finds each sprint's retro via the `retrospective-{sprint_id}-*.md` glob.
+
 ### Step 1b --- Review Report Extraction
 
 Extract verdicts and key findings from review artifacts for the resolved sprint. This produces a "data-driven findings" block that seeds Steps 3 and 4.

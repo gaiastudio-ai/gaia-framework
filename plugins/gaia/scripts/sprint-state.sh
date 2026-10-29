@@ -84,6 +84,11 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
+# Reset the rollover-inject suppression flag so it cannot be inherited
+# from the caller's environment and bypass the inject independence gate.
+# Phase B sets it explicitly in its own subshell when needed.
+unset _GAIA_ROLLOVER_INJECT 2>/dev/null || true
+
 SCRIPT_NAME="sprint-state.sh"
 
 # Script-level EXIT/INT/TERM trap for atomic-write tmp cleanup.
@@ -1695,6 +1700,50 @@ _validate_phase_value() {
   fi
 }
 
+# Remove a story entry from sprint-status.yaml's stories: block by key.
+# Updates total_points accordingly. Tempfile + atomic mv. Idempotent:
+# removing a key that does not exist is a no-op.
+_remove_story_from_yaml() {
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+
+  # Check if the key is actually present.
+  if ! /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${key}[\"']\\{0,1\\}" "$file" 2>/dev/null; then
+    return 0  # Idempotent: key not present.
+  fi
+
+  # Read the story's points to adjust total_points.
+  local pts=0
+  pts="$(GAIA_KEY="$key" yq -r \
+    '(.stories // [])[] | select(.key == strenv(GAIA_KEY)) | .points // 0' \
+    "$file" 2>/dev/null)" || pts=0
+  case "$pts" in ''|*[!0-9]*) pts=0 ;; esac
+
+  # Remove the story entry and adjust total_points via yq + mktemp + mv.
+  local tmp
+  tmp="$(mktemp "${file}.XXXXXX")" || return 1
+
+  if ! GAIA_KEY="$key" yq \
+    'del((.stories // [])[] | select(.key == strenv(GAIA_KEY)))' \
+    "$file" > "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  # Adjust total_points.
+  if [ "$pts" -gt 0 ] 2>/dev/null; then
+    local cur_total new_total
+    cur_total="$(yq -r '.total_points // 0' "$tmp" 2>/dev/null)" || cur_total=0
+    case "$cur_total" in ''|*[!0-9]*) cur_total=0 ;; esac
+    new_total=$((cur_total - pts))
+    [ "$new_total" -ge 0 ] || new_total=0
+    GAIA_VAL="$new_total" yq -i '.total_points = (strenv(GAIA_VAL) | tonumber)' "$tmp" 2>/dev/null || true
+  fi
+
+  mv -f "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+  return 0
+}
+
 # Append a story entry to sprint-status.yaml's stories: block. Updates
 # total_points by $points_delta and recomputes capacity_utilization using
 # velocity_capacity (when present). Tempfile + atomic mv. Exit 1 on failure.
@@ -1900,7 +1949,9 @@ do_inject_locked() {
   # In concurrent mode, verify the story does not violate independence
   # rules before writing it into the sprint. The gate only reads (no lock
   # acquisition), so no lock nesting occurs.
-  if _is_concurrent_mode; then
+  # Suppressed during rollover Phase B: the rollover's Phase A already ran
+  # the independence check for the carried-over keys specifically.
+  if _is_concurrent_mode && [ "${_GAIA_ROLLOVER_INJECT:-0}" != "1" ]; then
     # Locate the story file using the same glob patterns as locate_story_file
     # but without calling die on failure. Runs in a subshell to avoid
     # clobbering STORY_FILE in the outer scope.
@@ -1977,7 +2028,10 @@ do_inject_locked() {
   yaml_sprint_id=$(read_yaml_sprint_id "$SPRINT_STATUS_YAML") \
     || die "inject: sprint-status.yaml at $SPRINT_STATUS_YAML missing top-level sprint_id"
 
-  if [ "$fm_sprint_id" != "$yaml_sprint_id" ]; then
+  # During rollover Phase B the story file still carries the source sprint's
+  # id (the rewrite happens in Phase C after inject succeeds). Skip the
+  # mismatch check when the rollover suppression flag is set.
+  if [ "${_GAIA_ROLLOVER_INJECT:-0}" != "1" ] && [ "$fm_sprint_id" != "$yaml_sprint_id" ]; then
     die "inject: sprint-id mismatch — story file frontmatter sprint_id='$fm_sprint_id' but sprint-status.yaml sprint_id='$yaml_sprint_id'; refusing to write"
   fi
 
@@ -3233,6 +3287,14 @@ cmd_rollover() {
   set +f
   IFS="$OLDIFS"
 
+  # Route: concurrent mode uses the three-phase protocol; single-sprint
+  # mode keeps the existing _rollover_one path byte-identical.
+  if _is_concurrent_mode; then
+    _cmd_rollover_concurrent "$from_sprint" "$to_sprint" "${keys[@]}"
+    return $?
+  fi
+
+  # --- Single-sprint mode (byte-identical to pre-concurrent) ---
   local succeeded=() failed=()
   local key
   for key in "${keys[@]}"; do
@@ -3250,6 +3312,339 @@ cmd_rollover() {
   printf 'sprint-state.sh rollover: failed:    %s\n' "${failed[*]:-(none)}" >&2
 
   if [ "${#failed[@]}" -gt 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+# Concurrent-mode rollover: three-phase protocol.
+# Phase A: lifecycle lock (strict) — closing-marker check + independence check (read-only).
+# Phase B: per-sprint lock on target — inject + phase reset (per passing key).
+# Phase C: per-sprint lock on source — remove key + sprint_id rewrite (per passing key).
+# No two locks are ever held at once.
+_cmd_rollover_concurrent() {
+  local from_sprint="$1" to_sprint="$2"
+  shift 2
+  local keys=("$@")
+
+  local state_dir
+  state_dir="$(dirname "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}")"
+  local l4_path="${state_dir}/${GAIA_LOCK_L4_PATH}"
+  local ic_script="${SPRINT_STATE_SCRIPT_DIR}/independence-check.sh"
+
+  # Pre-check: resolve story files and validate touch-set presence.
+  local passed_keys=() failed_keys=() touchset_missing_keys=()
+  local key story_file
+  for key in "${keys[@]}"; do
+    key="${key# }"; key="${key% }"
+    [ -n "$key" ] || continue
+
+    # Resolve story file.
+    # shellcheck source=resolve-story-file.sh
+    . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+    story_file="$(resolve_story_file "$key" 2>/dev/null)" || true
+    if [ -z "$story_file" ] || [ ! -f "$story_file" ]; then
+      printf 'sprint-state.sh rollover: story file not found for %s\n' "$key" >&2
+      failed_keys+=("$key")
+      continue
+    fi
+
+    # Stories entering concurrent mode must have a touch-set; refuse if absent.
+    local has_touchset
+    has_touchset="$(awk '
+      BEGIN { in_fm=0; found=0 }
+      /^---[[:space:]]*$/ { if (!in_fm) { in_fm=1; next } else exit }
+      in_fm && /^predicted_touch_set:/ { found=1; exit }
+      END { print found }
+    ' "$story_file")"
+    if [ "$has_touchset" != "1" ]; then
+      printf 'touch-set missing for %s\n' "$key" >&2
+      touchset_missing_keys+=("$key")
+      continue
+    fi
+
+    passed_keys+=("$key")
+  done
+
+  # If any keys lack a touch-set, they cannot proceed (exit code 2).
+  # Other keys continue through the independence check.
+  if [ "${#passed_keys[@]}" -eq 0 ]; then
+    printf 'sprint-state.sh rollover: from=%s to=%s\n' "$from_sprint" "$to_sprint" >&2
+    printf 'sprint-state.sh rollover: succeeded: (none)\n' >&2
+    printf 'sprint-state.sh rollover: failed:    %s\n' "${failed_keys[*]:-(none)}" >&2
+    printf 'sprint-state.sh rollover: touch-set-missing: %s\n' "${touchset_missing_keys[*]:-(none)}" >&2
+    # Exit precedence: exit 2 if any touch-set missing.
+    if [ "${#touchset_missing_keys[@]}" -gt 0 ]; then
+      return 2
+    fi
+    return 1
+  fi
+
+  # ---- Phase A: L4 strict + closing-marker check + independence check ----
+  local phase_a_passed_keys=()
+  local phase_a_failed_keys=()
+  local phase_a_rc=0
+  local _phase_a_out
+  _phase_a_out="$(mktemp "${state_dir}/.rollover-phaseA.XXXXXX")" || die "rollover: mktemp failed"
+
+  (
+    if ! acquire_lock "$l4_path" "${GAIA_LOCK_L4_TIMEOUT:-10}" 8 --strict; then
+      die "rollover: lock timeout acquiring lifecycle lock $l4_path"
+    fi
+    trap 'release_lock 8 2>/dev/null || true' EXIT
+    trap 'release_lock 8 2>/dev/null || true; exit 130' INT
+    trap 'release_lock 8 2>/dev/null || true; exit 143' TERM
+
+    # Check closing markers on source and target.
+    local src_marker tgt_marker
+    src_marker="$(_closing_marker_path "$state_dir" "$from_sprint")"
+    tgt_marker="$(_closing_marker_path "$state_dir" "$to_sprint")"
+    if [ -f "$src_marker" ] && _closing_marker_owner_alive "$src_marker"; then
+      printf 'sprint close in progress -- rollover refused\n' >&2
+      exit 1
+    fi
+    if [ -f "$tgt_marker" ] && _closing_marker_owner_alive "$tgt_marker"; then
+      printf 'sprint close in progress -- rollover refused\n' >&2
+      exit 1
+    fi
+
+    # Per-key independence check: each key is checked individually so
+    # independent keys can carry over while failing keys stay. The check
+    # is read-only (no writes). Fail closed when the script is missing.
+    if [ ! -x "$ic_script" ]; then
+      printf 'rollover: independence-check.sh missing or not executable at %s — refusing (fail closed)\n' "$ic_script" >&2
+      exit 1
+    fi
+    local _any_fail=0
+    for key in "${passed_keys[@]}"; do
+      local _key_rc=0
+      PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+      CLAUDE_PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-.}}" \
+        "$ic_script" \
+          --candidate "$to_sprint" \
+          --candidate-stories "$key" \
+          --from-sprint "$from_sprint" 2>&1 || _key_rc=$?
+
+      if [ "$_key_rc" -ne 0 ]; then
+        printf 'FAIL independence: %s\n' "$key"
+        _any_fail=1
+      else
+        printf 'PASS independence: %s\n' "$key"
+      fi
+    done
+    # Exit non-zero when any key failed (caller parses per-key lines).
+    if [ "$_any_fail" -ne 0 ]; then
+      exit 1
+    fi
+    exit 0
+  ) > "$_phase_a_out" 2>&1 || phase_a_rc=$?
+
+  # Parse per-key results from Phase A output.
+  local _pk
+  for _pk in "${passed_keys[@]}"; do
+    if /usr/bin/grep -q "^PASS independence: ${_pk}\$" "$_phase_a_out" 2>/dev/null; then
+      phase_a_passed_keys+=("$_pk")
+    else
+      phase_a_failed_keys+=("$_pk")
+    fi
+  done
+  # Echo Phase A output to stderr for diagnostics.
+  cat "$_phase_a_out" >&2 2>/dev/null || true
+  rm -f "$_phase_a_out"
+
+  # ---- Pre-Phase-B: validate each key before any writes ----
+  # For each passing key, verify:
+  #   (a) the key is in the source sprint yaml OR the target sprint yaml
+  #       (the target case covers a re-run where Phase B already succeeded),
+  #   (b) the story file's sprint_id can be parsed as source, target, or null
+  #       (accepts double-quoted, unquoted, single-quoted, trailing-comment).
+  # Keys that fail are refused BEFORE Phase B injects anything.
+  local validated_keys=()
+  if [ "${#phase_a_passed_keys[@]}" -gt 0 ]; then
+    local _pre_from_yaml _pre_to_yaml
+    _pre_from_yaml="$(_sprint_file_path "$state_dir" "$from_sprint")"
+    _pre_to_yaml="$(_sprint_file_path "$state_dir" "$to_sprint")"
+    for key in "${phase_a_passed_keys[@]}"; do
+      # (a) key must be in source or target yaml.
+      local _in_src=0 _in_tgt=0
+      # Escape the key for safe use in a grep BRE: quote any characters
+      # that are regex-special (.-based keys are safe, but be defensive).
+      local _esc_key
+      _esc_key="$(printf '%s' "$key" | sed 's/[].\\*^$[]/\\&/g')"
+      if [ -f "$_pre_from_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${_esc_key}[\"']\\{0,1\\}[[:space:]]*$" "$_pre_from_yaml" 2>/dev/null; then
+        _in_src=1
+      fi
+      if [ -f "$_pre_to_yaml" ] && /usr/bin/grep -q "key:[[:space:]]*[\"']\\{0,1\\}${_esc_key}[\"']\\{0,1\\}[[:space:]]*$" "$_pre_to_yaml" 2>/dev/null; then
+        _in_tgt=1
+      fi
+      if [ "$_in_src" -eq 0 ] && [ "$_in_tgt" -eq 0 ]; then
+        printf 'sprint-state.sh rollover: key %s not found in source (%s) or target (%s) — refused\n' \
+          "$key" "$from_sprint" "$to_sprint" >&2
+        phase_a_failed_keys+=("$key")
+        continue
+      fi
+
+      # (b) story file sprint_id must parse as source, target, or null.
+      . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+      local _pre_sf
+      _pre_sf="$(resolve_story_file "$key" 2>/dev/null)" || true
+      if [ -n "$_pre_sf" ] && [ -f "$_pre_sf" ]; then
+        local _cur_sid
+        _cur_sid="$(awk '
+          BEGIN { in_fm=0 }
+          /^---[[:space:]]*$/ { if (!in_fm) { in_fm=1; next } else exit }
+          in_fm && /^sprint_id:/ {
+            v = $0; sub(/^sprint_id:[[:space:]]*/, "", v)
+            sub(/[[:space:]]*#.*$/, "", v)
+            sub(/[[:space:]]*$/, "", v)
+            gsub(/^["'"'"']+|["'"'"']+$/, "", v)
+            print v; exit
+          }
+        ' "$_pre_sf")"
+        if [ -n "$_cur_sid" ] && [ "$_cur_sid" != "$from_sprint" ] \
+           && [ "$_cur_sid" != "$to_sprint" ] && [ "$_cur_sid" != "null" ]; then
+          printf 'sprint-state.sh rollover: %s sprint_id is "%s" (expected %s, %s, or null) — refused\n' \
+            "$key" "$_cur_sid" "$from_sprint" "$to_sprint" >&2
+          phase_a_failed_keys+=("$key")
+          continue
+        fi
+      fi
+      validated_keys+=("$key")
+    done
+  fi
+
+  # ---- Phase B: L1 of target — inject + phase reset (per passing key) ----
+  local phase_b_passed=() phase_b_failed=()
+  if [ "${#validated_keys[@]}" -gt 0 ]; then
+    local to_yaml
+    to_yaml="$(_sprint_file_path "$state_dir" "$to_sprint")"
+    local to_lock="${to_yaml}.lock"
+
+    for key in "${validated_keys[@]}"; do
+      local inject_rc=0
+
+      # Phase B: inject the story into the target sprint + reset phase.
+      # The sprint_id rewrite happens in Phase C (after inject succeeds)
+      # so we never leave the story file pointing at a sprint that lacks
+      # the key. cmd_inject and cmd_set_phase acquire L1 in their own
+      # subshells; we do NOT hold L1 ourselves (no two locks at once).
+      # The inject's sprint-id mismatch check is suppressed because the
+      # story file still carries the source sprint_id at this point.
+      (
+        # Point SPRINT_STATUS_YAML at the target's per-sprint file.
+        SPRINT_STATUS_YAML="$to_yaml"
+        SPRINT_STATUS_LOCK="${to_yaml}.lock"
+        _GAIA_SPRINT_ARG="$to_sprint"
+
+        # Suppress the inject independence gate and sprint-id mismatch
+        # check — Phase A already verified independence.
+        _GAIA_ROLLOVER_INJECT=1
+        cmd_inject "$key" "" >/dev/null 2>&1 || exit 1
+
+        # Reset execution phase (stale from source sprint).
+        cmd_set_phase "$key" "" >/dev/null 2>&1 || exit 1
+      ) || inject_rc=$?
+
+      if [ "$inject_rc" -eq 0 ]; then
+        phase_b_passed+=("$key")
+      else
+        printf 'sprint-state.sh rollover Phase B: inject failed for %s\n' "$key" >&2
+        phase_b_failed+=("$key")
+      fi
+    done
+  fi
+
+  # ---- Phase C: L1 of source — remove + sprint_id rewrite (per passing key) ----
+  local final_succeeded=() final_failed=()
+  if [ "${#phase_b_passed[@]}" -gt 0 ]; then
+    local from_yaml
+    from_yaml="$(_sprint_file_path "$state_dir" "$from_sprint")"
+    local from_lock="${from_yaml}.lock"
+
+    for key in "${phase_b_passed[@]}"; do
+      local remove_rc=0
+
+      # Phase C: take L1 of source, remove key from source yaml, rewrite
+      # the story file's sprint_id to the target. The sprint_id rewrite
+      # happens here (after inject succeeded in Phase B) so we never
+      # leave a state where sprint_id names a sprint that lacks the key.
+      # Accepts either source or target as current sprint_id value so a
+      # re-run after a crash between phases completes idempotently.
+      (
+        if ! acquire_lock "$from_lock" 5 9; then
+          die "rollover Phase C: lock timeout acquiring $from_lock"
+        fi
+        trap 'release_lock 9 2>/dev/null || true' EXIT
+        trap 'release_lock 9 2>/dev/null || true; exit 130' INT
+        trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
+
+        # Rewrite sprint_id in the story file BEFORE removing from
+        # source, so a crash never leaves the key only in the target
+        # with the old sprint_id.
+        . "${SPRINT_STATE_SCRIPT_DIR}/resolve-story-file.sh"
+        local sf
+        sf="$(resolve_story_file "$key" 2>/dev/null)" || exit 1
+        [ -f "$sf" ] || exit 1
+        local tmp
+        tmp="$(mktemp "${sf}.XXXXXX")" || exit 1
+        awk -v from="$from_sprint" -v to="$to_sprint" '
+          /^sprint_id:/ {
+            # Strip quotes (double, single), trailing comment and
+            # whitespace to get the bare value. Accepts all quoting
+            # styles used in real story files (double-quoted, unquoted,
+            # single-quoted, trailing-comment forms).
+            bare = $0; sub(/^sprint_id:[[:space:]]*/, "", bare)
+            sub(/[[:space:]]*#.*$/, "", bare)
+            sub(/[[:space:]]*$/, "", bare)
+            gsub(/^["'"'"']+|["'"'"']+$/, "", bare)
+            if (bare == from || bare == to || bare == "null" || bare == "") {
+              print "sprint_id: \"" to "\""
+              next
+            }
+          }
+          { print }
+        ' "$sf" > "$tmp" || { rm -f "$tmp"; exit 1; }
+        if ! grep -q "^sprint_id:[[:space:]]*\"$to_sprint\"" "$tmp"; then
+          rm -f "$tmp"; exit 1
+        fi
+        mv -f "$tmp" "$sf" || { rm -f "$tmp"; exit 1; }
+
+        # Remove the key from the source sprint yaml (idempotent).
+        # Done after the sprint_id rewrite so a crash between the two
+        # leaves the key in both sprints with the correct sprint_id,
+        # which a re-run can complete.
+        _remove_story_from_yaml "$from_yaml" "$key"
+      ) || remove_rc=$?
+
+      if [ "$remove_rc" -eq 0 ]; then
+        final_succeeded+=("$key")
+      else
+        printf 'sprint-state.sh rollover Phase C: remove/rewrite failed for %s\n' "$key" >&2
+        final_failed+=("$key")
+      fi
+    done
+  fi
+
+  # Combine all failure categories (bash 3.2-safe: guard empty arrays).
+  local all_failed=()
+  [ "${#failed_keys[@]}" -gt 0 ] 2>/dev/null && all_failed+=("${failed_keys[@]}")
+  [ "${#phase_a_failed_keys[@]}" -gt 0 ] 2>/dev/null && all_failed+=("${phase_a_failed_keys[@]}")
+  [ "${#phase_b_failed[@]}" -gt 0 ] 2>/dev/null && all_failed+=("${phase_b_failed[@]}")
+  [ "${#final_failed[@]}" -gt 0 ] 2>/dev/null && all_failed+=("${final_failed[@]}")
+
+  printf 'sprint-state.sh rollover: from=%s to=%s\n' "$from_sprint" "$to_sprint" >&2
+  printf 'sprint-state.sh rollover: succeeded: %s\n' "${final_succeeded[*]:-(none)}" >&2
+  printf 'sprint-state.sh rollover: failed:    %s\n' "${all_failed[*]:-(none)}" >&2
+  if [ "${#touchset_missing_keys[@]}" -gt 0 ] 2>/dev/null; then
+    printf 'sprint-state.sh rollover: touch-set-missing: %s\n' "${touchset_missing_keys[*]}" >&2
+  fi
+
+  # Exit precedence: exit 2 if any touch-set missing, else exit 1 if any
+  # key failed, else exit 0.
+  if [ "${#touchset_missing_keys[@]}" -gt 0 ] 2>/dev/null; then
+    return 2
+  fi
+  if [ "${#all_failed[@]}" -gt 0 ]; then
     return 1
   fi
   return 0
@@ -4830,6 +5225,97 @@ _cmd_set_story_sprint() {
     "$SCRIPT_NAME" "$story_key" "$target_sprint"
 }
 
+# _cmd_set_story_sprint_clear — clear a story's sprint_id to null.
+# Used when returning a story to the backlog (no sprint can accept it).
+# Bypasses the sprint-mismatch guard, already-bound guard, and dispatch
+# --sprint required check. In concurrent mode, takes L1 of the story's
+# current sprint to remove it from the per-sprint state file.
+_cmd_set_story_sprint_clear() {
+  local story_key="$1"
+  [ -n "$story_key" ] || die "set-story-sprint --clear: --story is required"
+
+  # Resolve the story file.
+  locate_story_file "$story_key"
+  [ -n "$STORY_FILE" ] && [ -f "$STORY_FILE" ] \
+    || die "set-story-sprint --clear: no story file found for key '$story_key'"
+
+  # Read current frontmatter sprint_id.
+  local current_sid
+  current_sid=$(read_story_frontmatter_field "$STORY_FILE" sprint_id 2>/dev/null || true)
+
+  # Idempotency: already null.
+  case "$current_sid" in
+    ""|"null")
+      printf '%s: %s sprint_id already null — no-op\n' "$SCRIPT_NAME" "$story_key"
+      return 0
+      ;;
+  esac
+
+  # In concurrent mode, remove the story from its current sprint's state file.
+  if _is_concurrent_mode && [ -n "$current_sid" ]; then
+    local state_dir
+    state_dir="$(dirname "${SPRINT_STATUS_YAML:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/state/sprint-status.yaml}")"
+    local cur_yaml
+    cur_yaml="$(_sprint_file_path "$state_dir" "$current_sid")"
+    if [ -f "$cur_yaml" ]; then
+      local cur_lock="${cur_yaml}.lock"
+      (
+        if ! acquire_lock "$cur_lock" 5 9; then
+          die "set-story-sprint --clear: lock timeout acquiring $cur_lock"
+        fi
+        trap 'release_lock 9 2>/dev/null || true' EXIT
+        trap 'release_lock 9 2>/dev/null || true; exit 130' INT
+        trap 'release_lock 9 2>/dev/null || true; exit 143' TERM
+        _remove_story_from_yaml "$cur_yaml" "$story_key"
+      ) || die "set-story-sprint --clear: failed to remove $story_key from $cur_yaml"
+    fi
+  fi
+
+  # Rewrite sprint_id to null in the story file.
+  local lock_file="${STORY_FILE}.set-sprint.lock"
+  local rc=0
+  set +e
+  (
+    if ! acquire_lock "$lock_file" 5 9; then
+      die "set-story-sprint --clear: lock timeout acquiring $lock_file"
+    fi
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
+    trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
+
+    local tmp
+    tmp=$(mktemp "${STORY_FILE}.XXXXXX") || exit 1
+    awk '
+      BEGIN { in_fm = 0; rewritten = 0 }
+      /^---[[:space:]]*$/ {
+        if (in_fm == 0) { in_fm = 1; print; next }
+        else { in_fm = 2; print; next }
+      }
+      {
+        if (in_fm == 1 && rewritten == 0 && $0 ~ /^sprint_id:/) {
+          print "sprint_id: null"
+          rewritten = 1
+          next
+        }
+        print
+      }
+    ' "$STORY_FILE" > "$tmp" || { rm -f "$tmp"; exit 1; }
+
+    if ! grep -q '^sprint_id:[[:space:]]*null' "$tmp"; then
+      rm -f "$tmp"; exit 1
+    fi
+
+    mv -f "$tmp" "$STORY_FILE" || { rm -f "$tmp"; exit 1; }
+  )
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    die "set-story-sprint --clear: failed to rewrite sprint_id in $STORY_FILE"
+  fi
+
+  printf '%s: %s sprint_id cleared to null\n' "$SCRIPT_NAME" "$story_key"
+}
+
 # ---------- Argument parsing ----------
 
 main() {
@@ -4873,6 +5359,8 @@ main() {
   # Close-specific flags.
   local _GAIA_CLOSE_CLOSED_AT="" _GAIA_CLOSE_FORCE=0 _GAIA_CLOSE_ROLLOVER_KEYS=""
   local _GAIA_CLOSE_PRE_STATUS="" _GAIA_CLOSE_RESUME=0
+  # set-story-sprint --clear flag: clear sprint_id to null (backlog return).
+  local _GAIA_SET_SPRINT_CLEAR=0
   # Optional init-only fields.
   local init_start_date="" init_end_date="" init_capacity_points="" init_sprint_length=""
   while [ $# -gt 0 ]; do
@@ -5007,6 +5495,8 @@ main() {
         _GAIA_CLOSE_PRE_STATUS="${1#--pre-close-status=}"; shift ;;
       --resume)
         _GAIA_CLOSE_RESUME=1; shift ;;
+      --clear)
+        _GAIA_SET_SPRINT_CLEAR=1; shift ;;
       *)
         die "unknown flag: $1" ;;
     esac
@@ -5281,8 +5771,13 @@ main() {
       # to the active sprint without going through `--for-sprint`
       # materialization.
       [ -n "$story_key" ] || die "set-story-sprint requires --story <key>"
-      [ -n "$reconcile_sprint_id" ] || die "set-story-sprint requires --sprint <id>"
-      _cmd_set_story_sprint "$story_key" "$reconcile_sprint_id" ;;
+      if [ "$_GAIA_SET_SPRINT_CLEAR" -eq 1 ]; then
+        _cmd_set_story_sprint_clear "$story_key"
+      else
+        [ -n "$reconcile_sprint_id" ] || die "set-story-sprint requires --sprint <id>"
+        _cmd_set_story_sprint "$story_key" "$reconcile_sprint_id"
+      fi
+      ;;
     reconcile)
       # When --sprint-id is supplied, check it against the yaml before
       # reconciliation. Without it, behaviour is unchanged.
