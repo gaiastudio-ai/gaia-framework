@@ -2993,7 +2993,7 @@ last_updated: "2026-01-01"
 items:
   - id: "AI-1"
     status: "open"
-    related_stories: "E1-S1, E1-S2"
+    related_stories: "E900-S8, E900-S9"
 YAML
 
   source "$AIW_SH"
@@ -3017,7 +3017,7 @@ last_updated: "2026-01-01"
 items:
   - id: "AI-1"
     status: "open"
-    related_stories: [E1-S1, E1-S2] # team discussion
+    related_stories: [E900-S8, E900-S9] # team discussion
 YAML
 
   source "$AIW_SH"
@@ -3253,21 +3253,24 @@ SH
     done
   } > "$target"
 
-  # Build a PATH without flock by symlinking needed tools.
+  # Hide flock from PATH so `command -v flock` returns non-zero and
+  # the script falls through to the mkdir fallback. We build a clean
+  # PATH by symlinking every executable from the current PATH directories
+  # except flock itself.
   local noflock_dir="$TEST_TMP/noflock-bin"
   mkdir -p "$noflock_dir"
-  local _tool _tool_path
-  for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
-               sleep wc sort tr head tail tee env id printf; do
-    _tool_path="$(command -v "$_tool" 2>/dev/null)" || continue
-    ln -sf "$_tool_path" "$noflock_dir/$_tool" 2>/dev/null || true
+  local _pd _f _bn
+  local OLDIFS="$IFS"; IFS=':'
+  for _pd in $PATH; do
+    [ -d "$_pd" ] || continue
+    for _f in "$_pd"/*; do
+      [ -x "$_f" ] || continue
+      _bn="${_f##*/}"
+      [ "$_bn" = "flock" ] && continue
+      [ -e "$noflock_dir/$_bn" ] || ln -sf "$_f" "$noflock_dir/$_bn" 2>/dev/null || true
+    done
   done
-  _tool_path="$(command -v yq 2>/dev/null)" && ln -sf "$_tool_path" "$noflock_dir/yq"
-  [ -x /usr/bin/grep ] && ln -sf /usr/bin/grep "$noflock_dir/grep"
-  # Verify flock is truly absent.
-  [ ! -x "$noflock_dir/flock" ] || {
-    echo "flock was linked into noflock-bin; test setup error" >&2; false
-  }
+  IFS="$OLDIFS"
 
   local pids=()
   for i in $(seq 1 16); do

@@ -958,17 +958,24 @@ aiw_resolve() {
     AIW_V_NEW="$tmp" \
     AIW_V_ITEM="$item" \
     AIW_V_RS="$related_stories" \
+    AIW_V_ST="$_resolve_status" \
+    AIW_V_RES="$resolution" \
+    AIW_V_RI="$resolved_in" \
+    AIW_V_RD="$rd" \
+    AIW_V_TODAY="$_today" \
     yq -o=json -I0 '
       load(strenv(AIW_V_NEW)) as $new |
       strenv(AIW_V_ITEM) as $id |
       strenv(AIW_V_RS) as $exp_rs |
+      strenv(AIW_V_ST) as $exp_st |
+      strenv(AIW_V_RES) as $exp_res |
+      strenv(AIW_V_RI) as $exp_ri |
+      strenv(AIW_V_RD) as $exp_rd |
+      strenv(AIW_V_TODAY) as $today |
       .items as $oi |
       ($new | .items) as $ni |
       ($oi | [to_entries[] | select(.value.id == $id) | .key] | .[0]) as $idx |
       ($ni | .[$idx] | .status) as $est |
-      ($ni | .[$idx] | .resolution) as $eres |
-      ($ni | .[$idx] | .resolved_in) as $eri |
-      ($ni | .[$idx] | .resolved_date) as $erd |
       .last_updated as $flu |
       ($new | .last_updated) as $nlu |
       ($oi | .[$idx] | .related_stories) as $ors |
@@ -984,13 +991,18 @@ aiw_resolve() {
       (($oi | [.[].id] | tojson) == ($ni | [.[].id] | tojson)) as $a2 |
       (($oi | [to_entries[] | select(.key != $idx) | .value] | tojson) == ($ni | [to_entries[] | select(.key != $idx) | .value] | tojson)) as $b |
       (($oi | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson) == ($ni | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson)) as $c |
+      (($est // "") == $exp_st) as $f_st |
+      ($exp_res == "" or (($ni | .[$idx] | .resolution // "") == $exp_res)) as $f_res |
+      ($exp_ri == "" or (($ni | .[$idx] | .resolved_in // "") == $exp_ri)) as $f_ri |
+      ($exp_rd == "" or (($ni | .[$idx] | .resolved_date // "") == $exp_rd)) as $f_rd |
+      ($flu == null or $nlu == $today) as $f_lu_bump |
+      ($flu != null or $nlu == null) as $f_lu_add |
       {
         "g": $g, "a1": $a1, "a2": $a2, "b": $b, "c": $c,
         "idx": ($idx // -1),
         "rs_type": $rs_type, "d_super": $d_super, "d_req": $d_req,
-        "est": ($est // ""), "eres": ($eres // ""),
-        "eri": ($eri // ""), "erd": ($erd // ""),
-        "flu": ($flu // ""), "nlu": ($nlu // "")
+        "f_st": $f_st, "f_res": $f_res, "f_ri": $f_ri, "f_rd": $f_rd,
+        "f_lu_bump": $f_lu_bump, "f_lu_add": $f_lu_add
       }
     ' "$target"
   )" || {
@@ -1005,13 +1017,12 @@ aiw_resolve() {
   fi
 
   # --- Parse the JSON verdict and check each rule ---
-  # Helper: extract a value from the compact JSON by key name.
-  # The JSON is flat (no nested objects) and values are booleans, small
-  # integers, or short strings without embedded quotes or commas.
+  # The JSON is flat with boolean, integer, and null values only (no
+  # string values that need JSON unescaping). The _vget helper extracts
+  # a raw JSON token by key name.
   _vget() {
     local _s="${_vj#*\"$1\":}" _v
     _v="${_s%%[,\}]*}"
-    case "$_v" in \"*) _v="${_v#\"}"; _v="${_v%\"}" ;; esac
     printf '%s' "$_v"
   }
 
@@ -1031,28 +1042,14 @@ aiw_resolve() {
   [ -n "$_reason" ] || { [ "$(_vget rs_type)" = "true" ] || _reason="related_stories is not a YAML sequence"; }
   [ -n "$_reason" ] || { [ "$(_vget d_super)" = "true" ] || _reason="related_stories entries were removed"; }
   [ -n "$_reason" ] || { [ "$(_vget d_req)" = "true" ] || _reason="requested related_stories entry not present"; }
-  # (f) value checks.
-  [ -n "$_reason" ] || { [ "$(_vget est)" = "$_resolve_status" ] || _reason="target status is \"$(_vget est)\", expected \"$_resolve_status\""; }
-  if [ -z "$_reason" ] && [ -n "$resolution" ]; then
-    [ "$(_vget eres)" = "$resolution" ] || _reason="target resolution mismatch"
-  fi
-  if [ -z "$_reason" ] && [ -n "$resolved_in" ]; then
-    [ "$(_vget eri)" = "$resolved_in" ] || _reason="target resolved_in mismatch"
-  fi
-  if [ -z "$_reason" ] && [ -n "$rd" ]; then
-    [ "$(_vget erd)" = "$rd" ] || _reason="target resolved_date mismatch"
-  fi
+  # (f) value checks (compared inside yq for safe escaping).
+  [ -n "$_reason" ] || { [ "$(_vget f_st)" = "true" ] || _reason="target status mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_res)" = "true" ] || _reason="target resolution mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_ri)" = "true" ] || _reason="target resolved_in mismatch"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_rd)" = "true" ] || _reason="target resolved_date mismatch"; }
   # (g) last_updated.
-  if [ -z "$_reason" ]; then
-    local _flu _nlu
-    _flu="$(_vget flu)"
-    _nlu="$(_vget nlu)"
-    if [ -n "$_flu" ]; then
-      [ "$_nlu" = "$_today" ] || _reason="last_updated not bumped to today"
-    else
-      [ -z "$_nlu" ] || _reason="last_updated was added but original lacks it"
-    fi
-  fi
+  [ -n "$_reason" ] || { [ "$(_vget f_lu_bump)" = "true" ] || _reason="last_updated not bumped to today"; }
+  [ -n "$_reason" ] || { [ "$(_vget f_lu_add)" = "true" ] || _reason="last_updated was added but original lacks it"; }
 
   if [ -n "$_reason" ]; then
     rm -f "$tmp"
