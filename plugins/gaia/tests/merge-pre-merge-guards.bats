@@ -24,6 +24,10 @@ setup() {
   mkdir -p "$HOME"
   : > "$GIT_CONFIG_GLOBAL"
 
+  # Run from the test's own temp dir so the merge script's project-root
+  # walk-up never reaches a real project that happens to contain the checkout.
+  cd "$TEST_TMP" || return 1
+
   GH_ARGS="$TEST_TMP/gh-args.txt"
   export GH_ARGS
   : > "$GH_ARGS"

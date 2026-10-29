@@ -91,6 +91,14 @@ If `--install` was NOT supplied: emit the install plan as copy-pasteable shell (
 
 Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the `--json` flag was passed to the doctor). The script scans the project tree for context-window snapshot files that were created outside the canonical `<root>/.gaia/memory/` location by an older statusline that followed the session's working directory. It reports each stray path with a removal command using the `environment warning` state. It never deletes anything. When `--json` is passed, the output is merged into the document `check-tools.sh` renders as a `stray_snapshots` object carrying a `paths` array of relative paths and a `count`.
 
+### Step 7 — Review gate bypass audit
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/lib/check-bypass-records.sh" --project-root <root>
+```
+
+Scans the sprint audit directory for review gate bypass records and blocked bypass attempts. Reports every recorded bypass use (story, head, non-PASS rows) and warns when the bypass variable is present in the session environment. This is a read-only diagnostic — it never modifies state.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-doctor/scripts/finalize.sh

@@ -289,6 +289,7 @@ core	lock-story-status.bats
 core	manual-test-docs.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
+core	merge-review-gate.bats
 core	migrate-stories-to-canonical-layout.bats
 core	mod-empty-body.bats
 core	mod-mutant-kill.bats

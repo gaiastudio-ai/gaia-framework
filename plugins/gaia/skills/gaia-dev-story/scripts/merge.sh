@@ -13,7 +13,7 @@
 # Never uses admin-override or any branch-protection bypass flag.
 #
 # Usage:
-#   merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--delete-branch]
+#   merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--no-delete-branch]
 #
 # Environment:
 #   PROJECT_PATH — required. The git working directory. Resolved and entered
@@ -24,6 +24,10 @@
 #                  script walks up from $PWD to the first directory containing
 #                  .gaia/state/.
 #   GAIA_MERGE_LOCK_TIMEOUT — optional. L3 timeout in seconds (default 120).
+#   GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE — operator-only bypass.
+#       Format: <story_key>@<40-hex-head-sha>. Must be set by the operator
+#       in their own shell. Model tool calls that set it are blocked by the
+#       skill-scoped pre-tool guard. Confirmation at /dev/tty is required.
 #
 # Exit codes:
 #   0 — PR merged successfully (and verified in concurrent mode)
@@ -109,7 +113,7 @@ STORY_KEY="$2"
 shift 2
 
 STRATEGY="squash"
-DELETE_BRANCH=true
+DELETE_BRANCH=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --strategy)
@@ -212,6 +216,273 @@ if [ -z "$PR_TARGET" ]; then
   PR_TARGET="staging"
 fi
 assert_pr_target_from_chain "$PR_TARGET" || die "aborting: pr-target invariant failed"
+
+# ---------------------------------------------------------------------------
+# Pre-merge Review Gate check.
+#
+# Calls review-gate-check.sh to verify the composite is COMPLETE (all rows
+# PASSED and bound to the current head). Refuses the merge unless COMPLETE or
+# the operator has explicitly bypassed the gate.
+# ---------------------------------------------------------------------------
+
+REVIEW_GATE_CHECK_SH="$SCRIPT_DIR/../../../scripts/review-gate-check.sh"
+
+# _merge_locate_story — find the story markdown file for a given key.
+# Searches under the shared project root's .gaia/artifacts/implementation-artifacts.
+_merge_locate_story() {
+  local key="$1"
+  local root="${_MERGE_SHARED_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}}"
+  local impl_dir=""
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ]; then
+    impl_dir="$IMPLEMENTATION_ARTIFACTS"
+  elif [ -n "$root" ] && [ -d "$root/.gaia/artifacts/implementation-artifacts" ]; then
+    impl_dir="$root/.gaia/artifacts/implementation-artifacts"
+  elif [ -d "docs/implementation-artifacts" ]; then
+    impl_dir="docs/implementation-artifacts"
+  fi
+  [ -z "$impl_dir" ] && return 1
+
+  # Search: epic-*/<key>-*/story.md, <key>-*/story.md, <key>-*.md, epic-*/stories/<key>-*.md
+  local found=""
+  shopt -s nullglob
+  local candidates=( "$impl_dir"/epic-*/"$key"-*/story.md "$impl_dir"/"$key"-*/story.md "$impl_dir"/"$key"-*.md "$impl_dir"/epic-*/stories/"$key"-*.md )
+  shopt -u nullglob
+  for f in "${candidates[@]}"; do
+    [ -f "$f" ] || continue
+    found="$f"
+    break
+  done
+  [ -n "$found" ] && printf '%s' "$found" && return 0
+  return 1
+}
+
+# Resolve the story file. In a GAIA project (story-artifact roots present),
+# a missing story file fails the merge closed — the gate refuses rather than
+# skip. In a non-GAIA repository (no story-artifact roots at all), the gate
+# is skipped with a warning for backward compatibility.
+_MERGE_STORY_FILE=""
+_MERGE_STORY_FILE="$(_merge_locate_story "$STORY_KEY")" || _MERGE_STORY_FILE=""
+_MERGE_GATE_ENABLED=1
+if [ -z "$_MERGE_STORY_FILE" ] || [ ! -f "$_MERGE_STORY_FILE" ]; then
+  # Detect whether this is a GAIA project by checking for story-artifact
+  # roots. When any root exists, refusing is the safe default — a missing
+  # file likely means misconfiguration or a renamed story.
+  _merge_has_story_roots=0
+  _merge_root_check="${_MERGE_SHARED_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}}"
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ] && [ -d "${IMPLEMENTATION_ARTIFACTS}" ]; then
+    _merge_has_story_roots=1
+  elif [ -n "$_merge_root_check" ] && [ -d "$_merge_root_check/.gaia/artifacts/implementation-artifacts" ]; then
+    _merge_has_story_roots=1
+  elif [ -d "docs/implementation-artifacts" ]; then
+    _merge_has_story_roots=1
+  fi
+  if [ "$_merge_has_story_roots" -eq 1 ]; then
+    die "aborting: cannot locate story file for '${STORY_KEY}' but story-artifact roots exist — refusing merge (fail closed). Check that the story file exists under implementation-artifacts and that CLAUDE_PROJECT_ROOT is set correctly."
+  fi
+  log "WARNING: cannot locate story file for '$STORY_KEY' and no story-artifact roots found — review gate check skipped (non-GAIA repository)"
+  _MERGE_GATE_ENABLED=0
+fi
+
+# Determine the CI SHA to pass to review-gate-check.sh.
+# When no CI is configured (no promotion chain), pass "none".
+# Otherwise, pass the PR head SHA (the CI must have run on the head).
+_merge_ci_sha="$PR_HEAD_OID"
+_merge_cfg_for_ci="${_MERGE_SHARED_ROOT:+${_MERGE_SHARED_ROOT}/}.gaia/config/project-config.yaml"
+if [ -n "${PROJECT_CONFIG:-}" ] && [ -f "${PROJECT_CONFIG}" ]; then
+  _merge_cfg_for_ci="$PROJECT_CONFIG"
+fi
+_merge_has_promotion_chain=1
+if [ -f "$_merge_cfg_for_ci" ] && command -v yq >/dev/null 2>&1; then
+  _pc_val="$(yq '.ci_cd.promotion_chain' "$_merge_cfg_for_ci" 2>/dev/null)" || _pc_val=""
+  case "$_pc_val" in
+    "" | "null" | "~" | "[]") _merge_has_promotion_chain=0 ;;
+  esac
+fi
+if [ "$_merge_has_promotion_chain" -eq 0 ]; then
+  _merge_ci_sha="none"
+fi
+
+# Run review-gate-check.sh (only when the story file was found).
+_rgc_rc=0
+_rgc_output=""
+if [ "$_MERGE_GATE_ENABLED" -eq 1 ]; then
+  if [ -f "$REVIEW_GATE_CHECK_SH" ]; then
+    _rgc_output="$(bash "$REVIEW_GATE_CHECK_SH" \
+      --bind-head "$PR_HEAD_OID" \
+      --ci-sha "$_merge_ci_sha" \
+      --story "$_MERGE_STORY_FILE" 2>&1)" || _rgc_rc=$?
+  else
+    log "WARNING: review-gate-check.sh not found at $REVIEW_GATE_CHECK_SH — failing closed"
+    _rgc_rc=1
+    _rgc_output="Review Gate: BLOCKED (checker not found)"
+  fi
+fi
+
+# If composite is COMPLETE (exit 0), proceed directly to the existing guards.
+# If PENDING (exit 2) or BLOCKED (exit 1), check for operator bypass.
+_MERGE_BYPASS_ACTIVE=0
+_MERGE_BYPASS_NON_PASS_ROWS=""
+
+if [ "$_MERGE_GATE_ENABLED" -eq 1 ] && [ "$_rgc_rc" -ne 0 ]; then
+  # Extract non-PASS row information from the gate output.
+  _MERGE_BYPASS_NON_PASS_ROWS="$(printf '%s' "$_rgc_output" | /usr/bin/grep -E '^  - ' || true)"
+
+  # Determine gate status label for messaging.
+  _gate_label="BLOCKED"
+  [ "$_rgc_rc" -eq 2 ] && _gate_label="PENDING"
+
+  # Check for operator bypass.
+  _bypass_val="${GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE:-}"
+  if [ -z "$_bypass_val" ]; then
+    # No bypass set — refuse the merge.
+    log "aborting: review gate composite is ${_gate_label} — merge refused"
+    printf '%s\n' "$_rgc_output" >&2
+    log "Set GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} to bypass (operator only)."
+    exit 1
+  fi
+
+  # Validate bypass variable format: must be <story_key>@<40-hex-sha>.
+  case "$_bypass_val" in
+    *@*)
+      _bypass_key="${_bypass_val%%@*}"
+      _bypass_sha="${_bypass_val#*@}"
+      ;;
+    *)
+      log "aborting: bypass variable format invalid — expected <story_key>@<40-hex-head-sha>"
+      log "  current value: '${_bypass_val}'"
+      log "  required: ${STORY_KEY}@${PR_HEAD_OID}"
+      exit 1
+      ;;
+  esac
+
+  # Validate the story key matches.
+  if [ "$_bypass_key" != "$STORY_KEY" ]; then
+    log "aborting: bypass key mismatch — variable has '${_bypass_key}', current story is '${STORY_KEY}'"
+    log "  required: ${STORY_KEY}@${PR_HEAD_OID}"
+    exit 1
+  fi
+
+  # Validate the SHA is exactly 40 hex characters.
+  case "$_bypass_sha" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+      ;; # valid 40-hex SHA
+    *)
+      log "aborting: bypass SHA must be exactly 40 hex characters"
+      log "  got: '${_bypass_sha}' (${#_bypass_sha} chars)"
+      log "  required: ${STORY_KEY}@${PR_HEAD_OID}"
+      exit 1
+      ;;
+  esac
+
+  # Validate the SHA matches the current PR head.
+  if [ "$_bypass_sha" != "$PR_HEAD_OID" ]; then
+    log "aborting: bypass SHA does not match the PR head"
+    log "  bypass SHA: ${_bypass_sha}"
+    log "  PR head:    ${PR_HEAD_OID}"
+    log "  required: ${STORY_KEY}@${PR_HEAD_OID}"
+    exit 1
+  fi
+
+  # Bypass variable is valid. Now require operator confirmation at the
+  # controlling terminal.
+
+  # Refuse under YOLO mode — the bypass is operator-interactive by design.
+  if [ "${GAIA_YOLO_FLAG:-}" = "1" ] || [ "${GAIA_YOLO_FLAG:-}" = "true" ]; then
+    log "aborting: review gate bypass cannot be confirmed under YOLO mode"
+    log "  The operator must run this command in their own terminal:"
+    log "  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} bash merge.sh ${PR_NUMBER} ${STORY_KEY}"
+    exit 1
+  fi
+
+  # Refuse inside the harness shell (the Claude agent environment).
+  if [ "${GAIA_HARNESS_SHELL:-}" = "1" ] || [ "${GAIA_HARNESS_SHELL:-}" = "true" ]; then
+    log "aborting: review gate bypass cannot be confirmed inside the harness shell"
+    log "  The operator must run this command in their own terminal:"
+    log "  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} bash merge.sh ${PR_NUMBER} ${STORY_KEY}"
+    exit 1
+  fi
+
+  # Resolve the tty read source for operator confirmation.
+  # Production: /dev/tty (the operator's controlling terminal).
+  # Test seam: _MERGE_TTY_OVERRIDE points to a regular file (containing
+  # the answer) created by the test harness. This variable is blocked by
+  # the pre-tool guard alongside the bypass variable — a model tool call
+  # cannot set it. Prompt output always goes to /dev/tty (display only).
+  _merge_tty_read="${_MERGE_TTY_OVERRIDE:-/dev/tty}"
+
+  # Refuse when there is no controlling terminal and no test override.
+  if [ ! -t 0 ] && [ ! -e "$_merge_tty_read" ]; then
+    log "aborting: review gate bypass requires a controlling terminal (no /dev/tty)"
+    log "  The operator must run this command in their own terminal:"
+    log "  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} bash merge.sh ${PR_NUMBER} ${STORY_KEY}"
+    exit 1
+  fi
+
+  if [ -e "$_merge_tty_read" ]; then
+    # Interactive confirmation: prompt at the terminal, read the answer.
+    # Prompt output goes to /dev/tty when it is available and writable;
+    # silently skipped otherwise (e.g., test contexts where /dev/tty exists
+    # as a device node but is not configured for the subprocess).
+    # The answer comes from the read source.
+    {
+      printf '\n=== Review Gate Bypass Confirmation ===\n'
+      printf 'Story: %s\n' "$STORY_KEY"
+      printf 'Head:  %s\n' "$PR_HEAD_OID"
+      printf 'Gate:  %s\n' "$_gate_label"
+      printf 'Non-PASS rows:\n'
+      printf '%s\n' "$_MERGE_BYPASS_NON_PASS_ROWS"
+      printf '\nType "yes" to bypass the review gate and merge: '
+    } >/dev/tty 2>/dev/null || true
+    read -r _bypass_answer <"$_merge_tty_read"
+  else
+    log "aborting: review gate bypass requires a controlling terminal"
+    log "  The operator must run this command in their own terminal:"
+    log "  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} bash merge.sh ${PR_NUMBER} ${STORY_KEY}"
+    exit 1
+  fi
+
+  if [ "$_bypass_answer" != "yes" ]; then
+    log "aborting: operator declined the review gate bypass"
+    exit 1
+  fi
+
+  _MERGE_BYPASS_ACTIVE=1
+  log "review gate bypassed by operator (confirmed_by: operator_tty)"
+
+  # The skill-scoped pre-tool guard (in merge-capable SKILL.md files) blocks
+  # model tool calls that set this variable and writes a bypass_attempt_blocked
+  # record to the sprint audit.
+
+  # Record bypass in the story file.
+  if [ -f "$_MERGE_STORY_FILE" ]; then
+    {
+      printf '\n<!-- review_gate_bypass: %s head=%s confirmed_by=operator_tty -->\n' \
+        "$STORY_KEY" "$PR_HEAD_OID"
+    } >> "$_MERGE_STORY_FILE"
+  fi
+
+  # Record bypass in the sprint audit.
+  _audit_dir=""
+  if [ -n "$_MERGE_SHARED_ROOT" ] && [ -d "$_MERGE_SHARED_ROOT/.gaia/state" ]; then
+    _audit_dir="$_MERGE_SHARED_ROOT/.gaia/state/sprint-audit"
+  elif [ -n "${CLAUDE_PROJECT_ROOT:-}" ] && [ -d "${CLAUDE_PROJECT_ROOT}/.gaia/state" ]; then
+    _audit_dir="${CLAUDE_PROJECT_ROOT}/.gaia/state/sprint-audit"
+  fi
+  if [ -n "$_audit_dir" ]; then
+    mkdir -p "$_audit_dir"
+    cat > "$_audit_dir/review_gate_bypass-${STORY_KEY}.yaml" <<AUDIT
+type: review_gate_bypass
+story: ${STORY_KEY}
+head: ${PR_HEAD_OID}
+non_pass_rows:
+$(printf '%s\n' "$_MERGE_BYPASS_NON_PASS_ROWS" | sed 's/^  - /  - "/; s/$/"/' | head -20)
+confirmed_by: operator_tty
+bypass_confirmed: true
+timestamp: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+AUDIT
+    log "bypass audit record written to $_audit_dir/review_gate_bypass-${STORY_KEY}.yaml"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Pre-merge guards (run AFTER security invariants, BEFORE gh pr merge).
@@ -540,9 +811,24 @@ if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
   _MERGE_L3_WRITER=1
 fi
 
+# ---------------------------------------------------------------------------
+# Guard 4: merge_base_mismatch — re-read the PR base immediately before the
+# merge call to detect retargeting between the gate check and the merge.
+# ---------------------------------------------------------------------------
+_pre_merge_json="$(gh pr view "$PR_NUMBER" --json baseRefName 2>/dev/null)" || _pre_merge_json=""
+if [ -n "$_pre_merge_json" ]; then
+  _pre_merge_base="$(_extract_field "$_pre_merge_json" baseRefName)"
+  if [ -n "$_pre_merge_base" ] && [ "$_pre_merge_base" != "$PR_TARGET" ]; then
+    log "aborting: merge_base_mismatch — PR base was '${PR_TARGET}' at gate check but is now '${_pre_merge_base}'"
+    log "The PR was retargeted between the gate check and the merge call."
+    exit 1
+  fi
+fi
+
 # Build merge command. Always pass --match-head-commit so GitHub refuses
-# the merge if the PR head moved since we checked it.
-MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\""
+# the merge if the PR head moved since we checked it. Always pass
+# --no-delete-branch — branch deletion moves to the worktree teardown.
+MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\" --no-delete-branch"
 if [ "$DELETE_BRANCH" = true ]; then
   MERGE_CMD="$MERGE_CMD --delete-branch"
 fi
@@ -593,7 +879,11 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
       fi
     fi
     log "PR #${PR_NUMBER} merged via ${STRATEGY}"
-    echo "merged:${STRATEGY}"
+    if [ "$_MERGE_BYPASS_ACTIVE" -eq 1 ]; then
+      echo "merged:${STRATEGY}:bypass_confirmed=operator_tty"
+    else
+      echo "merged:${STRATEGY}"
+    fi
     # Recovery path: verify inside L3 in concurrent mode.
     if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
       _merge_verify_in_l3 || exit 1
@@ -617,7 +907,11 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
 }
 
 log "PR #${PR_NUMBER} merged via ${STRATEGY}"
-echo "merged:${STRATEGY}"
+if [ "$_MERGE_BYPASS_ACTIVE" -eq 1 ]; then
+  echo "merged:${STRATEGY}:bypass_confirmed=operator_tty"
+else
+  echo "merged:${STRATEGY}"
+fi
 # Normal success path: verify inside L3 in concurrent mode.
 if [ "$_MERGE_CONCURRENT" -eq 1 ]; then
   _merge_verify_in_l3 || exit 1
