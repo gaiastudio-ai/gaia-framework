@@ -15,6 +15,8 @@
 # Component tag for the manifest tagger
 # component: scripts/merge-ledger
 
+load 'test_helper.bash'
+
 setup() {
   export MERGE_LEDGER_DIR="${BATS_TEST_TMPDIR}/ledger"
   mkdir -p "$MERGE_LEDGER_DIR"
@@ -46,7 +48,7 @@ teardown() {
 # AC1: Write-ahead merge ledger with gate-record validation
 # ======================================================================
 
-@test "AC1: write-gate-pass creates a gate record with correct fields" {
+@test "write-gate-pass creates a gate record with correct fields" {
   run bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   [ "$status" -eq 0 ]
 
@@ -65,7 +67,7 @@ teardown() {
   /usr/bin/grep -q 'created_at:' "$gate_file"
 }
 
-@test "AC1: write-gate-bypass creates a bypass record with confirmation and bypass flag" {
+@test "write-gate-bypass creates a bypass record with confirmation and bypass flag" {
   run bash "$LEDGER_SH" write-gate-bypass \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
     --bypass-confirmation "operator_tty"
@@ -78,7 +80,7 @@ teardown() {
   /usr/bin/grep -q 'bypass_confirmed: "operator_tty"' "$gate_file"
 }
 
-@test "AC1: write-intent rejected without prior gate record" {
+@test "write-intent rejected without prior gate record" {
   run bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
     --target staging --mode story
@@ -86,7 +88,7 @@ teardown() {
   [[ "$output" == *"no gate record"* ]]
 }
 
-@test "AC1: write-intent succeeds with prior gate_pass record" {
+@test "write-intent succeeds with prior gate_pass record" {
   # Create gate_pass first
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
 
@@ -108,7 +110,7 @@ teardown() {
   /usr/bin/grep -q 'created_at:' "$intent_file"
 }
 
-@test "AC1: bypass flag carried onto merge-intent when gate record is gate_bypass" {
+@test "bypass flag carried onto merge-intent when gate record is gate_bypass" {
   # Create gate_bypass
   bash "$LEDGER_SH" write-gate-bypass \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -125,7 +127,7 @@ teardown() {
   /usr/bin/grep -q 'bypass: "true"' "$intent_file"
 }
 
-@test "AC1: bypass flag is false when gate record is gate_pass" {
+@test "bypass flag is false when gate record is gate_pass" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
 
   run bash "$LEDGER_SH" write-intent \
@@ -138,7 +140,7 @@ teardown() {
   /usr/bin/grep -q 'bypass: "false"' "$intent_file"
 }
 
-@test "AC1: state machine advances through full happy path" {
+@test "state machine advances through full happy path" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -173,7 +175,7 @@ teardown() {
   /usr/bin/grep -q 'state: "finalized"' "$intent_file"
 }
 
-@test "AC1: invalid state transition is rejected" {
+@test "invalid state transition is rejected" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -185,7 +187,7 @@ teardown() {
   [[ "$output" == *"invalid transition"* ]]
 }
 
-@test "AC1: verify halts with merge_target_mismatch on target drift" {
+@test "verify halts with merge_target_mismatch on target drift" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -202,7 +204,7 @@ teardown() {
   [[ "$output" == *"merge_target_mismatch"* ]]
 }
 
-@test "AC1: sole-writer-check passes with only legitimate files" {
+@test "sole-writer-check passes with only legitimate files" {
   # Create legitimate files
   touch "$MERGE_LEDGER_DIR/gate-pass-pr42-20261027.yaml"
   touch "$MERGE_LEDGER_DIR/intent-pr42-mi-20261027-1234.yaml"
@@ -212,7 +214,7 @@ teardown() {
   [[ "$output" == *"PASSED"* ]]
 }
 
-@test "AC1: sole-writer-check fails closed with unauthorized file" {
+@test "sole-writer-check fails closed with unauthorized file" {
   touch "$MERGE_LEDGER_DIR/rogue.yaml"
 
   run bash "$LEDGER_SH" sole-writer-check --dir "$MERGE_LEDGER_DIR"
@@ -225,7 +227,7 @@ teardown() {
 # AC2: Session-kill resilience
 # ======================================================================
 
-@test "AC2: session kill after intent — merge resumes at merge, intent not duplicated" {
+@test "session kill after intent — merge resumes at merge, intent not duplicated" {
   # Set up: gate pass + intent already written (simulating kill after intent)
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
@@ -245,7 +247,7 @@ teardown() {
   [ "$count_after" -eq "$count_before" ]
 }
 
-@test "AC2: session kill after merge succeeded — resumes at verify, not flagged out-of-band" {
+@test "session kill after merge succeeded — resumes at verify, not flagged out-of-band" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -268,7 +270,7 @@ teardown() {
   /usr/bin/grep -q 'state: "verified"' "$intent_file"
 }
 
-@test "AC2: session kill after verify — smoke-wait resumes correctly" {
+@test "session kill after verify — smoke-wait resumes correctly" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -286,7 +288,7 @@ teardown() {
   /usr/bin/grep -q 'state: "smoke_ok"' "$intent_file"
 }
 
-@test "AC2: session kill after smoke_ok — finalize resumes correctly" {
+@test "session kill after smoke_ok — finalize resumes correctly" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -304,7 +306,7 @@ teardown() {
   /usr/bin/grep -q 'state: "finalized"' "$intent_file"
 }
 
-@test "AC2: head moved — intent closed as superseded" {
+@test "head moved — intent closed as superseded" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -319,7 +321,7 @@ teardown() {
   /usr/bin/grep -q 'state: "superseded"' "$intent_file"
 }
 
-@test "AC2: write-intent is idempotent for same PR and head" {
+@test "write-intent is idempotent for same PR and head" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -341,25 +343,25 @@ teardown() {
 # AC3: CI waiter
 # ======================================================================
 
-@test "AC3: ci-wait-ref.sh returns none-observed when gh is skipped" {
+@test "ci-wait-ref.sh returns none-observed when gh is skipped" {
   run bash "$CI_WAIT_SH" --sha abc1234 --max-seconds 10
   [ "$status" -eq 3 ]
   [[ "$output" == *"none-observed"* ]]
 }
 
-@test "AC3: ci-wait-ref.sh rejects max-seconds over 540" {
+@test "ci-wait-ref.sh rejects max-seconds over 540" {
   run bash "$CI_WAIT_SH" --sha abc1234 --max-seconds 600
   [ "$status" -ne 0 ]
   [[ "$output" == *"must not exceed 540"* ]]
 }
 
-@test "AC3: ci-wait-ref.sh requires --sha" {
+@test "ci-wait-ref.sh requires --sha" {
   run bash "$CI_WAIT_SH" --max-seconds 10
   [ "$status" -ne 0 ]
   [[ "$output" == *"--sha required"* ]]
 }
 
-@test "AC3: ci-wait-ref.sh requires --max-seconds" {
+@test "ci-wait-ref.sh requires --max-seconds" {
   run bash "$CI_WAIT_SH" --sha abc1234
   [ "$status" -ne 0 ]
   [[ "$output" == *"--max-seconds required"* ]]
@@ -369,7 +371,7 @@ teardown() {
 # AC4: Smoke-wait skip/run, parent-exec, no credential source
 # ======================================================================
 
-@test "AC4: smoke-wait skips with notice when no smoke command configured" {
+@test "smoke-wait skips with notice when no smoke command configured" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -384,7 +386,7 @@ teardown() {
   [[ "$output" == *"smoke_command"* ]] || [[ "$output" == *"enable"* ]] || [[ "$output" == *"configure"* ]]
 }
 
-@test "AC4: smoke failure sets smoke_failed state" {
+@test "smoke failure sets smoke_failed state" {
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent \
     --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 \
@@ -405,7 +407,7 @@ teardown() {
   /usr/bin/grep -q 'state: "smoke_failed"' "$intent_file"
 }
 
-@test "AC4: parent-exec env -i allowlist carries no credential source variable" {
+@test "parent-exec env -i allowlist carries no credential source variable" {
   # Source parent-exec and build the env
   # shellcheck source=../scripts/lib/parent-exec.sh
   source "$PARENT_EXEC_SH"
@@ -432,7 +434,7 @@ teardown() {
   unset GITHUB_TOKEN GH_TOKEN NPM_TOKEN AWS_SECRET_ACCESS_KEY
 }
 
-@test "AC4: parent-exec credential denylist blocks GITHUB_TOKEN even if added to allowlist" {
+@test "parent-exec credential denylist blocks GITHUB_TOKEN even if added to allowlist" {
   # Source parent-exec
   source "$PARENT_EXEC_SH"
 
@@ -450,13 +452,13 @@ teardown() {
   unset GITHUB_TOKEN
 }
 
-@test "AC4: parent-exec runs a command through env -i" {
+@test "parent-exec runs a command through env -i" {
   run bash "$PARENT_EXEC_SH" -- echo "hello from parent-exec"
   [ "$status" -eq 0 ]
   [[ "$output" == *"hello from parent-exec"* ]]
 }
 
-@test "AC4: parent-exec with --detach launches command in background" {
+@test "parent-exec with --detach launches command in background" {
   run bash "$PARENT_EXEC_SH" --detach -- sleep 0.1
   [ "$status" -eq 0 ]
 }
@@ -465,7 +467,7 @@ teardown() {
 # AC5: Detach library process-group assertion
 # ======================================================================
 
-@test "AC5: detach.sh starts a runner whose PGID differs from caller" {
+@test "detach.sh starts a runner whose PGID differs from caller" {
   # Run a sleep command that lives long enough to check its PGID
   local pid_file="${BATS_TEST_TMPDIR}/detach_pid"
   local pgid_file="${BATS_TEST_TMPDIR}/detach_pgid"
@@ -511,7 +513,7 @@ RUNNER
   fi
 }
 
-@test "AC5: detach.sh refuses with detach_failed when setsid and perl are unavailable" {
+@test "detach.sh refuses with detach_failed when setsid and perl are unavailable" {
   # Create a restricted PATH that lacks setsid and perl
   local restricted="${BATS_TEST_TMPDIR}/restricted_bin"
   mkdir -p "$restricted"
@@ -530,7 +532,7 @@ RUNNER
   [[ "$output" == *"detach_failed"* ]]
 }
 
-@test "AC5: detach.sh rejects empty command" {
+@test "detach.sh rejects empty command" {
   run bash "$DETACH_SH"
   [ "$status" -ne 0 ]
   [[ "$output" == *"detach_failed"* ]] || [[ "$output" == *"usage"* ]]
@@ -540,7 +542,7 @@ RUNNER
 # AC1 (merge-tail integration): full merge-tail happy path
 # ======================================================================
 
-@test "AC1+AC2: merge-tail full happy path — gate through finalize" {
+@test "merge-tail full happy path — gate through finalize" {
   # gate
   run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
   [ "$status" -eq 0 ]
@@ -569,14 +571,14 @@ RUNNER
   /usr/bin/grep -q 'state: "finalized"' "$intent_file"
 }
 
-@test "AC1: merge-tail merge verb without prior gate is rejected" {
+@test "merge-tail merge verb without prior gate is rejected" {
   # Try to merge without gate
   run bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
   [ "$status" -ne 0 ]
   [[ "$output" == *"no gate record"* ]]
 }
 
-@test "AC1: merge-tail gate with bypass-confirmation" {
+@test "merge-tail gate with bypass-confirmation" {
   run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging \
     --bypass-confirmation "operator_tty"
   [ "$status" -eq 0 ]
