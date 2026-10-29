@@ -1076,8 +1076,8 @@ FIXTURE2
   # Both the original and the requested story must be present and parseable.
   local stories
   stories="$(yq '.items[0].related_stories[]' "$target2")"
-  echo "$stories" | grep -qF 'E900-S5'
-  echo "$stories" | grep -qF 'E900-S1'
+  grep -qF 'E900-S5' <<<"$stories"
+  grep -qF 'E900-S1' <<<"$stories"
 }
 
 # ===========================================================================
