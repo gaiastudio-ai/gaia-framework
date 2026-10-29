@@ -836,3 +836,4 @@
 4	review-gate-commit-bound.bats	105
 2	concurrent-sprint-lifecycle-scoped.bats	62
 1	merge-review-gate.bats	18
+2	merge-ledger-and-tail.bats	32
