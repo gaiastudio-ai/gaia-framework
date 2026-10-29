@@ -256,15 +256,30 @@ _merge_locate_story() {
   return 1
 }
 
-# Resolve the story file. When the story file cannot be found, the gate
-# check is skipped with a warning (backward compatibility — projects without
-# story files still merge via the existing guards). When the file IS found,
-# the gate check is mandatory and fails closed.
+# Resolve the story file. In a GAIA project (story-artifact roots present),
+# a missing story file fails the merge closed — the gate refuses rather than
+# skip. In a non-GAIA repository (no story-artifact roots at all), the gate
+# is skipped with a warning for backward compatibility.
 _MERGE_STORY_FILE=""
 _MERGE_STORY_FILE="$(_merge_locate_story "$STORY_KEY")" || _MERGE_STORY_FILE=""
 _MERGE_GATE_ENABLED=1
 if [ -z "$_MERGE_STORY_FILE" ] || [ ! -f "$_MERGE_STORY_FILE" ]; then
-  log "WARNING: cannot locate story file for '$STORY_KEY' — review gate check skipped"
+  # Detect whether this is a GAIA project by checking for story-artifact
+  # roots. When any root exists, refusing is the safe default — a missing
+  # file likely means misconfiguration or a renamed story.
+  _merge_has_story_roots=0
+  _merge_root_check="${_MERGE_SHARED_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-}}}"
+  if [ -n "${IMPLEMENTATION_ARTIFACTS:-}" ] && [ -d "${IMPLEMENTATION_ARTIFACTS}" ]; then
+    _merge_has_story_roots=1
+  elif [ -n "$_merge_root_check" ] && [ -d "$_merge_root_check/.gaia/artifacts/implementation-artifacts" ]; then
+    _merge_has_story_roots=1
+  elif [ -d "docs/implementation-artifacts" ]; then
+    _merge_has_story_roots=1
+  fi
+  if [ "$_merge_has_story_roots" -eq 1 ]; then
+    die "aborting: cannot locate story file for '${STORY_KEY}' but story-artifact roots exist — refusing merge (fail closed). Check that the story file exists under implementation-artifacts and that CLAUDE_PROJECT_ROOT is set correctly."
+  fi
+  log "WARNING: cannot locate story file for '$STORY_KEY' and no story-artifact roots found — review gate check skipped (non-GAIA repository)"
   _MERGE_GATE_ENABLED=0
 fi
 
@@ -387,27 +402,38 @@ if [ "$_MERGE_GATE_ENABLED" -eq 1 ] && [ "$_rgc_rc" -ne 0 ]; then
     exit 1
   fi
 
-  # Refuse when there is no controlling terminal.
-  if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+  # Resolve the tty read source for operator confirmation.
+  # Production: /dev/tty (the operator's controlling terminal).
+  # Test seam: _MERGE_TTY_OVERRIDE points to a regular file (containing
+  # the answer) created by the test harness. This variable is blocked by
+  # the pre-tool guard alongside the bypass variable — a model tool call
+  # cannot set it. Prompt output always goes to /dev/tty (display only).
+  _merge_tty_read="${_MERGE_TTY_OVERRIDE:-/dev/tty}"
+
+  # Refuse when there is no controlling terminal and no test override.
+  if [ ! -t 0 ] && [ ! -e "$_merge_tty_read" ]; then
     log "aborting: review gate bypass requires a controlling terminal (no /dev/tty)"
     log "  The operator must run this command in their own terminal:"
     log "  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=${STORY_KEY}@${PR_HEAD_OID} bash merge.sh ${PR_NUMBER} ${STORY_KEY}"
     exit 1
   fi
 
-  # For testing: allow a test flag to simulate tty confirmation.
-  if [ "${GAIA_BYPASS_TTY_TEST:-}" = "yes" ]; then
-    _bypass_answer="yes"
-  elif [ -e /dev/tty ]; then
-    # Interactive confirmation at the controlling terminal.
-    printf '\n=== Review Gate Bypass Confirmation ===\n' >/dev/tty
-    printf 'Story: %s\n' "$STORY_KEY" >/dev/tty
-    printf 'Head:  %s\n' "$PR_HEAD_OID" >/dev/tty
-    printf 'Gate:  %s\n' "$_gate_label" >/dev/tty
-    printf 'Non-PASS rows:\n' >/dev/tty
-    printf '%s\n' "$_MERGE_BYPASS_NON_PASS_ROWS" >/dev/tty
-    printf '\nType "yes" to bypass the review gate and merge: ' >/dev/tty
-    read -r _bypass_answer </dev/tty
+  if [ -e "$_merge_tty_read" ]; then
+    # Interactive confirmation: prompt at the terminal, read the answer.
+    # Prompt output goes to /dev/tty when it is available and writable;
+    # silently skipped otherwise (e.g., test contexts where /dev/tty exists
+    # as a device node but is not configured for the subprocess).
+    # The answer comes from the read source.
+    {
+      printf '\n=== Review Gate Bypass Confirmation ===\n'
+      printf 'Story: %s\n' "$STORY_KEY"
+      printf 'Head:  %s\n' "$PR_HEAD_OID"
+      printf 'Gate:  %s\n' "$_gate_label"
+      printf 'Non-PASS rows:\n'
+      printf '%s\n' "$_MERGE_BYPASS_NON_PASS_ROWS"
+      printf '\nType "yes" to bypass the review gate and merge: '
+    } >/dev/tty 2>/dev/null || true
+    read -r _bypass_answer <"$_merge_tty_read"
   else
     log "aborting: review gate bypass requires a controlling terminal"
     log "  The operator must run this command in their own terminal:"

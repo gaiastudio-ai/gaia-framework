@@ -4,6 +4,12 @@ description: "Execute the active sprint's stories phase by phase — running the
 allowed-tools: [Bash, Read]
 version: "1.0.0"
 orchestration_class: heavy-procedural
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write"
+      hooks:
+        - type: command
+          command: ${CLAUDE_PLUGIN_ROOT}/scripts/lib/bypass-variable-guard.sh
 ---
 
 ## Orchestration Mode
@@ -56,6 +62,9 @@ its own). So this skill loops, one real turn at a time:
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" plan \
      --repo "${PROJECT_PATH:-.}" \
      --yaml "$SPRINT_YAML"
+   # Report any recorded review gate bypass use in the sprint.
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/lib/check-bypass-records.sh" \
+     --project-root "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
    ```
    This runs every degradation check up front and prints `mode=parallel
    reason=none` or `mode=sequential reason=<token>` (see the table below).

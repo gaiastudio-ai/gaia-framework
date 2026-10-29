@@ -4,6 +4,11 @@ description: Implement a user story end-to-end -- validate, dev, test, PR. Use w
 argument-hint: [story-key]
 allowed-tools: [Read, Write, Edit, Grep, Glob, Bash]
 hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write"
+      hooks:
+        - type: command
+          command: ${CLAUDE_PLUGIN_ROOT}/scripts/lib/bypass-variable-guard.sh
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
