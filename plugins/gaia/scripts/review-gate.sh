@@ -185,20 +185,32 @@ _validate_glob_pattern() {
           fi
         fi
         # POSIX: ] as the first character (or first after !) is literal.
+        local prev_char=""
         bc_ch="${pattern:$i:1}"
         if [ "$bc_ch" = ']' ]; then
+          prev_char=']'
           i=$((i + 1))
           if [ "$i" -ge "$len" ]; then
             return 1  # unclosed bracket (only ] in class)
           fi
         fi
-        local prev_char=""
         # Walk the rest of the bracket class.
         while [ "$i" -lt "$len" ]; do
           bc_ch="${pattern:$i:1}"
           if [ "$bc_ch" = ']' ]; then
             # End of bracket class. Check that there is real content.
             break
+          fi
+          # Refuse POSIX bracket expressions ([:name:], [=c=], [.elem.]).
+          # git's wildmatch handles these but only for the 12 standard
+          # POSIX class names; mis-spelled names silently match nothing,
+          # which would cause a fail-open. Rather than emulate wildmatch,
+          # refuse any bracket expression opener inside a class.
+          if [ "$bc_ch" = '[' ] && [ $((i + 1)) -lt "$len" ]; then
+            local next_ch="${pattern:$((i + 1)):1}"
+            if [ "$next_ch" = ':' ] || [ "$next_ch" = '=' ] || [ "$next_ch" = '.' ]; then
+              return 1  # POSIX bracket expression — refuse
+            fi
           fi
           # Backslash inside bracket class: compare with test expression
           # (case-pattern \\) does not work on bash 3.2 inside the inner loop.
@@ -1685,7 +1697,8 @@ main() {
       # ** matches zero or more directories, * doesn't cross /, ? matches
       # one char, [abc] is a character class. --no-renames ensures renamed
       # files appear as delete + add (a file moved out of scope is caught).
-      # -z avoids C-quoting of non-ASCII / special chars.
+      # The overlap diff checks for non-empty stdout (any output means a
+      # scope match); it does not parse individual paths, so -z is not needed.
 
       # Build the pathspec arguments from scope globs.
       # Validate each glob: git silently treats malformed patterns as

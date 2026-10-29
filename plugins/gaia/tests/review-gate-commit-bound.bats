@@ -1673,22 +1673,48 @@ YAML
   local sha_b
   sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
 
-  local story
-  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S65" "$sha_a")"
+  # Seed all rows at sha_b (HEAD) so every row is already bound EXCEPT
+  # Code Review, which is seeded at sha_a. This isolates the forged sidecar
+  # as the only factor that could bind Code Review.
+  local impl="$PROJECT_PATH/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="$impl/E900-S65-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "E900-S65"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | ${sha_a} |
+| QA Tests | PASSED | qa.md | ${sha_b} |
+| Security Review | PASSED | sec.md | ${sha_b} |
+| Test Automation | PASSED | ta.md | ${sha_b} |
+| Test Review | PASSED | tr.md | ${sha_b} |
+| Performance Review | PASSED | perf.md | ${sha_b} |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
 
-  # Plant a forged sidecar record claiming carry to sha_b.
+  # Plant a forged sidecar record claiming carry to sha_b for Code Review.
   local story_dir
   story_dir="$(dirname "$story")"
   printf '{"row":"Code Review","from_sha":"%s","to_sha":"%s","evidence":{"changed_paths":[],"scope_globs":["src/**"]},"timestamp":"2026-01-01T00:00:00Z"}\n' \
     "$sha_a" "$sha_b" > "${story_dir}/review-gate-carry.jsonl"
 
-  # The row still says sha_a in the table. The checker must see it as stale
-  # because binding comes from the table SHA column, not the sidecar.
+  # Code Review still says sha_a in the table. The checker must report it as
+  # stale because binding comes from the table SHA column, not the sidecar.
   run bash "${PLUGIN_ROOT}/scripts/review-gate-check.sh" \
     --bind-head "$sha_b" --ci-sha none --story "$story"
   [ "$status" -ne 0 ]
   grep -qi 'pending' <<< "$output"
+  # Only Code Review should be stale.
+  grep -qi 'code review' <<< "$output"
 }
 
 # ---------------------------------------------------------------------------
@@ -2508,4 +2534,449 @@ YAML
     --bind-head "$sha" --ci-sha none --story "$story"
   [ "$status" -ne 0 ]
   grep -qi 'not accepted when CI is configured\|blocked' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Scope with multiple globs: only non-first glob matches the change
+# (kills resolver-first-item mutant that returns only [0])
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: non-first scope glob matching the change is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S91" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  # Scope: first glob does NOT match the change, second does.
+  # A resolver that returns only the first item would miss this overlap.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review: ["lib/**", "src/**"]
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S91 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'includes files in scope' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Evidence round-trip: a tab in a file name is recorded byte-identically
+# (kills evidence-tab-mangling mutant that replaces tabs with spaces)
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: evidence records tab in path byte-identically" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/docs"
+  printf 'v1\n' > "$PROJECT_PATH/docs/readme.txt"
+  # File with a literal tab in the name.
+  printf 'v1\n' > "$(printf '%s/docs/t\tab.txt' "$PROJECT_PATH")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/docs/readme.txt"
+  printf 'v2\n' > "$(printf '%s/docs/t\tab.txt' "$PROJECT_PATH")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S92" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" "src/**"
+
+  # Carry succeeds (changed files are in docs/, not src/).
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S92 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -eq 0 ]
+
+  # The sidecar must contain the literal tab, not a space.
+  local sidecar
+  sidecar="$(dirname "$story")/review-gate-carry.jsonl"
+  [ -f "$sidecar" ]
+  # jq must parse it and the tab-containing name must be present.
+  run jq -e '.evidence.changed_paths | map(select(contains("\t"))) | length > 0' "$sidecar"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+  # Verify no space-substituted variant exists in place of the tab.
+  run jq -e '.evidence.changed_paths | map(select(test("t tab\\.txt"))) | length' "$sidecar"
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+# ---------------------------------------------------------------------------
+# Scope-globs item validation: non-string items are refused
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: map item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S93" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  # Config with a map item instead of a string.
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - {path: "src/**"}
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S93 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: nested list item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S94" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - ["src/**", "lib/**"]
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S94 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: numeric item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S95" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - 123
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S95 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: boolean item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S96" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - true
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S96 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: null item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S97" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - null
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S97 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed\|no scope globs' <<< "$output"
+}
+
+@test "carry-forward: empty string item in scope_globs is refused (fail closed)" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S98" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - ""
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S98 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed\|no scope globs' <<< "$output"
+}
+
+@test "carry-forward: whitespace-only string item in scope_globs is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S99" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  mkdir -p "$PROJECT_PATH/.gaia/config"
+  cat > "$PROJECT_PATH/.gaia/config/project-config.yaml" <<'YAML'
+review_gate:
+  scope_globs:
+    code-review:
+      - "   "
+YAML
+  export PROJECT_CONFIG="$PROJECT_PATH/.gaia/config/project-config.yaml"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S99 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'non-empty string\|refusing\|fail closed\|no scope globs' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Glob validator: POSIX bracket expressions and unclosed class after ]
+# ---------------------------------------------------------------------------
+
+@test "carry-forward: POSIX bracket expression [:bogus:] is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S100" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[[:bogus:]]*'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S100 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: unclosed POSIX bracket expression [:alpha: is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S101" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[[:alpha:]'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S101 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: POSIX equivalence class [=c=] is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S102" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[[=a=]]*'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S102 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: POSIX collating element [.elem.] is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S103" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[[.a.]]*'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S103 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: reversed range after literal ] in class is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S104" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[]-!]*'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S104 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+@test "carry-forward: class never closed after bracket content is refused" {
+  _init_git "$PROJECT_PATH"
+  mkdir -p "$PROJECT_PATH/src"
+  printf 'v1\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "A"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'v2\n' > "$PROJECT_PATH/src/a.sh"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "B"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S105" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  _write_scope_config "$PROJECT_PATH" "code-review" 'src/[abc*'
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" carry-forward \
+    --story E900-S105 --row "Code Review" --from "$sha_a" --to "$sha_b"
+  [ "$status" -ne 0 ]
+  grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
 }

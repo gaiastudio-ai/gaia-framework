@@ -1567,7 +1567,7 @@ if [ -n "$FIELD" ]; then
       # Returns one glob per line. Uses yq (a framework prerequisite) to
       # parse YAML correctly — comments, flow/block lists, quoted strings,
       # character classes and anchors are all handled by the YAML parser.
-      # Non-list / non-string values → empty output (caller refuses).
+      # Non-list or non-string-item values → die (fail closed).
       _rg_slug="${FIELD#review_gate.scope_globs.}"
       _rg_val=""
       _rg_file="${SHARED_PATH}"
@@ -1581,6 +1581,13 @@ if [ -n "$FIELD" ]; then
         # If the node is not a sequence, the type check rejects it.
         _rg_node_type="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\" | type" "$_rg_file" 2>/dev/null)" || _rg_node_type=""
         if [ "$_rg_node_type" = '!!seq' ]; then
+          # Verify every item is a non-empty string. Maps, nested lists,
+          # numbers, booleans, null and empty/whitespace-only strings are
+          # rejected so they cannot silently produce a glob that matches
+          # nothing and let an in-scope change through.
+          if ! yq -e ".review_gate.scope_globs.\"${_rg_slug}\" | all_c(tag == \"!!str\" and . != \"\" and test(\"\\S\"))" "$_rg_file" >/dev/null 2>&1; then
+            die "scope_globs.${_rg_slug}: every item must be a non-empty string — refusing (fail closed)"
+          fi
           _rg_val="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\"[]" "$_rg_file" 2>/dev/null)" || _rg_val=""
         fi
       fi
