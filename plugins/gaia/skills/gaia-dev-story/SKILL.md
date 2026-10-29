@@ -868,7 +868,7 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 15 update-review-gate {story_key}` to record the step-boundary event.
 
-- Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed (or replace) the Review Gate table with the canonical 6-row UNVERIFIED block. The helper is idempotent — re-running on a story file that already has the block yields a byte-identical result.
+- Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}` to seed the Review Gate table. The helper is non-destructive: existing verdicts are preserved and only missing canonical rows are seeded with UNVERIFIED. The table uses a four-column format (`Review | Status | Report | Reviewed SHA`); the fourth column binds each verdict to the commit SHA it was reviewed on. Re-running on a complete table is a no-op.
 - Update story status to `review` via `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
 
 > **Grace window note.** Within
@@ -909,7 +909,7 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
 
 - If `is_yolo` returns zero (YOLO branch):
   - Invoke `gaia-run-all-reviews` via Skill-to-Skill delegation. The aggregator runs all six reviews (Code Review, QA Tests, Security Review, Test Automation, Test Review, Performance Review) sequentially in subagents.
-  - Each review writes its verdict (PASSED / FAILED) into the matching Review Gate row via `review-gate.sh`. After the aggregator completes, the Review Gate table is fully populated — no row remains UNVERIFIED.
+  - Each review writes its verdict (PASSED / FAILED) into the matching Review Gate row via `review-gate.sh update`, which automatically binds the worktree HEAD as the reviewed SHA in the fourth column. After the aggregator completes, the Review Gate table is fully populated — no row remains UNVERIFIED.
   - Emit `step16_gate: yolo=true verdict=invoked` on entry and `step16_gate: yolo=true verdict=complete` on aggregator return.
 
 - **FAILED-verdict surfacing.** After the aggregator returns, emit a `## Review Summary` block to the user. The block MUST list every review verdict on its own line (`- {review_name}: {PASSED|FAILED} — {report_path}`); the literal `FAILED` token is uppercase so downstream scanners can grep it. Then surface the composite verdict from `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh review-gate-check`: exit 0 → `**Composite Review Gate:** COMPLETE`; exit 1 → `**Composite Review Gate:** BLOCKED — {N} FAILED review(s) must be addressed before merge.`; exit 2 → `**Composite Review Gate:** PENDING — {N} UNVERIFIED row(s) remain.` YOLO MUST NOT collapse a BLOCKED verdict into a PASS.

@@ -1272,23 +1272,29 @@ v_creative_artifacts="$(_resolve_rel "$v_creative_artifacts" "$v_project_root")"
 unset _config_anchor
 
 # ---------- Required-field check (post-merge, post-env) ----------
+#
+# Skip when --field targets a dynamic key that can be resolved from the raw
+# YAML without the full config surface (e.g. review_gate.scope_globs.*).
+# This lets callers query a single key from a minimal config file.
 
-[ -z "$v_checkpoint_path" ]          && die "missing required field: checkpoint_path"
-[ -z "$v_date" ]                     && die "missing required field: date"
-[ -z "$v_framework_version" ]        && die "missing required field: framework_version"
-[ -z "$v_installed_path" ]           && die "missing required field: installed_path"
-[ -z "$v_memory_path" ]              && die "missing required field: memory_path"
-[ -z "$v_project_path" ]             && die "missing required field: project_path"
-[ -z "$v_project_root" ]             && die "missing required field: project_root"
-# Artifact-dir required fields. These always resolve because the default block
-# above populates them from {project_root}/docs/… when nothing else supplied a
-# value. The explicit checks stay for parity with the rest of the required-field
-# surface and to catch any future regression where the default block is bypassed
-# (e.g., someone sets them to empty string).
-[ -z "$v_test_artifacts" ]           && die "missing required field: test_artifacts"
-[ -z "$v_planning_artifacts" ]       && die "missing required field: planning_artifacts"
-[ -z "$v_implementation_artifacts" ] && die "missing required field: implementation_artifacts"
-[ -z "$v_creative_artifacts" ]       && die "missing required field: creative_artifacts"
+if [ -z "$FIELD" ]; then
+  [ -z "$v_checkpoint_path" ]          && die "missing required field: checkpoint_path"
+  [ -z "$v_date" ]                     && die "missing required field: date"
+  [ -z "$v_framework_version" ]        && die "missing required field: framework_version"
+  [ -z "$v_installed_path" ]           && die "missing required field: installed_path"
+  [ -z "$v_memory_path" ]              && die "missing required field: memory_path"
+  [ -z "$v_project_path" ]             && die "missing required field: project_path"
+  [ -z "$v_project_root" ]             && die "missing required field: project_root"
+  # Artifact-dir required fields. These always resolve because the default block
+  # above populates them from {project_root}/docs/… when nothing else supplied a
+  # value. The explicit checks stay for parity with the rest of the required-field
+  # surface and to catch any future regression where the default block is bypassed
+  # (e.g., someone sets them to empty string).
+  [ -z "$v_test_artifacts" ]           && die "missing required field: test_artifacts"
+  [ -z "$v_planning_artifacts" ]       && die "missing required field: planning_artifacts"
+  [ -z "$v_implementation_artifacts" ] && die "missing required field: implementation_artifacts"
+  [ -z "$v_creative_artifacts" ]       && die "missing required field: creative_artifacts"
+fi
 
 # ---------- Framework version drift detection ----------
 #
@@ -1556,6 +1562,36 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_project_kind" ;;
     review_gate.manual_test_mode)
       printf '%s\n' "$v_review_gate_manual_test_mode" ;;
+    review_gate.scope_globs.*)
+      # Dynamic 3-deep key: review_gate.scope_globs.<gate-slug>.
+      # Returns one glob per line. Uses yq (a framework prerequisite) to
+      # parse YAML correctly — comments, flow/block lists, quoted strings,
+      # character classes and anchors are all handled by the YAML parser.
+      # Non-list or non-string-item values → die (fail closed).
+      _rg_slug="${FIELD#review_gate.scope_globs.}"
+      _rg_val=""
+      _rg_file="${SHARED_PATH}"
+      [ "$LOCAL_EXISTS" -eq 1 ] && _rg_file="$LOCAL_PATH"
+      if [ -f "$_rg_file" ]; then
+        if ! command -v yq >/dev/null 2>&1; then
+          die "yq is required for scope_globs resolution but not found on PATH"
+        fi
+        # yq reads the YAML and outputs each list item on its own line.
+        # --exit-status makes yq exit non-zero on null results.
+        # If the node is not a sequence, the type check rejects it.
+        _rg_node_type="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\" | type" "$_rg_file" 2>/dev/null)" || _rg_node_type=""
+        if [ "$_rg_node_type" = '!!seq' ]; then
+          # Verify every item is a non-empty string. Maps, nested lists,
+          # numbers, booleans, null and empty/whitespace-only strings are
+          # rejected so they cannot silently produce a glob that matches
+          # nothing and let an in-scope change through.
+          if ! yq -e ".review_gate.scope_globs.\"${_rg_slug}\" | all_c(tag == \"!!str\" and . != \"\" and test(\"\\S\"))" "$_rg_file" >/dev/null 2>&1; then
+            die "scope_globs.${_rg_slug}: every item must be a non-empty string — refusing (fail closed)"
+          fi
+          _rg_val="$(yq -e ".review_gate.scope_globs.\"${_rg_slug}\"[]" "$_rg_file" 2>/dev/null)" || _rg_val=""
+        fi
+      fi
+      printf '%s\n' "$_rg_val" ;;
     ci_cd.ci_wait_timeout_minutes)
       printf '%s\n' "$v_ci_cd_ci_wait_timeout_minutes" ;;
     sprint.max_concurrent_active)

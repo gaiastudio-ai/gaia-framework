@@ -10,7 +10,7 @@
 # Invocation contract (stable for bats-core authors):
 #
 #   review-gate.sh check             --story <key>
-#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
+#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
 #   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
 #   review-gate.sh review-gate-check --story <key>
 #   review-gate.sh --help
@@ -87,7 +87,8 @@ SCRIPT_NAME="review-gate.sh"
 _RG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=lib/acquire-lock.sh
 . "${_RG_DIR}/lib/acquire-lock.sh"
-unset _RG_DIR
+# shellcheck source=lib/review-gate-table.sh
+. "${_RG_DIR}/lib/review-gate-table.sh"
 
 # ---------- Canonical vocabulary ----------
 
@@ -146,19 +147,207 @@ resolve_ledger_path() {
 
 # ---------- Helpers ----------
 
+# Validate a glob pattern for use as a git pathspec.
+# Returns 0 if valid, 1 if invalid. Catches:
+#   - unclosed bracket class (e.g. src/[)
+#   - empty bracket class (e.g. src/[], src/[!])
+#   - trailing backslash (e.g. src/\)
+#   - reversed character range (e.g. src/[z-a]*)
+# Accepts POSIX-correct patterns like src/[]a]* (] as first char in class).
+# bash 3.2 compatible (no local -A, no ${x,,}).
+_validate_glob_pattern() {
+  local pattern="$1"
+  local len=${#pattern}
+  local i=0
+  while [ "$i" -lt "$len" ]; do
+    local ch="${pattern:$i:1}"
+    case "$ch" in
+      \\)
+        # Backslash escape: must have a next character.
+        i=$((i + 1))
+        if [ "$i" -ge "$len" ]; then
+          return 1  # trailing backslash
+        fi
+        i=$((i + 1))
+        ;;
+      '[')
+        # Start of bracket class. Walk to the matching ].
+        i=$((i + 1))
+        if [ "$i" -ge "$len" ]; then
+          return 1  # unclosed bracket
+        fi
+        # Check for negation prefix.
+        local bc_ch="${pattern:$i:1}"
+        if [ "$bc_ch" = '!' ] || [ "$bc_ch" = '^' ]; then
+          i=$((i + 1))
+          if [ "$i" -ge "$len" ]; then
+            return 1  # unclosed bracket after negation
+          fi
+        fi
+        # POSIX: ] as the first character (or first after !) is literal.
+        local prev_char=""
+        bc_ch="${pattern:$i:1}"
+        if [ "$bc_ch" = ']' ]; then
+          prev_char=']'
+          i=$((i + 1))
+          if [ "$i" -ge "$len" ]; then
+            return 1  # unclosed bracket (only ] in class)
+          fi
+        fi
+        # Walk the rest of the bracket class.
+        while [ "$i" -lt "$len" ]; do
+          bc_ch="${pattern:$i:1}"
+          if [ "$bc_ch" = ']' ]; then
+            # End of bracket class. Check that there is real content.
+            break
+          fi
+          # Refuse POSIX bracket expressions ([:name:], [=c=], [.elem.]).
+          # git's wildmatch handles these but only for the 12 standard
+          # POSIX class names; mis-spelled names silently match nothing,
+          # which would cause a fail-open. Rather than emulate wildmatch,
+          # refuse any bracket expression opener inside a class.
+          if [ "$bc_ch" = '[' ] && [ $((i + 1)) -lt "$len" ]; then
+            local next_ch="${pattern:$((i + 1)):1}"
+            if [ "$next_ch" = ':' ] || [ "$next_ch" = '=' ] || [ "$next_ch" = '.' ]; then
+              return 1  # POSIX bracket expression — refuse
+            fi
+          fi
+          # Backslash inside bracket class: compare with test expression
+          # (case-pattern \\) does not work on bash 3.2 inside the inner loop.
+          if [ "$bc_ch" = $'\\' ]; then
+            i=$((i + 1))
+            if [ "$i" -ge "$len" ]; then
+              return 1  # trailing backslash in class
+            fi
+            prev_char="${pattern:$i:1}"
+            i=$((i + 1))
+            continue
+          fi
+          if [ "$bc_ch" = '-' ] && [ -n "$prev_char" ]; then
+            # Range expression: prev-next. Check that next exists and range is valid.
+            i=$((i + 1))
+            if [ "$i" -ge "$len" ]; then
+              return 1  # unclosed bracket
+            fi
+            local range_end="${pattern:$i:1}"
+            if [ "$range_end" = ']' ]; then
+              # Trailing dash is literal per POSIX, close the class.
+              break
+            fi
+            # Check range order (ASCII comparison).
+            if [ "$(printf '%d' "'$prev_char")" -gt "$(printf '%d' "'$range_end")" ]; then
+              return 1  # reversed range
+            fi
+            prev_char="$range_end"
+          else
+            prev_char="$bc_ch"
+          fi
+          i=$((i + 1))
+        done
+        if [ "$i" -ge "$len" ]; then
+          return 1  # unclosed bracket (never found ])
+        fi
+        # We found ] — move past it.
+        i=$((i + 1))
+        ;;
+      *)
+        i=$((i + 1))
+        ;;
+    esac
+  done
+  return 0
+}
+
+# Resolve the project-config.yaml path by walking up from a given directory.
+# Checks PROJECT_CONFIG, then PROJECT_ROOT/CLAUDE_PROJECT_ROOT, then walks
+# up from the given path looking for .gaia/config/project-config.yaml.
+# Prints the resolved path or empty if not found.
+_resolve_config_path() {
+  local from="${1:-.}"
+  # Explicit env wins.
+  if [ -n "${PROJECT_CONFIG:-}" ] && [ -f "${PROJECT_CONFIG}" ]; then
+    printf '%s' "$PROJECT_CONFIG"
+    return 0
+  fi
+  # Try the roots.
+  local root
+  for root in "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}"; do
+    if [ -n "$root" ] && [ -f "$root/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$root/.gaia/config/project-config.yaml"
+      return 0
+    fi
+  done
+  # Walk up from the given directory.
+  local dir
+  dir="$(cd "$from" 2>/dev/null && pwd)" || dir=""
+  while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s' "$dir/.gaia/config/project-config.yaml"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+
 die() {
   # message…  (always exit 1)
   printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2
   exit 1
 }
 
+# Validate a value is safe for table-cell insertion: reject pipe, newline, CR.
+# Used for --sha, --report and any other value written into the markdown table.
+_validate_table_value() {
+  local label="$1" value="$2"
+  case "$value" in
+    *'|'*)
+      die "$label contains a pipe character ('|') which would corrupt the table — refusing"
+      ;;
+  esac
+  case "$value" in
+    *$'\n'*|*$'\r'*)
+      die "$label contains a newline or carriage-return which would forge a table row — refusing"
+      ;;
+  esac
+}
+
+# Validate a commit SHA argument: must be 4-40 hex chars, no leading dash.
+# Optionally resolves to a full SHA via git rev-parse --verify when a git
+# work tree is available. Returns the (possibly resolved) SHA on stdout.
+# Arguments: label value [project_path]
+_validate_sha_arg() {
+  local label="$1" value="$2" pp="${3:-${PROJECT_PATH:-.}}"
+  # Reject leading dash (argument injection via git).
+  case "$value" in
+    -*)
+      die "$label starts with '-' — potential argument injection; refusing"
+      ;;
+  esac
+  # Reject non-hex characters (must be 4-40 hex chars).
+  if ! printf '%s' "$value" | grep -qE '^[0-9a-fA-F]{4,40}$'; then
+    die "$label must be a hex SHA (4-40 hex chars), got '$value'"
+  fi
+  # Resolve to full SHA when in a git work tree.
+  if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local full_sha
+    full_sha="$(git -C "$pp" rev-parse --verify "${value}^{commit}" 2>/dev/null)" \
+      || die "$label '$value' does not resolve to a valid commit"
+    printf '%s' "$full_sha"
+  else
+    printf '%s' "$value"
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
   review-gate.sh check             --story <key>
-  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--plan-id <id>]
+  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
   review-gate.sh review-gate-check --story <key>
+  review-gate.sh carry-forward     --story <key> --row <gate> --from <sha> --to <sha>
   review-gate.sh --help
 
 Subcommands:
@@ -166,10 +355,15 @@ Subcommands:
                     exit 1 and list the non-PASSED gate names on stderr (one
                     per line).
   update            Atomically rewrite exactly one row of the Review Gate
-                    table. Only the Status and Report cells of the matched
-                    gate are changed — all other bytes of the story file are
-                    preserved (headers, blank lines, other rows, trailing
-                    content). Writes are serialized via flock. When --plan-id
+                    table. The Status, Report and Reviewed SHA cells of the
+                    matched gate are changed. When a three-column table is
+                    updated, the header and separator are upgraded to the
+                    four-column format and non-target rows gain an empty
+                    fourth cell. Other content in the story file is
+                    preserved (blank lines, trailing content). The fourth
+                    column (Reviewed SHA) is bound to
+                    the worktree HEAD by default, or to an explicit --sha
+                    value. Writes are serialized via flock. When --plan-id
                     is provided, the verdict is written to the ledger file
                     instead (tab-separated: story_key gate plan_id verdict).
   status            Print a single JSON object to stdout via jq -nc. Without
@@ -190,11 +384,25 @@ Subcommands:
                     Read-only: zero file writes, zero lockfile or tempfile
                     creation. Safe to invoke under a subagent read-only
                     allowlist of Read, Grep, Bash.
+  carry-forward     Re-bind a PASSED review verdict from one commit to
+                    another when the diff has no files in the row's configured
+                    scope globs. Evidence is self-computed from the git diff;
+                    caller-supplied evidence is refused. Writes a sidecar
+                    record (review-gate-carry.jsonl) with the carry evidence
+                    before rebinding the row. Requires scope_globs to be
+                    configured for the row in project-config.yaml.
 
 Flags:
   --story <key>      Story key (required for all subcommands).
   --gate <name>      Gate name (required for update; optional for status).
   --verdict <V>      Verdict value (required for update).
+  --sha <sha>        Commit SHA to bind the verdict to (update only).
+                     Defaults to the worktree HEAD; 'none' outside a git
+                     work tree.
+  --row <gate>       Gate name for carry-forward.
+  --from <sha>       Source SHA for carry-forward (must match the row's
+                     current Reviewed SHA).
+  --to <sha>         Target SHA for carry-forward.
   --plan-id <id>     Plan identifier for ledger-keyed verdicts.
                      Must match [A-Za-z0-9._:+-]+. Required for the
                      "test-automate-plan" gate; optional for canonical gates.
@@ -444,95 +652,45 @@ locate_story_file() {
 # Unknown gate names are preserved in the file (spurious rows are left
 # untouched on update) but ignored for check/status vocabulary checks.
 
-# Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT`.
+# Stream parsed rows to stdout as TSV `GATE\tSTATUS\tREPORT\tSHA`.
+# Delegates to the shared dual-shape parser (review-gate-table.sh).
+# Three-column rows emit SHA as "absent".
 # Exits 1 (via die) if the `## Review Gate` header is absent.
 parse_gate_rows() {
   local file="$1"
 
-  # First: confirm the `## Review Gate` header exists. awk-only detection is
-  # cheaper and gives a precise error message.
   if ! grep -q '^## Review Gate[[:space:]]*$' "$file"; then
     die "story file '$file' is missing the '## Review Gate' section"
   fi
 
-  awk '
-    BEGIN { in_section = 0; in_table = 0; saw_sep = 0 }
-    /^## Review Gate[[:space:]]*$/ { in_section = 1; in_table = 0; saw_sep = 0; next }
-    in_section && /^## / {
-      # A new h2 header terminates the section.
-      in_section = 0; in_table = 0; next
-    }
-    !in_section { next }
-
-    # Inside the section. Look for the first pipe-table.
-    {
-      # Strip trailing \r so CRLF files parse correctly.
-      sub(/\r$/, "", $0)
-    }
-
-    in_section && !in_table {
-      # Header row starts the table (first line beginning with |).
-      if ($0 ~ /^[[:space:]]*\|/) {
-        in_table = 1
-        saw_sep = 0
-        next
-      }
-      next
-    }
-
-    in_table {
-      # End of table: blank line or non-pipe line.
-      if ($0 !~ /^[[:space:]]*\|/) {
-        in_table = 0
-        in_section = 0
-        next
-      }
-
-      # Separator row (| --- | --- | --- |) — skip exactly one.
-      if (!saw_sep && $0 ~ /^[[:space:]]*\|[[:space:]]*-+/) {
-        saw_sep = 1
-        next
-      }
-
-      # Data row. Strip leading/trailing pipe and whitespace, split on |.
-      line = $0
-      sub(/^[[:space:]]*\|/, "", line)
-      sub(/\|[[:space:]]*$/, "", line)
-      n = split(line, cells, /\|/)
-      if (n < 3) next
-
-      # Trim each cell.
-      for (i = 1; i <= n; i++) {
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[i])
-      }
-
-      # Emit TSV: GATE \t STATUS \t REPORT
-      printf "%s\t%s\t%s\n", cells[1], cells[2], cells[3]
-    }
-  ' "$file"
+  parse_review_gate_table "$file"
 }
 
-# Populate two parallel global arrays ROW_GATES / ROW_STATUSES from the parsed
-# table, keeping only the canonical six gates (in canonical order). Exits 1
-# if any canonical gate is missing from the table.
+# Populate three parallel global arrays ROW_GATES / ROW_STATUSES / ROW_SHAS
+# from the parsed table, keeping only the canonical six gates (in canonical
+# order). Exits 1 if any canonical gate is missing from the table.
 ROW_GATES=()
 ROW_STATUSES=()
+ROW_SHAS=()
 load_canonical_rows() {
   local file="$1"
 
   # Reset globals.
   ROW_GATES=()
   ROW_STATUSES=()
+  ROW_SHAS=()
 
-  # Collect parsed rows into two temp arrays keyed by gate name.
+  # Collect parsed rows into temp arrays keyed by gate name.
   local -a parsed_gates=()
   local -a parsed_statuses=()
+  local -a parsed_shas=()
 
-  local gate status _report
-  while IFS=$'\t' read -r gate status _report; do
+  local gate status _report _sha
+  while IFS=$'\t' read -r gate status _report _sha; do
     [ -z "$gate" ] && continue
     parsed_gates+=("$gate")
     parsed_statuses+=("$status")
+    parsed_shas+=("${_sha:-}")
   done < <(parse_gate_rows "$file")
 
   # For each canonical gate (in order), find its row.
@@ -544,6 +702,7 @@ load_canonical_rows() {
       if [ "${parsed_gates[$i]}" = "$cg" ]; then
         ROW_GATES+=("$cg")
         ROW_STATUSES+=("${parsed_statuses[$i]}")
+        ROW_SHAS+=("${parsed_shas[$i]:-}")
         found=1
         break
       fi
@@ -748,38 +907,54 @@ cmd_review_gate_check() {
   # and exits 1 via die() if any canonical gate is missing from the table.
   load_canonical_rows "$file"
 
-  # Parse the six Report cells out of the parsed TSV stream so the table
-  # we render preserves whatever the story author wrote in the Report
-  # column (typically the em-dash placeholder, sometimes a review-file URL).
+  # Parse the six Report and SHA cells out of the parsed TSV stream so
+  # the table we render preserves whatever the story author wrote.
   local -a report_for_gate=()
-  local parsed_gate parsed_status parsed_report i found
+  local -a sha_for_gate=()
+  local parsed_gate _parsed_status parsed_report parsed_sha i found
   local cg
   for cg in "${CANONICAL_GATES[@]}"; do
     found=0
-    while IFS=$'\t' read -r parsed_gate parsed_status parsed_report; do
+    while IFS=$'\t' read -r parsed_gate _parsed_status parsed_report parsed_sha; do
       if [ "$parsed_gate" = "$cg" ]; then
         report_for_gate+=("$parsed_report")
+        sha_for_gate+=("${parsed_sha:-}")
         found=1
         break
       fi
     done < <(parse_gate_rows "$file")
     if [ $found -eq 0 ]; then
-      # Should be impossible — load_canonical_rows already enforced row
-      # presence — but guard defensively so the read loop never leaves
-      # report_for_gate short.
       report_for_gate+=("—")
+      sha_for_gate+=("")
     fi
   done
 
-  # Render the six-row markdown table exactly as a story file stores it.
-  printf '| Review | Status | Report |\n'
-  printf '|--------|--------|--------|\n'
-  i=0
-  while [ $i -lt "${#ROW_GATES[@]}" ]; do
-    printf '| %s | %s | %s |\n' \
-      "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}"
-    i=$((i + 1))
+  # Render the six-row markdown table. Use four columns when any row has
+  # a SHA; otherwise preserve the legacy three-column format.
+  local has_sha=0
+  for i in "${sha_for_gate[@]}"; do
+    if [ -n "$i" ]; then has_sha=1; break; fi
   done
+
+  if [ "$has_sha" -eq 1 ]; then
+    printf '| Review | Status | Report | Reviewed SHA |\n'
+    printf '|--------|--------|--------|--------------|\n'
+    i=0
+    while [ $i -lt "${#ROW_GATES[@]}" ]; do
+      printf '| %s | %s | %s | %s |\n' \
+        "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}" "${sha_for_gate[$i]:-}"
+      i=$((i + 1))
+    done
+  else
+    printf '| Review | Status | Report |\n'
+    printf '|--------|--------|--------|\n'
+    i=0
+    while [ $i -lt "${#ROW_GATES[@]}" ]; do
+      printf '| %s | %s | %s |\n' \
+        "${ROW_GATES[$i]}" "${ROW_STATUSES[$i]}" "${report_for_gate[$i]}"
+      i=$((i + 1))
+    done
+  fi
 
   # Classify.
   local composite
@@ -859,14 +1034,16 @@ cmd_check() {
 # ---------- Subcommand: update ----------
 
 # Rewrite exactly one row of the Review Gate table in $file, replacing the
-# Status cell of the matched gate with $new_verdict and the Report cell with
-# the provided report path (or "—" when none is given). All other bytes are
-# preserved. Runs under flock and uses tempfile + atomic mv.
+# Status cell of the matched gate with $new_verdict, the Report cell with
+# the provided report path (or "—" when none is given), and the Reviewed SHA
+# cell with the provided SHA. All other bytes are preserved. Runs under flock
+# and uses tempfile + atomic mv.
 cmd_update() {
   local file="$1"
   local gate_name="$2"
   local new_verdict="$3"
   local report_value="${4:-—}"
+  local sha_value="${5:-}"
 
   # Data-integrity guard: reject report paths that would corrupt the
   # markdown table or allow row injection. Pipe characters add cells,
@@ -895,14 +1072,14 @@ cmd_update() {
     # $gate_name. Preserve CRLF and all surrounding bytes.
     # The report value is passed via ENVIRON to avoid awk -v backslash
     # expansion (awk -v interprets \t, \n etc. in the value).
-    GAIA_RG_REPORT="$report_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
+    GAIA_RG_REPORT="$report_value" GAIA_RG_SHA="$sha_value" awk -v target="$gate_name" -v new_status="$new_verdict" '
       BEGIN {
         in_section = 0; in_table = 0; saw_sep = 0; rewritten = 0
+        header_upgraded = 0
         new_report = ENVIRON["GAIA_RG_REPORT"]
+        new_sha = ENVIRON["GAIA_RG_SHA"]
       }
 
-      # Detect `## Review Gate` header. We preserve the line verbatim
-      # (including any trailing \r) and track state off a stripped copy.
       {
         raw = $0
         line = $0
@@ -916,7 +1093,6 @@ cmd_update() {
       }
 
       in_section && line ~ /^## / {
-        # New h2 terminates the section.
         in_section = 0; in_table = 0
         print raw
         next
@@ -931,6 +1107,21 @@ cmd_update() {
         if (line ~ /^[[:space:]]*\|/) {
           in_table = 1
           saw_sep = 0
+
+          # Check if this is a 3-column header that needs upgrading.
+          # Count pipe-delimited cells in the header row.
+          tmp_h = line
+          sub(/^[[:space:]]*\|/, "", tmp_h)
+          sub(/\|[[:space:]]*$/, "", tmp_h)
+          h_cols = split(tmp_h, hcells, /\|/)
+          if (h_cols == 3 && new_sha != "") {
+            # Upgrade to 4-column header.
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "| Review | Status | Report | Reviewed SHA |%s\n", crlf
+            header_upgraded = 1
+            next
+          }
         }
         print raw
         next
@@ -946,11 +1137,32 @@ cmd_update() {
 
         if (!saw_sep && line ~ /^[[:space:]]*\|[[:space:]]*-+/) {
           saw_sep = 1
+          if (header_upgraded) {
+            # Upgrade separator to 4 columns.
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "|--------|--------|--------|--------------|%s\n", crlf
+            next
+          }
           print raw
           next
         }
 
         if (rewritten) {
+          # Upgrade non-target rows to 4 columns if header was upgraded.
+          if (header_upgraded) {
+            tmp2 = line
+            sub(/^[[:space:]]*\|/, "", tmp2)
+            sub(/\|[[:space:]]*$/, "", tmp2)
+            n2 = split(tmp2, c2, /\|/)
+            if (n2 == 3) {
+              for (j = 1; j <= 3; j++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", c2[j])
+              crlf = ""
+              if (raw ~ /\r$/) { crlf = "\r" }
+              printf "| %s | %s | %s |  |%s\n", c2[1], c2[2], c2[3], crlf
+              next
+            }
+          }
           print raw
           next
         }
@@ -968,14 +1180,22 @@ cmd_update() {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", gate)
 
         if (gate != target) {
+          # Upgrade non-target rows to 4 columns if header was upgraded.
+          if (header_upgraded && n == 3) {
+            for (j = 1; j <= 3; j++) gsub(/^[[:space:]]+|[[:space:]]+$/, "", cells[j])
+            crlf = ""
+            if (raw ~ /\r$/) { crlf = "\r" }
+            printf "| %s | %s | %s |  |%s\n", cells[1], cells[2], cells[3], crlf
+            next
+          }
           print raw
           next
         }
 
-        # Rewrite this row. Preserve CRLF if the original had one.
+        # Rewrite this row — always four columns.
         crlf = ""
         if (raw ~ /\r$/) { crlf = "\r" }
-        printf "| %s | %s | %s |%s\n", target, new_status, new_report, crlf
+        printf "| %s | %s | %s | %s |%s\n", target, new_status, new_report, new_sha, crlf
         rewritten = 1
         next
       }
@@ -984,7 +1204,6 @@ cmd_update() {
 
       END {
         if (!rewritten) {
-          # Signal failure to the caller via exit code 2.
           exit 2
         }
       }
@@ -1035,7 +1254,7 @@ main() {
       usage
       exit 0
       ;;
-    check|update|status|review-gate-check)
+    check|update|status|review-gate-check|carry-forward)
       ;;
     *)
       printf '%s: unknown subcommand: %s\n' "$SCRIPT_NAME" "$subcmd" >&2
@@ -1045,6 +1264,7 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
+  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_evidence=""
   # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
@@ -1099,6 +1319,26 @@ main() {
       --report-missing-reason)
         [ $# -ge 2 ] || die "--report-missing-reason requires a value"
         report_missing_reason="$2"; shift 2
+        ;;
+      --sha)
+        [ $# -ge 2 ] || die "--sha requires a value"
+        sha_arg="$2"; shift 2
+        ;;
+      --row)
+        [ $# -ge 2 ] || die "--row requires a value"
+        carry_row="$2"; shift 2
+        ;;
+      --from)
+        [ $# -ge 2 ] || die "--from requires a value"
+        carry_from="$2"; shift 2
+        ;;
+      --to)
+        [ $# -ge 2 ] || die "--to requires a value"
+        carry_to="$2"; shift 2
+        ;;
+      --evidence)
+        [ $# -ge 2 ] || die "--evidence requires a value"
+        carry_evidence="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1262,12 +1502,33 @@ main() {
         esac
       fi
 
+      # Resolve the SHA for the Reviewed SHA column. Default to the
+      # worktree HEAD when not explicitly provided; "none" outside a git
+      # work tree. This preserves backward compatibility — existing callers
+      # that omit --sha get automatic HEAD binding.
+      local resolved_sha="$sha_arg"
+      if [ -z "$resolved_sha" ]; then
+        local pp="${PROJECT_PATH:-.}"
+        if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          resolved_sha="$(git -C "$pp" rev-parse HEAD 2>/dev/null)" || resolved_sha="none"
+        else
+          resolved_sha="none"
+        fi
+      else
+        # Explicit --sha: validate table-safety and hex format.
+        _validate_table_value "--sha" "$resolved_sha"
+        if [ "$resolved_sha" != "none" ]; then
+          local pp="${PROJECT_PATH:-.}"
+          resolved_sha="$(_validate_sha_arg "--sha" "$resolved_sha" "$pp")"
+        fi
+      fi
+
       # If --plan-id is present, write to the ledger (NOT the Review Gate table).
       if [ -n "$plan_id" ]; then
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"
       else
         # Update the story file's Review Gate table (byte-identical).
-        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}"
+        cmd_update "$STORY_FILE" "$gate_name" "$verdict" "${report_path:-}" "$resolved_sha"
       fi
 
       # Test-artifacts mirror hook.
@@ -1338,6 +1599,219 @@ main() {
           fi
           ;;
       esac
+      ;;
+    carry-forward)
+      # Carry-forward: re-bind a PASSED review verdict from one SHA to another
+      # when the diff between the two SHAs has no files in the row's configured
+      # scope globs. Evidence is ALWAYS self-computed from the diff — caller-
+      # supplied evidence is refused (security: self-computed only).
+      #
+      # Pre-conditions (all must hold or the carry is refused):
+      #   1. Row must currently be PASSED
+      #   2. Row's recorded SHA must equal --from
+      #   3. Configured scope globs must exist for the row (fail closed)
+      #   4. Diff between --from and --to must have zero overlap with scope
+      [ -n "$carry_row" ]  || die "carry-forward requires --row <name>"
+      [ -n "$carry_from" ] || die "carry-forward requires --from <sha>"
+      [ -n "$carry_to" ]   || die "carry-forward requires --to <sha>"
+
+      # Refuse caller-supplied evidence (security: self-computed only).
+      if [ -n "$carry_evidence" ]; then
+        die "carry-forward: caller-supplied evidence is refused — evidence is self-computed from the diff (security policy)"
+      fi
+
+      # Use --gate if --row not provided via separate flag.
+      if [ -z "$carry_row" ] && [ -n "$gate_name" ]; then
+        carry_row="$gate_name"
+      fi
+
+      # Validate the gate name.
+      if ! is_canonical_gate "$carry_row"; then
+        local allowed_gates
+        allowed_gates=$(join_by ', ' "${CANONICAL_GATES[@]}")
+        die "carry-forward: invalid gate name '$carry_row' — allowed: $allowed_gates"
+      fi
+
+      local pp="${PROJECT_PATH:-.}"
+      if ! git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        die "carry-forward requires a git work tree (PROJECT_PATH=$pp is not inside one)"
+      fi
+
+      # Validate --from and --to as hex SHAs (security: prevent argument injection).
+      carry_from="$(_validate_sha_arg "--from" "$carry_from" "$pp")"
+      carry_to="$(_validate_sha_arg "--to" "$carry_to" "$pp")"
+
+      # Pre-condition 1+2: verify the row is currently PASSED and bound to --from.
+      load_canonical_rows "$STORY_FILE"
+      local row_idx=-1 ci
+      ci=0
+      while [ "$ci" -lt "${#ROW_GATES[@]}" ]; do
+        if [ "${ROW_GATES[$ci]}" = "$carry_row" ]; then
+          row_idx=$ci
+          break
+        fi
+        ci=$((ci + 1))
+      done
+      if [ "$row_idx" -eq -1 ]; then
+        die "carry-forward: row '$carry_row' not found in Review Gate table"
+      fi
+      if [ "${ROW_STATUSES[$row_idx]}" != "PASSED" ]; then
+        die "carry-forward: row '$carry_row' is ${ROW_STATUSES[$row_idx]}, not PASSED — only PASSED rows can be carried forward"
+      fi
+      local recorded_sha="${ROW_SHAS[$row_idx]:-}"
+      if [ -z "$recorded_sha" ] || [ "$recorded_sha" = "absent" ]; then
+        die "carry-forward: row '$carry_row' has no recorded SHA — cannot verify it matches --from"
+      fi
+      if [ "$recorded_sha" != "$carry_from" ]; then
+        die "carry-forward: row '$carry_row' was reviewed on $recorded_sha, not $carry_from — SHA mismatch"
+      fi
+
+      # Pre-condition 3: read configured scope globs for this row.
+      # Scope globs are configured under review_gate.scope_globs.<gate-slug>
+      # in project-config.yaml. If no scope is configured, refuse (fail closed).
+      local gate_slug
+      gate_slug="$(printf '%s' "$carry_row" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+      local config_scope=""
+      # Read scope globs from the shared config resolver (resolve-config.sh).
+      # The config path is resolved here (walk-up + PROJECT_CONFIG + env
+      # roots) and passed via --shared so the resolver does not need to
+      # re-discover it. The resolver uses yq to parse the YAML file.
+      local resolver="${_RG_DIR}/resolve-config.sh"
+      if [ ! -f "$resolver" ]; then
+        die "carry-forward: cannot locate resolve-config.sh — refusing (fail closed)"
+      fi
+      local config_file
+      config_file="$(_resolve_config_path "$pp")"
+      if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
+        die "carry-forward: cannot locate project-config.yaml — refusing (fail closed)"
+      fi
+      config_scope="$(bash "$resolver" --shared "$config_file" \
+        --field "review_gate.scope_globs.${gate_slug}" 2>/dev/null)" \
+        || config_scope=""
+      if [ -z "$config_scope" ]; then
+        die "carry-forward: no scope globs configured for row '$carry_row' (gate slug: $gate_slug) — cannot determine file overlap; refusing (fail closed)"
+      fi
+
+      # Pre-condition 4: compute the diff and check for scope overlap.
+      # Uses git diff with :(glob) pathspecs for correct glob semantics:
+      # ** matches zero or more directories, * doesn't cross /, ? matches
+      # one char, [abc] is a character class. --no-renames ensures renamed
+      # files appear as delete + add (a file moved out of scope is caught).
+      # The overlap diff checks for non-empty stdout (any output means a
+      # scope match); it does not parse individual paths, so -z is not needed.
+
+      # Build the pathspec arguments from scope globs.
+      # Validate each glob: git silently treats malformed patterns as
+      # matching nothing (which would cause a fail-open), so we validate
+      # bracket classes, backslash escapes and character ranges ourselves.
+      local -a pathspec_args=()
+      local scope_line
+      while IFS= read -r scope_line; do
+        [ -z "$scope_line" ] && continue
+        if ! _validate_glob_pattern "$scope_line"; then
+          die "carry-forward: invalid scope glob pattern '$scope_line' — refusing (fail closed)"
+        fi
+        pathspec_args+=(":(glob)${scope_line}")
+      done <<< "$config_scope"
+
+      # Check for overlap: if git diff with the scope pathspecs returns any
+      # paths, there is an overlap and the carry-forward must be refused.
+      # Unset pathspec-mode env vars that would disable :(glob) magic.
+      # Does not use -z (only checking presence, not parsing paths), which
+      # avoids the bash 5 "ignored null byte" warning on NUL-delimited output.
+      local overlap_errfile overlap_output overlap_rc
+      overlap_errfile="$(mktemp)"
+      overlap_output="$(env -u GIT_LITERAL_PATHSPECS -u GIT_NOGLOB_PATHSPECS \
+        -u GIT_ICASE_PATHSPECS -u GIT_GLOB_PATHSPECS \
+        git -C "$pp" diff --no-renames --name-only \
+        "$carry_from" "$carry_to" -- "${pathspec_args[@]}" 2>"$overlap_errfile")" \
+        && overlap_rc=0 || overlap_rc=$?
+      local overlap_stderr
+      overlap_stderr="$(cat "$overlap_errfile")"
+      rm -f "$overlap_errfile"
+      if [ "$overlap_rc" -ne 0 ]; then
+        # Any tool error → refuse (fail closed).
+        die "carry-forward: git diff with scope pathspecs failed (rc=$overlap_rc: ${overlap_stderr}) — refusing (fail closed)"
+      fi
+      if [ -n "$overlap_output" ]; then
+        die "carry-forward: diff between $carry_from and $carry_to includes files in scope — review must be re-run"
+      fi
+
+      # Get the full diff (all paths, no pathspec filter) for evidence.
+      # Read via process substitution with NUL delimiter to preserve paths
+      # that contain spaces, tabs, newlines or non-ASCII characters.
+      # Command substitution drops NUL bytes, so we use read -d '' instead.
+      local -a diff_paths=()
+      while IFS= read -r -d '' p; do
+        diff_paths+=("$p")
+      done < <(git -C "$pp" diff -z --no-renames --name-only \
+        "$carry_from" "$carry_to" 2>/dev/null)
+
+      # Build the evidence JSON arrays using jq for correct escaping of
+      # tabs, newlines, control characters, quotes and backslashes.
+      local changed_json="[]"
+      if [ "${#diff_paths[@]}" -gt 0 ]; then
+        changed_json="$(printf '%s\0' "${diff_paths[@]}" \
+          | jq -R -s '[split("\u0000") | .[] | select(length > 0)]')"
+      fi
+      local -a _glob_lines=()
+      local _gl
+      while IFS= read -r _gl; do
+        [ -z "$_gl" ] && continue
+        _glob_lines+=("$_gl")
+      done <<< "$config_scope"
+      local globs_json="[]"
+      if [ "${#_glob_lines[@]}" -gt 0 ]; then
+        globs_json="$(jq -nc '$ARGS.positional' --args -- "${_glob_lines[@]}")"
+      fi
+
+      # Write carry-forward sidecar record FIRST (before rebinding the row).
+      # If the sidecar write fails, the row keeps its old SHA — no binding
+      # without a record.
+      local story_dir
+      story_dir="$(dirname "$STORY_FILE")"
+      local sidecar="${story_dir}/review-gate-carry.jsonl"
+
+      # Refuse to write through a symlink (the sidecar must be a regular file).
+      if [ -L "$sidecar" ]; then
+        die "carry-forward: sidecar path is a symlink — refusing (security policy)"
+      fi
+
+      local ts
+      ts="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+      local record
+      record="$(jq -nc \
+        --arg row "$carry_row" \
+        --arg from "$carry_from" \
+        --arg to "$carry_to" \
+        --argjson paths "$changed_json" \
+        --argjson globs "$globs_json" \
+        --arg ts "$ts" \
+        '{row:$row,from_sha:$from,to_sha:$to,evidence:{changed_paths:$paths,scope_globs:$globs},timestamp:$ts}')"
+      # Atomic append via temp file + cat (safe on concurrent appends).
+      local sidecar_tmp
+      sidecar_tmp="$(mktemp "${story_dir}/.carry-tmp.XXXXXX")"
+      printf '%s\n' "$record" > "$sidecar_tmp"
+      cat "$sidecar_tmp" >> "$sidecar" || {
+        rm -f "$sidecar_tmp"
+        die "carry-forward: failed to write sidecar record — refusing to rebind row"
+      }
+      rm -f "$sidecar_tmp"
+
+      # Now rebind the row's SHA to the to-SHA. Keep the existing report path.
+      local current_report="—"
+      local parsed_gate _parsed_status parsed_report parsed_sha
+      while IFS=$'\t' read -r parsed_gate _parsed_status parsed_report parsed_sha; do
+        if [ "$parsed_gate" = "$carry_row" ]; then
+          current_report="$parsed_report"
+          break
+        fi
+      done < <(parse_gate_rows "$STORY_FILE")
+
+      cmd_update "$STORY_FILE" "$carry_row" "PASSED" "$current_report" "$carry_to"
+
+      printf 'carry-forward: %s bound from %s to %s\n' \
+        "$carry_row" "$carry_from" "$carry_to"
       ;;
   esac
 }

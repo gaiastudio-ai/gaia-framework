@@ -331,6 +331,7 @@ core	retired-migrate-stories.bats
 core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
+core	review-gate-commit-bound.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
 core	review-parity/gaia-qa-tests/action-skill-contract.bats
