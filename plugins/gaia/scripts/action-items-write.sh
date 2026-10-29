@@ -937,137 +937,127 @@ aiw_resolve() {
        printf 'status=error\nreason=aiw_resolve: yq is not mikefarah v4 (%s) — file untouched\n' "$_yq_ver"
        return 1 ;;
   esac
-  # Verify both files parse as valid YAML.
-  if ! yq '.' "$target" > /dev/null 2>&1; then
+  # Single-call structural verification. One yq process loads both the
+  # original and the awk output via load(), computes every structural
+  # invariant, and emits a compact JSON object of booleans and short
+  # strings. Bash reads the flat JSON and maps each field to a verdict.
+  #
+  # Checks (letters match the user ruling):
+  #   (a) top-level keys other than items/last_updated unchanged
+  #   (b) same item count and ids in order
+  #   (c) non-target items deep-equal (JSON comparison for comment safety)
+  #   (d) target: only status/resolution/resolved_date/resolved_in/
+  #       related_stories changed
+  #   (e) old related_stories is null or seq; old ⊆ new; requested present
+  #   (f) status/resolution/resolved_in/resolved_date equal requested
+  #   (g) last_updated: bump when present, never add
+  #
+  # All values passed via strenv(), never env().
+  local _vj
+  _vj="$(
+    AIW_V_NEW="$tmp" \
+    AIW_V_ITEM="$item" \
+    AIW_V_RS="$related_stories" \
+    yq -o=json -I0 '
+      load(strenv(AIW_V_NEW)) as $new |
+      strenv(AIW_V_ITEM) as $id |
+      strenv(AIW_V_RS) as $exp_rs |
+      .items as $oi |
+      ($new | .items) as $ni |
+      ($oi | [to_entries[] | select(.value.id == $id) | .key] | .[0]) as $idx |
+      ($ni | .[$idx] | .status) as $est |
+      ($ni | .[$idx] | .resolution) as $eres |
+      ($ni | .[$idx] | .resolved_in) as $eri |
+      ($ni | .[$idx] | .resolved_date) as $erd |
+      .last_updated as $flu |
+      ($new | .last_updated) as $nlu |
+      ($oi | .[$idx] | .related_stories) as $ors |
+      ($ni | .[$idx] | .related_stories) as $nrs |
+      ($ors == null) as $rs_null |
+      ($rs_null or ($ors | tag == "!!seq")) as $rs_type |
+      ($rs_null or ($rs_type | not) or ([$ors | .[]] | map(. as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0) | map(select(. == true)) | length == ([$ors | .[]] | length))) as $d_super |
+      ($exp_rs == "" or ([($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "") | . as $e | [$nrs // [] | .[]] | map(select(. == $e)) | length > 0] | map(select(. == true)) | length == [($exp_rs | split(","))[] | sub("^ +"; "") | sub(" +$"; "") | select(. != "")] | length)) as $d_req |
+      (to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $otop |
+      ($new | to_entries | map(select(.key | test("^(items|last_updated)$") | not)) | from_entries | tojson) as $ntop |
+      ($otop == $ntop) as $g |
+      (($oi | length) == ($ni | length)) as $a1 |
+      (($oi | [.[].id] | tojson) == ($ni | [.[].id] | tojson)) as $a2 |
+      (($oi | [to_entries[] | select(.key != $idx) | .value] | tojson) == ($ni | [to_entries[] | select(.key != $idx) | .value] | tojson)) as $b |
+      (($oi | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson) == ($ni | .[$idx] | to_entries | map(select(.key | test("^(status|resolution|resolved_date|resolved_in|related_stories)$") | not)) | from_entries | tojson)) as $c |
+      {
+        "g": $g, "a1": $a1, "a2": $a2, "b": $b, "c": $c,
+        "idx": ($idx // -1),
+        "rs_type": $rs_type, "d_super": $d_super, "d_req": $d_req,
+        "est": ($est // ""), "eres": ($eres // ""),
+        "eri": ($eri // ""), "erd": ($erd // ""),
+        "flu": ($flu // ""), "nlu": ($nlu // "")
+      }
+    ' "$target"
+  )" || {
     rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: original file does not parse as YAML — file untouched\n'
+    printf 'status=error\nreason=aiw_resolve: yq verification failed — file untouched\n'
+    return 1
+  }
+  if [ -z "$_vj" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: yq produced empty output — file untouched\n'
     return 1
   fi
-  if ! yq '.' "$tmp" > /dev/null 2>&1; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: output YAML does not parse — file untouched\n'
-    return 1
+
+  # --- Parse the JSON verdict and check each rule ---
+  # Helper: extract a value from the compact JSON by key name.
+  # The JSON is flat (no nested objects) and values are booleans, small
+  # integers, or short strings without embedded quotes or commas.
+  _vget() {
+    local _s="${_vj#*\"$1\":}" _v
+    _v="${_s%%[,\}]*}"
+    case "$_v" in \"*) _v="${_v#\"}"; _v="${_v%\"}" ;; esac
+    printf '%s' "$_v"
+  }
+
+  local _reason=""
+  # (a) top-level unchanged.
+  [ "$(_vget g)" = "true" ] || _reason="top-level keys were modified"
+  # (b) same count and ids.
+  [ -n "$_reason" ] || { [ "$(_vget a1)" = "true" ] || _reason="item count changed"; }
+  [ -n "$_reason" ] || { [ "$(_vget a2)" = "true" ] || _reason="item ids or order changed"; }
+  # Target found.
+  [ -n "$_reason" ] || { [ "$(_vget idx)" != "-1" ] || _reason="target item $item not found by yq"; }
+  # (c) non-target unchanged.
+  [ -n "$_reason" ] || { [ "$(_vget b)" = "true" ] || _reason="non-target items were modified"; }
+  # (d) target: only allowed fields.
+  [ -n "$_reason" ] || { [ "$(_vget c)" = "true" ] || _reason="target item has unexpected field changes"; }
+  # (e) related_stories: type, superset, requested.
+  [ -n "$_reason" ] || { [ "$(_vget rs_type)" = "true" ] || _reason="related_stories is not a YAML sequence"; }
+  [ -n "$_reason" ] || { [ "$(_vget d_super)" = "true" ] || _reason="related_stories entries were removed"; }
+  [ -n "$_reason" ] || { [ "$(_vget d_req)" = "true" ] || _reason="requested related_stories entry not present"; }
+  # (f) value checks.
+  [ -n "$_reason" ] || { [ "$(_vget est)" = "$_resolve_status" ] || _reason="target status is \"$(_vget est)\", expected \"$_resolve_status\""; }
+  if [ -z "$_reason" ] && [ -n "$resolution" ]; then
+    [ "$(_vget eres)" = "$resolution" ] || _reason="target resolution mismatch"
   fi
-  # (a) Same number of items and same ids in the same order.
-  local _old_ids _new_ids
-  _old_ids="$(yq -r '.items[].id' "$target" 2>/dev/null)" || { rm -f "$tmp"; printf 'status=error\nreason=aiw_resolve: yq failed reading original ids — file untouched\n'; return 1; }
-  _new_ids="$(yq -r '.items[].id' "$tmp" 2>/dev/null)" || { rm -f "$tmp"; printf 'status=error\nreason=aiw_resolve: yq failed reading output ids — file untouched\n'; return 1; }
-  if [ "$_old_ids" != "$_new_ids" ]; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: item ids or order changed — file untouched\n'
-    return 1
+  if [ -z "$_reason" ] && [ -n "$resolved_in" ]; then
+    [ "$(_vget eri)" = "$resolved_in" ] || _reason="target resolved_in mismatch"
   fi
-  # Find the target item's index (first occurrence, matching the awk editor).
-  local _tgt_idx
-  _tgt_idx="$(AIW_V_ITEM="$item" yq -r 'env(AIW_V_ITEM) as $id | [.items | to_entries[] | select(.value.id == $id) | .key] | .[0]' "$target" 2>/dev/null)"
-  if [ -z "$_tgt_idx" ]; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: target item %s not found by yq — file untouched\n' "$item"
-    return 1
+  if [ -z "$_reason" ] && [ -n "$rd" ]; then
+    [ "$(_vget erd)" = "$rd" ] || _reason="target resolved_date mismatch"
   fi
-  # (b) Every item other than the target is deep-equal old vs new.
-  # Use JSON output (-o=json) so comment attachment does not affect comparison.
-  local _diff_count
-  _diff_count="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
-    env(AIW_V_IDX) as $idx |
-    [.items | to_entries[] | select(.key != ($idx | tonumber)) | .value]
-  ' "$target" 2>/dev/null | md5sum)"
-  local _diff_count_new
-  _diff_count_new="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
-    env(AIW_V_IDX) as $idx |
-    [.items | to_entries[] | select(.key != ($idx | tonumber)) | .value]
-  ' "$tmp" 2>/dev/null | md5sum)"
-  if [ "$_diff_count" != "$_diff_count_new" ]; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: non-target items were modified — file untouched\n'
-    return 1
-  fi
-  # (c) In the target, only status, resolution, resolved_date, resolved_in,
-  #     related_stories changed. All other keys must be identical.
-  local _old_other _new_other
-  _old_other="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
-    env(AIW_V_IDX) as $idx |
-    .items[$idx | tonumber] | del(.status, .resolution, .resolved_date, .resolved_in, .related_stories)
-  ' "$target" 2>/dev/null | md5sum)"
-  _new_other="$(AIW_V_IDX="$_tgt_idx" yq -o=json -I0 '
-    env(AIW_V_IDX) as $idx |
-    .items[$idx | tonumber] | del(.status, .resolution, .resolved_date, .resolved_in, .related_stories)
-  ' "$tmp" 2>/dev/null | md5sum)"
-  if [ "$_old_other" != "$_new_other" ]; then
-    rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: target item has unexpected field changes — file untouched\n'
-    return 1
-  fi
-  # (d) New related_stories is a superset of old (each old entry still present).
-  if [ -n "$safe_rs" ]; then
-    local _old_rs_file="${tmp}.oldrs" _new_rs_file="${tmp}.newrs"
-    AIW_V_IDX="$_tgt_idx" yq -r '
-      env(AIW_V_IDX) as $idx |
-      .items[$idx | tonumber].related_stories // [] | .[]
-    ' "$target" > "$_old_rs_file" 2>/dev/null || true
-    AIW_V_IDX="$_tgt_idx" yq -r '
-      env(AIW_V_IDX) as $idx |
-      .items[$idx | tonumber].related_stories // [] | .[]
-    ' "$tmp" > "$_new_rs_file" 2>/dev/null || true
-    local _rs_entry _rs_ok=1
-    while IFS= read -r _rs_entry; do
-      [ -n "$_rs_entry" ] || continue
-      if ! /usr/bin/grep -qxF "$_rs_entry" "$_new_rs_file" 2>/dev/null; then
-        _rs_ok=0
-        break
-      fi
-    done < "$_old_rs_file"
-    rm -f "$_old_rs_file" "$_new_rs_file"
-    if [ "$_rs_ok" -ne 1 ]; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: related_stories entries were removed — file untouched\n'
-      return 1
+  # (g) last_updated.
+  if [ -z "$_reason" ]; then
+    local _flu _nlu
+    _flu="$(_vget flu)"
+    _nlu="$(_vget nlu)"
+    if [ -n "$_flu" ]; then
+      [ "$_nlu" = "$_today" ] || _reason="last_updated not bumped to today"
+    else
+      [ -z "$_nlu" ] || _reason="last_updated was added but original lacks it"
     fi
   fi
-  # (e) The target's new status/resolution/resolved_in equal the requested values.
-  local _new_status_val
-  _new_status_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].status' "$tmp" 2>/dev/null)"
-  if [ "$_new_status_val" != "$_resolve_status" ]; then
+
+  if [ -n "$_reason" ]; then
     rm -f "$tmp"
-    printf 'status=error\nreason=aiw_resolve: target status is "%s", expected "%s" — file untouched\n' "$_new_status_val" "$_resolve_status"
+    printf 'status=error\nreason=aiw_resolve: %s — file untouched\n' "$_reason"
     return 1
-  fi
-  if [ -n "$resolution" ]; then
-    local _new_res_val
-    _new_res_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].resolution' "$tmp" 2>/dev/null)"
-    if [ "$_new_res_val" != "$resolution" ]; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: target resolution mismatch — file untouched\n'
-      return 1
-    fi
-  fi
-  if [ -n "$resolved_in" ]; then
-    local _new_ri_val
-    _new_ri_val="$(AIW_V_IDX="$_tgt_idx" yq -r 'env(AIW_V_IDX) as $idx | .items[$idx | tonumber].resolved_in' "$tmp" 2>/dev/null)"
-    if [ "$_new_ri_val" != "$resolved_in" ]; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: target resolved_in mismatch — file untouched\n'
-      return 1
-    fi
-  fi
-  # (f) last_updated: if the original has last_updated, the output must too,
-  #     and it must be today. If the original lacks it, the output must also
-  #     lack it (never added).
-  local _old_lu _new_lu
-  _old_lu="$(yq -r '.last_updated // ""' "$target" 2>/dev/null)" || true
-  _new_lu="$(yq -r '.last_updated // ""' "$tmp" 2>/dev/null)" || true
-  if [ -n "$_old_lu" ]; then
-    if [ "$_new_lu" != "$_today" ]; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: last_updated not bumped to today — file untouched\n'
-      return 1
-    fi
-  else
-    if [ -n "$_new_lu" ]; then
-      rm -f "$tmp"
-      printf 'status=error\nreason=aiw_resolve: last_updated was added but original lacks it — file untouched\n'
-      return 1
-    fi
   fi
 
   mv -f "$tmp" "$target"

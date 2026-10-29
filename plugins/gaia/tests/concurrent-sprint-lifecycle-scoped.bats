@@ -2955,6 +2955,167 @@ YAML
 }
 
 # ================================================================
+# Verifier rule tests — each pins a single verification check
+# ================================================================
+
+@test "verifier refuses when top-level key is modified (archive before items)" {
+  # Pins check (a): top-level keys other than items/last_updated unchanged.
+  local target="$TEST_TMP/ai-v1-toplevel.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+archive:
+  - id: "AI-2"
+    status: "open"
+    note: "archived copy"
+items:
+  - id: "AI-1"
+    status: "open"
+  - id: "AI-2"
+    status: "done"
+YAML
+
+  source "$AIW_SH"
+  # AI-2 status in items is already "done"; the awk edits archive instead.
+  run aiw_resolve --target "$target" --item "AI-2" --status "done"
+  [ "$status" -ne 0 ] || {
+    echo "Top-level archive edit accepted (should refuse)" >&2; false
+  }
+  [[ "$output" == *"top-level keys were modified"* ]] || {
+    echo "Expected toplevel refusal, got: $output" >&2; false
+  }
+}
+
+@test "verifier refuses scalar related_stories" {
+  # Pins check (e) type guard: related_stories must be null or !!seq.
+  local target="$TEST_TMP/ai-scalar-rs.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    related_stories: "E1-S1, E1-S2"
+YAML
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-1" --status "done" \
+    --related-stories "E900-S1"
+  [ "$status" -ne 0 ] || {
+    echo "Scalar related_stories accepted (should refuse)" >&2; false
+  }
+  [[ "$output" == *"not a YAML sequence"* ]] || [[ "$output" == *"entries were removed"* ]] || {
+    echo "Expected rs type or superset refusal, got: $output" >&2; false
+  }
+}
+
+@test "verifier refuses when comment after inline list drops an entry" {
+  # Pins check (e) superset: old entries must be in new.
+  # The awk parser garbles entries after a trailing comment on an inline
+  # sequence. The verifier catches the resulting mismatch.
+  local target="$TEST_TMP/ai-comment-rs.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+    related_stories: [E1-S1, E1-S2] # team discussion
+YAML
+
+  source "$AIW_SH"
+  run aiw_resolve --target "$target" --item "AI-1" --status "done" \
+    --related-stories "E900-S1"
+  [ "$status" -ne 0 ] || {
+    echo "Comment-garbled rs accepted (should refuse)" >&2; false
+  }
+  [[ "$output" == *"related_stories"* ]] || {
+    echo "Expected rs refusal, got: $output" >&2; false
+  }
+}
+
+@test "verifier refuses when yq is absent" {
+  # Pins the yq-missing guard.
+  local target="$TEST_TMP/ai-noyq.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+YAML
+  local orig_sha
+  orig_sha="$(shasum "$target" | cut -d' ' -f1)"
+
+  # Build a PATH without yq.
+  local noyq_dir="$TEST_TMP/noyq-bin"
+  mkdir -p "$noyq_dir"
+  local _tool _tp
+  for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
+               sleep wc sort tr head tail printf; do
+    _tp="$(command -v "$_tool" 2>/dev/null)" || continue
+    ln -sf "$_tp" "$noyq_dir/$_tool" 2>/dev/null || true
+  done
+  [ -x /usr/bin/grep ] && ln -sf /usr/bin/grep "$noyq_dir/grep"
+  # flock for the lock path (optional — absent on stock macOS).
+  if command -v flock >/dev/null 2>&1; then
+    ln -sf "$(command -v flock)" "$noyq_dir/flock"
+  fi
+
+  run bash -c 'export PATH="'"$noyq_dir"'"; source "'"$AIW_SH"'"; aiw_resolve --target "'"$target"'" --item "AI-1" --status "done"'
+  [ "$status" -ne 0 ] || {
+    echo "Resolve without yq succeeded (should refuse)" >&2; false
+  }
+  local after_sha
+  after_sha="$(shasum "$target" | cut -d' ' -f1)"
+  [ "$orig_sha" = "$after_sha" ] || {
+    echo "File modified despite yq-missing refusal" >&2; false
+  }
+}
+
+@test "verifier refuses non-mikefarah yq flavour" {
+  # Pins the yq flavour check.
+  local target="$TEST_TMP/ai-badyq.yaml"
+  cat > "$target" <<'YAML'
+last_updated: "2026-01-01"
+items:
+  - id: "AI-1"
+    status: "open"
+YAML
+  local orig_sha
+  orig_sha="$(shasum "$target" | cut -d' ' -f1)"
+
+  # Create a fake yq that reports python-yq style.
+  local fakeyq_dir="$TEST_TMP/fakeyq-bin"
+  mkdir -p "$fakeyq_dir"
+  cat > "$fakeyq_dir/yq" <<'SH'
+#!/bin/bash
+if [ "$1" = "--version" ]; then
+  echo "yq 3.4.3"
+  exit 0
+fi
+exit 1
+SH
+  chmod +x "$fakeyq_dir/yq"
+  local _tool _tp
+  for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
+               sleep wc sort tr head tail printf; do
+    _tp="$(command -v "$_tool" 2>/dev/null)" || continue
+    ln -sf "$_tp" "$fakeyq_dir/$_tool" 2>/dev/null || true
+  done
+  [ -x /usr/bin/grep ] && ln -sf /usr/bin/grep "$fakeyq_dir/grep"
+  if command -v flock >/dev/null 2>&1; then
+    ln -sf "$(command -v flock)" "$fakeyq_dir/flock"
+  fi
+
+  run bash -c 'export PATH="'"$fakeyq_dir"'"; source "'"$AIW_SH"'"; aiw_resolve --target "'"$target"'" --item "AI-1" --status "done"'
+  [ "$status" -ne 0 ] || {
+    echo "Resolve with python-yq succeeded (should refuse)" >&2; false
+  }
+  local after_sha
+  after_sha="$(shasum "$target" | cut -d' ' -f1)"
+  [ "$orig_sha" = "$after_sha" ] || {
+    echo "File modified despite flavour refusal" >&2; false
+  }
+}
+
+# ================================================================
 # Multi-writer race test: >=16 parallel resolves
 # ================================================================
 
@@ -3079,7 +3240,10 @@ YAML
     }
   done
 
-  # Round 3: same test with mkdir fallback (GAIA_LOCK_FORCE_FALLBACK=1).
+  # Round 3: mkdir-fallback round — flock hidden from PATH so
+  # action-items-write.sh falls through to the mkdir lock.
+  # GAIA_LOCK_FORCE_FALLBACK is not read by this script, so we must
+  # actually remove flock from PATH.
   local target="$TEST_TMP/ai-mixed-race-fallback.yaml"
   {
     printf 'last_updated: "2026-01-01"\nitems:\n'
@@ -3089,10 +3253,26 @@ YAML
     done
   } > "$target"
 
+  # Build a PATH without flock by symlinking needed tools.
+  local noflock_dir="$TEST_TMP/noflock-bin"
+  mkdir -p "$noflock_dir"
+  local _tool _tool_path
+  for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
+               sleep wc sort tr head tail tee env id printf; do
+    _tool_path="$(command -v "$_tool" 2>/dev/null)" || continue
+    ln -sf "$_tool_path" "$noflock_dir/$_tool" 2>/dev/null || true
+  done
+  _tool_path="$(command -v yq 2>/dev/null)" && ln -sf "$_tool_path" "$noflock_dir/yq"
+  [ -x /usr/bin/grep ] && ln -sf /usr/bin/grep "$noflock_dir/grep"
+  # Verify flock is truly absent.
+  [ ! -x "$noflock_dir/flock" ] || {
+    echo "flock was linked into noflock-bin; test setup error" >&2; false
+  }
+
   local pids=()
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1
+      export PATH="$noflock_dir"
       source "$AIW_SH"
       aiw_resolve --target "$target" --item "AI-FB-$i" --status "done" \
         --resolution "resolved-fb-$i" > /dev/null 2>&1
@@ -3101,7 +3281,7 @@ YAML
   done
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1
+      export PATH="$noflock_dir"
       source "$AIW_SH"
       aiw_write --target "$target" --sprint-id "sprint-99" \
         --classification "implementation" --text "Appended fb-$i" \
@@ -3221,6 +3401,7 @@ STORY
   # --- Step 4: Bind the session to sprint-900 BEFORE the review transition ---
   # The binding can only be written when the sprint is active; close.sh
   # then uses it to resolve the bound sprint.
+  unset GAIA_BINDING_DIR CLAUDE_CODE_SESSION_ID 2>/dev/null || true
   export CLAUDE_SESSION_ID="test-ac8-session-$$"
   local SB_SH="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
   source "$SB_SH"
@@ -3254,8 +3435,18 @@ STORY
   }
   unset SPRINT_STATUS_YAML SPRINT_STATUS_LOCK
 
-  # --- Step 6: Transition sprint-900 to review ---
-  run bash "$SPRINT_STATE_SH" transition --sprint sprint-900 --to review
+  # --- Step 6: Resolve the sprint for review through the session binding ---
+  # The sprint-review SKILL uses resolve_sprint_arg --command sprint-review.
+  # This test proves the review step resolves from the binding, not a
+  # hard-coded sprint id.
+  local review_sprint
+  review_sprint="$(resolve_sprint_arg --command sprint-review)"
+  [ "$review_sprint" = "sprint-900" ] || {
+    echo "resolve_sprint_arg for sprint-review returned '$review_sprint', expected 'sprint-900'" >&2
+    false
+  }
+
+  run bash "$SPRINT_STATE_SH" transition --sprint "$review_sprint" --to review
   [ "$status" -eq 0 ] || {
     echo "sprint active->review failed: $output" >&2; false
   }
@@ -3282,16 +3473,33 @@ STORY
   local retro_901="$retro_dir/retrospective-sprint-901-2026-10-28.md"
   printf '# Retrospective sprint-901\n' > "$retro_901"
 
-  # --- Step 8: Create action items and resolve cross-sprint ---
+  # --- Step 8: Create action items and resolve from a sprint-901 session ---
+  # Switch to a new session bound to sprint-901 to prove cross-sprint
+  # resolution works through the binding.
   local ai_file="$STATE_DIR/action-items.yaml"
   source "$AIW_SH"
   aiw_write --target "$ai_file" --sprint-id "sprint-900" \
     --classification "implementation" --text "Sprint A item" \
     --ref-key "story_key" --ref-value "E900-S1"
 
+  # New session bound to sprint-901 (write_binding is write-once per session).
+  # The caller (/gaia-action-items) reads the bound sprint and passes it
+  # as --resolved-in. This test proves cross-sprint resolution from the
+  # binding (sprint B resolves an item from sprint A).
+  unset GAIA_BINDING_DIR CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+  export CLAUDE_SESSION_ID="test-ac8-session-b-$$"
+  provision_binding_dir
+  write_binding "sprint-901" "$STATE_DIR"
+  local ai_sprint
+  ai_sprint="$(cat "$GAIA_BINDING_DIR/bound_sprint_id" 2>/dev/null | tr -d '\n')"
+  [ "$ai_sprint" = "sprint-901" ] || {
+    echo "Bound sprint for action-items session is '$ai_sprint', expected 'sprint-901'" >&2
+    false
+  }
+
   aiw_resolve --target "$ai_file" --item "AI-1" \
     --status "resolved" --resolution "Cross-sprint fix" \
-    --resolved-in "sprint-901" --related-stories "E900-S1"
+    --resolved-in "$ai_sprint" --related-stories "E900-S1"
 
   local ai_sid ai_ri
   ai_sid="$(yq -r '.items[0].sprint_id' "$ai_file")"
@@ -3307,7 +3515,19 @@ STORY
   }
 
   # --- Step 10: Close sprint-900 through close.sh with the real binding ---
-  # Produce the sprint-review sentinel with the real writer.
+  # Switch back to session A (bound to sprint-900). Sprint-900 is now in
+  # "review" status, so a NEW binding cannot be created. Reuse session A.
+  unset GAIA_BINDING_DIR CLAUDE_CODE_SESSION_ID 2>/dev/null || true
+  export CLAUDE_SESSION_ID="test-ac8-session-$$"
+  provision_binding_dir
+  # The binding was written in step 4 when sprint-900 was active.
+  local close_sprint
+  close_sprint="$(resolve_sprint_arg --command sprint-review)"
+  [ "$close_sprint" = "sprint-900" ] || {
+    echo "resolve_sprint_arg for close returned '$close_sprint', expected 'sprint-900'" >&2
+    false
+  }
+
   local ckpt_dir="$TEST_TMP/.gaia/memory/checkpoints"
   mkdir -p "$ckpt_dir"
   local SENTINEL_SH="$BATS_TEST_DIRNAME/../skills/gaia-sprint-review/scripts/write-val-sentinel.sh"
@@ -3317,7 +3537,7 @@ STORY
   }
   local sentinel_out
   sentinel_out="$(printf '{"status":"PASS","summary":"test","findings":[],"agent":"val"}' \
-    | CHECKPOINT_PATH="$ckpt_dir" bash "$SENTINEL_SH" --sprint-id sprint-900)" || {
+    | CHECKPOINT_PATH="$ckpt_dir" bash "$SENTINEL_SH" --sprint-id "$close_sprint")" || {
     echo "write-val-sentinel.sh failed: $sentinel_out" >&2; false
   }
   [ -f "$ckpt_dir/sprint-review-sprint-900-val-dispatched.json" ] || {
