@@ -881,6 +881,7 @@ skills	meeting-dispatch-integration.bats
 skills	meeting-notes-cost-breakdown-yaml.bats
 skills	merge-pre-merge-guards.bats
 skills	merge-remote-state-confirmation.bats
+skills	merge-review-gate.bats
 skills	partial-deploy.bats
 skills	per-component-smoke.bats
 skills	pixel-diff-ac2-thresholds-and-masking.bats
