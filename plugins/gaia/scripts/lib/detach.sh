@@ -64,26 +64,34 @@ detach_run() {
     return 1
   fi
 
-  # PGID assertion (both setsid and perl paths): wait for the runner to
-  # appear, then verify its PGID differs from the caller's.
-  local _wait_count=0
-  local _wait_limit=50
-  while [ "$_wait_count" -lt "$_wait_limit" ] && ! kill -0 "$runner_pid" 2>/dev/null; do
-    sleep 0.05 2>/dev/null || sleep 1
-    _wait_count=$((_wait_count + 1))
-  done
-
-  if kill -0 "$runner_pid" 2>/dev/null; then
+  # PGID assertion (both setsid and perl paths): poll until the runner's
+  # PGID differs from the caller's, or the runner exits, or a 2-second
+  # bound expires.  On Linux, `setsid "$@" &` can briefly leave the
+  # child with the caller's PGID until setsid() executes; a single
+  # read would race with that window.
+  local _pgid_ok=0
+  local _pgid_polls=0
+  local _pgid_limit=40  # 40 * 0.05s = 2s bound
+  while [ "$_pgid_polls" -lt "$_pgid_limit" ]; do
+    if ! kill -0 "$runner_pid" 2>/dev/null; then
+      # Runner exited — setsid guarantees a new session for the child
+      _pgid_ok=1
+      break
+    fi
     local runner_pgid=""
     runner_pgid="$(ps -o pgid= -p "$runner_pid" 2>/dev/null | tr -d ' ')" || runner_pgid=""
-
-    if [ -n "$caller_pgid" ] && [ -n "$runner_pgid" ] && [ "$caller_pgid" = "$runner_pgid" ]; then
-      _detach_log "detach_failed: runner PGID ($runner_pgid) equals caller PGID ($caller_pgid)"
-      return 1
+    if [ -n "$runner_pgid" ] && [ -n "$caller_pgid" ] && [ "$runner_pgid" != "$caller_pgid" ]; then
+      _pgid_ok=1
+      break
     fi
+    sleep 0.05 2>/dev/null || sleep 1
+    _pgid_polls=$((_pgid_polls + 1))
+  done
+
+  if [ "$_pgid_ok" -eq 0 ] && kill -0 "$runner_pid" 2>/dev/null; then
+    _detach_log "detach_failed: runner PGID still equals caller PGID after ${_pgid_limit} polls"
+    return 1
   fi
-  # Process may have already exited (short-lived command) — that is fine;
-  # setsid / perl setsid guarantee a new session/PGID for the child.
 
   printf '%s\n' "$runner_pid"
   return 0

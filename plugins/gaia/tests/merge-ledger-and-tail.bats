@@ -991,6 +991,86 @@ RUNNER
 }
 
 # ======================================================================
+# AC5: Detach PGID poll tolerates setsid startup delay
+# ======================================================================
+
+@test "detach succeeds when setsid has a startup delay" {
+  # Reproduce the race: a setsid wrapper that sleeps briefly before
+  # exec'ing the real setsid (or perl fallback on macOS).  Without the
+  # polling fix, the single PGID read fires during the delay and sees
+  # the caller's PGID, returning detach_failed.
+  local stub_dir="${BATS_TEST_TMPDIR}/slow_setsid"
+  mkdir -p "$stub_dir"
+
+  # Find the real setsid (Linux) or fall back to perl (macOS)
+  local real_setsid=""
+  real_setsid="$(command -v setsid 2>/dev/null)" || real_setsid=""
+
+  if [ -n "$real_setsid" ]; then
+    # Linux: wrap real setsid with a brief delay
+    cat > "$stub_dir/setsid" <<STUB
+#!/bin/bash
+sleep 0.2 2>/dev/null || sleep 1
+exec "$real_setsid" "\$@"
+STUB
+  else
+    # macOS: no real setsid; create a stub that uses perl POSIX::setsid
+    # with a delay, then exec's the command
+    local real_perl=""
+    real_perl="$(command -v perl 2>/dev/null)" || real_perl=""
+    if [ -z "$real_perl" ]; then
+      skip "neither setsid nor perl available"
+    fi
+    cat > "$stub_dir/setsid" <<STUB
+#!/bin/bash
+sleep 0.2 2>/dev/null || sleep 1
+exec "$real_perl" -e '
+  use POSIX qw(setsid);
+  setsid() or die "setsid: \$!\n";
+  exec @ARGV or die "exec: \$!\n";
+' -- "\$@"
+STUB
+  fi
+  chmod +x "$stub_dir/setsid"
+
+  # Runner script that writes its PID and PGID
+  local runner_script="${BATS_TEST_TMPDIR}/race_runner.sh"
+  local pid_file="${BATS_TEST_TMPDIR}/race_pid"
+  local pgid_file="${BATS_TEST_TMPDIR}/race_pgid"
+  cat > "$runner_script" <<RUNNER
+#!/bin/bash
+echo \$\$ > "$pid_file"
+ps -o pgid= -p \$\$ | tr -d ' ' > "$pgid_file"
+sleep 3
+RUNNER
+  chmod +x "$runner_script"
+
+  local caller_pgid
+  caller_pgid="$(ps -o pgid= -p $$ | tr -d ' ')"
+
+  # Put the delayed setsid first on PATH so detach.sh uses it
+  run env PATH="$stub_dir:$PATH" bash "$DETACH_SH" -- bash "$runner_script"
+  [ "$status" -eq 0 ]
+
+  # Wait for the runner to write its PGID
+  local _w=0
+  while [ "$_w" -lt 40 ] && [ ! -s "$pgid_file" ]; do
+    sleep 0.1 2>/dev/null || sleep 1
+    _w=$((_w + 1))
+  done
+
+  [ -s "$pgid_file" ]
+  local runner_pgid
+  runner_pgid="$(cat "$pgid_file" | tr -d ' ')"
+  [ "$runner_pgid" != "$caller_pgid" ]
+
+  # Clean up
+  if [ -s "$pid_file" ]; then
+    kill "$(cat "$pid_file")" 2>/dev/null || true
+  fi
+}
+
+# ======================================================================
 # Item 8: ledger YAML injection
 # ======================================================================
 
