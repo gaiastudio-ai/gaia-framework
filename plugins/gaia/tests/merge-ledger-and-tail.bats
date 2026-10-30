@@ -1460,16 +1460,16 @@ STUB
 }
 
 @test "merge-tail verb resumes after bound expires and gh recovers" {
-  # Set up ledger state: gate pass exists, merge verb will hang then recover
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
 
-  # First run: hanging gh, bound fires
+  local marker="be_sresume_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_resume"
   mkdir -p "$stub_dir"
-  cat > "$stub_dir/gh" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 86400
-STUB
+  printf '#!/bin/bash\nexec "%s"\n' "$sleeper" > "$stub_dir/gh"
   chmod +x "$stub_dir/gh"
 
   unset MERGE_TAIL_SKIP_MERGE
@@ -1478,7 +1478,10 @@ STUB
   run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
   [ "$status" -ne 0 ]
 
-  sleep 0.5 2>/dev/null || sleep 1
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 
   # Second run: gh works, merge succeeds (mock)
   export MERGE_TAIL_SKIP_MERGE=1
@@ -1487,7 +1490,6 @@ STUB
   run bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
   [ "$status" -eq 0 ]
 
-  # Verify the intent advanced to merged
   local intent_file
   intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
   /usr/bin/grep -q 'state: "merged"' "$intent_file"

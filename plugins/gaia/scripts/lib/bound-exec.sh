@@ -76,20 +76,31 @@ bound_exec() {
   _be_killed_flag="${TMPDIR:-/tmp}/bound-exec-$$-${RANDOM:-0}.flag"
   rm -f "$_be_killed_flag"
 
-  # Run the command in its own process group.  The command becomes the
-  # group leader (PGID = its PID), so `kill -- -$pgid` reaches the
+  # Run the command in its own process group so the watchdog can kill the
   # entire descendant tree.
+  #
+  # When this is the outermost bound_exec, create a new process group:
   #   Linux:  setsid(1) creates a new session (+ new process group).
   #   macOS:  perl POSIX::setpgid(0,0) creates a new group only.
   #   Fallback: run without group isolation (direct-child kill only).
   #
+  # When nested (an inner bound_exec inside an outer one), skip group
+  # creation so the inner command stays in the outer's group.  This
+  # prevents the outer group kill from missing descendants that moved
+  # to a nested group.
+  #
   # Close fds above 2 before exec so test-harness capture pipes (bats
-  # uses high fds) are not inherited by descendants.  This is a belt-
-  # and-suspenders defence: the group kill should reach every descendant,
-  # but closing the fds ensures a survivor cannot hold a pipe fd open.
+  # uses high fds) are not inherited by descendants.
   local _be_has_group=1
-  if command -v setsid >/dev/null 2>&1; then
+  local _be_nested="${_BE_IN_BOUND:-0}"
+  if [ "$_be_nested" -eq 1 ]; then
+    # Inner bound_exec: stay in the outer's process group.
+    "$@" &
+    _be_has_group=0
+  elif command -v setsid >/dev/null 2>&1; then
     (
+      # shellcheck disable=SC2030
+      export _BE_IN_BOUND=1
       if [ -d /proc/self/fd ]; then
         for _be_fd in /proc/self/fd/*; do
           _be_fdn="${_be_fd##*/}"
@@ -104,6 +115,8 @@ bound_exec() {
     ) &
   elif command -v perl >/dev/null 2>&1; then
     (
+      # shellcheck disable=SC2031
+      export _BE_IN_BOUND=1
       if [ -d /proc/self/fd ]; then
         for _be_fd in /proc/self/fd/*; do
           _be_fdn="${_be_fd##*/}"
