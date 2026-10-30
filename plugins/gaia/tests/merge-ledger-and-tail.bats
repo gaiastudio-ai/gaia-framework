@@ -1130,9 +1130,6 @@ RUNNER
   [ "$elapsed" -le 5 ]
 
   sleep 2
-  local survivors=""
-  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
-  if [ -n "$survivors" ]; then echo "DIAG gate survivors: $survivors" >&3; fi
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
@@ -1163,9 +1160,6 @@ RUNNER
   [ "$elapsed" -le 5 ]
 
   sleep 2
-  local survivors=""
-  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
-  if [ -n "$survivors" ]; then echo "DIAG merge survivors: $survivors" >&3; fi
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
@@ -1203,9 +1197,6 @@ RUNNER
   /usr/bin/grep -q 'state: "merged"' "$intent_file"
 
   sleep 2
-  local survivors=""
-  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
-  if [ -n "$survivors" ]; then echo "DIAG verify survivors: $survivors" >&3; fi
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
@@ -1236,9 +1227,6 @@ RUNNER
   [ "$elapsed" -le 5 ]
 
   sleep 2
-  local survivors=""
-  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
-  if [ -n "$survivors" ]; then echo "DIAG cwr survivors: $survivors" >&3; fi
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
@@ -1511,10 +1499,6 @@ STUB
     new_pids=$(comm -13 <(echo "$before_pids") <(echo "$after_pids") 2>/dev/null) || true
   fi
 
-  if [ -n "$new_pids" ]; then
-    echo "DIAG watchdog orphan PIDs: $new_pids" >&3
-    ps -o pid,ppid,pgid,args -p $(echo "$new_pids" | tr '\n' ',')0 2>/dev/null >&3 || true
-  fi
   [ -z "$new_pids" ]
 }
 

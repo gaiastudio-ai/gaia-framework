@@ -1802,9 +1802,6 @@ HANGH
   [ "$elapsed" -le 5 ]
 
   sleep 2
-  local survivors=""
-  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
-  if [ -n "$survivors" ]; then echo "DIAG ci-wait survivors: $survivors" >&3; fi
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
