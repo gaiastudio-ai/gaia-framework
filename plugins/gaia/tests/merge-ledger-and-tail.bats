@@ -1103,9 +1103,7 @@ RUNNER
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1132,9 +1130,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1165,9 +1161,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1200,9 +1194,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1226,9 +1218,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 STUB
   chmod +x "$stub_dir/gh"
 

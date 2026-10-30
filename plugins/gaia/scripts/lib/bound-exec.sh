@@ -70,8 +70,11 @@ bound_exec() {
   rm -f "$_be_killed_flag"
 
   # Run the command in the background.  Stdout/stderr are inherited,
-  # so output passes through to the caller.
-  "$@" &
+  # so output passes through to the caller.  Close fds 3-9 so that
+  # test-harness capture pipes (bats uses fd 3+) are not inherited by
+  # the command or its descendants; an orphaned grandchild that holds
+  # a bats pipe fd open would prevent bats from detecting completion.
+  "$@" 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
   local cmd_pid=$!
 
   # Watchdog: sleeps for the bound, then kills the command and its

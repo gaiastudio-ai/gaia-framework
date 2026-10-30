@@ -1785,9 +1785,7 @@ SHIMEOF
   # (which exits immediately) does not prevent the stub from hanging.
   cat > "$TEST_TMP/bin/gh" <<'HANGH'
 #!/bin/bash
-# Close inherited fds (bats pipe) so orphaned sleep cannot hold it open
-for _fd in 3 4 5 6 7 8 9; do eval "exec ${_fd}>&-" 2>/dev/null; done
-exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
+exec /bin/sleep 86400
 HANGH
   chmod +x "$TEST_TMP/bin/gh"
 
