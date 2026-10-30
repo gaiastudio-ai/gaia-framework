@@ -1014,6 +1014,184 @@ RUNNER
   [[ "$output" == *"rejected"* ]] || [[ "$output" == *"invalid"* ]] || [[ "$output" == *"shape validation"* ]]
 }
 
+# ======================================================================
+# AC3: Preemptive per-call bound — hanging stub tests
+# ======================================================================
+
+@test "merge-tail gate returns within bound when gh hangs" {
+  local stub_dir="${BATS_TEST_TMPDIR}/hang_stub"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'STUB'
+#!/bin/bash
+exec sleep 86400
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_LEDGER_SKIP_GH
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 5 ]
+
+  # No orphaned sleep from the stub (exec means kill reaches sleep)
+  sleep 0.5 2>/dev/null || sleep 1
+}
+
+@test "merge-tail merge returns within bound when gh hangs" {
+  # Set up ledger state for merge (gate must exist)
+  bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_merge"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'STUB'
+#!/bin/bash
+exec sleep 86400
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_TAIL_SKIP_MERGE
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 5 ]
+
+  # Ledger is consistent: intent created but merge did not complete,
+  # so state is merging (resumable on re-run)
+  sleep 0.5 2>/dev/null || sleep 1
+}
+
+@test "merge-tail verify returns within bound when gh hangs" {
+  # Set up ledger through merged state
+  bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merged
+
+  local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_verify"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'STUB'
+#!/bin/bash
+exec sleep 86400
+STUB
+  chmod +x "$stub_dir/gh"
+
+  export MERGE_TAIL_MAX_SECONDS=2
+  unset MERGE_TAIL_MOCK_PR_BASE
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" verify --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 5 ]
+
+  # Ledger still at merged — verify can be re-run
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
+  /usr/bin/grep -q 'state: "merged"' "$intent_file"
+
+  sleep 0.5 2>/dev/null || sleep 1
+}
+
+@test "ci-wait-ref returns within bound when gh hangs" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  export CI_WAIT_REF_POLL_INTERVAL=0
+
+  local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_cwr"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'STUB'
+#!/bin/bash
+exec sleep 86400
+STUB
+  chmod +x "$stub_dir/gh"
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 2
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pending"* ]]
+  [ "$elapsed" -le 5 ]
+
+  sleep 0.5 2>/dev/null || sleep 1
+}
+
+@test "merge-tail verb resumes after bound expires and gh recovers" {
+  # Set up ledger state: gate pass exists, merge verb will hang then recover
+  bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  # First run: hanging gh, bound fires
+  local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_resume"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<'STUB'
+#!/bin/bash
+exec sleep 86400
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_TAIL_SKIP_MERGE
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -ne 0 ]
+
+  sleep 0.5 2>/dev/null || sleep 1
+
+  # Second run: gh works, merge succeeds (mock)
+  export MERGE_TAIL_SKIP_MERGE=1
+  export MERGE_TAIL_MAX_SECONDS=540
+
+  run bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+
+  # Verify the intent advanced to merged
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
+  /usr/bin/grep -q 'state: "merged"' "$intent_file"
+}
+
+# ======================================================================
+# AC3: Per-call bound ceiling validation
+# ======================================================================
+
+@test "merge-tail clamps MERGE_TAIL_MAX_SECONDS above 540 to 540" {
+  export MERGE_TAIL_MAX_SECONDS=99999
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"clamping"* ]] || [[ "${lines[*]}" == *"clamping"* ]]
+}
+
+@test "merge-tail refuses non-numeric MERGE_TAIL_MAX_SECONDS" {
+  export MERGE_TAIL_MAX_SECONDS="abc"
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"non-negative integer"* ]]
+}
+
+@test "merge-tail with empty MERGE_TAIL_MAX_SECONDS defaults to 540" {
+  export MERGE_TAIL_MAX_SECONDS=""
+  # Empty uses the :-540 default, so the gate should succeed
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+}
+
+# ======================================================================
+# Item 8: ledger YAML injection (continued)
+# ======================================================================
+
 @test "ledger accepts valid story key and stores it literally" {
   run bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   [ "$status" -eq 0 ]

@@ -49,6 +49,19 @@ _MT_START_SECONDS="$SECONDS"
 _mt_log() { printf '%s: %s\n' "$_MT_SCRIPT_NAME" "$*" >&2; }
 _mt_die() { _mt_log "$*"; exit 1; }
 
+# --- Ceiling validation for MERGE_TAIL_MAX_SECONDS ---
+case "$_MT_MAX_SECONDS" in
+  *[!0-9]*)
+    _mt_die "MERGE_TAIL_MAX_SECONDS must be a non-negative integer, got: '${_MT_MAX_SECONDS}'"
+    ;;
+esac
+if [ "$_MT_MAX_SECONDS" -gt 540 ]; then
+  _mt_log "clamping MERGE_TAIL_MAX_SECONDS from ${_MT_MAX_SECONDS} to 540"
+  _MT_MAX_SECONDS=540
+fi
+
+# --- Preemptive bound helpers ---
+
 # _mt_check_bound — fail if the per-call bound has been exceeded.
 _mt_check_bound() {
   local elapsed=$(( SECONDS - _MT_START_SECONDS ))
@@ -56,6 +69,32 @@ _mt_check_bound() {
     _mt_die "per-call bound exceeded (${elapsed}s >= ${_MT_MAX_SECONDS}s)"
   fi
 }
+
+# _mt_remaining — seconds left in the per-call bound.
+_mt_remaining() {
+  local elapsed=$(( SECONDS - _MT_START_SECONDS ))
+  local remaining=$(( _MT_MAX_SECONDS - elapsed ))
+  [ "$remaining" -lt 0 ] && remaining=0
+  printf '%s' "$remaining"
+}
+
+# _mt_bounded <command> [args...] — run command within the remaining bound.
+# Returns 142 via _mt_die if the bound fires; otherwise the command's exit
+# code (which set -e propagates on non-zero).
+_mt_bounded() {
+  local _rc=0
+  bound_exec "$(_mt_remaining)" -- "$@" || _rc=$?
+  if [ "$_rc" -eq 142 ]; then
+    _mt_die "per-call bound exceeded (${_MT_MAX_SECONDS}s)"
+  fi
+  return "$_rc"
+}
+
+# Resolve bound-exec library (preemptive subprocess bounding)
+_MT_BOUND_EXEC_LIB="${_MT_SCRIPT_DIR}/lib/bound-exec.sh"
+[ -f "$_MT_BOUND_EXEC_LIB" ] || _mt_die "bound-exec.sh not found at $_MT_BOUND_EXEC_LIB"
+# shellcheck source=lib/bound-exec.sh
+. "$_MT_BOUND_EXEC_LIB"
 
 # Resolve merge-ledger.sh
 _MT_LEDGER_SH="${_MT_SCRIPT_DIR}/merge-ledger.sh"
@@ -134,11 +173,11 @@ _mt_check_resume() {
 _mt_verb_gate() {
   _mt_check_bound
   if [ -n "$_mt_bypass_confirmation" ]; then
-    bash "$_MT_LEDGER_SH" write-gate-bypass \
+    _mt_bounded bash "$_MT_LEDGER_SH" write-gate-bypass \
       --pr "$_mt_pr" --head "$_mt_head" --story "$_mt_story" \
       --bypass-confirmation "$_mt_bypass_confirmation"
   else
-    bash "$_MT_LEDGER_SH" write-gate-pass \
+    _mt_bounded bash "$_MT_LEDGER_SH" write-gate-pass \
       --pr "$_mt_pr" --head "$_mt_head" --story "$_mt_story"
   fi
 }
@@ -174,7 +213,10 @@ _mt_verb_merge() {
       if [ "${MERGE_TAIL_MOCK_PR_STATE:-}" ]; then
         pr_state="$MERGE_TAIL_MOCK_PR_STATE"
       elif command -v gh >/dev/null 2>&1; then
-        pr_state="$(gh pr view "$_mt_pr" --json state --jq '.state' 2>/dev/null)" || pr_state="UNKNOWN"
+        local _pr_rc=0
+        pr_state="$(bound_exec "$(_mt_remaining)" -- gh pr view "$_mt_pr" --json state --jq '.state' 2>/dev/null)" || _pr_rc=$?
+        [ "$_pr_rc" -eq 142 ] && _mt_die "per-call bound exceeded during PR state check"
+        [ "$_pr_rc" -ne 0 ] && pr_state="UNKNOWN"
       else
         pr_state="UNKNOWN"
       fi
@@ -211,7 +253,8 @@ _mt_verb_merge() {
 
   local merge_rc=0
   if command -v gh >/dev/null 2>&1; then
-    gh pr merge "$_mt_pr" "--${_mt_merge_strategy}" \
+    bound_exec "$(_mt_remaining)" -- \
+      gh pr merge "$_mt_pr" "--${_mt_merge_strategy}" \
       --body "Story: ${_mt_story}" \
       --match-head-commit "$_mt_head" \
       --no-delete-branch 2>&1 || merge_rc=$?
@@ -219,14 +262,19 @@ _mt_verb_merge() {
     _mt_die "gh not available — cannot merge"
   fi
 
+  if [ "$merge_rc" -eq 142 ]; then
+    _mt_die "per-call bound exceeded during merge"
+  fi
   if [ "$merge_rc" -ne 0 ]; then
     _mt_die "merge failed for PR #${_mt_pr} (exit ${merge_rc})"
   fi
 
-  # Get the merge SHA
-  local merge_sha=""
+  # Get the merge SHA (bounded)
+  local merge_sha="" _sha_rc=0
   if command -v gh >/dev/null 2>&1; then
-    merge_sha="$(gh pr view "$_mt_pr" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null)" || merge_sha=""
+    merge_sha="$(bound_exec "$(_mt_remaining)" -- gh pr view "$_mt_pr" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null)" || _sha_rc=$?
+    [ "$_sha_rc" -eq 142 ] && _mt_die "per-call bound exceeded during merge SHA retrieval"
+    [ "$_sha_rc" -ne 0 ] && merge_sha=""
   fi
 
   bash "$_MT_LEDGER_SH" advance --pr "$_mt_pr" --head "$_mt_head" --state merged \
@@ -265,12 +313,15 @@ _mt_verb_verify() {
   local ledger_target=""
   ledger_target="$(printf '%s' "$intent_output" | sed -n 's/^target: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' | head -1)"
 
-  # Get the actual merged target from the PR
+  # Get the actual merged target from the PR (bounded)
   local actual_target=""
   if [ "${MERGE_TAIL_MOCK_PR_BASE:-}" ]; then
     actual_target="$MERGE_TAIL_MOCK_PR_BASE"
   elif command -v gh >/dev/null 2>&1; then
-    actual_target="$(gh pr view "$_mt_pr" --json baseRefName --jq '.baseRefName' 2>/dev/null)" || actual_target=""
+    local _at_rc=0
+    actual_target="$(bound_exec "$(_mt_remaining)" -- gh pr view "$_mt_pr" --json baseRefName --jq '.baseRefName' 2>/dev/null)" || _at_rc=$?
+    [ "$_at_rc" -eq 142 ] && _mt_die "per-call bound exceeded during verify"
+    [ "$_at_rc" -ne 0 ] && actual_target=""
   fi
 
   if [ -n "$ledger_target" ] && [ -n "$actual_target" ] && [ "$ledger_target" != "$actual_target" ]; then

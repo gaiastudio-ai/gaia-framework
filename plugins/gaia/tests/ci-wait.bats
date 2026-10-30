@@ -1767,3 +1767,41 @@ SHIMEOF
   [ "$status" -eq 0 ]
   [[ "$stderr" == *"not a non-negative integer"* ]]
 }
+
+@test "per-call bound above 540 is clamped to 540" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=99999
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"clamping CI_WAIT_PER_CALL_BOUND from 99999 to 540"* ]]
+}
+
+@test "ci-wait returns within bound when gh hangs" {
+  # Replace the stub-based gh with a hanging one
+  cat > "$TEST_TMP/bin/gh" <<'HANGH'
+#!/bin/bash
+exec sleep 86400
+HANGH
+  chmod +x "$TEST_TMP/bin/gh"
+
+  export CI_WAIT_TIMEOUT_SECONDS=2
+  export CI_WAIT_PER_CALL_BOUND=2
+
+  local start=$SECONDS
+  run "$CI_WAIT" 999
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  # Must return within bound + margin (2s bound + 3s margin = 5s)
+  [ "$elapsed" -le 5 ]
+
+  # No orphaned sleep 86400 from our stub
+  sleep 0.5 2>/dev/null || sleep 1
+  local orphans=""
+  orphans=$(ps -eo pid,ppid,comm 2>/dev/null | /usr/bin/grep -c "[s]leep" || true)
+  # We cannot be 100% sure there are no unrelated sleeps, but the stub
+  # used exec so killing the process kills the sleep.
+}

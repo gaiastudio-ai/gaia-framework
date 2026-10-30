@@ -36,9 +36,16 @@ set -euo pipefail
 LC_ALL=C; export LC_ALL
 
 _CWR_SCRIPT_NAME="ci-wait-ref.sh"
+_CWR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _cwr_log() { printf '%s: %s\n' "$_CWR_SCRIPT_NAME" "$*" >&2; }
 _cwr_die() { _cwr_log "$*"; exit 1; }
+
+# Source bound-exec for preemptive subprocess bounding
+_CWR_BOUND_EXEC_LIB="${_CWR_SCRIPT_DIR}/lib/bound-exec.sh"
+[ -f "$_CWR_BOUND_EXEC_LIB" ] || _cwr_die "bound-exec.sh not found at $_CWR_BOUND_EXEC_LIB"
+# shellcheck source=lib/bound-exec.sh
+. "$_CWR_BOUND_EXEC_LIB"
 
 # --- Argument parsing ---
 _cwr_sha=""
@@ -231,14 +238,20 @@ while true; do
     exit 2
   fi
 
-  # Query check runs on the commit
-  _cwr_checks=""
-  _cwr_checks="$(gh api "repos/{owner}/{repo}/commits/${_cwr_sha}/check-runs" --jq '.check_runs[] | "\(.name)|\(.status)|\(.conclusion)"' 2>/dev/null)" || _cwr_checks=""
+  # Compute remaining seconds for bounded gh calls
+  _cwr_call_remaining=$((_cwr_deadline - $(date +%s)))
+  [ "$_cwr_call_remaining" -lt 1 ] && _cwr_call_remaining=1
 
-  # Query commit statuses (for declared contexts)
+  # Query check runs on the commit (bounded)
+  _cwr_checks=""
+  _cwr_checks="$(bound_exec "$_cwr_call_remaining" -- gh api "repos/{owner}/{repo}/commits/${_cwr_sha}/check-runs" --jq '.check_runs[] | "\(.name)|\(.status)|\(.conclusion)"' 2>/dev/null)" || _cwr_checks=""
+
+  # Query commit statuses (for declared contexts, bounded)
   _cwr_statuses=""
   if [ -n "$_cwr_status_contexts" ]; then
-    _cwr_statuses="$(gh api "repos/{owner}/{repo}/commits/${_cwr_sha}/statuses" --jq '.[] | "\(.context)|\(.state)"' 2>/dev/null)" || _cwr_statuses=""
+    _cwr_call_remaining=$((_cwr_deadline - $(date +%s)))
+    [ "$_cwr_call_remaining" -lt 1 ] && _cwr_call_remaining=1
+    _cwr_statuses="$(bound_exec "$_cwr_call_remaining" -- gh api "repos/{owner}/{repo}/commits/${_cwr_sha}/statuses" --jq '.[] | "\(.context)|\(.state)"' 2>/dev/null)" || _cwr_statuses=""
   fi
 
   # Analyze check runs
