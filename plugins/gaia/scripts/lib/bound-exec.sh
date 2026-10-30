@@ -82,15 +82,44 @@ bound_exec() {
   #   Linux:  setsid(1) creates a new session (+ new process group).
   #   macOS:  perl POSIX::setpgid(0,0) creates a new group only.
   #   Fallback: run without group isolation (direct-child kill only).
+  #
+  # Close fds above 2 before exec so test-harness capture pipes (bats
+  # uses high fds) are not inherited by descendants.  This is a belt-
+  # and-suspenders defence: the group kill should reach every descendant,
+  # but closing the fds ensures a survivor cannot hold a pipe fd open.
   local _be_has_group=1
   if command -v setsid >/dev/null 2>&1; then
-    setsid "$@" &
+    (
+      if [ -d /proc/self/fd ]; then
+        for _be_fd in /proc/self/fd/*; do
+          _be_fdn="${_be_fd##*/}"
+          [ "$_be_fdn" -gt 2 ] 2>/dev/null && eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+        done
+      else
+        for _be_fdn in $(seq 3 63 2>/dev/null || echo "3 4 5 6 7 8 9"); do
+          eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+        done
+      fi
+      exec setsid "$@"
+    ) &
   elif command -v perl >/dev/null 2>&1; then
-    perl -e '
-      use POSIX qw(setpgid);
-      setpgid(0, 0) or warn "bound-exec: setpgid: $!\n";
-      exec @ARGV or die "bound-exec: exec: $!\n";
-    ' -- "$@" &
+    (
+      if [ -d /proc/self/fd ]; then
+        for _be_fd in /proc/self/fd/*; do
+          _be_fdn="${_be_fd##*/}"
+          [ "$_be_fdn" -gt 2 ] 2>/dev/null && eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+        done
+      else
+        for _be_fdn in $(seq 3 63 2>/dev/null || echo "3 4 5 6 7 8 9"); do
+          eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+        done
+      fi
+      exec perl -e '
+        use POSIX qw(setpgid);
+        setpgid(0, 0) or warn "bound-exec: setpgid: $!\n";
+        exec @ARGV or die "bound-exec: exec: $!\n";
+      ' -- "$@"
+    ) &
   else
     # Neither setsid nor perl — run without process-group isolation.
     "$@" &
