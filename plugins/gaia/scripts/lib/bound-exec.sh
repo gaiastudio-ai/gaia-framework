@@ -148,6 +148,8 @@ bound_exec() {
   # Close ALL fds (including high fds from test harnesses like bats)
   # before sleeping so the watchdog's sleep cannot hold a pipe fd open.
   # Without this, an orphaned watchdog sleep keeps bats waiting.
+  # Watchdog: the sleep runs in the background inside the subshell so
+  # the EXIT trap can kill it reliably — no race with external pkill.
   (
     if [ -d /proc/self/fd ]; then
       for _be_fd in /proc/self/fd/*; do
@@ -159,7 +161,11 @@ bound_exec() {
         eval "exec ${_be_fdn}>&-" 2>/dev/null || true
       done
     fi
-    "$_BE_REAL_SLEEP" "$bound" 2>/dev/null
+    _be_wd_sleep_pid=""
+    trap 'kill "$_be_wd_sleep_pid" 2>/dev/null; wait "$_be_wd_sleep_pid" 2>/dev/null' EXIT
+    "$_BE_REAL_SLEEP" "$bound" &
+    _be_wd_sleep_pid=$!
+    wait "$_be_wd_sleep_pid" 2>/dev/null || true
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$_be_killed_flag"
       if [ "$_be_has_group" -eq 1 ]; then
@@ -178,11 +184,16 @@ bound_exec() {
   local rc=0
   wait "$cmd_pid" 2>/dev/null || rc=$?
 
-  # Clean up the watchdog: kill its sleep first, then the subshell,
-  # then reap both.
-  pkill -P "$wd_pid" 2>/dev/null || true
-  kill "$wd_pid" 2>/dev/null || true
-  wait "$wd_pid" 2>/dev/null || true
+  # Clean up the watchdog.  If the bound fired (flag file exists), the
+  # watchdog is running its TERM→KILL sequence — let it finish so the
+  # KILL reaches TERM-ignoring processes.  Otherwise (normal completion),
+  # kill the watchdog and its sleep child immediately.
+  if [ -f "$_be_killed_flag" ]; then
+    wait "$wd_pid" 2>/dev/null || true
+  else
+    kill "$wd_pid" 2>/dev/null || true
+    wait "$wd_pid" 2>/dev/null || true
+  fi
 
   # Check if the watchdog killed the command
   if [ -f "$_be_killed_flag" ]; then
