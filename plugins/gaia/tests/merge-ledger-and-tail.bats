@@ -42,24 +42,10 @@ setup() {
 
 teardown() {
   rm -rf "${BATS_TEST_TMPDIR}/ledger" 2>/dev/null || true
-  # Diagnostic: report any lingering sleep 86400 processes
-  local _sleeps=""
-  _sleeps=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "sleep 86400" | /usr/bin/grep -v grep) || true
-  if [ -n "$_sleeps" ]; then
-    echo "DIAG teardown sleep-86400 survivors:" >&3
-    echo "$_sleeps" >&3
-  fi
   # Safety net: kill any orphaned processes whose command line contains
-  # our unique BATS_TEST_TMPDIR path or the sleep markers.
+  # our unique BATS_TEST_TMPDIR path.
   local _pids=""
   _pids=$(pgrep -f "${BATS_TEST_TMPDIR}" 2>/dev/null) || true
-  if [ -n "$_pids" ]; then
-    echo "$_pids" | while IFS= read -r _p; do
-      kill -9 "$_p" 2>/dev/null || true
-    done
-  fi
-  # Also kill any sleep 86400 with our markers
-  _pids=$(pgrep -f "be_s.*_$$" 2>/dev/null) || true
   if [ -n "$_pids" ]; then
     echo "$_pids" | while IFS= read -r _p; do
       kill -9 "$_p" 2>/dev/null || true
@@ -1493,6 +1479,43 @@ STUB
   local intent_file
   intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
   /usr/bin/grep -q 'state: "merged"' "$intent_file"
+}
+
+# ======================================================================
+# Watchdog cleanup — no orphaned watchdog sleep after normal completion
+# ======================================================================
+
+@test "no watchdog sleep survives after a fast command under a large bound" {
+  # Source bound-exec directly so we can call bound_exec without merge-tail
+  # shellcheck source=../scripts/lib/bound-exec.sh
+  source "$SCRIPTS_DIR/lib/bound-exec.sh"
+
+  # Record existing sleeps so we only check for NEW ones
+  local before_pids=""
+  before_pids=$(pgrep -f "/bin/sleep" 2>/dev/null | sort) || true
+
+  # Run a fast command with a large bound — the watchdog sleeps for 60s
+  # but the command finishes immediately
+  local rc=0
+  bound_exec 60 -- true || rc=$?
+  [ "$rc" -eq 0 ]
+
+  sleep 1
+
+  # Check for new /bin/sleep processes that were not present before
+  local after_pids=""
+  after_pids=$(pgrep -f "/bin/sleep" 2>/dev/null | sort) || true
+
+  local new_pids=""
+  if [ -n "$after_pids" ]; then
+    new_pids=$(comm -13 <(echo "$before_pids") <(echo "$after_pids") 2>/dev/null) || true
+  fi
+
+  if [ -n "$new_pids" ]; then
+    echo "DIAG watchdog orphan PIDs: $new_pids" >&3
+    ps -o pid,ppid,pgid,args -p $(echo "$new_pids" | tr '\n' ',')0 2>/dev/null >&3 || true
+  fi
+  [ -z "$new_pids" ]
 }
 
 # ======================================================================

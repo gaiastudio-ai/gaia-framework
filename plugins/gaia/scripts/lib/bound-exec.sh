@@ -143,20 +143,30 @@ bound_exec() {
 
   # Watchdog: sleeps for the bound, then kills the command's process
   # group (TERM, 1 s grace, KILL) or falls back to direct-child kill
-  # when group isolation is unavailable.  Stdin/stdout/stderr are
-  # redirected to /dev/null so the watchdog's sleep does not hold the
-  # caller's file descriptors open.
+  # when group isolation is unavailable.
+  #
+  # Close ALL fds (including high fds from test harnesses like bats)
+  # before sleeping so the watchdog's sleep cannot hold a pipe fd open.
+  # Without this, an orphaned watchdog sleep keeps bats waiting.
   (
+    if [ -d /proc/self/fd ]; then
+      for _be_fd in /proc/self/fd/*; do
+        _be_fdn="${_be_fd##*/}"
+        [ "$_be_fdn" -gt 2 ] 2>/dev/null && eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+      done
+    else
+      for _be_fdn in $(seq 3 63 2>/dev/null || echo "3 4 5 6 7 8 9"); do
+        eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+      done
+    fi
     "$_BE_REAL_SLEEP" "$bound" 2>/dev/null
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$_be_killed_flag"
       if [ "$_be_has_group" -eq 1 ]; then
-        # TERM the entire process group, then escalate to KILL.
         kill -- -"$cmd_pgid" 2>/dev/null || true
         "$_BE_REAL_SLEEP" 1 2>/dev/null || true
         kill -9 -- -"$cmd_pgid" 2>/dev/null || true
       else
-        # Fallback: direct-child kill (no group isolation).
         pkill -P "$cmd_pid" 2>/dev/null || true
         kill "$cmd_pid" 2>/dev/null || true
       fi
@@ -168,8 +178,8 @@ bound_exec() {
   local rc=0
   wait "$cmd_pid" 2>/dev/null || rc=$?
 
-  # Clean up the watchdog: kill its children (the sleep) first to
-  # avoid orphaned processes, then the subshell itself.
+  # Clean up the watchdog: kill its sleep first, then the subshell,
+  # then reap both.
   pkill -P "$wd_pid" 2>/dev/null || true
   kill "$wd_pid" 2>/dev/null || true
   wait "$wd_pid" 2>/dev/null || true
