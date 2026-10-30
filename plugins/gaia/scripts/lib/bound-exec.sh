@@ -69,12 +69,26 @@ bound_exec() {
   _be_killed_flag="${TMPDIR:-/tmp}/bound-exec-$$-${RANDOM:-0}.flag"
   rm -f "$_be_killed_flag"
 
-  # Run the command in the background.  Stdout/stderr are inherited,
-  # so output passes through to the caller.  Close fds 3-9 so that
-  # test-harness capture pipes (bats uses fd 3+) are not inherited by
-  # the command or its descendants; an orphaned grandchild that holds
-  # a bats pipe fd open would prevent bats from detecting completion.
-  "$@" 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- &
+  # Run the command in the background.  Stdout/stderr pass through
+  # (fds 0/1/2).  Close fds above 2 in the child so test-harness
+  # capture pipes (bats uses high fds) are not inherited by
+  # descendants; an orphaned grandchild that holds a bats pipe fd
+  # open would prevent bats from detecting test completion.
+  # Linux /proc/self/fd lets us close only open fds; the fallback
+  # closes a fixed range.
+  (
+    if [ -d /proc/self/fd ]; then
+      for _be_fd in /proc/self/fd/*; do
+        _be_fdn="${_be_fd##*/}"
+        [ "$_be_fdn" -gt 2 ] 2>/dev/null && eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+      done
+    else
+      for _be_fdn in $(seq 3 63 2>/dev/null || echo "3 4 5 6 7 8 9"); do
+        eval "exec ${_be_fdn}>&-" 2>/dev/null || true
+      done
+    fi
+    exec "$@"
+  ) &
   local cmd_pid=$!
 
   # Watchdog: sleeps for the bound, then kills the command and its
