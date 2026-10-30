@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # bound-exec.sh — run a command with a wall-clock deadline.
 #
-# Starts the command in the background and launches a watchdog that kills
-# it (and its children) when the deadline expires.  Stdout/stderr pass
-# through; the caller sees the command's exit code on normal completion
-# and 142 when the bound fires.
+# Starts the command in its own process group and launches a watchdog
+# that kills the entire group when the deadline expires.  Stdout/stderr
+# pass through; the caller sees the command's exit code on normal
+# completion and 142 when the bound fires.
 #
 # Usage (as library):
 #   source bound-exec.sh
@@ -14,6 +14,13 @@
 #   Command's exit code on normal completion.
 #   142 — bound exceeded (command killed).
 #   1   — usage error (no command, invalid bound).
+#
+# Process-group isolation:
+#   The command runs in its own process group so the watchdog can kill
+#   the entire descendant tree — not just direct children.  On Linux,
+#   setsid(1) creates a new session (and thus a new group).  On macOS
+#   (where setsid is absent), perl POSIX::setpgid(0,0) moves the child
+#   into its own group without creating a new session.
 #
 # Works on macOS without timeout/gtimeout and under /bin/bash 3.2.
 # No associative arrays, no mapfile, no ${x,,}.
@@ -36,9 +43,9 @@ done
 [ -z "$_BE_REAL_SLEEP" ] && _BE_REAL_SLEEP="sleep"
 
 # bound_exec <seconds> -- <command> [args...]
-# Runs <command> in the background with a watchdog that kills the process
-# tree after <seconds>.  Returns the command's exit code, or 142 if the
-# bound fired.
+# Runs <command> in its own process group with a watchdog that kills the
+# entire group after <seconds>.  Returns the command's exit code, or 142
+# if the bound fired.
 bound_exec() {
   local bound="$1"; shift
   [ "${1:-}" = "--" ] && shift
@@ -69,42 +76,35 @@ bound_exec() {
   _be_killed_flag="${TMPDIR:-/tmp}/bound-exec-$$-${RANDOM:-0}.flag"
   rm -f "$_be_killed_flag"
 
-  # Run the command in the background.  Stdout/stderr pass through
-  # (fds 0/1/2).  Close fds above 2 in the child so test-harness
-  # capture pipes (bats uses high fds) are not inherited by
-  # descendants; an orphaned grandchild that holds a bats pipe fd
-  # open would prevent bats from detecting test completion.
-  # Linux /proc/self/fd lets us close only open fds; the fallback
-  # closes a fixed range.
-  (
-    if [ -d /proc/self/fd ]; then
-      for _be_fd in /proc/self/fd/*; do
-        _be_fdn="${_be_fd##*/}"
-        [ "$_be_fdn" -gt 2 ] 2>/dev/null && eval "exec ${_be_fdn}>&-" 2>/dev/null || true
-      done
-    else
-      for _be_fdn in $(seq 3 63 2>/dev/null || echo "3 4 5 6 7 8 9"); do
-        eval "exec ${_be_fdn}>&-" 2>/dev/null || true
-      done
-    fi
-    exec "$@"
-  ) &
+  # Run the command in its own process group.  The command becomes the
+  # group leader (PGID = its PID), so `kill -- -$pgid` reaches the
+  # entire descendant tree.
+  #   Linux:  setsid(1) creates a new session (+ new process group).
+  #   macOS:  perl POSIX::setpgid(0,0) creates a new group only.
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" &
+  else
+    perl -e '
+      use POSIX qw(setpgid);
+      setpgid(0, 0) or warn "bound-exec: setpgid: $!\n";
+      exec @ARGV or die "bound-exec: exec: $!\n";
+    ' -- "$@" &
+  fi
   local cmd_pid=$!
+  local cmd_pgid="$cmd_pid"
 
-  # Watchdog: sleeps for the bound, then kills the command and its
-  # direct children (handles the case where the command spawned a
-  # subprocess, e.g. a shell script running an external binary).
-  # Stdin/stdout/stderr are redirected to /dev/null so the watchdog's
-  # sleep process does not hold the caller's file descriptors open
-  # (which would cause bats `run` and pipe-based captures to hang).
+  # Watchdog: sleeps for the bound, then kills the command's entire
+  # process group (TERM, 1 s grace, KILL).  Stdin/stdout/stderr are
+  # redirected to /dev/null so the watchdog's sleep does not hold the
+  # caller's file descriptors open.
   (
     "$_BE_REAL_SLEEP" "$bound" 2>/dev/null
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$_be_killed_flag"
-      # Kill direct children first (so grandchildren don't orphan),
-      # then the command itself.
-      pkill -P "$cmd_pid" 2>/dev/null || true
-      kill "$cmd_pid" 2>/dev/null || true
+      # TERM the entire process group, then escalate to KILL.
+      kill -- -"$cmd_pgid" 2>/dev/null || true
+      "$_BE_REAL_SLEEP" 1 2>/dev/null || true
+      kill -9 -- -"$cmd_pgid" 2>/dev/null || true
     fi
   ) </dev/null >/dev/null 2>&1 &
   local wd_pid=$!

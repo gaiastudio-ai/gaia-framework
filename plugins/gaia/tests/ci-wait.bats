@@ -1807,3 +1807,38 @@ HANGH
   # We cannot be 100% sure there are no unrelated sleeps, but the stub
   # used exec so killing the process kills the sleep.
 }
+
+@test "ci-wait with nested-tree stub: entire tree killed, zero orphans" {
+  # Create a uniquely-named sleeper so we can identify orphans
+  local marker="cw_nested_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  # Replace gh with a stub that spawns a nested tree
+  cat > "$TEST_TMP/bin/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$TEST_TMP/bin/gh"
+
+  export CI_WAIT_TIMEOUT_SECONDS=2
+  export CI_WAIT_PER_CALL_BOUND=2
+
+  local start=$SECONDS
+  run "$CI_WAIT" 999
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}

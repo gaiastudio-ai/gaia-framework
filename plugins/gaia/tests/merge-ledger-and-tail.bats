@@ -42,6 +42,16 @@ setup() {
 
 teardown() {
   rm -rf "${BATS_TEST_TMPDIR}/ledger" 2>/dev/null || true
+  # Safety net: kill any orphaned processes whose command line contains
+  # our unique BATS_TEST_TMPDIR path (covers stub sleepers that the
+  # process-group kill should have caught).
+  local _pids=""
+  _pids=$(pgrep -f "${BATS_TEST_TMPDIR}" 2>/dev/null) || true
+  if [ -n "$_pids" ]; then
+    echo "$_pids" | while IFS= read -r _p; do
+      kill -9 "$_p" 2>/dev/null || true
+    done
+  fi
 }
 
 # ======================================================================
@@ -1117,9 +1127,6 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"bound exceeded"* ]]
   [ "$elapsed" -le 5 ]
-
-  # No orphaned sleep from the stub (exec means kill reaches sleep)
-  sleep 0.5 2>/dev/null || sleep 1
 }
 
 @test "merge-tail merge returns within bound when gh hangs" {
@@ -1144,10 +1151,6 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"bound exceeded"* ]]
   [ "$elapsed" -le 5 ]
-
-  # Ledger is consistent: intent created but merge did not complete,
-  # so state is merging (resumable on re-run)
-  sleep 0.5 2>/dev/null || sleep 1
 }
 
 @test "merge-tail verify returns within bound when gh hangs" {
@@ -1180,8 +1183,6 @@ STUB
   local intent_file
   intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
   /usr/bin/grep -q 'state: "merged"' "$intent_file"
-
-  sleep 0.5 2>/dev/null || sleep 1
 }
 
 @test "ci-wait-ref returns within bound when gh hangs" {
@@ -1205,8 +1206,207 @@ STUB
   [ "$status" -eq 2 ]
   [[ "$output" == *"pending"* ]]
   [ "$elapsed" -le 5 ]
+}
 
-  sleep 0.5 2>/dev/null || sleep 1
+# ======================================================================
+# Process-group kill — nested tree tests
+# ======================================================================
+# These tests verify that bound_exec kills the entire descendant tree,
+# not just direct children.  Each stub spawns a nested process tree
+# (grandchildren via sh -c), and the test asserts zero orphans survive.
+
+@test "gate with nested-tree stub: entire tree killed, zero orphans" {
+  # Create a uniquely-named sleeper so we can identify orphans via pgrep
+  local marker="be_gate_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/nested_gate"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_LEDGER_SKIP_GH
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 8 ]
+
+  # Wait for process cleanup to settle
+  sleep 2
+
+  # Assert: no orphans from our stub tree survive
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}
+
+@test "merge with nested-tree stub: entire tree killed, zero orphans" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  local marker="be_merge_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/nested_merge"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_TAIL_SKIP_MERGE
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" merge --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}
+
+@test "verify with nested-tree stub: entire tree killed, zero orphans" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merged
+
+  local marker="be_verify_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/nested_verify"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$stub_dir/gh"
+
+  export MERGE_TAIL_MAX_SECONDS=2
+  unset MERGE_TAIL_MOCK_PR_BASE
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" verify --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}
+
+@test "ci-wait-ref with nested-tree stub: entire tree killed, zero orphans" {
+  unset CI_WAIT_REF_SKIP_GH
+  export CI_WAIT_REF_WORKFLOWS="build-ci"
+  export CI_WAIT_REF_STATUS_CONTEXTS=""
+  export CI_WAIT_REF_POLL_INTERVAL=0
+
+  local marker="be_cwr_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/nested_cwr"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$stub_dir/gh"
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$CI_WAIT_SH" --sha abcdef1234567 --max-seconds 2
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pending"* ]]
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}
+
+@test "process-group kill handles TERM-ignoring nested stub" {
+  local marker="be_term_${BATS_TEST_NUMBER}_$$"
+  local trap_sleeper="${BATS_TEST_TMPDIR}/${marker}_trap.sh"
+  cat > "$trap_sleeper" <<'SCRIPT'
+#!/bin/bash
+trap '' TERM
+exec /bin/sleep 86400
+SCRIPT
+  chmod +x "$trap_sleeper"
+
+  local stub_dir="${BATS_TEST_TMPDIR}/nested_term"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/gh" <<STUB
+#!/bin/bash
+sh -c "$trap_sleeper" &
+exec "$trap_sleeper"
+STUB
+  chmod +x "$stub_dir/gh"
+
+  unset MERGE_LEDGER_SKIP_GH
+  export MERGE_TAIL_MAX_SECONDS=2
+
+  local start=$SECONDS
+  run env PATH="$stub_dir:$PATH" bash "$TAIL_SH" gate --story E900-S1 --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"bound exceeded"* ]]
+  # 2s bound + 1s grace + margin
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 @test "merge-tail verb resumes after bound expires and gh recovers" {
