@@ -1124,7 +1124,7 @@ RUNNER
 @test "merge-tail gate returns within bound when gh hangs" {
   local marker="be_sgate_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub"
@@ -1157,7 +1157,7 @@ RUNNER
 
   local marker="be_smerge_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_merge"
@@ -1193,7 +1193,7 @@ RUNNER
 
   local marker="be_sverify_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_verify"
@@ -1233,7 +1233,7 @@ RUNNER
 
   local marker="be_scwr_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_cwr"
@@ -1271,7 +1271,7 @@ RUNNER
   local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
   cat > "$sleeper" <<'SCRIPT'
 #!/bin/bash
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$sleeper"
 
@@ -1312,7 +1312,7 @@ STUB
   local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
   cat > "$sleeper" <<'SCRIPT'
 #!/bin/bash
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$sleeper"
 
@@ -1353,7 +1353,7 @@ STUB
   local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
   cat > "$sleeper" <<'SCRIPT'
 #!/bin/bash
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$sleeper"
 
@@ -1394,7 +1394,7 @@ STUB
   local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
   cat > "$sleeper" <<'SCRIPT'
 #!/bin/bash
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$sleeper"
 
@@ -1428,7 +1428,7 @@ STUB
   cat > "$trap_sleeper" <<'SCRIPT'
 #!/bin/bash
 trap '' TERM
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$trap_sleeper"
 
@@ -1464,7 +1464,7 @@ STUB
 
   local marker="be_sresume_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_resume"

@@ -1782,7 +1782,7 @@ SHIMEOF
 @test "ci-wait returns within bound when gh hangs" {
   local marker="cw_shang_${BATS_TEST_NUMBER}_$$"
   local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
-  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
   chmod +x "$sleeper"
 
   cat > "$TEST_TMP/bin/gh" <<HANGH
@@ -1816,7 +1816,7 @@ HANGH
   local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
   cat > "$sleeper" <<'SCRIPT'
 #!/bin/bash
-exec /bin/sleep 86400
+/bin/sleep 86400
 SCRIPT
   chmod +x "$sleeper"
 
