@@ -1780,10 +1780,12 @@ SHIMEOF
 }
 
 @test "ci-wait returns within bound when gh hangs" {
-  # Replace the stub-based gh with a hanging one
+  # Replace the stub-based gh with a hanging one.
+  # Use /bin/sleep (absolute path) so the test harness's sleep shim
+  # (which exits immediately) does not prevent the stub from hanging.
   cat > "$TEST_TMP/bin/gh" <<'HANGH'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 HANGH
   chmod +x "$TEST_TMP/bin/gh"
 

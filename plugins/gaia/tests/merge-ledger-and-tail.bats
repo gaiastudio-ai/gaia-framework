@@ -1103,7 +1103,7 @@ RUNNER
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1130,7 +1130,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1161,7 +1161,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1194,7 +1194,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 STUB
   chmod +x "$stub_dir/gh"
 
@@ -1218,7 +1218,7 @@ STUB
   mkdir -p "$stub_dir"
   cat > "$stub_dir/gh" <<'STUB'
 #!/bin/bash
-exec sleep 86400
+exec /bin/sleep 86400 </dev/null >/dev/null 2>&1
 STUB
   chmod +x "$stub_dir/gh"
 
