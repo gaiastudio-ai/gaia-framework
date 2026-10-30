@@ -81,30 +81,43 @@ bound_exec() {
   # entire descendant tree.
   #   Linux:  setsid(1) creates a new session (+ new process group).
   #   macOS:  perl POSIX::setpgid(0,0) creates a new group only.
+  #   Fallback: run without group isolation (direct-child kill only).
+  local _be_has_group=1
   if command -v setsid >/dev/null 2>&1; then
     setsid "$@" &
-  else
+  elif command -v perl >/dev/null 2>&1; then
     perl -e '
       use POSIX qw(setpgid);
       setpgid(0, 0) or warn "bound-exec: setpgid: $!\n";
       exec @ARGV or die "bound-exec: exec: $!\n";
     ' -- "$@" &
+  else
+    # Neither setsid nor perl — run without process-group isolation.
+    "$@" &
+    _be_has_group=0
   fi
   local cmd_pid=$!
   local cmd_pgid="$cmd_pid"
 
-  # Watchdog: sleeps for the bound, then kills the command's entire
-  # process group (TERM, 1 s grace, KILL).  Stdin/stdout/stderr are
+  # Watchdog: sleeps for the bound, then kills the command's process
+  # group (TERM, 1 s grace, KILL) or falls back to direct-child kill
+  # when group isolation is unavailable.  Stdin/stdout/stderr are
   # redirected to /dev/null so the watchdog's sleep does not hold the
   # caller's file descriptors open.
   (
     "$_BE_REAL_SLEEP" "$bound" 2>/dev/null
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$_be_killed_flag"
-      # TERM the entire process group, then escalate to KILL.
-      kill -- -"$cmd_pgid" 2>/dev/null || true
-      "$_BE_REAL_SLEEP" 1 2>/dev/null || true
-      kill -9 -- -"$cmd_pgid" 2>/dev/null || true
+      if [ "$_be_has_group" -eq 1 ]; then
+        # TERM the entire process group, then escalate to KILL.
+        kill -- -"$cmd_pgid" 2>/dev/null || true
+        "$_BE_REAL_SLEEP" 1 2>/dev/null || true
+        kill -9 -- -"$cmd_pgid" 2>/dev/null || true
+      else
+        # Fallback: direct-child kill (no group isolation).
+        pkill -P "$cmd_pid" 2>/dev/null || true
+        kill "$cmd_pid" 2>/dev/null || true
+      fi
     fi
   ) </dev/null >/dev/null 2>&1 &
   local wd_pid=$!
