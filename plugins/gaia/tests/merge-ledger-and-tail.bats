@@ -1474,32 +1474,53 @@ STUB
 # ======================================================================
 
 @test "no watchdog sleep survives after a fast command under a large bound" {
-  # Source bound-exec directly so we can call bound_exec without merge-tail
   # shellcheck source=../scripts/lib/bound-exec.sh
   source "$SCRIPTS_DIR/lib/bound-exec.sh"
 
-  # Record existing sleeps so we only check for NEW ones
-  local before_pids=""
-  before_pids=$(pgrep -f "/bin/sleep" 2>/dev/null | sort) || true
+  # A bound value no other process uses, so its watchdog sleeps can be
+  # found by their arguments.
+  local bound=61237
+  local i rc
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    rc=0
+    bound_exec "$bound" -- true || rc=$?
+    [ "$rc" -eq 0 ]
+  done
 
-  # Run a fast command with a large bound — the watchdog sleeps for 60s
-  # but the command finishes immediately
-  local rc=0
-  bound_exec 60 -- true || rc=$?
-  [ "$rc" -eq 0 ]
-
-  sleep 1
-
-  # Check for new /bin/sleep processes that were not present before
-  local after_pids=""
-  after_pids=$(pgrep -f "/bin/sleep" 2>/dev/null | sort) || true
-
-  local new_pids=""
-  if [ -n "$after_pids" ]; then
-    new_pids=$(comm -13 <(echo "$before_pids") <(echo "$after_pids") 2>/dev/null) || true
+  local survivors=""
+  survivors="$(pgrep -f "sleep ${bound}" 2>/dev/null)" || true
+  if [ -n "$survivors" ]; then
+    kill $survivors 2>/dev/null || true
   fi
+  [ -z "$survivors" ]
+}
 
-  [ -z "$new_pids" ]
+@test "a group marker set in the environment does not switch off group isolation" {
+  # shellcheck source=../scripts/lib/bound-exec.sh
+  source "$SCRIPTS_DIR/lib/bound-exec.sh"
+
+  local marker="be_envmark_${BATS_TEST_NUMBER}_$$"
+  local stub="${BATS_TEST_TMPDIR}/envmark-tree.sh"
+  # A TERM-ignoring child and grandchild, each carrying the marker in its
+  # arguments so a survivor can be found.
+  cat > "$stub" <<'STUB'
+#!/bin/bash
+trap '' TERM
+/bin/bash -c 'trap "" TERM; while :; do /bin/sleep 1; done' "$1" &
+exec /bin/bash -c 'trap "" TERM; while :; do /bin/sleep 1; done' "$1"
+STUB
+  chmod +x "$stub"
+
+  local rc=0
+  _BE_IN_BOUND=1 bound_exec 1 -- /bin/bash "$stub" "$marker" || rc=$?
+  [ "$rc" -eq 142 ]
+
+  local survivors=""
+  survivors="$(pgrep -f "$marker" 2>/dev/null)" || true
+  if [ -n "$survivors" ]; then
+    kill -9 $survivors 2>/dev/null || true
+  fi
+  [ -z "$survivors" ]
 }
 
 # ======================================================================

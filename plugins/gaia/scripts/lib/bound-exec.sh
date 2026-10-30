@@ -92,7 +92,18 @@ bound_exec() {
   # Close fds above 2 before exec so test-harness capture pipes (bats
   # uses high fds) are not inherited by descendants.
   local _be_has_group=1
-  local _be_nested="${_BE_IN_BOUND:-0}"
+  # An inner call stays in the outer call's group. The outer call records
+  # its group id in _BE_IN_BOUND; the value is honoured only when it equals
+  # this process's current group, so a value set elsewhere in the
+  # environment cannot switch off group isolation.
+  local _be_nested=0
+  if [ -n "${_BE_IN_BOUND:-}" ]; then
+    local _be_cur_pgid=""
+    _be_cur_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')" || _be_cur_pgid=""
+    if [ -n "$_be_cur_pgid" ] && [ "$_be_cur_pgid" = "$_BE_IN_BOUND" ]; then
+      _be_nested=1
+    fi
+  fi
   if [ "$_be_nested" -eq 1 ]; then
     # Inner bound_exec: stay in the outer's process group.
     "$@" &
@@ -100,7 +111,8 @@ bound_exec() {
   elif command -v setsid >/dev/null 2>&1; then
     (
       # shellcheck disable=SC2030
-      export _BE_IN_BOUND=1
+      _BE_IN_BOUND="$(exec /bin/sh -c 'echo "$PPID"')"
+      export _BE_IN_BOUND
       if [ -d /proc/self/fd ]; then
         for _be_fd in /proc/self/fd/*; do
           _be_fdn="${_be_fd##*/}"
@@ -116,7 +128,8 @@ bound_exec() {
   elif command -v perl >/dev/null 2>&1; then
     (
       # shellcheck disable=SC2031
-      export _BE_IN_BOUND=1
+      _BE_IN_BOUND="$(exec /bin/sh -c 'echo "$PPID"')"
+      export _BE_IN_BOUND
       if [ -d /proc/self/fd ]; then
         for _be_fd in /proc/self/fd/*; do
           _be_fdn="${_be_fd##*/}"
@@ -143,16 +156,11 @@ bound_exec() {
 
   # Watchdog: sleeps for the bound, then kills the command's process
   # group (TERM, 1 s grace, KILL) or falls back to direct-child kill
-  # when group isolation is unavailable.
-  #
-  # Close ALL fds (including high fds from test harnesses like bats)
-  # before sleeping so the watchdog's sleep cannot hold a pipe fd open.
-  # Without this, an orphaned watchdog sleep keeps bats waiting.
-  # Watchdog: close all fds above 2 so the sleep cannot hold bats pipe
-  # fds open.  Write the sleep PID to a file so the parent can kill it
-  # directly (avoids the pkill race where pkill runs before the sleep
-  # has started).
+  # when group isolation is unavailable. It closes all fds above 2 so its
+  # sleep cannot hold a caller's pipe open, and records the sleep's PID so
+  # the parent can stop that exact process when the command finishes first.
   local _be_wd_pid_file="${_be_killed_flag}.wd"
+  rm -f "$_be_wd_pid_file"
   (
     if [ -d /proc/self/fd ]; then
       for _be_fd in /proc/self/fd/*; do
@@ -191,10 +199,25 @@ bound_exec() {
   if [ -f "$_be_killed_flag" ]; then
     wait "$wd_pid" 2>/dev/null || true
   else
-    if [ -f "$_be_wd_pid_file" ]; then
-      kill "$(cat "$_be_wd_pid_file")" 2>/dev/null || true
+    # The watchdog may not have started its sleep yet: wait (bounded) for
+    # the PID it records, stop that sleep, then reap the watchdog, which
+    # exits on its own once its sleep ends.
+    local _be_try=0 _be_sleep_pid=""
+    while [ "$_be_try" -lt 200 ]; do
+      if [ -s "$_be_wd_pid_file" ]; then
+        _be_sleep_pid="$(cat "$_be_wd_pid_file" 2>/dev/null)" || _be_sleep_pid=""
+        [ -n "$_be_sleep_pid" ] && break
+      fi
+      kill -0 "$wd_pid" 2>/dev/null || break
+      "$_BE_REAL_SLEEP" 0.01 2>/dev/null || true
+      _be_try=$((_be_try + 1))
+    done
+    if [ -n "$_be_sleep_pid" ]; then
+      kill "$_be_sleep_pid" 2>/dev/null || true
+    else
+      pkill -P "$wd_pid" 2>/dev/null || true
+      kill "$wd_pid" 2>/dev/null || true
     fi
-    kill "$wd_pid" 2>/dev/null || true
     wait "$wd_pid" 2>/dev/null || true
   fi
   rm -f "$_be_wd_pid_file"
