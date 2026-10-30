@@ -148,8 +148,11 @@ bound_exec() {
   # Close ALL fds (including high fds from test harnesses like bats)
   # before sleeping so the watchdog's sleep cannot hold a pipe fd open.
   # Without this, an orphaned watchdog sleep keeps bats waiting.
-  # Watchdog: the sleep runs in the background inside the subshell so
-  # the EXIT trap can kill it reliably — no race with external pkill.
+  # Watchdog: close all fds above 2 so the sleep cannot hold bats pipe
+  # fds open.  Write the sleep PID to a file so the parent can kill it
+  # directly (avoids the pkill race where pkill runs before the sleep
+  # has started).
+  local _be_wd_pid_file="${_be_killed_flag}.wd"
   (
     if [ -d /proc/self/fd ]; then
       for _be_fd in /proc/self/fd/*; do
@@ -161,11 +164,9 @@ bound_exec() {
         eval "exec ${_be_fdn}>&-" 2>/dev/null || true
       done
     fi
-    _be_wd_sleep_pid=""
-    trap 'kill "$_be_wd_sleep_pid" 2>/dev/null; wait "$_be_wd_sleep_pid" 2>/dev/null' EXIT
     "$_BE_REAL_SLEEP" "$bound" &
-    _be_wd_sleep_pid=$!
-    wait "$_be_wd_sleep_pid" 2>/dev/null || true
+    printf '%s' "$!" > "$_be_wd_pid_file"
+    wait "$!" 2>/dev/null || true
     if kill -0 "$cmd_pid" 2>/dev/null; then
       touch "$_be_killed_flag"
       if [ "$_be_has_group" -eq 1 ]; then
@@ -184,16 +185,19 @@ bound_exec() {
   local rc=0
   wait "$cmd_pid" 2>/dev/null || rc=$?
 
-  # Clean up the watchdog.  If the bound fired (flag file exists), the
-  # watchdog is running its TERM→KILL sequence — let it finish so the
-  # KILL reaches TERM-ignoring processes.  Otherwise (normal completion),
-  # kill the watchdog and its sleep child immediately.
+  # Clean up the watchdog.  If the bound fired, let the watchdog finish
+  # its TERM→KILL sequence.  Otherwise, kill the sleep (by PID from the
+  # file, no race) and the watchdog subshell.
   if [ -f "$_be_killed_flag" ]; then
     wait "$wd_pid" 2>/dev/null || true
   else
+    if [ -f "$_be_wd_pid_file" ]; then
+      kill "$(cat "$_be_wd_pid_file")" 2>/dev/null || true
+    fi
     kill "$wd_pid" 2>/dev/null || true
     wait "$wd_pid" 2>/dev/null || true
   fi
+  rm -f "$_be_wd_pid_file"
 
   # Check if the watchdog killed the command
   if [ -f "$_be_killed_flag" ]; then
