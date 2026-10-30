@@ -1780,12 +1780,14 @@ SHIMEOF
 }
 
 @test "ci-wait returns within bound when gh hangs" {
-  # Replace the stub-based gh with a hanging one.
-  # Use /bin/sleep (absolute path) so the test harness's sleep shim
-  # (which exits immediately) does not prevent the stub from hanging.
-  cat > "$TEST_TMP/bin/gh" <<'HANGH'
+  local marker="cw_shang_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
+  cat > "$TEST_TMP/bin/gh" <<HANGH
 #!/bin/bash
-exec /bin/sleep 86400
+exec "$sleeper"
 HANGH
   chmod +x "$TEST_TMP/bin/gh"
 
@@ -1797,15 +1799,15 @@ HANGH
   local elapsed=$((SECONDS - start))
 
   [ "$status" -ne 0 ]
-  # Must return within bound + margin (2s bound + 3s margin = 5s)
   [ "$elapsed" -le 5 ]
 
-  # No orphaned sleep 86400 from our stub
-  sleep 0.5 2>/dev/null || sleep 1
-  local orphans=""
-  orphans=$(ps -eo pid,ppid,comm 2>/dev/null | /usr/bin/grep -c "[s]leep" || true)
-  # We cannot be 100% sure there are no unrelated sleeps, but the stub
-  # used exec so killing the process kills the sleep.
+  sleep 2
+  local survivors=""
+  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
+  if [ -n "$survivors" ]; then echo "DIAG ci-wait survivors: $survivors" >&3; fi
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 @test "ci-wait with nested-tree stub: entire tree killed, zero orphans" {

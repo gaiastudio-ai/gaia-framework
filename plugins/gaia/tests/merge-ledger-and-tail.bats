@@ -42,11 +42,24 @@ setup() {
 
 teardown() {
   rm -rf "${BATS_TEST_TMPDIR}/ledger" 2>/dev/null || true
+  # Diagnostic: report any lingering sleep 86400 processes
+  local _sleeps=""
+  _sleeps=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "sleep 86400" | /usr/bin/grep -v grep) || true
+  if [ -n "$_sleeps" ]; then
+    echo "DIAG teardown sleep-86400 survivors:" >&3
+    echo "$_sleeps" >&3
+  fi
   # Safety net: kill any orphaned processes whose command line contains
-  # our unique BATS_TEST_TMPDIR path (covers stub sleepers that the
-  # process-group kill should have caught).
+  # our unique BATS_TEST_TMPDIR path or the sleep markers.
   local _pids=""
   _pids=$(pgrep -f "${BATS_TEST_TMPDIR}" 2>/dev/null) || true
+  if [ -n "$_pids" ]; then
+    echo "$_pids" | while IFS= read -r _p; do
+      kill -9 "$_p" 2>/dev/null || true
+    done
+  fi
+  # Also kill any sleep 86400 with our markers
+  _pids=$(pgrep -f "be_s.*_$$" 2>/dev/null) || true
   if [ -n "$_pids" ]; then
     echo "$_pids" | while IFS= read -r _p; do
       kill -9 "$_p" 2>/dev/null || true
@@ -1109,12 +1122,14 @@ RUNNER
 # ======================================================================
 
 @test "merge-tail gate returns within bound when gh hangs" {
+  local marker="be_sgate_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub"
   mkdir -p "$stub_dir"
-  cat > "$stub_dir/gh" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 86400
-STUB
+  printf '#!/bin/bash\nexec "%s"\n' "$sleeper" > "$stub_dir/gh"
   chmod +x "$stub_dir/gh"
 
   unset MERGE_LEDGER_SKIP_GH
@@ -1127,18 +1142,27 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"bound exceeded"* ]]
   [ "$elapsed" -le 5 ]
+
+  sleep 2
+  local survivors=""
+  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
+  if [ -n "$survivors" ]; then echo "DIAG gate survivors: $survivors" >&3; fi
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 @test "merge-tail merge returns within bound when gh hangs" {
-  # Set up ledger state for merge (gate must exist)
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  local marker="be_smerge_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
 
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_merge"
   mkdir -p "$stub_dir"
-  cat > "$stub_dir/gh" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 86400
-STUB
+  printf '#!/bin/bash\nexec "%s"\n' "$sleeper" > "$stub_dir/gh"
   chmod +x "$stub_dir/gh"
 
   unset MERGE_TAIL_SKIP_MERGE
@@ -1151,21 +1175,30 @@ STUB
   [ "$status" -ne 0 ]
   [[ "$output" == *"bound exceeded"* ]]
   [ "$elapsed" -le 5 ]
+
+  sleep 2
+  local survivors=""
+  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
+  if [ -n "$survivors" ]; then echo "DIAG merge survivors: $survivors" >&3; fi
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 @test "merge-tail verify returns within bound when gh hangs" {
-  # Set up ledger through merged state
   bash "$LEDGER_SH" write-gate-pass --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
   bash "$LEDGER_SH" write-intent --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1 --target staging --mode story
   bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merging
   bash "$LEDGER_SH" advance --pr 42 --head abc1234def5678abc1234def5678abc1234def5678 --state merged
 
+  local marker="be_sverify_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_verify"
   mkdir -p "$stub_dir"
-  cat > "$stub_dir/gh" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 86400
-STUB
+  printf '#!/bin/bash\nexec "%s"\n' "$sleeper" > "$stub_dir/gh"
   chmod +x "$stub_dir/gh"
 
   export MERGE_TAIL_MAX_SECONDS=2
@@ -1179,10 +1212,17 @@ STUB
   [[ "$output" == *"bound exceeded"* ]]
   [ "$elapsed" -le 5 ]
 
-  # Ledger still at merged — verify can be re-run
   local intent_file
   intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
   /usr/bin/grep -q 'state: "merged"' "$intent_file"
+
+  sleep 2
+  local survivors=""
+  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
+  if [ -n "$survivors" ]; then echo "DIAG verify survivors: $survivors" >&3; fi
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 @test "ci-wait-ref returns within bound when gh hangs" {
@@ -1191,12 +1231,14 @@ STUB
   export CI_WAIT_REF_STATUS_CONTEXTS=""
   export CI_WAIT_REF_POLL_INTERVAL=0
 
+  local marker="be_scwr_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\nexec /bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
   local stub_dir="${BATS_TEST_TMPDIR}/hang_stub_cwr"
   mkdir -p "$stub_dir"
-  cat > "$stub_dir/gh" <<'STUB'
-#!/bin/bash
-exec /bin/sleep 86400
-STUB
+  printf '#!/bin/bash\nexec "%s"\n' "$sleeper" > "$stub_dir/gh"
   chmod +x "$stub_dir/gh"
 
   local start=$SECONDS
@@ -1206,6 +1248,14 @@ STUB
   [ "$status" -eq 2 ]
   [[ "$output" == *"pending"* ]]
   [ "$elapsed" -le 5 ]
+
+  sleep 2
+  local survivors=""
+  survivors=$(ps -eo pid,ppid,pgid,sid,args 2>/dev/null | /usr/bin/grep "$marker" | /usr/bin/grep -v grep) || true
+  if [ -n "$survivors" ]; then echo "DIAG cwr survivors: $survivors" >&3; fi
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
 }
 
 # ======================================================================
