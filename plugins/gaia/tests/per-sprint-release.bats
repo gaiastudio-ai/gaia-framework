@@ -204,15 +204,16 @@ for arg in "$@"; do
     *classify-commits.js)
       # Classify commits: read stdin, detect feat/fix/breaking
       input="$(cat)"
-      if printf '%s' "$input" | grep -qi 'BREAKING'; then
-        printf 'bump_size=major\nhas_commits=true\n'
-      elif printf '%s' "$input" | grep -qi 'feat'; then
-        printf 'bump_size=minor\nhas_commits=true\n'
-      elif printf '%s' "$input" | grep -qi 'fix'; then
-        printf 'bump_size=patch\nhas_commits=true\n'
-      else
-        printf 'bump_size=none\nhas_commits=false\n'
-      fi
+      case "$input" in
+        *BREAKING*|*breaking*)
+          printf 'bump_size=major\nhas_commits=true\n' ;;
+        *feat*|*Feat*)
+          printf 'bump_size=minor\nhas_commits=true\n' ;;
+        *fix*|*Fix*)
+          printf 'bump_size=patch\nhas_commits=true\n' ;;
+        *)
+          printf 'bump_size=none\nhas_commits=false\n' ;;
+      esac
       exit 0
       ;;
     *version-bump.js)
@@ -914,7 +915,10 @@ for arg in "$@"; do
       if [ -n "$project_root" ] && [ -f "$project_root/VERSION" ]; then
         # Strip BOM and whitespace, then bump
         old="$(cat "$project_root/VERSION" | sed 's/^\xEF\xBB\xBF//' | tr -d '[:space:]')"
-        if [ -z "$old" ] || ! printf '%s' "$old" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+        case "$old" in [0-9]*.[0-9]*.[0-9]*) ;; *)
+          printf 'version-bump: invalid version format in VERSION: %s\n' "$old" >&2
+          exit 1 ;; esac
+        if [ -z "$old" ]; then
           printf 'version-bump: invalid version format in VERSION: %s\n' "$old" >&2
           exit 1
         fi
