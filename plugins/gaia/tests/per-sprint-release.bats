@@ -1202,11 +1202,11 @@ YAML
       --state-dir "$PROJECT_DIR/.gaia/state")"
 
   # Should contain sprint-900 stories
-  printf '%s\n' "$output" | grep -q 'E900-S1'
-  printf '%s\n' "$output" | grep -q 'E900-S2'
+  [[ "$output" == *"E900-S1"* ]]
+  [[ "$output" == *"E900-S2"* ]]
 
   # Should NOT contain sprint-901 stories
-  ! printf '%s\n' "$output" | grep -q 'E901-S1'
+  [[ "$output" != *"E901-S1"* ]]
 }
 
 @test "merge_ledger_list_returns_shas" {
