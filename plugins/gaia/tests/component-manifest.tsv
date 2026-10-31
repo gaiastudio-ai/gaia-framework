@@ -309,6 +309,7 @@ core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
 core	parse-force-design.bats
 core	path-split-resolution.bats
+core	per-sprint-release.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
