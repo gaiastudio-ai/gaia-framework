@@ -7,7 +7,7 @@
 #   operator bypass acceptance and rejection variants
 #   static scan — no shipped script sets the bypass variable
 #   pre-tool guard blocks model-issued bypass variable
-#   merge_base_mismatch, --no-delete-branch, no-CI binding mode
+#   merge_base_mismatch, branch-preservation guard, no-CI binding mode
 #   fail-closed gate on missing story in GAIA projects
 #   bypass record and audit content verification
 #   bypass visibility in doctor / sprint-plan output
@@ -685,7 +685,7 @@ STUB
   [[ "$output" == *"merge_base_mismatch"* ]]
 }
 
-@test "merge always passes --no-delete-branch and --match-head-commit" {
+@test "merge never passes branch-deletion flags to gh and always passes --match-head-commit" {
   make_fixture_repo
   _seed_story "E900-S1" \
     "Code Review:PASSED:$FIXTURE_HEAD_OID" \
@@ -697,16 +697,75 @@ STUB
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
   make_stub_gh
 
-  run bash "$MERGE_SH" 999 E900-S1 --no-delete-branch
+  # Even when the caller passes --delete-branch, gh must never see it
+  run bash "$MERGE_SH" 999 E900-S1 --delete-branch
   [ "$status" -eq 0 ]
 
-  # Verify both flags in the gh pr merge args
-  /usr/bin/grep -q '\-\-no-delete-branch' "$GH_ARGS"
-  /usr/bin/grep -q '\-\-match-head-commit' "$GH_ARGS"
+  # Extract only the gh pr merge line for targeted assertions
+  local merge_args
+  merge_args="$(/usr/bin/grep 'pr merge' "$GH_ARGS")"
 
-  # Verify the DELETE_BRANCH default is false in merge.sh
-  run bash -c "/usr/bin/grep -E '^DELETE_BRANCH=' '$MERGE_SH' || true"
-  [[ "$output" == *"DELETE_BRANCH=false"* ]]
+  # gh pr merge must never receive any branch-deletion flag
+  run /usr/bin/grep -c '\-\-no-delete-branch' <<< "$merge_args"
+  [ "$status" -ne 0 ] || [ "$output" = "0" ]
+
+  run /usr/bin/grep -c '\-\-delete-branch' <<< "$merge_args"
+  [ "$status" -ne 0 ] || [ "$output" = "0" ]
+
+  run /usr/bin/grep -c ' -d ' <<< "$merge_args"
+  [ "$status" -ne 0 ] || [ "$output" = "0" ]
+
+  # --match-head-commit must always be present
+  /usr/bin/grep -q '\-\-match-head-commit' "$GH_ARGS"
+}
+
+@test "gh pr merge flags are all valid per the real gh CLI" {
+  # Allowlist of flags that gh pr merge (gh 2.88.1) actually accepts.
+  # Update this list when upgrading gh; run `gh pr merge --help` to verify.
+  local -a GH_PR_MERGE_FLAGS=(
+    --admin
+    --auto
+    --body
+    --delete-branch -d
+    --disable-auto
+    --match-head-commit
+    --merge -m
+    --rebase -r
+    --squash -s
+    --subject
+  )
+
+  make_fixture_repo
+  _seed_story "E900-S1" \
+    "Code Review:PASSED:$FIXTURE_HEAD_OID" \
+    "QA Tests:PASSED:$FIXTURE_HEAD_OID" \
+    "Security Review:PASSED:$FIXTURE_HEAD_OID" \
+    "Test Automation:PASSED:$FIXTURE_HEAD_OID" \
+    "Test Review:PASSED:$FIXTURE_HEAD_OID" \
+    "Performance Review:PASSED:$FIXTURE_HEAD_OID"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  make_stub_gh
+
+  run bash "$MERGE_SH" 999 E900-S1
+  [ "$status" -eq 0 ]
+
+  # Extract the gh pr merge invocation from the logged args
+  local merge_line
+  merge_line="$(/usr/bin/grep 'pr merge' "$GH_ARGS" || true)"
+  [ -n "$merge_line" ]
+
+  # Build a lookup string from the allowlist
+  local allowed
+  allowed="$(printf '%s\n' "${GH_PR_MERGE_FLAGS[@]}")"
+
+  # Every --flag passed to gh must be in the allowlist
+  local flag
+  for flag in $(echo "$merge_line" | /usr/bin/grep -oE ' --[a-z][-a-z]*' | sed 's/^ //'); do
+    if ! /usr/bin/grep -qxF -- "$flag" <<< "$allowed"; then
+      echo "FAIL: merge.sh passes unknown flag '$flag' to gh pr merge" >&2
+      return 1
+    fi
+  done
 }
 
 @test "no-CI binding mode: merge.sh passes ci-sha none when no promotion chain" {

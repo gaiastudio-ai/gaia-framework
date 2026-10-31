@@ -13,7 +13,7 @@
 # Never uses admin-override or any branch-protection bypass flag.
 #
 # Usage:
-#   merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--no-delete-branch]
+#   merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--no-delete-branch|--delete-branch]
 #
 # Environment:
 #   PROJECT_PATH — required. The git working directory. Resolved and entered
@@ -105,7 +105,7 @@ cd "$WORK_DIR" || die "cannot cd to $WORK_DIR"
 non_git_cwd_skip "$SCRIPT_NAME" || exit 0
 
 if [ $# -lt 2 ]; then
-  die "usage: merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--delete-branch]"
+  die "usage: merge.sh <pr_number> <story_key> [--strategy <merge|squash|rebase>] [--no-delete-branch|--delete-branch]"
 fi
 
 PR_NUMBER="$1"
@@ -113,7 +113,6 @@ STORY_KEY="$2"
 shift 2
 
 STRATEGY="squash"
-DELETE_BRANCH=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --strategy)
@@ -121,11 +120,13 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --delete-branch)
-      DELETE_BRANCH=true
+      # Accepted for backward compatibility but ignored — branch deletion
+      # is handled by the worktree teardown, never by gh pr merge.
+      log "WARNING: --delete-branch is ignored; branches are never deleted by the merge command."
       shift
       ;;
     --no-delete-branch)
-      DELETE_BRANCH=false
+      # Accepted for backward compatibility (already the default).
       shift
       ;;
     *) die "unknown option: $1" ;;
@@ -826,12 +827,10 @@ if [ -n "$_pre_merge_json" ]; then
 fi
 
 # Build merge command. Always pass --match-head-commit so GitHub refuses
-# the merge if the PR head moved since we checked it. Always pass
-# --no-delete-branch — branch deletion moves to the worktree teardown.
-MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\" --no-delete-branch"
-if [ "$DELETE_BRANCH" = true ]; then
-  MERGE_CMD="$MERGE_CMD --delete-branch"
-fi
+# the merge if the PR head moved since we checked it. Never pass
+# --delete-branch — branch deletion is handled by the worktree teardown,
+# and gh's default is to leave the branch in place.
+MERGE_CMD="gh pr merge $PR_NUMBER --${STRATEGY} --body \"Story: ${STORY_KEY}\" --match-head-commit \"${PR_HEAD_OID}\""
 
 # Execute merge
 merge_output=$(eval "$MERGE_CMD" 2>&1) || {
@@ -858,26 +857,6 @@ merge_output=$(eval "$MERGE_CMD" 2>&1) || {
   if [ "$post_state" = "MERGED" ]; then
     log "WARNING: the merge command failed locally but the remote reports the pull request as merged."
     log "WARNING: local failure was: $merge_output"
-    if [ "$DELETE_BRANCH" = true ]; then
-      # The merge command aborted before its own branch-deletion step, so
-      # finish the cleanup it skipped. An already-absent branch is success.
-      head_branch="${PR_HEAD_BRANCH:-}"
-      if [ -n "$head_branch" ]; then
-        repo_slug="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
-        if [ -n "$repo_slug" ]; then
-          delete_path="repos/${repo_slug}/git/refs/heads/${head_branch}"
-        else
-          delete_path="repos/{owner}/{repo}/git/refs/heads/${head_branch}"
-        fi
-        if gh api -X DELETE "$delete_path" >/dev/null 2>&1; then
-          log "Deleted merged head branch '${head_branch}' (cleanup skipped by the merge command)."
-        else
-          log "WARNING: could not delete head branch '${head_branch}' — it may already be gone."
-        fi
-      else
-        log "WARNING: could not resolve the head branch; skipping branch cleanup."
-      fi
-    fi
     log "PR #${PR_NUMBER} merged via ${STRATEGY}"
     if [ "$_MERGE_BYPASS_ACTIVE" -eq 1 ]; then
       echo "merged:${STRATEGY}:bypass_confirmed=operator_tty"
