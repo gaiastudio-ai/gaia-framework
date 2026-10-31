@@ -123,23 +123,6 @@ _psr_read_field() {
 }
 
 # ---------------------------------------------------------------------------
-# Safe YAML field writer (validates shape, never splices)
-# ---------------------------------------------------------------------------
-_psr_safe_write_field() {
-  local file="$1" field="$2" value="$3"
-  # Validate field name: alphanumeric + underscore only
-  case "$field" in
-    *[!a-z_0-9A-Z]*) _psr_die "invalid field name: $field" ;;
-  esac
-  # Reject double-quotes and multi-line values
-  case "$value" in *'"'*) _psr_die "invalid value for field '$field'" ;; esac
-  local _lc=""
-  _lc="$(printf '%s\n' "$value" | wc -l | tr -d ' ')"
-  [ "$_lc" -le 1 ] || _psr_die "multi-line value for field '$field'"
-  printf '%s: "%s"\n' "$field" "$value" >> "$file"
-}
-
-# ---------------------------------------------------------------------------
 # Collect sprint's stories from sprint state file
 # ---------------------------------------------------------------------------
 _psr_collect_sprint_stories() {
@@ -180,83 +163,6 @@ _psr_collect_sprint_stories() {
       }
     }
   ' "$state_file"
-}
-
-# ---------------------------------------------------------------------------
-# Collect merge SHAs from ledger for a set of stories
-# ---------------------------------------------------------------------------
-_psr_collect_ledger_commits() {
-  local sprint_id="$1"
-  shift
-  # Remaining args are story keys
-
-  if [ ! -d "$_psr_ledger_dir" ]; then
-    printf 'merge ledger not available\n' >&2
-    return 1
-  fi
-
-  local has_any_intent=false
-  local f=""
-  for f in "$_psr_ledger_dir"/intent-*.yaml; do
-    [ -f "$f" ] || continue
-    has_any_intent=true
-    break
-  done
-
-  if ! $has_any_intent; then
-    printf 'merge ledger not available\n' >&2
-    return 1
-  fi
-
-  # Build a lookup of story keys
-  local story_keys=""
-  for key in "$@"; do
-    story_keys="${story_keys:+${story_keys}|}${key}"
-  done
-
-  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents for these stories
-  local found_any=false
-  for f in "$_psr_ledger_dir"/intent-*.yaml; do
-    [ -f "$f" ] || continue
-
-    local f_story="" f_state="" f_merge_sha="" f_head_sha="" f_mode=""
-    f_story="$(_psr_read_field "$f" story)" || continue
-    f_state="$(_psr_read_field "$f" state)" || continue
-    f_mode="$(_psr_read_field "$f" mode)" || f_mode=""
-
-    # Skip release-mode intents (those are our own records)
-    [ "$f_mode" = "release" ] && continue
-
-    # Check if this story belongs to our sprint
-    local matched=false
-    for key in "$@"; do
-      if [ "$f_story" = "$key" ]; then
-        matched=true
-        break
-      fi
-    done
-    $matched || continue
-
-    # Check state is in the accepted set
-    case "$f_state" in
-      finalized|merged|verified|smoke_ok|smoke_failed) ;;
-      *) continue ;;
-    esac
-
-    # Get the merge SHA (preferred) or head SHA
-    f_merge_sha="$(_psr_read_field "$f" merge_sha)" || f_merge_sha=""
-    f_head_sha="$(_psr_read_field "$f" head_sha)" || f_head_sha=""
-    local sha="${f_merge_sha:-$f_head_sha}"
-    if [ -z "$sha" ]; then continue; fi
-
-    # Output: sha story_key (for ordering and verification)
-    printf '%s %s\n' "$sha" "$f_story"
-    found_any=true
-  done
-
-  if ! $found_any; then
-    return 0  # Zero commits is a clean return
-  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -359,38 +265,6 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Record a release intent in the merge ledger
-# ---------------------------------------------------------------------------
-_psr_record_release_intent() {
-  local head_sha="$1" target="$2" pr_branch="$3"
-  local pr_number="${4:-}"
-
-  mkdir -p "$_psr_ledger_dir"
-
-  local ts=""
-  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || ts="1970-01-01T00:00:00Z"
-
-  local intent_id=""
-  intent_id="ri-$(date -u +%Y%m%d%H%M%S)-$$"
-
-  local intent_file="${_psr_ledger_dir}/intent-release-${intent_id}.yaml"
-  : > "$intent_file"
-  _psr_safe_write_field "$intent_file" intent_id "$intent_id"
-  _psr_safe_write_field "$intent_file" mode "release"
-  _psr_safe_write_field "$intent_file" state "intent"
-  _psr_safe_write_field "$intent_file" head_sha "$head_sha"
-  _psr_safe_write_field "$intent_file" target "$target"
-  _psr_safe_write_field "$intent_file" pr_branch "$pr_branch"
-  _psr_safe_write_field "$intent_file" created_at "$ts"
-
-  if [ -n "$pr_number" ]; then
-    _psr_safe_write_field "$intent_file" pr_number "$pr_number"
-  fi
-
-  printf '%s\n' "$intent_file"
-}
-
-# ---------------------------------------------------------------------------
 # Create the merge-back PR (or token fallback)
 # ---------------------------------------------------------------------------
 _psr_create_merge_back_pr() {
@@ -443,10 +317,6 @@ _psr_create_merge_back_pr() {
   local head_sha=""
   head_sha="$(git -C "$project_root" rev-parse "$pr_branch")"
 
-  # Record the release intent
-  local intent_file=""
-  intent_file="$(_psr_record_release_intent "$head_sha" "main" "$pr_branch")"
-
   # Try to create the PR
   local pr_number=""
   if command -v gh >/dev/null 2>&1; then
@@ -465,11 +335,19 @@ _psr_create_merge_back_pr() {
     fi
   fi
 
+  # Record the release intent via the merge ledger (sole writer)
+  local _psr_ml="${_PSR_PLUGIN_ROOT}/scripts/merge-ledger.sh"
   if [ -n "$pr_number" ]; then
-    # Write back pr_number to intent
-    _psr_safe_write_field "$intent_file" pr_number "$pr_number"
+    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+      bash "$_psr_ml" record --mode release \
+        --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
+        --pr-number "$pr_number" >/dev/null 2>&1 || true
     _psr_log "merge-back PR #${pr_number} opened on branch $pr_branch"
   else
+    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+      bash "$_psr_ml" record --mode release \
+        --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
+        >/dev/null 2>&1 || true
     # Token fallback: print the one-click PR URL
     local remote_url=""
     remote_url="$(git -C "$project_root" remote get-url origin 2>/dev/null)" || remote_url=""
@@ -572,9 +450,11 @@ $stories
 EOF
 
   # ── Step 4: Collect commits from ledger ────────────────────────────
+  local _psr_merge_ledger="${_PSR_PLUGIN_ROOT}/scripts/merge-ledger.sh"
   local commit_list=""
-  # shellcheck disable=SC2086
-  commit_list="$(_psr_collect_ledger_commits "$_psr_sprint_id" $story_array)" || {
+  commit_list="$(MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+    bash "$_psr_merge_ledger" list --sprint "$_psr_sprint_id" \
+      --state-dir "$_psr_state_dir")" || {
     _psr_log "merge ledger not available"
     exit 1
   }
@@ -595,25 +475,14 @@ EOF
   local commit_shas=""
   commit_shas="$(printf '%s\n' "$commit_list" | awk '{print $1}')"
 
-  # ── Step 6: Resolve the latest tag as cherry-pick base ─────────────
-  local latest_tag=""
-  latest_tag="$(git -C "$_psr_project_root" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+  # ── Step 6: Acquire L6 (release lock) ──────────────────────────────
+  # Acquired before tag resolution so that concurrent releases serialize
+  # on version selection — otherwise both resolve the same base tag and
+  # the second collides on tag creation.
+  local l6_path="${_psr_state_dir}/.release.lock"
+  local l6_timeout=120
 
-  if [ -z "$latest_tag" ]; then
-    _psr_die "no v* tag found; cannot create a per-sprint release without a baseline tag"
-  fi
-
-  # ── Step 7: Create a detached worktree and cherry-pick ─────────────
-  local release_worktree=""
-  release_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-release-XXXXXX")"
-  # Use a detached worktree from the tag
-  git -C "$_psr_project_root" worktree add --detach "$release_worktree" "$latest_tag" 2>/dev/null || {
-    # Fallback: clone and checkout the tag
-    git clone --no-checkout "$_psr_project_root" "$release_worktree" 2>/dev/null
-    git -C "$release_worktree" checkout "$latest_tag" 2>/dev/null
-  }
-
-  # Set up cleanup trap (release L6 if held, remove worktree)
+  # Set up cleanup trap (release L6 if held, remove worktree when created)
   _psr_cleanup() {
     release_lock 9 2>/dev/null || true
     if [ -n "${release_worktree:-}" ] && [ -d "$release_worktree" ]; then
@@ -624,6 +493,34 @@ EOF
   trap '_psr_cleanup' EXIT
   trap '_psr_cleanup; exit 130' INT
   trap '_psr_cleanup; exit 143' TERM
+
+  local l6_rc=0
+  acquire_lock "$l6_path" "$l6_timeout" 9 --strict || l6_rc=$?
+  if [ "$l6_rc" -ne 0 ]; then
+    exit "$l6_rc"
+  fi
+
+  # ── Step 7: Resolve the latest tag as cherry-pick base ─────────────
+  # Inside L6 so the resolved tag is always the actual latest.
+  # Use `git tag -l | sort -V` instead of `git describe` because describe
+  # only sees tags reachable from HEAD, and a concurrent release's tag on
+  # a cherry-pick branch is not reachable from main.
+  local latest_tag=""
+  latest_tag="$(git -C "$_psr_project_root" tag -l 'v*' 2>/dev/null | sort -V | tail -1)"
+
+  if [ -z "$latest_tag" ]; then
+    _psr_die "no v* tag found; cannot create a per-sprint release without a baseline tag"
+  fi
+
+  # ── Step 8: Create a detached worktree and cherry-pick ─────────────
+  local release_worktree=""
+  release_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-release-XXXXXX")"
+  # Use a detached worktree from the tag
+  git -C "$_psr_project_root" worktree add --detach "$release_worktree" "$latest_tag" 2>/dev/null || {
+    # Fallback: clone and checkout the tag
+    git clone --no-checkout "$_psr_project_root" "$release_worktree" 2>/dev/null
+    git -C "$release_worktree" checkout "$latest_tag" 2>/dev/null
+  }
 
   # Cherry-pick each commit in ledger order
   local sha_array=""
@@ -638,15 +535,6 @@ EOF
   _psr_cherry_pick_commits "$_psr_project_root" "$release_worktree" $sha_array || cherry_rc=$?
   if [ "$cherry_rc" -ne 0 ]; then
     exit "$cherry_rc"
-  fi
-
-  # ── Step 8: Acquire L6 (release lock) ──────────────────────────────
-  local l6_path="${_psr_state_dir}/.release.lock"
-  local l6_timeout=120
-  local l6_rc=0
-  acquire_lock "$l6_path" "$l6_timeout" 9 --strict || l6_rc=$?
-  if [ "$l6_rc" -ne 0 ]; then
-    exit "$l6_rc"
   fi
 
   # ── Step 9: Resolve version and monotonic guard ────────────────────

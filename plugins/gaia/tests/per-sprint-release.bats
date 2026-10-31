@@ -482,32 +482,123 @@ YAML
 @test "l6_serializes_concurrent_version_resolution" {
   cd "$PROJECT_DIR"
 
-  # Verify L6 is acquired during a per-sprint release by checking the script
-  # sources the lock library and calls acquire_lock with the release lock path.
-  [ -f "$SCRIPT_UNDER_TEST" ]
+  # Set up a second closed sprint (sprint-902) with its own story and commit
+  cat > .gaia/state/sprint-status-sprint-902.yaml <<YAML
+sprint_id: "sprint-902"
+status: "closed"
+stories:
+  - "E903-S1"
+YAML
 
-  # Structural: the script acquires .release.lock with 120s and strict mode
-  grep -q '\.release\.lock' "$SCRIPT_UNDER_TEST"
-  grep -q 'acquire_lock' "$SCRIPT_UNDER_TEST"
-  grep -q '\-\-strict' "$SCRIPT_UNDER_TEST"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  cat > .gaia/state/merge/gate-pass-pr104-20260101000010.yaml <<YAML
+type: "gate_pass"
+pr: "104"
+head_sha: "${COMMIT_B1}"
+story: "E903-S1"
+created_at: "${ts}"
+YAML
+  cat > .gaia/state/merge/intent-pr104-mi-20260101000010-10.yaml <<YAML
+intent_id: "mi-20260101000010-10"
+type: "merge_intent"
+story: "E903-S1"
+pr: "104"
+head_sha: "${COMMIT_B1}"
+target: "staging"
+state: "finalized"
+mode: "story"
+merge_sha: "${COMMIT_B1}"
+created_at: "${ts}"
+YAML
 
-  # Behavioral: run a release and verify L6 is released after completion
-  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
-    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
-  [ "$status" -eq 0 ]
+  git add .gaia/
+  git commit -m "chore: add sprint-902 state" 2>/dev/null
+  git push origin main 2>/dev/null
 
-  # L6 should be released (no lock file or directory remaining)
-  [ ! -d "$PROJECT_DIR/.gaia/state/.release.lock" ]
+  # Run the first release — it acquires L6 inside the lock, resolves v0.0.0,
+  # and creates tag v0.1.0.
+  # Run two concurrent releases against the same project root.
+  # L6 serializes the critical section (tag resolution + version bump +
+  # tagging). The merge-back PR (Step 17) runs after L6 is released, and
+  # the second release's L6 section serializes with the first, so the
+  # merge-backs do not overlap.
+  local log1="${TEST_TMP}/release1.log"
+  local log2="${TEST_TMP}/release2.log"
+  bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG" \
+    >"$log1" 2>&1 &
+  local pid1=$!
+  bash "$SCRIPT_UNDER_TEST" --sprint sprint-902 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG" \
+    >"$log2" 2>&1 &
+  local pid2=$!
+
+  local rc1=0 rc2=0
+  wait "$pid1" || rc1=$?
+  wait "$pid2" || rc2=$?
+
+  # Both must succeed
+  [ "$rc1" -eq 0 ]
+  [ "$rc2" -eq 0 ]
+
+  # Both must produce distinct versions
+  local v1="" v2=""
+  v1="$(grep '^version=' "$log1" | head -1 | cut -d= -f2)"
+  v2="$(grep '^version=' "$log2" | head -1 | cut -d= -f2)"
+  [ -n "$v1" ]
+  [ -n "$v2" ]
+  [ "$v1" != "$v2" ]
+
+  # Both tags must exist
+  local tag_count
+  tag_count="$(git tag -l 'v*' | grep -cv 'v0.0.0')"
+  [ "$tag_count" -ge 2 ]
 }
 
 # ── AC10: Generated workflow has sprint_id input ───────────────────────────
 
 @test "generated_workflow_has_sprint_id_input" {
+  cd "$PROJECT_DIR"
   local gen_script="${PLUGIN_ROOT}/skills/gaia-ci-setup/scripts/generate-pipeline.sh"
   [ -f "${gen_script}" ]
 
-  # Check that sprint_id is mentioned in the generate-pipeline.sh
-  grep -q 'sprint_id' "${gen_script}"
+  # Source the generator to invoke _generate_release_workflow directly
+  local gen_out="${TEST_TMP}/gen-out"
+  mkdir -p "$gen_out/.github/workflows" "$gen_out/.gaia/config"
+  cat > "$gen_out/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: test-project
+ci_cd:
+  platform: github-actions
+release:
+  strategy: conventional-commits
+  version_files:
+    - VERSION
+stacks:
+  - path: .
+    name: core
+    language: bash
+  - path: lib
+    name: lib
+    language: bash
+YAML
+
+  # Source the generator and call the release workflow function
+  (
+    source "$gen_script"
+    _generate_release_workflow \
+      "$gen_out/.gaia/config/project-config.yaml" "$gen_out"
+  )
+
+  # Find the generated release workflow
+  local wf="${gen_out}/.github/workflows/gaia-release.yml"
+  [ -f "$wf" ]
+
+  # The workflow must have exactly one sprint_id input
+  local sprint_id_inputs
+  sprint_id_inputs="$(grep -c 'sprint_id:' "$wf")"
+  [ "$sprint_id_inputs" -eq 1 ]
 }
 
 # ── AC11: Ledger intent records head_sha and pr_number ─────────────────────
@@ -575,38 +666,104 @@ YAML
 # ── AC13: L4 released before L6 acquired ───────────────────────────────────
 
 @test "l4_released_before_l6_acquired" {
-  # Structural check: the script calls pre-release-sprint-check.sh (which handles L4)
-  # before acquiring L6.
-  [ -f "$SCRIPT_UNDER_TEST" ]
+  cd "$PROJECT_DIR"
 
-  # Find the line numbers of the pre-release check and L6 acquisition
-  local pre_check_line l6_line
+  # Copy the script to a temp dir so we can install a pre-release check stub
+  local script_dir="${TEST_TMP}/psr-ac13"
+  mkdir -p "$script_dir"
+  cp "$SCRIPT_UNDER_TEST" "$script_dir/per-sprint-release.sh"
 
-  pre_check_line="$(grep -n 'pre-release-sprint-check\|pre_check_script' "$SCRIPT_UNDER_TEST" | head -1 | cut -d: -f1)"
-  l6_line="$(grep -n 'acquire_lock.*release.lock\|l6_path\|\.release\.lock.*acquire' "$SCRIPT_UNDER_TEST" | grep 'acquire_lock' | head -1 | cut -d: -f1)"
+  # Create a pre-release check stub that writes a timestamp marker
+  local marker="${TEST_TMP}/pre-release-done.marker"
+  cat > "$script_dir/pre-release-sprint-check.sh" <<SH
+#!/bin/sh
+date +%s > "$marker"
+exit 0
+SH
+  chmod +x "$script_dir/pre-release-sprint-check.sh"
 
-  [ -n "$pre_check_line" ]
-  [ -n "$l6_line" ]
-  [ "$pre_check_line" -lt "$l6_line" ]
+  # Enable lock debug logging to observe L6 acquire timing
+  local lock_log="${TEST_TMP}/lock-debug-ac13.log"
+  export ACQUIRE_LOCK_DEBUG=1
+  export ACQUIRE_LOCK_DEBUG_LOG="$lock_log"
+
+  run bash "$script_dir/per-sprint-release.sh" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Pre-release check must have run (marker file exists)
+  [ -f "$marker" ]
+
+  # L6 must have been acquired (debug log has the entry)
+  grep -q 'acquire.*\.release\.lock' "$lock_log"
+
+  # Ordering: pre-release marker epoch <= L6 acquire epoch
+  local pre_epoch l6_epoch
+  pre_epoch="$(cat "$marker")"
+  l6_epoch="$(grep 'acquire.*\.release\.lock' "$lock_log" | head -1 | awk '{print $3}')"
+  [ -n "$pre_epoch" ]
+  [ -n "$l6_epoch" ]
+  [ "$pre_epoch" -le "$l6_epoch" ]
 }
 
 # ── AC14: L6 exit codes 3, 4, 5 ────────────────────────────────────────────
 
-@test "l6_strict_exit_codes_3_4_5" {
+@test "l6_strict_exit_code_3_lock_timeout" {
   cd "$PROJECT_DIR"
-
-  # Source the lock library to test L6 directly
   . "$PLUGIN_ROOT/scripts/lib/acquire-lock.sh"
 
   local l6_path="${PROJECT_DIR}/.gaia/state/.release.lock"
+  mkdir -p "$(dirname "$l6_path")"
 
-  # Test exit 4: symlink at lock path
-  ln -sf /dev/null "$l6_path" 2>/dev/null || true
+  # Hold the lock from a background process
+  printf '%s %s\n' "$$" "$(date +%s)" > "$l6_path"
+  # Use a very short timeout to trigger timeout exit
+  local rc=0
+  GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=9999 \
+    acquire_lock "$l6_path" 1 9 --strict || rc=$?
+  [ "$rc" -eq 3 ]
+  rm -f "$l6_path" 2>/dev/null || true
+}
+
+@test "l6_strict_exit_code_4_symlink" {
+  cd "$PROJECT_DIR"
+  . "$PLUGIN_ROOT/scripts/lib/acquire-lock.sh"
+
+  local l6_path="${PROJECT_DIR}/.gaia/state/.release.lock"
+  mkdir -p "$(dirname "$l6_path")"
+
+  # Place a symlink at the lock path
+  rm -f "$l6_path" 2>/dev/null || true
+  ln -sf /dev/null "$l6_path"
   local rc=0
   acquire_lock "$l6_path" 2 9 --strict || rc=$?
-  # Should exit 4 (symlink)
-  [ "$rc" -eq 4 ] || [ "$rc" -eq 3 ]
+  [ "$rc" -eq 4 ]
   rm -f "$l6_path" 2>/dev/null || true
+}
+
+@test "l6_strict_exit_code_5_identity_mismatch" {
+  cd "$PROJECT_DIR"
+  . "$PLUGIN_ROOT/scripts/lib/acquire-lock.sh"
+
+  local l6_path="${PROJECT_DIR}/.gaia/state/.release.lock"
+  mkdir -p "$(dirname "$l6_path")"
+
+  # Define the identity hook to inject a mismatch by swapping the lock file
+  # between acquisition and re-check. The hook is called by
+  # _al_verify_identity_strict after the lock is held.
+  _al_identity_hook() {
+    local lf="$1"
+    # Replace the lock file with a different inode
+    rm -f "$lf" 2>/dev/null || true
+    printf 'swapped %s\n' "$$" > "$lf"
+  }
+  export -f _al_identity_hook 2>/dev/null || true
+
+  local rc=0
+  acquire_lock "$l6_path" 2 9 --strict || rc=$?
+  [ "$rc" -eq 5 ]
+  rm -f "$l6_path" 2>/dev/null || true
+  unset -f _al_identity_hook 2>/dev/null || true
 }
 
 # ── AC15: CHANGELOG is sprint-scoped ───────────────────────────────────────
@@ -765,35 +922,44 @@ YAML
   # The bump commit is on top, then A2, then A1 (reverse chronological)
   # So in git log output (newest first), A2 should appear before A1
   local a1_line a2_line
-  a1_line="$(printf '%s\n' "$log_output" | grep -n 'first feature' | head -1 | cut -d: -f1 || echo 999)"
-  a2_line="$(printf '%s\n' "$log_output" | grep -n 'second feature' | head -1 | cut -d: -f1 || echo 999)"
+  a1_line="$(printf '%s\n' "$log_output" | grep -n 'first feature' | head -1 | cut -d: -f1)"
+  a2_line="$(printf '%s\n' "$log_output" | grep -n 'second feature' | head -1 | cut -d: -f1)"
+  # Both commits must appear in the log
+  [ -n "$a1_line" ]
+  [ -n "$a2_line" ]
   # In git log (newest first), A2 line number should be LOWER than A1
-  [ "$a2_line" -lt "$a1_line" ] 2>/dev/null || true
+  [ "$a2_line" -lt "$a1_line" ]
 }
 
 # ── AC-EC3: Stale L6 lock recovery after age threshold ─────────────────────
 
 @test "stale_l6_lock_reaped_after_age_threshold" {
   cd "$PROJECT_DIR"
-
-  # Source lock library
   . "$PLUGIN_ROOT/scripts/lib/acquire-lock.sh"
 
   local l6_path="${PROJECT_DIR}/.gaia/state/.release.lock"
-
-  # Create a stale lock with a dead PID by creating the lock file manually
-  # with a very old timestamp
   mkdir -p "$(dirname "$l6_path")"
-  printf '%s\n' "99999999" > "${l6_path}.tmp.stale"
 
-  # The lock library's reap threshold is max(60, 3*timeout) = 360s for 120s timeout
-  # We can't easily test the time-based reap in a fast test,
-  # so we verify the mechanism exists by checking that the lock library
-  # has the reap logic
-  grep -q 'GAIA_LOCK_REAP_SECONDS\|reap\|stale' "$PLUGIN_ROOT/scripts/lib/acquire-lock.sh"
+  # Create a stale lock with a dead PID (99999999 is almost certainly dead)
+  printf '%s %s\n' "99999999" "$(date +%s)" > "$l6_path"
 
-  # Clean up
-  rm -f "${l6_path}.tmp.stale"
+  # With a reap threshold of 0 seconds the dead-PID lock is immediately stale
+  local rc=0
+  GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=0 \
+    acquire_lock "$l6_path" 5 9 --strict || rc=$?
+  [ "$rc" -eq 0 ]
+
+  # The stale lock was reaped and we now hold it
+  release_lock 9
+
+  # Verify a LIVE lock is NOT reaped: hold the lock with our own PID
+  printf '%s %s\n' "$$" "$(date +%s)" > "$l6_path"
+  local rc2=0
+  GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=0 \
+    acquire_lock "$l6_path" 1 9 --strict || rc2=$?
+  # Our own PID is alive, so the lock is NOT reaped — timeout expected
+  [ "$rc2" -eq 3 ]
+  rm -f "$l6_path" 2>/dev/null || true
 }
 
 # ── AC-EC4: Token fallback no pr_number ────────────────────────────────────
@@ -972,15 +1138,198 @@ SH
 # ── AC-EC8: Regenerated workflow no duplicate sprint_id ────────────────────
 
 @test "regenerated_workflow_no_duplicate_sprint_id_input" {
+  cd "$PROJECT_DIR"
   local gen_script="${PLUGIN_ROOT}/skills/gaia-ci-setup/scripts/generate-pipeline.sh"
   [ -f "${gen_script}" ]
 
-  # The generator replaces the entire workflow file (backup-before-overwrite),
-  # so running it twice should produce the same output with exactly one sprint_id
-  # We verify by checking the template in the generator
-  local sprint_id_count
-  sprint_id_count="$(grep -c 'sprint_id' "${gen_script}" 2>/dev/null || echo 0)"
-  # There should be references to sprint_id (at least the input declaration
-  # and the usage), but the template should produce it exactly once as an input
-  [ "$sprint_id_count" -ge 1 ]
+  # Source the generator and call _generate_release_workflow twice
+  local gen_out="${TEST_TMP}/gen-idempotent"
+  mkdir -p "$gen_out/.github/workflows" "$gen_out/.gaia/config"
+  cat > "$gen_out/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: test-project
+ci_cd:
+  platform: github-actions
+release:
+  strategy: conventional-commits
+  version_files:
+    - VERSION
+stacks:
+  - path: .
+    name: core
+    language: bash
+  - path: lib
+    name: lib
+    language: bash
+YAML
+
+  # First run
+  (
+    source "$gen_script"
+    _generate_release_workflow \
+      "$gen_out/.gaia/config/project-config.yaml" "$gen_out"
+  )
+
+  local wf="${gen_out}/.github/workflows/gaia-release.yml"
+  [ -f "$wf" ]
+  local count1
+  count1="$(grep -c 'sprint_id:' "$wf")"
+  [ "$count1" -eq 1 ]
+
+  # Second run over its own output (idempotency check)
+  (
+    source "$gen_script"
+    _generate_release_workflow \
+      "$gen_out/.gaia/config/project-config.yaml" "$gen_out"
+  )
+
+  local count2
+  count2="$(grep -c 'sprint_id:' "$wf")"
+  [ "$count2" -eq 1 ]
+}
+
+# ── Merge-ledger list --sprint sub-command ────────────────────────────────
+
+@test "merge_ledger_list_filters_by_sprint" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+  [ -f "$ml" ]
+
+  # list --sprint sprint-900 should return only sprint-900 commits
+  local output=""
+  output="$(MERGE_LEDGER_DIR="$PROJECT_DIR/.gaia/state/merge" \
+    bash "$ml" list --sprint sprint-900 \
+      --state-dir "$PROJECT_DIR/.gaia/state")"
+
+  # Should contain sprint-900 stories
+  printf '%s\n' "$output" | grep -q 'E900-S1'
+  printf '%s\n' "$output" | grep -q 'E900-S2'
+
+  # Should NOT contain sprint-901 stories
+  ! printf '%s\n' "$output" | grep -q 'E901-S1'
+}
+
+@test "merge_ledger_list_returns_shas" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+
+  local output=""
+  output="$(MERGE_LEDGER_DIR="$PROJECT_DIR/.gaia/state/merge" \
+    bash "$ml" list --sprint sprint-900 \
+      --state-dir "$PROJECT_DIR/.gaia/state")"
+
+  # Each line should be "sha story_key"
+  local line_count
+  line_count="$(printf '%s\n' "$output" | wc -l | tr -d ' ')"
+  [ "$line_count" -ge 2 ]
+
+  # SHAs should be valid hex
+  local sha
+  sha="$(printf '%s\n' "$output" | head -1 | awk '{print $1}')"
+  [ -n "$sha" ]
+  case "$sha" in *[!0-9a-f]*) fail "sha contains non-hex chars: $sha" ;; esac
+}
+
+@test "merge_ledger_list_empty_sprint_returns_clean" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+
+  # Create a closed sprint with no matching intents
+  cat > .gaia/state/sprint-status-sprint-999.yaml <<'YAML'
+sprint_id: "sprint-999"
+status: "closed"
+stories:
+  - "E999-S1"
+YAML
+
+  local output=""
+  output="$(MERGE_LEDGER_DIR="$PROJECT_DIR/.gaia/state/merge" \
+    bash "$ml" list --sprint sprint-999 \
+      --state-dir "$PROJECT_DIR/.gaia/state" 2>/dev/null)" || true
+  # Empty or zero lines — no matching entries
+  [ -z "$output" ] || [ "$(printf '%s\n' "$output" | wc -l | tr -d ' ')" -eq 0 ]
+}
+
+# ── Merge-ledger record --mode release sub-command ────────────────────────
+
+@test "merge_ledger_record_creates_release_intent" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+
+  local intent_file=""
+  intent_file="$(MERGE_LEDGER_DIR="$PROJECT_DIR/.gaia/state/merge" \
+    bash "$ml" record --mode release \
+      --head-sha abcdef1234567890abcdef1234567890abcdef12 \
+      --target main --pr-branch release/v1.0.0 \
+      --pr-number 42)"
+
+  [ -n "$intent_file" ]
+  [ -f "$intent_file" ]
+  grep -q 'mode: "release"' "$intent_file"
+  grep -q 'state: "intent"' "$intent_file"
+  grep -q 'target: "main"' "$intent_file"
+  grep -q 'pr_branch: "release/v1.0.0"' "$intent_file"
+  grep -q 'pr_number: "42"' "$intent_file"
+}
+
+@test "merge_ledger_record_rejects_malformed_values" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+
+  # Double-quote in pr_branch should be rejected
+  run bash "$ml" record --mode release \
+    --head-sha abcdef1234567890abcdef1234567890abcdef12 \
+    --target main --pr-branch 'release/"evil'
+  [ "$status" -ne 0 ]
+
+  # Non-hex head_sha should be rejected
+  run bash "$ml" record --mode release \
+    --head-sha "not-a-sha" \
+    --target main --pr-branch release/v1.0.0
+  [ "$status" -ne 0 ]
+
+  # Newline in target should be rejected
+  local nl_target
+  nl_target="$(printf 'main\nevil')"
+  run bash "$ml" record --mode release \
+    --head-sha abcdef1234567890abcdef1234567890abcdef12 \
+    --target "$nl_target" --pr-branch release/v1.0.0
+  [ "$status" -ne 0 ]
+}
+
+@test "merge_ledger_record_without_pr_number_omits_field" {
+  cd "$PROJECT_DIR"
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+
+  local intent_file=""
+  intent_file="$(MERGE_LEDGER_DIR="$PROJECT_DIR/.gaia/state/merge" \
+    bash "$ml" record --mode release \
+      --head-sha abcdef1234567890abcdef1234567890abcdef12 \
+      --target main --pr-branch release/v2.0.0)"
+
+  [ -f "$intent_file" ]
+  ! grep -q 'pr_number:' "$intent_file"
+}
+
+# ── Sole-writer integration: per-sprint-release routes through ledger ─────
+
+@test "per_sprint_release_uses_merge_ledger_for_writes" {
+  cd "$PROJECT_DIR"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # A release intent should exist (written by merge-ledger.sh record)
+  local intent_file
+  intent_file="$(ls .gaia/state/merge/intent-release-*.yaml 2>/dev/null | head -1)"
+  [ -n "$intent_file" ]
+  [ -f "$intent_file" ]
+
+  # Sole-writer check must pass
+  local ml="${PLUGIN_ROOT}/scripts/merge-ledger.sh"
+  run bash "$ml" sole-writer-check \
+    --dir "$PROJECT_DIR/.gaia/state/merge"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASSED"* ]]
 }
