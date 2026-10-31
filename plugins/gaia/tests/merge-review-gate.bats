@@ -761,7 +761,7 @@ STUB
   # Every --flag passed to gh must be in the allowlist
   local flag
   for flag in $(echo "$merge_line" | /usr/bin/grep -oE ' --[a-z][-a-z]*' | sed 's/^ //'); do
-    if ! echo "$allowed" | /usr/bin/grep -qxF -- "$flag"; then
+    if ! /usr/bin/grep -qxF -- "$flag" <<< "$allowed"; then
       echo "FAIL: merge.sh passes unknown flag '$flag' to gh pr merge" >&2
       return 1
     fi
