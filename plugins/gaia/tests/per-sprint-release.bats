@@ -8,11 +8,7 @@
 # shellcheck disable=SC2030,SC2031
 
 # ── test_helper bootstrap ──────────────────────────────────────────────────
-if [ -f "${BATS_TEST_DIRNAME}/../tests/test_helper.bash" ]; then
-  load "${BATS_TEST_DIRNAME}/../tests/test_helper.bash"
-elif [ -f "${BATS_TEST_DIRNAME}/test_helper.bash" ]; then
-  load test_helper.bash
-fi
+load test_helper.bash
 
 PLUGIN_ROOT="${BATS_TEST_DIRNAME}/.."
 SCRIPT_UNDER_TEST="${PLUGIN_ROOT}/skills/gaia-release/scripts/per-sprint-release.sh"
