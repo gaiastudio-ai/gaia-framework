@@ -121,7 +121,7 @@ _ml_validate_yaml_value() {
     target)
       case "$value" in ''|*[!A-Za-z0-9_./-]*) return 1 ;; esac ;;
     mode)
-      case "$value" in story|integration|promotion) ;; *) return 1 ;; esac ;;
+      case "$value" in story|integration|promotion|release) ;; *) return 1 ;; esac ;;
     type)
       case "$value" in gate_pass|gate_bypass|merge_intent) ;; *) return 1 ;; esac ;;
     state)
@@ -555,6 +555,189 @@ _ml_cmd_supersede() {
   printf '%s\n' "$intent_file"
 }
 
+_ml_cmd_list() {
+  local sprint_id="" state_dir=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --sprint)    sprint_id="$2"; shift 2 ;;
+      --state-dir) state_dir="$2"; shift 2 ;;
+      *) _ml_die "list: unknown option: $1" ;;
+    esac
+  done
+  [ -z "$sprint_id" ] && _ml_die "list: --sprint required"
+
+  local ledger_dir=""
+  ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
+
+  if [ -z "$state_dir" ]; then
+    # Derive state dir from ledger dir (parent)
+    state_dir="$(dirname "$ledger_dir")"
+  fi
+
+  # Check ledger exists and has intent files
+  if [ ! -d "$ledger_dir" ]; then
+    printf 'merge ledger not available\n' >&2
+    return 1
+  fi
+
+  local has_any_intent=false
+  local f=""
+  for f in "$ledger_dir"/intent-*.yaml; do
+    [ -f "$f" ] || continue
+    has_any_intent=true
+    break
+  done
+
+  if ! $has_any_intent; then
+    printf 'merge ledger not available\n' >&2
+    return 1
+  fi
+
+  # Read sprint state file for story keys
+  local state_file="${state_dir}/sprint-status-${sprint_id}.yaml"
+  if [ ! -f "$state_file" ]; then
+    _ml_die "list: sprint state file not found: $state_file"
+  fi
+
+  # Extract story keys (block list or inline array format)
+  local stories=""
+  stories="$(awk '
+    /^stories:/ { in_stories=1; next }
+    in_stories && /^[a-zA-Z_]/ { exit }
+    in_stories && /- / {
+      sub(/^[[:space:]]*- *"?/, "")
+      sub(/"? *$/, "")
+      if ($0 != "" && $0 !~ /^[[:space:]]*$/) print
+    }
+    /^stories: *\[/ {
+      sub(/^stories: *\[/, "")
+      sub(/\] *$/, "")
+      gsub(/"/, "")
+      n = split($0, a, ",")
+      for (i = 1; i <= n; i++) {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", a[i])
+        if (a[i] != "") print a[i]
+      }
+    }
+  ' "$state_file")"
+
+  if [ -z "$stories" ]; then
+    return 0
+  fi
+
+  # Build story key list for matching
+  local story_array=""
+  local _s=""
+  while IFS= read -r _s; do
+    story_array="${story_array:+${story_array} }${_s}"
+  done <<EOF
+$stories
+EOF
+
+  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents
+  local found_any=false
+  for f in "$ledger_dir"/intent-*.yaml; do
+    [ -f "$f" ] || continue
+
+    local f_story="" f_state="" f_merge_sha="" f_head_sha="" f_mode=""
+    f_story="$(_ml_read_field "$f" story)" || continue
+    f_state="$(_ml_read_field "$f" state)" || continue
+    f_mode="$(_ml_read_field "$f" mode)" || f_mode=""
+
+    # Skip release-mode intents
+    [ "$f_mode" = "release" ] && continue
+
+    # Check if story belongs to this sprint
+    local matched=false
+    local key=""
+    for key in $story_array; do
+      if [ "$f_story" = "$key" ]; then
+        matched=true
+        break
+      fi
+    done
+    $matched || continue
+
+    # Check state is in the accepted set
+    case "$f_state" in
+      finalized|merged|verified|smoke_ok|smoke_failed) ;;
+      *) continue ;;
+    esac
+
+    # Get merge SHA (preferred) or head SHA
+    f_merge_sha="$(_ml_read_field "$f" merge_sha)" || f_merge_sha=""
+    f_head_sha="$(_ml_read_field "$f" head_sha)" || f_head_sha=""
+    local sha="${f_merge_sha:-$f_head_sha}"
+    if [ -z "$sha" ]; then continue; fi
+
+    printf '%s %s\n' "$sha" "$f_story"
+    found_any=true
+  done
+
+  if ! $found_any; then
+    return 0
+  fi
+}
+
+_ml_cmd_record() {
+  local mode="" head_sha="" target="" pr_branch="" pr_number=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --mode)      mode="$2"; shift 2 ;;
+      --head-sha)  head_sha="$2"; shift 2 ;;
+      --target)    target="$2"; shift 2 ;;
+      --pr-branch) pr_branch="$2"; shift 2 ;;
+      --pr-number) pr_number="$2"; shift 2 ;;
+      *) _ml_die "record: unknown option: $1" ;;
+    esac
+  done
+  [ -z "$mode" ] && _ml_die "record: --mode required"
+  [ "$mode" = "release" ] || _ml_die "record: only --mode release is supported"
+  [ -z "$head_sha" ] && _ml_die "record: --head-sha required"
+  [ -z "$target" ] && _ml_die "record: --target required"
+  [ -z "$pr_branch" ] && _ml_die "record: --pr-branch required"
+
+  # Validate all values before any side-effect
+  _ml_validate_yaml_value head_sha "$head_sha" || \
+    _ml_die "record: invalid head_sha value"
+  _ml_validate_yaml_value target "$target" || \
+    _ml_die "record: invalid target value"
+  # pr_branch uses the same character set as target
+  case "$pr_branch" in
+    ''|*[!A-Za-z0-9_./-]*) _ml_die "record: invalid pr_branch value" ;;
+  esac
+  if [ -n "$pr_number" ]; then
+    _ml_validate_yaml_value pr "$pr_number" || \
+      _ml_die "record: invalid pr_number value"
+  fi
+
+  local ledger_dir=""
+  ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
+  mkdir -p "$ledger_dir"
+
+  local ts=""
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || ts="1970-01-01T00:00:00Z"
+
+  local intent_id=""
+  intent_id="ri-$(date -u +%Y%m%d%H%M%S)-$$"
+
+  local intent_file="${ledger_dir}/intent-release-${intent_id}.yaml"
+  : > "$intent_file"
+  _ml_safe_write_field "$intent_file" intent_id "$intent_id"
+  _ml_safe_write_field "$intent_file" mode "release"
+  _ml_safe_write_field "$intent_file" state "intent"
+  _ml_safe_write_field "$intent_file" head_sha "$head_sha"
+  _ml_safe_write_field "$intent_file" target "$target"
+  _ml_safe_write_field "$intent_file" pr_branch "$pr_branch"
+  _ml_safe_write_field "$intent_file" created_at "$ts"
+
+  if [ -n "$pr_number" ]; then
+    _ml_safe_write_field "$intent_file" pr_number "$pr_number"
+  fi
+
+  printf '%s\n' "$intent_file"
+}
+
 _ml_cmd_sole_writer_check() {
   local check_dir=""
   while [ $# -gt 0 ]; do
@@ -621,6 +804,8 @@ case "$subcmd" in
   advance)           _ml_cmd_advance "$@" ;;
   read-latest)       _ml_cmd_read_latest "$@" ;;
   supersede)         _ml_cmd_supersede "$@" ;;
+  list)              _ml_cmd_list "$@" ;;
+  record)            _ml_cmd_record "$@" ;;
   sole-writer-check) _ml_cmd_sole_writer_check "$@" ;;
   *) _ml_die "unknown sub-command: $subcmd" ;;
 esac

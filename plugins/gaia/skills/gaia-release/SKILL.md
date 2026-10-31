@@ -1,14 +1,14 @@
 ---
 name: gaia-release
 description: Execute a project-generic release procedure — version bump (reading release.version_files[] from config), commit, tag, push, and GitHub Release. Wraps `skills/gaia-release/scripts/version-bump.js` and the `main`-only release branch policy. Use when "cut a release", "bump the version", or /gaia-release.
-argument-hint: "[patch|minor|major|X.Y.Z] [--dry-run]"
+argument-hint: "[patch|minor|major|X.Y.Z] [--dry-run] [--sprint <sprint_id>]"
 allowed-tools: [Read, Bash, Grep]
 orchestration_class: light-procedural
 ---
 
 ## Mission
 
-You are producing a repeatable, project-generic release. The release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. This skill is the discoverable source of truth for that procedure.
+You are producing a repeatable, project-generic release. In **single-sprint mode** the release procedure has five deterministic phases — **version bump → commit → tag → push → GitHub Release** — and they are executed only on `main` after a sprint merge. In **concurrent-sprint mode** with `--sprint`, the procedure cherry-picks only the named sprint's commits from the merge ledger onto a branch cut from the latest tag, bumps the version, tags, pushes, creates a GitHub Release with sprint-scoped notes, and opens a merge-back PR to `main`. This skill is the discoverable source of truth for that procedure.
 
 ## Critical Rules
 
@@ -130,8 +130,21 @@ The script requires `--config <path>` pointing at the project-config.yaml. In pr
   - `--dry-run` — print the planned changes as JSON and exit without writing.
   - `--scope <prefixes>` — comma-separated path prefixes to limit the bump to named components.
   - `--scope-map <json>` — JSON object mapping path prefix to bump type for independent per-component bumps.
+  - `--sprint <sprint_id>` — release only the named sprint's stories (concurrent-sprint mode). When provided, the skill delegates to the per-sprint release script instead of the legacy flow.
 
 ## Instructions
+
+### Step 0 — Concurrent-sprint mode check
+
+When `--sprint <sprint_id>` is provided, delegate the entire release to the per-sprint release script:
+
+```
+!bash "$CLAUDE_PLUGIN_ROOT/skills/gaia-release/scripts/per-sprint-release.sh" --sprint "$SPRINT_ID" --project-root "$PROJECT_ROOT" --config "$CONFIG_PATH"
+```
+
+The script handles everything: pre-release sprint check, merge-ledger query, cherry-pick, version bump, sprint-scoped CHANGELOG, tag, GitHub Release, release-lock serialization, and merge-back PR. Report its output and stop — do not continue to Step 1.
+
+When `--sprint` is absent, or when the project is in single-sprint mode (no per-sprint state files and `sprint.max_concurrent_active` absent or 1), proceed with the legacy flow below.
 
 ### Step 1 — Verify you are on `main`
 
