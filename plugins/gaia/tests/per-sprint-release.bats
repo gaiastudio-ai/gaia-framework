@@ -28,6 +28,8 @@ _setup_test_repo() {
   # Bare remote
   export REMOTE_DIR="${TEST_TMP}/remote.git"
   git init --bare "$REMOTE_DIR" 2>/dev/null
+  # Ensure default branch is "main" (Linux defaults to "master")
+  git -C "$REMOTE_DIR" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
 
   # Working clone
   export PROJECT_DIR="${TEST_TMP}/project"
@@ -37,6 +39,8 @@ _setup_test_repo() {
   # Initial commit and tag
   git config user.email "test@test.com"
   git config user.name "Test"
+  # Ensure we're on main
+  git checkout -b main 2>/dev/null || true
   echo "0.0.0" > VERSION
   printf '# Changelog\n' > CHANGELOG.md
   mkdir -p .gaia/config .gaia/state/merge
