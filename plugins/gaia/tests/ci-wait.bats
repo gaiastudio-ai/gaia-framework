@@ -1718,3 +1718,126 @@ SHIMEOF
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"PR number"* ]]
 }
+
+# --- Per-call bound caps timeout ---
+@test "per-call bound caps a longer timeout" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=300
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 30
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"per-call bound active"* ]]
+  [[ "$stderr" == *"capping"* ]]
+}
+
+@test "per-call bound does not cap a shorter timeout" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=3600
+  run --separate-stderr "$CI_WAIT" 1234 --timeout 5
+  [ "$status" -eq 0 ]
+  # Should NOT see per-call bound message (300s < 3600s)
+  if [[ "$stderr" == *"per-call bound active"* ]]; then echo "FAIL: bound should not cap" >&2; return 1; fi
+  [[ "$stderr" == *"(timeout: 5m)"* ]]
+}
+
+@test "per-call bound zero disables the cap" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=0
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  # Should NOT see per-call bound message
+  if [[ "$stderr" == *"per-call bound active"* ]]; then echo "FAIL: bound should be disabled" >&2; return 1; fi
+}
+
+@test "invalid per-call bound is ignored with warning" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND="abc"
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"not a non-negative integer"* ]]
+}
+
+@test "per-call bound above 540 is clamped to 540" {
+  _write_fixture required 0 "$_ALL_PASS"
+  _write_fixture required 1 "$_ALL_PASS"
+  _write_fixture all 0 "$_ALL_PASS_WITH_OPT_FAIL"
+
+  export CI_WAIT_PER_CALL_BOUND=99999
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$stderr" == *"clamping CI_WAIT_PER_CALL_BOUND from 99999 to 540"* ]]
+}
+
+@test "ci-wait returns within bound when gh hangs" {
+  local marker="cw_shang_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}.sh"
+  printf '#!/bin/bash\n/bin/sleep 86400\n' > "$sleeper"
+  chmod +x "$sleeper"
+
+  cat > "$TEST_TMP/bin/gh" <<HANGH
+#!/bin/bash
+exec "$sleeper"
+HANGH
+  chmod +x "$TEST_TMP/bin/gh"
+
+  export CI_WAIT_TIMEOUT_SECONDS=2
+  export CI_WAIT_PER_CALL_BOUND=2
+
+  local start=$SECONDS
+  run "$CI_WAIT" 999
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [ "$elapsed" -le 5 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}
+
+@test "ci-wait with nested-tree stub: entire tree killed, zero orphans" {
+  # Create a uniquely-named sleeper so we can identify orphans
+  local marker="cw_nested_${BATS_TEST_NUMBER}_$$"
+  local sleeper="${BATS_TEST_TMPDIR}/${marker}_sleep.sh"
+  cat > "$sleeper" <<'SCRIPT'
+#!/bin/bash
+/bin/sleep 86400
+SCRIPT
+  chmod +x "$sleeper"
+
+  # Replace gh with a stub that spawns a nested tree
+  cat > "$TEST_TMP/bin/gh" <<STUB
+#!/bin/bash
+sh -c "$sleeper" &
+sh -c "$sleeper" &
+exec "$sleeper"
+STUB
+  chmod +x "$TEST_TMP/bin/gh"
+
+  export CI_WAIT_TIMEOUT_SECONDS=2
+  export CI_WAIT_PER_CALL_BOUND=2
+
+  local start=$SECONDS
+  run "$CI_WAIT" 999
+  local elapsed=$((SECONDS - start))
+
+  [ "$status" -ne 0 ]
+  [ "$elapsed" -le 8 ]
+
+  sleep 2
+  local orphan_pids=""
+  orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
+  [ -z "$orphan_pids" ]
+}

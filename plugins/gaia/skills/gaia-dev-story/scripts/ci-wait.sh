@@ -47,6 +47,12 @@ die() { log "$*"; exit 1; }
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 GUARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$GUARD_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
+
+# Source bound-exec for preemptive subprocess bounding
+_CW_BOUND_EXEC_LIB="$GUARD_DIR/../../../scripts/lib/bound-exec.sh"
+[ -f "$_CW_BOUND_EXEC_LIB" ] || die "bound-exec.sh not found at $_CW_BOUND_EXEC_LIB"
+# shellcheck source=../../../scripts/lib/bound-exec.sh
+. "$_CW_BOUND_EXEC_LIB"
 # Resolve the working directory BEFORE the non-git guard: the guard reads
 # CWD, so it must test the directory this script is meant to act on, not the
 # caller's. Argument parsing follows, so relative path arguments resolve
@@ -154,6 +160,28 @@ if [ -n "${CI_WAIT_TIMEOUT_SECONDS:-}" ]; then
     die "CI_WAIT_TIMEOUT_SECONDS exceeds 86400 (24h cap), got: '$CI_WAIT_TIMEOUT_SECONDS'"
   fi
   TIMEOUT_SECONDS="$CI_WAIT_TIMEOUT_SECONDS"
+fi
+
+# --- Per-call bound ---
+# When CI_WAIT_PER_CALL_BOUND is set to a positive integer, it caps the
+# effective timeout so a single invocation never runs longer than that many
+# seconds.  Default 0 = no cap (existing callers are unaffected).  The
+# merge-tail caller sets this to 540 to enforce the per-call contract.
+_PER_CALL_BOUND="${CI_WAIT_PER_CALL_BOUND:-0}"
+case "$_PER_CALL_BOUND" in
+  0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|[1-9][0-9][0-9][0-9]|[1-9][0-9][0-9][0-9][0-9]) ;;
+  *)
+    log "CI_WAIT_PER_CALL_BOUND='$(printf '%s' "$_PER_CALL_BOUND" | head -1)' is not a non-negative integer, ignoring"
+    _PER_CALL_BOUND=0
+    ;;
+esac
+if [ "$_PER_CALL_BOUND" -gt 540 ]; then
+  log "clamping CI_WAIT_PER_CALL_BOUND from ${_PER_CALL_BOUND} to 540"
+  _PER_CALL_BOUND=540
+fi
+if [ "$_PER_CALL_BOUND" -gt 0 ] && [ "$TIMEOUT_SECONDS" -gt "$_PER_CALL_BOUND" ]; then
+  log "per-call bound active: capping timeout from ${TIMEOUT_SECONDS}s to ${_PER_CALL_BOUND}s"
+  TIMEOUT_SECONDS="$_PER_CALL_BOUND"
 fi
 
 # --- Poll interval validation ---
@@ -284,10 +312,17 @@ _grace_decision() {
   local pr_num="$1"
   local base_branch="" pr_view_out=""
 
-  # Get base branch
-  pr_view_out=$(gh pr view "$pr_num" --json baseRefName 2>/dev/null) || {
+  # Get base branch (bounded)
+  local _gd_remaining=$((TIMEOUT_SECONDS - SECONDS))
+  [ "$_gd_remaining" -lt 1 ] && _gd_remaining=1
+  local _gd_rc=0
+  pr_view_out=$(bound_exec "$_gd_remaining" -- gh pr view "$pr_num" --json baseRefName 2>/dev/null) || _gd_rc=$?
+  if [ "$_gd_rc" -eq 142 ]; then
+    die "grace expired: gh call exceeded remaining bound"
+  fi
+  if [ "$_gd_rc" -ne 0 ]; then
     die "grace expired: could not determine base branch for PR #${pr_num}"
-  }
+  fi
   base_branch=$(printf '%s' "$pr_view_out" | jq -r '.baseRefName // empty' 2>/dev/null)
   if [ -z "$base_branch" ]; then
     die "grace expired: could not determine base branch for PR #${pr_num}"
@@ -356,7 +391,14 @@ while true; do
       REQUIRED_PERMANENT_WARNED=1
     fi
   else
-    local_stdout=$(gh pr checks "$PR_NUMBER" --required --json name,state,bucket 2>"$_TMP_STDERR_REQ") || local_ec=$?
+    _cw_remaining=$((TIMEOUT_SECONDS - SECONDS))
+    [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
+    local_stdout=$(bound_exec "$_cw_remaining" -- gh pr checks "$PR_NUMBER" --required --json name,state,bucket 2>"$_TMP_STDERR_REQ") || local_ec=$?
+    if [ "$local_ec" -eq 142 ]; then
+      log "timeout: gh call exceeded remaining bound"
+      log "Resume with /gaia-resume after checks complete."
+      exit 1
+    fi
     local_stderr=$(cat "$_TMP_STDERR_REQ")
 
     use_all_checks=0
@@ -418,7 +460,14 @@ while true; do
   if [ "$use_all_checks" -eq 1 ]; then
     all_stdout=""
     all_ec=0
-    all_stdout=$(gh pr checks "$PR_NUMBER" --json name,state,bucket 2>"$_TMP_STDERR_ALL") || all_ec=$?
+    _cw_remaining=$((TIMEOUT_SECONDS - SECONDS))
+    [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
+    all_stdout=$(bound_exec "$_cw_remaining" -- gh pr checks "$PR_NUMBER" --json name,state,bucket 2>"$_TMP_STDERR_ALL") || all_ec=$?
+    if [ "$all_ec" -eq 142 ]; then
+      log "timeout: gh call exceeded remaining bound"
+      log "Resume with /gaia-resume after checks complete."
+      exit 1
+    fi
     all_stderr=$(cat "$_TMP_STDERR_ALL")
 
     if [ "$all_ec" -ne 0 ]; then
