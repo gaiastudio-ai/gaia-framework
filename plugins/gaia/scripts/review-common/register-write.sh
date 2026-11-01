@@ -23,6 +23,10 @@
 #   record-scope-revision  Record a scope change decision on an open round
 #   bind-brief     Bind a correction brief to a round by path and hash
 #   supersede-brief  Replace a bound brief with a rationale
+#   count-rounds   Count non-passing rounds and check against the fix-cycle cap
+#   record-escalation  Record escalation state on a round before asking the user
+#   sign-off-finding   Record a critical-security sign-off on a finding entry
+#   record-accept-override  Record an accept-override decision on a round
 #   --help         Show usage
 #
 # Exit codes: 0 success, 1 caller/validation error, 2 malformed register.
@@ -2680,6 +2684,348 @@ _rw_cmd_supersede_brief() {
 }
 
 # ---------------------------------------------------------------------------
+# Subcommand: count-rounds
+# ---------------------------------------------------------------------------
+# Counts completed non-passing rounds under the register lock.
+# Prints: round_count <N>, max_fix_cycles <M>, escalate true|false.
+
+_rw_cmd_count_rounds() {
+  local key="" max_cycles=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --max) [ "$#" -ge 2 ] || _rw_die 1 "--max requires a value"; max_cycles="$2"; shift 2 ;;
+      *) _rw_die 1 "count-rounds: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "count-rounds: --story is required"
+  [ -n "$max_cycles" ] || _rw_die 1 "count-rounds: --max is required"
+  _rw_require_integer "$max_cycles" "max_fix_cycles"
+
+  _rw_validate_key "$key"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  # No register — zero rounds, no escalation.
+  if [ ! -f "$reg_path" ]; then
+    printf 'round_count 0\n'
+    printf 'max_fix_cycles %s\n' "$max_cycles"
+    printf 'escalate false\n'
+    exit 0
+  fi
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  _rw_validate_structure "$reg_path"
+
+  local rounds_len
+  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
+
+  local count=0
+  if [ "$rounds_len" != "0" ] && [ "$rounds_len" != "null" ]; then
+    # Count completed/superseded rounds that are non-passing.
+    # A round is non-passing if any selected gate has no report or its
+    # gate_runs entry shows a non-completed outcome, OR the round was
+    # explicitly marked non-passing via complete-round (status != "complete"
+    # counts for superseded rounds that were replaced before passing).
+    # Simplified: count rounds whose status is complete or superseded AND
+    # which have at least one selected gate without a report, or whose
+    # complete-round recorded errors.
+    local idx=0
+    while [ "$idx" -lt "$rounds_len" ]; do
+      local r_status
+      r_status="$(yq ".rounds[$idx].status" "$reg_path" 2>/dev/null)" || r_status=""
+
+      case "$r_status" in
+        complete)
+          # A completed round is non-passing if its composite verdict is
+          # anything other than PASSED, or if it was completed with errors
+          # (completion_errors is non-empty).
+          local cv
+          cv="$(yq ".rounds[$idx].composite_verdict // \"\"" "$reg_path" 2>/dev/null)" || cv=""
+          if [ "$cv" != "PASSED" ] && [ -n "$cv" ] && [ "$cv" != "null" ] && [ "$cv" != '""' ]; then
+            count=$((count + 1))
+          else
+            local has_errors
+            has_errors="$(yq ".rounds[$idx].completion_errors // \"\"" "$reg_path" 2>/dev/null)" || has_errors=""
+            if [ -n "$has_errors" ] && [ "$has_errors" != "null" ] && [ "$has_errors" != "" ] && [ "$has_errors" != '""' ]; then
+              count=$((count + 1))
+            fi
+          fi
+          ;;
+        superseded)
+          # A superseded round is always non-passing (it was replaced).
+          count=$((count + 1))
+          ;;
+        open)
+          # Count the current open round if its gates show non-passing
+          # evidence: any selected gate with no report, or any gate_runs
+          # entry for this round with outcome=errored.
+          local missing_reports
+          missing_reports="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || missing_reports="0"
+
+          local errored_gates
+          export _RW_OPEN_RID
+          _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
+          errored_gates="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || errored_gates="0"
+          unset _RW_OPEN_RID
+
+          if [ "$missing_reports" != "0" ] && [ "$missing_reports" != "null" ]; then
+            count=$((count + 1))
+          elif [ "$errored_gates" != "0" ] && [ "$errored_gates" != "null" ]; then
+            count=$((count + 1))
+          fi
+          ;;
+      esac
+
+      idx=$((idx + 1))
+    done
+  fi
+
+  release_lock 8 2>/dev/null || true
+  _RW_CLEANUP_FD=""
+
+  printf 'round_count %s\n' "$count"
+  printf 'max_fix_cycles %s\n' "$max_cycles"
+
+  if [ "$count" -ge "$max_cycles" ]; then
+    printf 'escalate true\n'
+  else
+    printf 'escalate false\n'
+  fi
+
+  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: record-escalation
+# ---------------------------------------------------------------------------
+# Records escalation state on the current round before the user is asked.
+
+_rw_cmd_record_escalation() {
+  local key="" run_id="" round_count="" max_cycles=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --round-count) [ "$#" -ge 2 ] || _rw_die 1 "--round-count requires a value"; round_count="$2"; shift 2 ;;
+      --max-cycles) [ "$#" -ge 2 ] || _rw_die 1 "--max-cycles requires a value"; max_cycles="$2"; shift 2 ;;
+      *) _rw_die 1 "record-escalation: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "record-escalation: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "record-escalation: --run-id is required"
+  [ -n "$round_count" ] || _rw_die 1 "record-escalation: --round-count is required"
+  [ -n "$max_cycles" ] || _rw_die 1 "record-escalation: --max-cycles is required"
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+  _rw_require_integer "$round_count" "round_count"
+  _rw_require_integer "$max_cycles" "max_cycles"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "record-escalation: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists and is open.
+  export _RW_RUN_ID="$run_id"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-escalation: round not found for run-id: $run_id"
+
+  # Write escalation state.
+  local ts
+  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  export _RW_ESC_STATE="escalated" _RW_ESC_TS="$ts"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state = strenv(_RW_ESC_STATE)" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.round_count = ${round_count}" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.max_cycles = ${max_cycles}" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.timestamp = strenv(_RW_ESC_TS)" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  unset _RW_ESC_STATE _RW_ESC_TS _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: sign-off-finding
+# ---------------------------------------------------------------------------
+# Records a critical-security sign-off on a finding entry.
+# All six fields are required; an incomplete record is rejected.
+# Values are passed through strenv() to prevent injection.
+
+_rw_cmd_sign_off_finding() {
+  local key="" finding_id="" risk_accepted_by="" owasp_category="" impact="" round="" timestamp=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --finding-id) [ "$#" -ge 2 ] || _rw_die 1 "--finding-id requires a value"; finding_id="$2"; shift 2 ;;
+      --risk-accepted-by) [ "$#" -ge 2 ] || _rw_die 1 "--risk-accepted-by requires a value"; risk_accepted_by="$2"; shift 2 ;;
+      --owasp-category) [ "$#" -ge 2 ] || _rw_die 1 "--owasp-category requires a value"; owasp_category="$2"; shift 2 ;;
+      --impact) [ "$#" -ge 2 ] || _rw_die 1 "--impact requires a value"; impact="$2"; shift 2 ;;
+      --round) [ "$#" -ge 2 ] || _rw_die 1 "--round requires a value"; round="$2"; shift 2 ;;
+      --timestamp) [ "$#" -ge 2 ] || _rw_die 1 "--timestamp requires a value"; timestamp="$2"; shift 2 ;;
+      *) _rw_die 1 "sign-off-finding: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "sign-off-finding: --story is required"
+  [ -n "$finding_id" ] || _rw_die 1 "sign-off-finding: --finding-id is required"
+  [ -n "$risk_accepted_by" ] || _rw_die 1 "sign-off-finding: --risk-accepted-by is required"
+  [ -n "$owasp_category" ] || _rw_die 1 "sign-off-finding: --owasp-category is required"
+  [ -n "$impact" ] || _rw_die 1 "sign-off-finding: --impact is required"
+  [ -n "$round" ] || _rw_die 1 "sign-off-finding: --round is required"
+  [ -n "$timestamp" ] || _rw_die 1 "sign-off-finding: --timestamp is required"
+
+  _rw_validate_key "$key"
+  _rw_require_integer "$round" "round"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "sign-off-finding: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Find the entry by id.
+  export _RW_FIND_ID="$finding_id"
+  local entry_idx
+  entry_idx="$(yq '[.entries[].id] | to_entries | map(select(.value == strenv(_RW_FIND_ID))) | .[0].key // -1' "$tmp" 2>/dev/null)" || entry_idx="-1"
+  unset _RW_FIND_ID
+
+  if [ "$entry_idx" = "-1" ] || [ "$entry_idx" = "null" ]; then
+    _rw_abort_and_die 1 "sign-off-finding: finding not found: $finding_id"
+  fi
+
+  # Write sign-off record. All values via strenv() to prevent injection.
+  export _RW_SO_ACCEPTED_BY="$risk_accepted_by" \
+         _RW_SO_OWASP="$owasp_category" \
+         _RW_SO_IMPACT="$impact" \
+         _RW_SO_FINDING_ID="$finding_id" \
+         _RW_SO_TIMESTAMP="$timestamp"
+
+  yq -i ".entries[$entry_idx].sign_off.risk_accepted_by = strenv(_RW_SO_ACCEPTED_BY)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.owasp_category = strenv(_RW_SO_OWASP)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.impact = strenv(_RW_SO_IMPACT)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.finding_id = strenv(_RW_SO_FINDING_ID)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.round = ${round}" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.timestamp = strenv(_RW_SO_TIMESTAMP)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+
+  unset _RW_SO_ACCEPTED_BY _RW_SO_OWASP _RW_SO_IMPACT _RW_SO_FINDING_ID _RW_SO_TIMESTAMP
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: record-accept-override
+# ---------------------------------------------------------------------------
+# Records an accept-override decision on the current round.
+# Accept does NOT move the story past the review gate.
+
+_rw_cmd_record_accept_override() {
+  local key="" run_id="" decision="" user="" round="" timestamp="" signed_off_findings=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --decision) [ "$#" -ge 2 ] || _rw_die 1 "--decision requires a value"; decision="$2"; shift 2 ;;
+      --user) [ "$#" -ge 2 ] || _rw_die 1 "--user requires a value"; user="$2"; shift 2 ;;
+      --round) [ "$#" -ge 2 ] || _rw_die 1 "--round requires a value"; round="$2"; shift 2 ;;
+      --timestamp) [ "$#" -ge 2 ] || _rw_die 1 "--timestamp requires a value"; timestamp="$2"; shift 2 ;;
+      --signed-off-findings) [ "$#" -ge 2 ] || _rw_die 1 "--signed-off-findings requires a value"; signed_off_findings="$2"; shift 2 ;;
+      *) _rw_die 1 "record-accept-override: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "record-accept-override: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "record-accept-override: --run-id is required"
+  [ -n "$decision" ] || _rw_die 1 "record-accept-override: --decision is required"
+  [ -n "$user" ] || _rw_die 1 "record-accept-override: --user is required"
+  [ -n "$round" ] || _rw_die 1 "record-accept-override: --round is required"
+  [ -n "$timestamp" ] || _rw_die 1 "record-accept-override: --timestamp is required"
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+  _rw_require_integer "$round" "round"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "record-accept-override: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists.
+  export _RW_RUN_ID="$run_id"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-accept-override: round not found for run-id: $run_id"
+
+  # Build the signed-off findings array.
+  local sof_json="[]"
+  if [ -n "$signed_off_findings" ]; then
+    local IFS=','
+    local _sof_id
+    for _sof_id in $signed_off_findings; do
+      sof_json="$(printf '%s' "$sof_json" | jq --arg id "$_sof_id" '. + [$id]')" || _rw_abort_and_die 1 "record-accept-override: jq failed building signed-off array"
+    done
+  fi
+
+  # Read the failing gates from the round's selected gates.
+  local failing_json
+  failing_json="$(yq -o=json '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.report_path == "" or .report_path == null) | .gate]' "$tmp" 2>/dev/null)" || failing_json="[]"
+
+  # Write accept override via a JSON tmp file loaded by yq.
+  local ao_tmp
+  _rw_mktemp "accept-override.json" ao_tmp
+  jq -n \
+    --arg dec "$decision" \
+    --arg usr "$user" \
+    --argjson rnd "$round" \
+    --arg ts "$timestamp" \
+    --argjson sof "$sof_json" \
+    --argjson fg "$failing_json" \
+    '{decision: $dec, user: $usr, round: $rnd, timestamp: $ts, signed_off_findings: $sof, failing_gates: $fg}' \
+    > "$ao_tmp" || _rw_abort_and_die 1 "record-accept-override: jq failed"
+
+  export _RW_AO_TMP="$ao_tmp"
+  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).accept_override = load(strenv(_RW_AO_TMP))' "$tmp" || _rw_die 1 "record-accept-override: yq write failed"
+  unset _RW_AO_TMP _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
 
@@ -2717,6 +3063,15 @@ Usage:
   register-write.sh bind-brief --story <key> --run-id <id> --brief <path>
   register-write.sh supersede-brief --story <key> --run-id <id>
       --brief <new-path> --rationale <text>
+  register-write.sh count-rounds --story <key> --max <N>
+  register-write.sh record-escalation --story <key> --run-id <id>
+      --round-count <N> --max-cycles <M>
+  register-write.sh sign-off-finding --story <key> --finding-id <RF-n>
+      --risk-accepted-by <user> --owasp-category <cat> --impact <text>
+      --round <N> --timestamp <iso>
+  register-write.sh record-accept-override --story <key> --run-id <id>
+      --decision <text> --user <name> --round <N> --timestamp <iso>
+      [--signed-off-findings <id1,id2,...>]
   register-write.sh --help
 
 Exit codes: 0 success, 1 caller error, 2 malformed register.
@@ -2748,6 +3103,10 @@ case "${1:-}" in
   record-scope-revision) shift; _rw_cmd_record_scope_revision "$@" ;;
   bind-brief) shift; _rw_cmd_bind_brief "$@" ;;
   supersede-brief) shift; _rw_cmd_supersede_brief "$@" ;;
+  count-rounds) shift; _rw_cmd_count_rounds "$@" ;;
+  record-escalation) shift; _rw_cmd_record_escalation "$@" ;;
+  sign-off-finding) shift; _rw_cmd_sign_off_finding "$@" ;;
+  record-accept-override) shift; _rw_cmd_record_accept_override "$@" ;;
   -h|--help) _rw_usage; exit 0 ;;
   "") _rw_die 1 "missing subcommand; use --help" ;;
   *) _rw_die 1 "unknown subcommand: $1" ;;

@@ -329,6 +329,26 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 > Summary file is written by script, not LLM. The LLM produces optional one-line synopses via `--synopsis-file`; everything else is deterministic.
 
+**Substep 2.4a — Fix-cycle cap check.** After consolidation and before the scope-revision check, run the fix-cycle cap check. This runs BEFORE `complete-round` so that a round with an errored gate counts toward the cap at its decision point.
+
+1. Resolve the configured cap: read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`. When absent (empty output), use the point-of-use default of 2.
+
+2. Call `register-write.sh count-rounds --story {key} --max {cap}`. The subcommand returns `round_count`, `max_fix_cycles`, and `escalate true|false`.
+
+3. When `escalate true`:
+   - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.
+   - Present AskUserQuestion with exactly three choices:
+     - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision. Accept does NOT move the story past the review gate — that stays an explicit human step.
+     - **descope to backlog**: run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
+     - **one more cycle**: grants exactly one further round before escalating again.
+
+4. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
+
+For the security carve-out (blocking accept override):
+- Call `security-report-reader.sh --story {key}` to enumerate critical security findings.
+- Also check the current round's security gate: if its verdict is UNVERIFIED or it was recorded FAILED with no completed security report (a carried-over security gate with a completed report from an earlier round of the same story counts as assessed), block accept.
+- A finding counts as resolved once it has disposition `resolved` or carries a complete sign-off record (all six fields: risk_accepted_by, owasp_category, impact, finding_id, round, timestamp via `register-write.sh sign-off-finding`).
+
 **Substep 2.4b — Scope-revision check and round completion.** After consolidation and before the summary write:
 
 1. **Call `round-info`** again and compare `current_version` vs `accepted_version`. On a mismatch, HALT and ask the user to classify the change:

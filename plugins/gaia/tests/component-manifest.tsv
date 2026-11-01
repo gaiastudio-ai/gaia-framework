@@ -243,6 +243,7 @@ core	embedded-dev-wiring.bats
 core	evidence-judgment-parity.bats
 core	expected-report-vocabulary.bats
 core	findings-register.bats
+core	fix-cycle-cap.bats
 core	framework-version.bats
 core	gaia-add-feature-setup.bats
 core	gaia-changelog-story-link.bats
