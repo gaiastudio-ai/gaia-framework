@@ -357,7 +357,7 @@ For the security carve-out (blocking accept override):
 
 2. **Call `complete-round`** — this runs after consolidation and before the summary write:
    ```
-   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree}
+   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree} --verdict {PASSED|FAILED}
    ```
    HALT on any non-zero exit.
 
