@@ -379,6 +379,35 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
 
    The nudge block branches on the composite outcome (ALL PASSED → COMPLETE; N FAILED → BLOCKED with a "Blocking gates" list; N UNVERIFIED → PENDING with a "Pending gates" list).
 
+4. **Write review telemetry** after the composite verdict is known. Build a JSON object mapping each gate name to its verdict, then call the telemetry writer twice: a round-summary for every round, and a story-total when the composite is COMPLETE.
+
+   ```bash
+   # Build the per-gate verdict map (jq --arg per gate).
+   _gates_json="$(jq -nc \
+     --arg g1 "{code_verdict}" --arg g2 "{qa_verdict}" \
+     --arg g3 "{security_verdict}" --arg g4 "{test_auto_verdict}" \
+     --arg g5 "{test_review_verdict}" --arg g6 "{perf_verdict}" \
+     '{"Code Review":$g1,"QA Tests":$g2,"Security Review":$g3,
+       "Test Automation":$g4,"Test Review":$g5,"Performance Review":$g6}')"
+
+   bash scripts/review-telemetry-writer.sh round-summary \
+     --story {story_key} --round {round_ordinal} \
+     --composite-verdict {composite} \
+     --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+     --gates-json "$_gates_json"
+
+   # When the composite is COMPLETE (all six PASSED), append a story-total.
+   if [ "{composite}" = "COMPLETE" ]; then
+     bash scripts/review-telemetry-writer.sh story-total \
+       --story {story_key} --round {round_ordinal} \
+       --composite-verdict COMPLETE \
+       --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+       --gates-json "$_gates_json"
+   fi
+   ```
+
+   The telemetry writer is non-blocking: failures are logged and the review flow continues. The round ordinal is the sequential number of this review round (1-based). Duration and token totals may be null when the source data is unavailable.
+
 ### Step 4: Composite Verdict GATING
 
 > The composite verdict is **GATING**, not informational. The deterministic shell aggregator at `scripts/review-common/composite-verdict-aggregator.sh` consumes per-gate verdicts (APPROVE | REQUEST_CHANGES | BLOCKED produced by the verdict-resolver.sh path) and emits a composite verdict mapped to the Review Gate vocabulary (PASSED | FAILED). The aggregation path is 100% shell — no LLM — and is invariant under YOLO mode.

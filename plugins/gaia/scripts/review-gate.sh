@@ -1278,6 +1278,8 @@ main() {
   # (gaia-sprint-close Step 3a) can query the sentinel without referencing a story key.
   local report_path="" execution_evidence="" report_missing_reason=""
   local sprint_scoped=""
+  local telemetry_started_at="" telemetry_token_estimate=""
+  local telemetry_round="" telemetry_run_id=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1339,6 +1341,22 @@ main() {
       --evidence)
         [ $# -ge 2 ] || die "--evidence requires a value"
         carry_evidence="$2"; shift 2
+        ;;
+      --started-at)
+        [ $# -ge 2 ] || die "--started-at requires a value"
+        telemetry_started_at="$2"; shift 2
+        ;;
+      --token-estimate)
+        [ $# -ge 2 ] || die "--token-estimate requires a value"
+        telemetry_token_estimate="$2"; shift 2
+        ;;
+      --telemetry-round)
+        [ $# -ge 2 ] || die "--telemetry-round requires a value"
+        telemetry_round="$2"; shift 2
+        ;;
+      --telemetry-run-id)
+        [ $# -ge 2 ] || die "--telemetry-run-id requires a value"
+        telemetry_run_id="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1595,6 +1613,34 @@ main() {
                 --target-key "$story_key" \
                 --edge-type "reviewed-in" \
                 --edge-target "$_brain_edge_target" >/dev/null 2>&1 || true
+            fi
+          fi
+
+          # Review telemetry hook: record gate verdict timing and metrics.
+          # Non-blocking — a write failure is logged and the gate update
+          # is unaffected. Fires only for canonical gate verdicts (not
+          # plan-id ledger writes, not carry-forward).
+          if [ -z "$plan_id" ] && [ -n "$story_key" ]; then
+            _telemetry_sh="$(cd "$(dirname "$0")" && pwd)/review-telemetry-writer.sh"
+            if [ -x "$_telemetry_sh" ]; then
+              _tel_args=(gate-entry --story "$story_key" --gate "$gate_name" --verdict "$verdict")
+              if [ -n "$telemetry_round" ]; then
+                _tel_args+=(--round "$telemetry_round")
+              fi
+              if [ -n "$telemetry_run_id" ]; then
+                _tel_args+=(--run-id "$telemetry_run_id")
+              fi
+              if [ -n "$telemetry_started_at" ]; then
+                _tel_now="$(perl -MTime::HiRes=time -e 'printf "%d", time*1000' 2>/dev/null)" || _tel_now=""
+                _tel_args+=(--started-at "$telemetry_started_at")
+                if [ -n "$_tel_now" ]; then
+                  _tel_args+=(--ended-at "$_tel_now")
+                fi
+              fi
+              if [ -n "$telemetry_token_estimate" ]; then
+                _tel_args+=(--token-estimate "$telemetry_token_estimate")
+              fi
+              bash "$_telemetry_sh" "${_tel_args[@]}" 2>/dev/null || true
             fi
           fi
           ;;
