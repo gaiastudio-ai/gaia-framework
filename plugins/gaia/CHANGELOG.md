@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.225.0] — 2026-11-01
+
+### Added
+
+- (release) add per-sprint release with cherry-pick flow (#2329)
+- (merge) add merge ledger, ci-wait-ref, merge-tail, detach and parent-exec (#2321)
+- (merge) pre-merge review gate with operator bypass (#2320)
+- (concurrent-sprint) per-sprint lifecycle scoping and carry-over safety (#2318)
+- (review-gate) commit-bound SHA, dual-shape parser, carry-forward, non-destructive init (#2317)
+
+### Fixed
+
+- (test) stop per-sprint release test writing into the plugin tree (#2351)
+- (merge) drop invalid --no-delete-branch flag from gh pr merge call (#2328)
+- (sprint-close) harden binding validation, env bypass, and triage resolver (#2314)
+- (action-items-write) reject NEL, non-characters, invalid UTF-8 and harden dedup (#2315)
+- (worktree) harden reap safety for vanished and detached records (#2316)
+
 ## [1.224.0] — 2026-10-27
 
 ### Added
