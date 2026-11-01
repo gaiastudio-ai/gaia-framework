@@ -1310,3 +1310,23 @@ YAML
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASSED"* ]]
 }
+
+# ── Ledger record failure must surface in per-sprint-release ───────────
+
+@test "per_sprint_release_does_not_swallow_merge_ledger_record_failure" {
+  # Verify that per-sprint-release.sh does NOT have "|| true" after
+  # merge-ledger.sh record calls — the failure must propagate.
+  local psr_file="${PLUGIN_ROOT}/skills/gaia-release/scripts/per-sprint-release.sh"
+
+  # Count lines that call merge-ledger record with || true
+  local swallowed
+  swallowed=$(/usr/bin/grep -c 'merge-ledger.*record.*|| true\|record.*|| true' "$psr_file" || true)
+
+  # After the fix: zero swallowed lines
+  [ "$swallowed" = "0" ]
+
+  # Verify the record calls still exist (they were not accidentally removed)
+  local record_calls
+  record_calls=$(/usr/bin/grep -c 'record --mode release' "$psr_file" || true)
+  [ "$record_calls" -ge 1 ]
+}

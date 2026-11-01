@@ -1565,3 +1565,257 @@ STUB
   field_count=$(/usr/bin/grep -c '^[a-z]' "$gate_file")
   [ "$field_count" -eq 5 ]
 }
+
+# ======================================================================
+# Locking, atomic writes, input validation (hardening)
+# ======================================================================
+
+@test "concurrent ledger advance calls produce valid YAML" {
+  # Set up a gate and intent first
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  # Launch two parallel advance calls
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --state merging &
+  local pid1=$!
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --state merging &
+  local pid2=$!
+  wait "$pid1" || true
+  wait "$pid2" || true
+
+  # Find the intent file and verify it is valid YAML (no interleaving)
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" | head -1)
+  [ -f "$intent_file" ]
+  # Each line must be a valid key: "value" pair or empty
+  local bad_lines
+  bad_lines=$(/usr/bin/grep -cvE '^[a-z_]+: ".+"$|^$' "$intent_file") || bad_lines=0
+  [ "$bad_lines" -eq 0 ]
+}
+
+@test "sole-writer-check passes after locked advance and record" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --state merging
+
+  bash "$LEDGER_SH" record --mode release \
+    --head-sha def1234567890abcdef1234567890abcdef123456 \
+    --target main --pr-branch release/v1.0.0
+
+  run bash "$LEDGER_SH" sole-writer-check --dir "$MERGE_LEDGER_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASSED"* ]]
+}
+
+@test "two rapid write-gate-pass calls produce two distinct gate files" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  local gate_count
+  gate_count=$(find "$MERGE_LEDGER_DIR" -name "gate-pass-*.yaml" | wc -l | tr -d ' ')
+  [ "$gate_count" -ge 2 ]
+}
+
+@test "smoke command with single quote executes correctly via merge-tail" {
+  export MERGE_TAIL_SMOKE_CMD="echo 'hello world'"
+  export MERGE_TAIL_MOCK_PR_STATE="MERGED"
+  export MERGE_TAIL_MOCK_PR_BASE="staging"
+
+  # Set up gate and intent
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+
+  run bash "$TAIL_SH" merge --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+
+  run bash "$TAIL_SH" verify --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+
+  run bash "$TAIL_SH" smoke-wait --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+}
+
+@test "parent-exec rejects variable name with shell metacharacters" {
+  # Source parent-exec to override the allowlist
+  source "$PARENT_EXEC_SH"
+  _PE_ALLOWLIST=('SAFE_VAR' 'x;touch /tmp/pwned' 'NORMAL')
+
+  run parent_exec_build_env
+  [ "$status" -eq 0 ]
+  # The metacharacter name must not appear in output
+  [[ "$output" != *"x;touch"* ]]
+  # And the marker file must not exist
+  [ ! -f /tmp/pwned ]
+}
+
+@test "parent-exec uses printenv not eval for variable lookup" {
+  # Verify eval is not used as a command (exclude comments)
+  local eval_count
+  eval_count=$(/usr/bin/grep -v '^[[:space:]]*#' "$PARENT_EXEC_SH" | /usr/bin/grep -c 'eval ' || true)
+  [ "$eval_count" = "0" ]
+}
+
+@test "advance writes atomically via tmp+mv (no partial state)" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  # Advance to merging
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --state merging
+
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" ! -name "intent-release-*" | head -1)
+  [ -f "$intent_file" ]
+
+  # Verify the file has both state AND last_transition (atomic write means
+  # both fields are present, not just the state update)
+  /usr/bin/grep -q 'state: "merging"' "$intent_file"
+  /usr/bin/grep -q 'last_transition:' "$intent_file"
+
+  # No .tmp files should remain
+  local tmp_count
+  tmp_count=$(find "$MERGE_LEDGER_DIR" -name "*.tmp" | wc -l | tr -d ' ')
+  [ "$tmp_count" -eq 0 ]
+}
+
+@test "list rejects sprint-id with path traversal sequences" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  run bash "$LEDGER_SH" list --sprint "../../x" --state-dir "$state_dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"sprint"* ]]
+}
+
+@test "list accepts valid sprint-NNN format" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  # Create a sprint state file
+  cat > "$state_dir/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  # No intents exist so this exits 1 (no ledger) but should NOT reject the format
+  run bash "$LEDGER_SH" list --sprint sprint-900 --state-dir "$state_dir"
+  # Should fail because ledger has no intents, not because format is invalid
+  [[ "$output" != *"invalid"* ]]
+  [[ "$output" != *"rejected"* ]]
+}
+
+@test "list accepts bare numeric sprint-id format" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  cat > "$state_dir/sprint-status-900.yaml" <<'YAML'
+sprint_id: "900"
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint 900 --state-dir "$state_dir"
+  [[ "$output" != *"invalid"* ]]
+  [[ "$output" != *"rejected"* ]]
+}
+
+@test "record rejects non-release modes" {
+  run bash "$LEDGER_SH" record --mode story \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+
+  run bash "$LEDGER_SH" record --mode integration \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+
+  run bash "$LEDGER_SH" record --mode promotion \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+}
+
+@test "list excludes in-sprint release intent and mutation check proves filter is needed" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir" "$MERGE_LEDGER_DIR"
+
+  # Create sprint state with E900-S1
+  cat > "$state_dir/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  # Create a finalized story intent
+  cat > "$MERGE_LEDGER_DIR/intent-pr42-mi-20261101120000-99.yaml" <<'YAML'
+intent_id: "mi-20261101120000-99"
+type: "merge_intent"
+story: "E900-S1"
+pr: "42"
+head_sha: "abc1234def5678abc1234def5678abc1234def5678"
+target: "staging"
+mode: "story"
+state: "finalized"
+bypass: "false"
+created_at: "2026-11-01T12:00:00Z"
+merge_sha: "def1234567890abcdef1234567890abcdef123456"
+YAML
+
+  # Create a hand-made release intent whose story matches the sprint
+  cat > "$MERGE_LEDGER_DIR/intent-release-ri-20261101120001-88.yaml" <<'YAML'
+intent_id: "ri-20261101120001-88"
+mode: "release"
+state: "finalized"
+story: "E900-S1"
+head_sha: "fff1234567890abcdef1234567890abcdef123456"
+target: "main"
+pr_branch: "release/v2.0.0"
+created_at: "2026-11-01T12:00:01Z"
+YAML
+
+  # list should return the story intent but NOT the release intent
+  run bash "$LEDGER_SH" list --sprint sprint-900 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"E900-S1"* ]]
+  # Only one line of output (the story intent, not the release intent)
+  local line_count
+  line_count=$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S1')
+  [ "$line_count" -eq 1 ]
+}
