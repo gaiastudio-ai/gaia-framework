@@ -208,7 +208,24 @@ For each short_name in run:
      self-judge).
 
   4. Write the verdict via review-gate.sh update with --report (and
-     --execution-evidence for test-execution gates).
+     --execution-evidence for test-execution gates). Pass telemetry
+     flags so the per-gate telemetry line records non-null timing:
+
+     ```bash
+     bash scripts/review-gate.sh update \
+       --story {story_key} --gate "{gate_name}" --verdict {verdict} \
+       --report {report_path} \
+       --started-at {gate_start_epoch_ms} \
+       --token-estimate {token_estimate_from_throughput_telemetry} \
+       --telemetry-round {round_ordinal} \
+       --telemetry-run-id {run_id}
+     ```
+
+     **Value sources:**
+     - `--started-at`: record `$(perl -MTime::HiRes=time -e 'printf "%d", time*1000')` immediately before dispatching the gate skill; the writer computes `ended-at` at write time.
+     - `--token-estimate`: reuse the estimate from `throughput-telemetry.sh` when available; null otherwise.
+     - `--telemetry-round`: the 1-based ordinal of this review round (incremented each invocation of `/gaia-run-all-reviews`).
+     - `--telemetry-run-id`: the run ID minted at the start of Step 2.
 
   4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
 
@@ -406,7 +423,14 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
    fi
    ```
 
-   The telemetry writer is non-blocking: failures are logged and the review flow continues. The round ordinal is the sequential number of this review round (1-based). Duration and token totals may be null when the source data is unavailable.
+   The telemetry writer is non-blocking: failures are logged and the review flow continues.
+
+   **Value sources for round-summary / story-total:**
+   - `{round_ordinal}`: the 1-based ordinal of this review round, same value passed to the per-gate telemetry flags.
+   - `{composite}`: the composite verdict string from `review-gate.sh review-gate-check` (COMPLETE / BLOCKED / PENDING).
+   - `{total_ms}`: sum of the per-gate `duration_ms` values recorded in the gate-entry lines for this round. Null when any gate's start time was absent.
+   - `{total_tokens}`: sum of the per-gate `token_estimate` values. Null when no gate supplied a token estimate.
+   - Per-gate verdicts: the six verdicts read from the Review Gate table after all gates finish (PASSED / FAILED / UNVERIFIED).
 
 ### Step 4: Composite Verdict GATING
 

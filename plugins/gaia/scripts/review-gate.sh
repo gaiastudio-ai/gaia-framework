@@ -1624,6 +1624,10 @@ main() {
             _telemetry_sh="$(cd "$(dirname "$0")" && pwd)/review-telemetry-writer.sh"
             if [ -x "$_telemetry_sh" ]; then
               _tel_args=(gate-entry --story "$story_key" --gate "$gate_name" --verdict "$verdict")
+              # Pass the already-resolved story file to skip the lookup.
+              if [ -n "$STORY_FILE" ]; then
+                _tel_args+=(--story-file "$STORY_FILE")
+              fi
               if [ -n "$telemetry_round" ]; then
                 _tel_args+=(--round "$telemetry_round")
               fi
@@ -1640,7 +1644,8 @@ main() {
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")
               fi
-              bash "$_telemetry_sh" "${_tel_args[@]}" 2>/dev/null || true
+              # Suppress stdout only; let stderr warnings through.
+              bash "$_telemetry_sh" "${_tel_args[@]}" >/dev/null || true
             fi
           fi
           ;;

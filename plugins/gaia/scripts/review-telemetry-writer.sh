@@ -12,7 +12,9 @@
 # resolve-story-file.sh. Access scope matches other story artifacts.
 #
 # Design constraints:
-#   - Non-blocking: a write error is logged to stderr; exit 0 always.
+#   - Non-blocking: a write or validation error is logged to stderr and
+#     the line is skipped (exit 0). Only usage errors (missing required
+#     args, unknown subcommand) exit 1.
 #   - Append-only: existing lines are never rewritten or deleted.
 #   - Atomic: a single printf of a complete line stays under PIPE_BUF (4096+).
 #   - No secrets: only allowlisted fields are written; findings text, diff
@@ -58,15 +60,67 @@ _tw_die() {
   exit "$rc"
 }
 
+# Validate that a value is a non-negative integer (digits only).
+# Returns 0 if valid, 1 if invalid. Empty/null strings return 1.
+_tw_is_integer() {
+  case "$1" in
+    ''|null) return 1 ;;
+    *[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Validate that a value is a non-negative number (integer or decimal).
+# Returns 0 if valid, 1 if invalid.
+_tw_is_number() {
+  case "$1" in
+    ''|null) return 1 ;;
+    *[!0-9.]*) return 1 ;;
+    *.*.*) return 1 ;;  # multiple dots
+    *) return 0 ;;
+  esac
+}
+
+# Validate a run_id against the safe token pattern.
+# Alphanumerics, hyphens, underscores, dots, colons, plus.
+_tw_is_safe_token() {
+  case "$1" in
+    ''|null) return 1 ;;
+  esac
+  printf '%s' "$1" | grep -qE '^[A-Za-z0-9._:+-]+$'
+}
+
+# Validate --gates-json: must be a JSON object whose keys are strings
+# and whose values are strings (verdict names). Rejects non-object types,
+# nested objects, and numeric/boolean values in the gate map.
+_tw_validate_gates_json() {
+  local json="$1"
+  # Must parse as a JSON object.
+  if ! printf '%s' "$json" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    _tw_err "gates-json must be a JSON object"
+    return 1
+  fi
+  # Every value must be a string (verdict name).
+  local bad
+  bad="$(printf '%s' "$json" | jq '[.[] | type] | map(select(. != "string")) | length' 2>/dev/null)" || bad="1"
+  if [ "$bad" != "0" ]; then
+    _tw_err "gates-json values must all be strings"
+    return 1
+  fi
+  return 0
+}
+
 # Resolve the telemetry file path for a story key.
+# When --story-file is provided, skip the lookup.
 # Returns the path on stdout; empty on failure.
 _tw_resolve_path() {
-  local key="$1"
-  local story_file
-  story_file="$("$SCRIPT_DIR/resolve-story-file.sh" "$key" 2>/dev/null)" || {
-    _tw_err "cannot resolve story file for '$key'"
-    return 1
-  }
+  local key="$1" story_file="${2:-}"
+  if [ -z "$story_file" ]; then
+    story_file="$("$SCRIPT_DIR/resolve-story-file.sh" "$key" 2>/dev/null)" || {
+      _tw_err "cannot resolve story file for '$key'"
+      return 1
+    }
+  fi
   local story_dir
   story_dir="$(dirname "$story_file")"
   printf '%s/review-telemetry.jsonl' "$story_dir"
@@ -93,12 +147,14 @@ _tw_append() {
 # ---------- gate-entry ----------
 
 _tw_gate_entry() {
-  local story="" gate="" verdict="" round="null" run_id="null"
-  local started_at="null" ended_at="null" mutation_score="null" token_estimate="null"
+  local story="" gate="" verdict="" round="" run_id=""
+  local started_at="" ended_at="" mutation_score="" token_estimate=""
+  local story_file=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)        shift; story="${1:-}" ;;
+      --story-file)   shift; story_file="${1:-}" ;;
       --gate)         shift; gate="${1:-}" ;;
       --verdict)      shift; verdict="${1:-}" ;;
       --round)        shift; round="${1:-}" ;;
@@ -116,38 +172,58 @@ _tw_gate_entry() {
   [ -n "$gate" ]    || _tw_die 1 "gate-entry: --gate is required"
   [ -n "$verdict" ] || _tw_die 1 "gate-entry: --verdict is required"
 
-  # Compute duration_ms from start/end when both are present.
-  local duration_ms="null"
-  local jq_start="null" jq_end="null"
-  if [ "$started_at" != "null" ] && [ -n "$started_at" ]; then
+  # --- Input validation (security: reject before any arithmetic/argjson) ---
+
+  # Numeric fields: must be digits-only or empty/unset.
+  if [ -n "$started_at" ] && ! _tw_is_integer "$started_at"; then
+    _tw_err "gate-entry: --started-at must be a non-negative integer, got '$started_at' — skipping"
+    return 0
+  fi
+  if [ -n "$ended_at" ] && ! _tw_is_integer "$ended_at"; then
+    _tw_err "gate-entry: --ended-at must be a non-negative integer, got '$ended_at' — skipping"
+    return 0
+  fi
+  if [ -n "$token_estimate" ] && ! _tw_is_integer "$token_estimate"; then
+    _tw_err "gate-entry: --token-estimate must be a non-negative integer, got '$token_estimate' — skipping"
+    return 0
+  fi
+  if [ -n "$round" ] && ! _tw_is_integer "$round"; then
+    _tw_err "gate-entry: --round must be a non-negative integer, got '$round' — skipping"
+    return 0
+  fi
+  if [ -n "$mutation_score" ] && ! _tw_is_number "$mutation_score"; then
+    _tw_err "gate-entry: --mutation-score must be numeric, got '$mutation_score' — skipping"
+    return 0
+  fi
+
+  # run_id: safe token pattern when present.
+  if [ -n "$run_id" ] && ! _tw_is_safe_token "$run_id"; then
+    _tw_err "gate-entry: --run-id contains unsafe characters — skipping"
+    return 0
+  fi
+
+  # --- Build typed jq arguments ---
+
+  local duration_ms="null" jq_start="null" jq_end="null"
+  if [ -n "$started_at" ]; then
     jq_start="$started_at"
-    if [ "$ended_at" != "null" ] && [ -n "$ended_at" ]; then
+    if [ -n "$ended_at" ]; then
       jq_end="$ended_at"
-      duration_ms=$(( ended_at - started_at )) 2>/dev/null || duration_ms="null"
+      duration_ms=$(( ended_at - started_at ))
     fi
   fi
 
-  # Build the round argjson: numeric when present, null otherwise.
   local jq_round="null"
-  if [ "$round" != "null" ] && [ -n "$round" ]; then
-    jq_round="$round"
-  fi
+  [ -n "$round" ] && jq_round="$round"
 
-  # mutation_score: numeric (float) when present, null otherwise.
   local jq_mscore="null"
-  if [ "$mutation_score" != "null" ] && [ -n "$mutation_score" ]; then
-    jq_mscore="$mutation_score"
-  fi
+  [ -n "$mutation_score" ] && jq_mscore="$mutation_score"
 
-  # token_estimate: numeric when present, null otherwise.
   local jq_tokens="null"
-  if [ "$token_estimate" != "null" ] && [ -n "$token_estimate" ]; then
-    jq_tokens="$token_estimate"
-  fi
+  [ -n "$token_estimate" ] && jq_tokens="$token_estimate"
 
-  # run_id: string when present, null otherwise.
   local run_id_args=()
-  if [ "$run_id" != "null" ] && [ -n "$run_id" ]; then
+  if [ -n "$run_id" ]; then
     run_id_args=(--arg run_id "$run_id")
   else
     run_id_args=(--argjson run_id "null")
@@ -173,7 +249,7 @@ _tw_gate_entry() {
     || { _tw_err "jq failed building gate-entry line"; return 0; }
 
   local path
-  path="$(_tw_resolve_path "$story")" || return 0
+  path="$(_tw_resolve_path "$story" "$story_file")" || return 0
   _tw_append "$path" "$line"
 }
 
@@ -181,12 +257,14 @@ _tw_gate_entry() {
 
 _tw_summary() {
   local entry_type="$1"; shift
-  local story="" round="null" composite_verdict=""
-  local total_duration_ms="null" total_tokens="null" gates_json="{}"
+  local story="" round="" composite_verdict=""
+  local total_duration_ms="" total_tokens="" gates_json="{}"
+  local story_file=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --story)             shift; story="${1:-}" ;;
+      --story-file)        shift; story_file="${1:-}" ;;
       --round)             shift; round="${1:-}" ;;
       --composite-verdict) shift; composite_verdict="${1:-}" ;;
       --total-duration-ms) shift; total_duration_ms="${1:-}" ;;
@@ -200,33 +278,48 @@ _tw_summary() {
   [ -n "$story" ]             || _tw_die 1 "$entry_type: --story is required"
   [ -n "$composite_verdict" ] || _tw_die 1 "$entry_type: --composite-verdict is required"
 
+  # --- Input validation ---
+  if [ -n "$round" ] && ! _tw_is_integer "$round"; then
+    _tw_err "$entry_type: --round must be a non-negative integer, got '$round' — skipping"
+    return 0
+  fi
+  if [ -n "$total_duration_ms" ] && ! _tw_is_integer "$total_duration_ms"; then
+    _tw_err "$entry_type: --total-duration-ms must be a non-negative integer, got '$total_duration_ms' — skipping"
+    return 0
+  fi
+  if [ -n "$total_tokens" ] && ! _tw_is_integer "$total_tokens"; then
+    _tw_err "$entry_type: --total-tokens must be a non-negative integer, got '$total_tokens' — skipping"
+    return 0
+  fi
+  if ! _tw_validate_gates_json "$gates_json"; then
+    _tw_err "$entry_type: --gates-json validation failed — skipping"
+    return 0
+  fi
+
+  # --- Build typed jq arguments ---
   local jq_args=()
   jq_args+=(--argjson schema_version "$SCHEMA_VERSION")
   jq_args+=(--arg type "$entry_type")
   jq_args+=(--arg composite_verdict "$composite_verdict")
 
-  # round
-  if [ "$round" = "null" ] || [ -z "$round" ]; then
-    jq_args+=(--argjson round "null")
-  else
+  if [ -n "$round" ]; then
     jq_args+=(--argjson round "$round")
+  else
+    jq_args+=(--argjson round "null")
   fi
 
-  # total_duration_ms
-  if [ "$total_duration_ms" = "null" ] || [ -z "$total_duration_ms" ]; then
-    jq_args+=(--argjson total_duration_ms "null")
-  else
+  if [ -n "$total_duration_ms" ]; then
     jq_args+=(--argjson total_duration_ms "$total_duration_ms")
-  fi
-
-  # total_tokens
-  if [ "$total_tokens" = "null" ] || [ -z "$total_tokens" ]; then
-    jq_args+=(--argjson total_tokens "null")
   else
-    jq_args+=(--argjson total_tokens "$total_tokens")
+    jq_args+=(--argjson total_duration_ms "null")
   fi
 
-  # gates (JSON object)
+  if [ -n "$total_tokens" ]; then
+    jq_args+=(--argjson total_tokens "$total_tokens")
+  else
+    jq_args+=(--argjson total_tokens "null")
+  fi
+
   jq_args+=(--argjson gates "$gates_json")
 
   local line
@@ -238,7 +331,7 @@ _tw_summary() {
     || { _tw_err "jq failed building $entry_type line"; return 0; }
 
   local path
-  path="$(_tw_resolve_path "$story")" || return 0
+  path="$(_tw_resolve_path "$story" "$story_file")" || return 0
   _tw_append "$path" "$line"
 }
 
