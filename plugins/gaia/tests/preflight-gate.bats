@@ -159,8 +159,17 @@ YAML
 preflight_commands:
   - "true"
 YAML
-  # Narrow PATH to exclude yq.
-  run env PATH=/usr/bin:/bin bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  # Build a minimal PATH that has bash, grep, jq etc. but not yq.
+  # Symlink only the binaries the script needs into a clean directory.
+  local narrow="$BATS_TEST_TMPDIR/narrow-bin"
+  mkdir -p "$narrow"
+  for b in bash grep printf cat jq mktemp rm; do
+    local p
+    p="$(command -v "$b" 2>/dev/null || true)"
+    [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
+  done
+  # Do NOT link yq.
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
   [[ "$output" == *"yq"* ]]
   [[ "$output" == *"preflight_commands"* ]]
