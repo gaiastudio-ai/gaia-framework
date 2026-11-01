@@ -1007,29 +1007,7 @@ SH
 @test "close_in_progress_halts_release_exits_3" {
   cd "$PROJECT_DIR"
 
-  # Stub the pre-release-sprint-check.sh to exit 3
-  local pre_check="${PLUGIN_ROOT}/skills/gaia-release/scripts/pre-release-sprint-check.sh"
-  local pre_check_backup="${pre_check}.bak"
-
-  # Create a local stub
-  cat > "${TEST_TMP}/pre-release-sprint-check.sh" <<'SH'
-#!/bin/sh
-printf 'sprint close in progress (sprint sprint-900) -- retry\n' >&2
-exit 3
-SH
-  chmod +x "${TEST_TMP}/pre-release-sprint-check.sh"
-
-  # Override the script path by setting it in the environment
-  # The per-sprint-release.sh looks for pre-release-sprint-check.sh in its own dir
-  cp "${TEST_TMP}/pre-release-sprint-check.sh" \
-     "${PLUGIN_ROOT}/skills/gaia-release/scripts/pre-release-sprint-check.sh.test-stub"
-
-  # We need to make per-sprint-release.sh find our stub.
-  # The simplest way: put the stub where the script looks for it.
-  # But we don't want to modify the real file. Instead, run the script
-  # with a modified pre-release check that always exits 3.
-
-  # Actually, create a closing marker so the real pre-release check fails
+  # A closing marker makes the real pre-release check refuse with exit 3.
   touch "${PROJECT_DIR}/.gaia/state/.sprint-closing-sprint-900"
   printf 'sprint_id=sprint-900\n' > "${PROJECT_DIR}/.gaia/state/.sprint-closing-sprint-900"
 
@@ -1048,7 +1026,6 @@ SH
 
   # Clean up
   rm -f "${PROJECT_DIR}/.gaia/state/.sprint-closing-sprint-900"
-  rm -f "${PLUGIN_ROOT}/skills/gaia-release/scripts/pre-release-sprint-check.sh.test-stub"
 }
 
 # ── AC-EC6: Version bump handles special characters ────────────────────────
