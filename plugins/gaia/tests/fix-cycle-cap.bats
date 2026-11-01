@@ -15,7 +15,7 @@ setup() {
   TMP="${BATS_TEST_TMPDIR}"
 
   # Prevent env leaks from _rw / _sr helpers.
-  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
 
   printf 'BASH_VERSION=%s\n' "$BASH_VERSION" >&2
 }
