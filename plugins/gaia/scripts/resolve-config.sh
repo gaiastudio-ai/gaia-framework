@@ -1162,7 +1162,7 @@ fi
 # commas, brackets or quotes. Project-level only, no global/local merge.
 # When yq is missing and keys are present, fail loudly; when both keys are
 # absent, nothing is read and nothing fails.
-extract_command_array_json() {
+_extract_command_array_json() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
   grep -qE "^${key}:" "$file" 2>/dev/null || return 0
@@ -1179,8 +1179,8 @@ if [ "$LOCAL_EXISTS" -eq 1 ]; then _rc_cfg="$LOCAL_PATH"
 elif [ "$SHARED_EXISTS" -eq 1 ]; then _rc_cfg="$SHARED_PATH"
 fi
 if [ -n "$_rc_cfg" ]; then
-  v_preflight_commands_json=$(extract_command_array_json "$_rc_cfg" preflight_commands) || exit $?
-  v_post_ci_smoke_commands_json=$(extract_command_array_json "$_rc_cfg" post_ci_smoke_commands) || exit $?
+  v_preflight_commands_json=$(_extract_command_array_json "$_rc_cfg" preflight_commands) || exit $?
+  v_post_ci_smoke_commands_json=$(_extract_command_array_json "$_rc_cfg" post_ci_smoke_commands) || exit $?
 fi
 unset _rc_cfg
 
