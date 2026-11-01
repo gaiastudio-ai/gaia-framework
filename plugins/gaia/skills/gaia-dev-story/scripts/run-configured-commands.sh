@@ -43,13 +43,14 @@ done
 
 # Resolve config path when not supplied.
 if [ -z "$config_path" ]; then
+  # Resolve through the canonical env-var chain; never use a bare .gaia/ path.
+  _rc_pr="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
   if [ -n "${PROJECT_CONFIG:-}" ] && [ -f "${PROJECT_CONFIG}" ]; then
     config_path="$PROJECT_CONFIG"
-  elif [ -n "${CLAUDE_PROJECT_ROOT:-}" ] && [ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]; then
-    config_path="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
-  elif [ -f ".gaia/config/project-config.yaml" ]; then
-    config_path=".gaia/config/project-config.yaml"
+  elif [ -n "$_rc_pr" ] && [ -f "${_rc_pr}/.gaia/config/project-config.yaml" ]; then
+    config_path="${_rc_pr}/.gaia/config/project-config.yaml"
   fi
+  unset _rc_pr
 fi
 
 # Key absent from config or config file missing — silent no-op.
