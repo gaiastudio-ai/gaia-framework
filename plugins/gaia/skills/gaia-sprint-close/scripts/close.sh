@@ -446,7 +446,7 @@ if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
   fi
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
     # Sanitize the bound value for safe stderr output.
-    local _safe_bound="$_cross_bound"
+    _safe_bound="$_cross_bound"
     if type _sb_sanitize_value >/dev/null 2>&1; then
       _safe_bound="$(_sb_sanitize_value "$_cross_bound")"
     fi
