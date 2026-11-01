@@ -123,9 +123,28 @@ yaml_top_scalar() {
   line=$(grep "^${key}:" "$path" 2>/dev/null | head -1)
   set -o pipefail
   [ -z "$line" ] && { printf ''; return 0; }
-  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//" | tr -d "\"'")
-  # Strip inline YAML comments (# ...) and trailing whitespace/CR.
-  value=$(printf '%s' "$value" | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//' | tr -d '\r')
+  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//")
+  # Strip inline YAML comments BEFORE removing quotes so a # inside
+  # a quoted value is preserved.  A comment is a # preceded by whitespace
+  # that is NOT inside single or double quotes.
+  # Approach: if the value starts with a quote, extract the quoted content
+  # and ignore any # after the closing quote.  Otherwise strip # normally.
+  case "$value" in
+    \"*)
+      # Double-quoted: extract content between the first pair of double quotes.
+      value=$(printf '%s' "$value" | sed 's/^"\([^"]*\)".*/\1/')
+      ;;
+    \'*)
+      # Single-quoted: extract content between the first pair of single quotes.
+      value=$(printf '%s' "$value" | sed "s/^'\\([^']*\\)'.*/\\1/")
+      ;;
+    *)
+      # Unquoted: strip inline comments and surrounding quotes.
+      value=$(printf '%s' "$value" | sed 's/[[:space:]]*#.*$//' | tr -d "\"'")
+      ;;
+  esac
+  # Strip trailing whitespace and CR.
+  value=$(printf '%s' "$value" | sed 's/[[:space:]]*$//' | tr -d '\r')
   printf '%s' "$value"
 }
 
@@ -265,6 +284,12 @@ if [ -f "$SESSION_BINDING_SH" ]; then
   _pre_provision_sid=""
   _pre_provision_sid="$(_sb_derive_session_id 2>/dev/null)" || _pre_provision_sid=""
   if [ -n "$_pre_provision_sid" ]; then
+    # Validate the session ID before using it in a path computation.
+    # An unvalidated session ID (e.g. ../../x) would let the cleanup
+    # rmdir escape the sessions directory.
+    if ! _sb_validate_session_id "$_pre_provision_sid" 2>/dev/null; then
+      die "invalid session ID — cannot compute cleanup directory"
+    fi
     _pre_provision_root="$(_sb_resolve_project_root 2>/dev/null)" || _pre_provision_root=""
     if [ -n "$_pre_provision_root" ]; then
       _pre_provision_dir="${_pre_provision_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME:-sessions}/${_pre_provision_sid}"
@@ -405,10 +430,27 @@ if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
   fi
 fi
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
+  _cross_raw="" _cross_cat_rc=0
+  _cross_raw="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null)" || _cross_cat_rc=$?
+  _cross_raw="$(printf '%s' "$_cross_raw" | tr -d '\n')"
+  if [ "$_cross_cat_rc" -ne 0 ] && [ -e "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" ]; then
+    # File exists but is unreadable — refuse, not treat as unbound.
+    die "binding file is unreadable — cannot verify binding for sprint '$SPRINT_ID'"
+  fi
+  # Apply CRLF policy: strip one trailing CR.
   _cross_bound=""
-  _cross_bound="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null | tr -d '\n')" || _cross_bound=""
+  if [ -n "$_cross_raw" ] && type _sb_strip_trailing_cr >/dev/null 2>&1; then
+    _cross_bound="$(_sb_strip_trailing_cr "$_cross_raw")"
+  else
+    _cross_bound="$(printf '%s' "$_cross_raw" | sed $'s/\r$//')"
+  fi
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
-    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_cross_bound'"
+    # Sanitize the bound value for safe stderr output.
+    local _safe_bound="$_cross_bound"
+    if type _sb_sanitize_value >/dev/null 2>&1; then
+      _safe_bound="$(_sb_sanitize_value "$_cross_bound")"
+    fi
+    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_bound'"
   fi
 fi
 

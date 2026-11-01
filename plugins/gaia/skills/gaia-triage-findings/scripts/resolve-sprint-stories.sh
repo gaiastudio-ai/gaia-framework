@@ -49,8 +49,16 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Sanitize a value for safe stderr output (renders control chars as C-style escapes).
+_rss_sanitize() {
+  printf '%s' "$1" \
+    | sed $'s/\r/\\\\r/g' \
+    | sed $'s/\t/\\\\t/g' \
+    | sed $'s/\x1b/\\\\x1b/g'
+}
+
 [ -n "$IMPL_DIR" ] || { printf 'resolve-sprint-stories.sh: --impl-dir is required\n' >&2; exit 1; }
-[ -d "$IMPL_DIR" ] || { printf 'resolve-sprint-stories.sh: not a directory: %s\n' "$IMPL_DIR" >&2; exit 1; }
+[ -d "$IMPL_DIR" ] || { printf 'resolve-sprint-stories.sh: not a directory: %s\n' "$(_rss_sanitize "$IMPL_DIR")" >&2; exit 1; }
 
 # ---------- --all: full historical sweep (legacy behavior) ----------
 if [ "$ALL" -eq 1 ]; then
@@ -64,7 +72,7 @@ _SPRINT_STATUS_FILES=()
 if [ -n "$SPRINT_STATUS" ]; then
   # Explicit --sprint-status: use only that file.
   if [ ! -f "$SPRINT_STATUS" ]; then
-    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$SPRINT_STATUS" >&2
+    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$(_rss_sanitize "$SPRINT_STATUS")" >&2
     exit 0
   fi
   _SPRINT_STATUS_FILES=("$SPRINT_STATUS")
@@ -100,7 +108,7 @@ else
       fi
     fi
   elif [ "${#_SPRINT_STATUS_FILES[@]}" -eq 0 ]; then
-    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$_main_file" >&2
+    printf 'resolve-sprint-stories.sh: sprint-status not found at %s — pass --all for a full sweep\n' "$(_rss_sanitize "$_main_file")" >&2
     exit 0
   fi
 fi

@@ -950,8 +950,9 @@ teardown() {
 
   run read_binding
 
-  # With the file unreadable, cat fails and the result is empty -> rc 1 (unbound).
-  [ "$status" -eq 1 ]
+  # Unreadable file is an error (rc 3), not unbound (rc 1).
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"unreadable"* ]]
 
   chmod 644 "$bind_dir/bound_sprint_id"
 }
@@ -1213,14 +1214,14 @@ JSON
   [ "$arc" -eq 0 ]
 }
 
-@test "resolver binding-file-wins: CRLF binding file refuses" {
+@test "resolver binding-file-wins: CRLF binding file resolves after trailing CR strip" {
   _build_concurrent_for_resolver "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
   export PROJECT_PATH="$TEST_TMP"
   export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
 
-  # Binding file with CRLF, no env.
+  # Binding file with CRLF line ending (one trailing CR), no env.
   local sid="rsa-crlf-$$"
   export CLAUDE_CODE_SESSION_ID="$sid"
   unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
@@ -1229,14 +1230,45 @@ JSON
   chmod 0700 "$bind_dir"
   printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
 
+  run bash "$CLOSE_SH"
+
+  # CRLF policy: one trailing CR is stripped at read time; file resolves to sprint-900.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-900"* ]]
+  [[ "$output" == *"closed"* ]]
+
+  # sprint-901 must still be active.
+  local s901_status
+  s901_status="$(yq '.status' "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+  [ "$s901_status" = "active" ]
+}
+
+@test "resolver binding-file-wins: embedded CR in binding file is refused" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Binding file with an embedded CR (not just trailing).
+  local sid="rsa-embcr-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR GAIA_BOUND_SPRINT_ID
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint\r-900\n' > "$bind_dir/bound_sprint_id"
+
   local s900_before s901_before
   s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
   s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
 
   run bash "$CLOSE_SH"
 
-  [ "$status" -eq 16 ]
+  [ "$status" -ne 0 ]
   [[ "$output" == *"invalid"* ]]
+  # The CR must be rendered visibly as \r, never raw ^M.
+  [[ "$output" == *"\\r"* ]]
 
   [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
   [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
@@ -1605,4 +1637,350 @@ YAML
     '(FR-[0-9]+|ADR-[0-9]+|E[0-9]+-S[0-9]+|TC-[A-Z]+-[0-9]+|NFR-[0-9]+|SR-[0-9]+)' \
     "$skill_md"
   [ "$status" -eq 1 ]
+}
+
+# ---------- AC1: read_binding empty file returns rc 3 ----------
+
+@test "read_binding returns rc 3 on empty binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/binding-empty"
+  mkdir -p "$bind_dir"
+  : > "$bind_dir/bound_sprint_id"  # empty file
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  run read_binding
+
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"empty"* ]]
+}
+
+@test "read_binding returns rc 1 on missing binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/binding-missing"
+  mkdir -p "$bind_dir"
+  # No binding file at all.
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  run read_binding
+
+  [ "$status" -eq 1 ]
+}
+
+# ---------- AC2: session id path traversal ----------
+
+@test "path traversal session ID is rejected before cleanup dir computation" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # Structural: _sb_validate_session_id runs before _pre_provision_dir is computed.
+  local close_sh="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
+  local validate_line provision_line
+  validate_line=$(/usr/bin/grep -n '_sb_validate_session_id.*_pre_provision_sid' "$close_sh" | head -1 | cut -d: -f1)
+  provision_line=$(/usr/bin/grep -n '_pre_provision_dir=' "$close_sh" | head -1 | cut -d: -f1)
+  [ -n "$validate_line" ]
+  [ -n "$provision_line" ]
+  [ "$validate_line" -lt "$provision_line" ]
+}
+
+# ---------- AC3: resolve_sprint_arg has no [ -f ] before cat ----------
+
+@test "resolve_sprint_arg binding read has no [ -f ] existence test" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+
+  # Extract the resolve_sprint_arg function body.
+  local func_body
+  func_body="$(awk '/^resolve_sprint_arg\(\)/{found=1} found{print} found && /^}$/{exit}' "$sb_sh")"
+
+  # The binding-file read section must NOT contain a [ -f ] test
+  # before the cat on the binding filename.
+  local saw_cat=0 found_pre=0
+  while IFS= read -r line; do
+    case "$line" in
+      *cat*BINDING_FILENAME*) saw_cat=1 ;;
+    esac
+    if [ "$saw_cat" -eq 0 ]; then
+      case "$line" in
+        *'[ -f'*BINDING_FILENAME*|*'[ -f'*BINDING_FILENAME*)
+          found_pre=1 ;;
+      esac
+    fi
+  done <<<"$func_body"
+
+  [ "$found_pre" -eq 0 ]
+}
+
+# ---------- AC4: sanitized stderr output ----------
+
+@test "terminal escape in session ID rejection is sanitized" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # Session ID with an ANSI escape sequence.
+  local esc_id
+  esc_id="$(printf 'bad\x1bsid')"
+  run _sb_validate_session_id "$esc_id"
+
+  [ "$status" -ne 0 ]
+  # The raw escape must NOT appear in the output; it should be sanitized.
+  [[ "$output" != *$'\x1b'* ]]
+  # The sanitized form must show the escape as \x1b.
+  [[ "$output" == *"\\x1b"* ]]
+}
+
+@test "sanitizer renders embedded CR as visible backslash-r" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local result
+  result="$(_sb_sanitize_value "$(printf 'hello\rworld')")"
+  [[ "$result" == *"\\r"* ]]
+  # Must NOT contain a raw CR.
+  [[ "$result" != *$'\r'* ]]
+}
+
+# ---------- AC5: yaml_top_scalar quote-vs-comment ----------
+
+@test "yaml_top_scalar preserves content after hash inside quoted value" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Write a state file with a quoted value containing #.
+  printf 'sprint_id: "sp #1"\nstatus: active\ntotal_points: 10\nstories:\n  - key: DEMO-S1\n    status: done\n' \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  # Source close.sh to get yaml_top_scalar.
+  eval "$(awk '/^yaml_top_scalar\(\)/,/^}/' "$CLOSE_SH")"
+
+  local result
+  result="$(yaml_top_scalar sprint_id "$TEST_TMP/.gaia/state/sprint-status.yaml")"
+  [ "$result" = "sp #1" ]
+}
+
+# ---------- AC6: unreadable binding file on override path ----------
+
+@test "unreadable binding file on override path refuses close" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Set up a session with an unreadable binding file.
+  local sid="unreadable-override-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-200' > "$bind_dir/bound_sprint_id"
+  chmod 000 "$bind_dir/bound_sprint_id"
+
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  local before
+  before="$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unreadable"* ]]
+  [ "$before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
+
+  chmod 644 "$bind_dir/bound_sprint_id"
+}
+
+# ---------- AC7: CRLF binding file same sprint ----------
+
+@test "CRLF binding file with same sprint as target does not refuse close" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Binding file holds sprint-200 with CRLF ending.
+  local sid="crlf-same-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-200\r\n' > "$bind_dir/bound_sprint_id"
+
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export GAIA_BOUND_SPRINT_ID="sprint-200"
+
+  run bash "$CLOSE_SH"
+
+  # CRLF stripped at read time; file agrees with target — close proceeds.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sprint-200"* ]]
+  [[ "$output" == *"closed"* ]]
+}
+
+# ---------- AC8: redundant tr in yaml_top_scalar ----------
+
+@test "yaml_top_scalar tr removal is detectable (tr -d still present in code)" {
+  # AC8 says: keep the tr -d and add a test that detects its removal.
+  # The yaml_top_scalar function must include a tr -d '\r' call.
+  /usr/bin/grep -q "tr -d '\\\\r'" "$CLOSE_SH" || /usr/bin/grep -q 'tr -d.*\\r' "$CLOSE_SH"
+}
+
+# ---------- AC10: unreadable binding on resolver path ----------
+
+@test "unreadable binding file on resolver path refuses with error, env does not win" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Unreadable binding file (mode 000) + env set.
+  local sid="rsa-unread-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-901' > "$bind_dir/bound_sprint_id"
+  chmod 000 "$bind_dir/bound_sprint_id"
+
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  # Must refuse — env does not win over unreadable file.
+  [ "$status" -eq 16 ]
+
+  # No state changes.
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+
+  chmod 644 "$bind_dir/bound_sprint_id"
+}
+
+# ---------- AC12: CRLF + stale env on resolver path ----------
+
+@test "CRLF binding file with stale env refuses with binding_mismatch" {
+  _build_concurrent_for_resolver "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP"
+  export CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP"
+  export PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # CRLF binding file holds sprint-901; stale env says sprint-900.
+  local sid="rsa-crlf-env-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  unset GAIA_BINDING_DIR
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-901\r\n' > "$bind_dir/bound_sprint_id"
+
+  local s900_before s901_before
+  s900_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")"
+  s901_before="$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")"
+
+  run bash "$CLOSE_SH"
+
+  # Must refuse with binding_mismatch: the file (sprint-901 after CR strip)
+  # disagrees with the env (sprint-900).
+  [ "$status" -eq 15 ]
+  [[ "$output" == *"binding_mismatch"* ]]
+
+  # No state changes.
+  [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
+  [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
+}
+
+# ---------- AC9: CRLF policy in resolve_sprint_arg ----------
+
+@test "resolve_sprint_arg strips trailing CR from CRLF binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # Set up a concurrent fixture.
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state"
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+sprint:
+  max_concurrent_active: 2
+YAML
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 5
+stories:
+  - key: DEMO-S1
+    status: done
+YAML
+  export PROJECT_ROOT="$root"
+  export CLAUDE_PROJECT_ROOT="$root"
+
+  # Binding file with CRLF.
+  local bind_dir="$root/.gaia/state/sessions/crlf-rsa-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  unset GAIA_BOUND_SPRINT_ID
+
+  run resolve_sprint_arg --command sprint-close
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "sprint-900" ]
+}
+
+@test "resolve_sprint_arg refuses embedded CR in binding file with visible escape" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state"
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+sprint:
+  max_concurrent_active: 2
+YAML
+  export PROJECT_ROOT="$root"
+  export CLAUDE_PROJECT_ROOT="$root"
+
+  # Binding file with embedded CR.
+  local bind_dir="$root/.gaia/state/sessions/embcr-rsa-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint\r-900\n' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  unset GAIA_BOUND_SPRINT_ID
+
+  run resolve_sprint_arg --command sprint-close
+
+  [ "$status" -eq 16 ]
+  [[ "$output" == *"invalid"* ]]
+  # The embedded CR must be rendered as \r, not raw ^M.
+  [[ "$output" == *"\\r"* ]]
+}
+
+# ---------- AC11: action-items SKILL.md documents mismatch exception ----------
+
+@test "action-items SKILL.md documents the mismatch exception" {
+  local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
+  [ -f "$skill_md" ]
+
+  # Both lines must mention the binding-disagreement exception.
+  local line1
+  line1="$(/usr/bin/grep 'resolver never refuses' "$skill_md")"
+  [[ "$line1" == *"disagrees"* ]] || [[ "$line1" == *"mismatch"* ]]
+
+  local line2
+  line2="$(/usr/bin/grep 'never refuses for missing sprint context' "$skill_md")"
+  [[ "$line2" == *"disagrees"* ]] || [[ "$line2" == *"mismatch"* ]]
 }

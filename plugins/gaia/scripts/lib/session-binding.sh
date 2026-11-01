@@ -27,6 +27,35 @@ _SB_BINDING_FILENAME="bound_sprint_id"
 _SB_SESSION_DIR_NAME="sessions"
 _SB_SCRIPT_NAME="${0##*/}"
 
+# ---------- Sanitize helper ----------
+
+# Render control characters as C-style escape sequences for safe stderr
+# output.  Used by every call site that prints a user-supplied value.
+# Bash 3.2 + BSD sed compatible.  Each sed expression uses $'...' to
+# embed the literal control character in the search pattern.
+_sb_sanitize_value() {
+  local val="$1"
+  # printf '%s' (no trailing newline) + individual sed passes.
+  # BSD sed cannot match \n in a substitution pattern, but newlines in
+  # sprint/session IDs are already rejected by shape validation; the
+  # sanitizer handles the characters that matter for safe stderr display.
+  printf '%s' "$val" \
+    | sed $'s/\r/\\\\r/g' \
+    | sed $'s/\t/\\\\t/g' \
+    | sed $'s/\x1b/\\\\x1b/g'
+}
+
+# ---------- CRLF helper ----------
+
+# Strip ONE trailing CR from a value (the CRLF read-time policy).
+# A value with only a trailing CR is accepted after stripping.  A CR
+# anywhere else in the value makes it invalid (handled by the caller).
+_sb_strip_trailing_cr() {
+  local val="$1"
+  # Remove exactly one trailing \r (sed on BSD and GNU).
+  printf '%s' "$val" | sed $'s/\r$//'
+}
+
 # ---------- Realpath helper ----------
 
 # Portable realpath: use the `realpath` command when available, fall back to
@@ -117,7 +146,7 @@ _sb_validate_session_id() {
   case "$sid" in
     */*|*\\*)
       printf '%s: error: session ID contains path separator: %s\n' \
-        "$_SB_SCRIPT_NAME" "$sid" >&2
+        "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sid")" >&2
       return 1 ;;
   esac
 
@@ -125,21 +154,21 @@ _sb_validate_session_id() {
   case "$sid" in
     .*)
       printf '%s: error: session ID starts with a leading dot: %s\n' \
-        "$_SB_SCRIPT_NAME" "$sid" >&2
+        "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sid")" >&2
       return 1 ;;
   esac
 
   # Whitespace (space, tab, newline, carriage return).
   if printf '%s' "$sid" | /usr/bin/grep -q '[[:space:]]'; then
     printf '%s: error: session ID contains whitespace: %s\n' \
-      "$_SB_SCRIPT_NAME" "$sid" >&2
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sid")" >&2
     return 1
   fi
 
   # Control characters (ASCII 0x00-0x1F, 0x7F).
   if printf '%s' "$sid" | /usr/bin/grep -q '[[:cntrl:]]'; then
     printf '%s: error: session ID contains control characters: %s\n' \
-      "$_SB_SCRIPT_NAME" "$sid" >&2
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sid")" >&2
     return 1
   fi
 
@@ -347,8 +376,9 @@ write_binding() {
 
   # If binding file already exists, check for re-entry or conflict.
   if [ -f "$binding_file" ]; then
-    local existing=""
-    existing="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || existing=""
+    local existing="" _raw_existing=""
+    _raw_existing="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || _raw_existing=""
+    existing="$(_sb_strip_trailing_cr "$_raw_existing")"
 
     # Containment check on existing file.
     if ! _sb_check_containment "$binding_file"; then
@@ -359,30 +389,41 @@ write_binding() {
       # Idempotent re-entry: same sprint, reuse binding.
       return 0
     else
-      printf '%s: error: already bound to %s\n' "$_SB_SCRIPT_NAME" "$existing" >&2
+      printf '%s: error: already bound to %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$existing")" >&2
       return 2
     fi
   fi
 
-  # Write the binding file atomically via noclobber.
-  ( set -C; printf '%s' "$sprint_id" > "$binding_file" ) 2>/dev/null
-  local rc=$?
-  if [ $rc -ne 0 ]; then
-    # noclobber refused — another process created the file.
-    if [ -f "$binding_file" ]; then
-      local existing=""
-      existing="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || existing=""
-      if [ "$existing" = "$sprint_id" ]; then
-        return 0  # Same sprint — idempotent.
-      fi
-      printf '%s: error: already bound to %s\n' "$_SB_SCRIPT_NAME" "$existing" >&2
-      return 2
-    fi
-    printf '%s: error: failed to write binding file\n' "$_SB_SCRIPT_NAME" >&2
+  # Write the binding file atomically via temp file + hard link.
+  # `ln tmp final` fails with EEXIST if another process created the file
+  # first (write-once semantics, works on bash 3.2, no mv -n).
+  local _tmp_binding=""
+  _tmp_binding="${binding_file}.tmp.$$"
+  # Clean up the temp file on every exit path.
+  printf '%s' "$sprint_id" > "$_tmp_binding" 2>/dev/null || {
+    rm -f "$_tmp_binding" 2>/dev/null || true
+    printf '%s: error: failed to write temp binding file\n' "$_SB_SCRIPT_NAME" >&2
     return 1
+  }
+  if ln "$_tmp_binding" "$binding_file" 2>/dev/null; then
+    rm -f "$_tmp_binding" 2>/dev/null || true
+    return 0
   fi
+  rm -f "$_tmp_binding" 2>/dev/null || true
 
-  return 0
+  # ln failed — another process created the file (EEXIST).
+  if [ -f "$binding_file" ]; then
+    local existing="" _raw_existing=""
+    _raw_existing="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || _raw_existing=""
+    existing="$(_sb_strip_trailing_cr "$_raw_existing")"
+    if [ "$existing" = "$sprint_id" ]; then
+      return 0  # Same sprint — idempotent.
+    fi
+    printf '%s: error: already bound to %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$existing")" >&2
+    return 2
+  fi
+  printf '%s: error: failed to write binding file\n' "$_SB_SCRIPT_NAME" >&2
+  return 1
 }
 
 # read_binding — read the current binding state.
@@ -402,27 +443,42 @@ read_binding() {
 
   # Atomic read: attempt cat directly and check the result.
   # This closes the TOCTOU window between a separate -f check and the read.
-  local bound_id=""
-  bound_id="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || bound_id=""
+  # Distinguish missing (cat stderr: No such file) from unreadable/empty.
+  local _raw_id="" _cat_rc=0
+  _raw_id="$(cat "$binding_file" 2>/dev/null)" || _cat_rc=$?
+  _raw_id="$(printf '%s' "$_raw_id" | tr -d '\n')"
 
-  # No file or empty — unbound.
-  if [ -z "$bound_id" ]; then
+  # cat failed: either missing (unbound) or unreadable (error).
+  if [ "$_cat_rc" -ne 0 ]; then
+    if [ -e "$binding_file" ]; then
+      # File exists but is unreadable — error, not unbound.
+      printf '%s: error: binding file is unreadable: %s\n' \
+        "$_SB_SCRIPT_NAME" "$binding_file" >&2
+      return 3
+    fi
+    # File does not exist — unbound.
     return 1
   fi
+
+  # File exists but is empty — error (not unbound).
+  if [ -z "$_raw_id" ]; then
+    printf '%s: error: binding file is empty\n' "$_SB_SCRIPT_NAME" >&2
+    return 3
+  fi
+
+  # Apply CRLF policy: strip one trailing CR.
+  local bound_id=""
+  bound_id="$(_sb_strip_trailing_cr "$_raw_id")"
 
   # Containment check (now that we know the file exists).
   if ! _sb_check_containment "$binding_file"; then
     return 3
   fi
 
-  # Validate format.
-  if [ -z "$bound_id" ]; then
-    printf '%s: error: binding file is empty\n' "$_SB_SCRIPT_NAME" >&2
-    return 3
-  fi
+  # Validate format — a CR anywhere else (embedded) is invalid.
   if printf '%s' "$bound_id" | /usr/bin/grep -q '[^A-Za-z0-9._-]'; then
     printf '%s: error: binding file contains invalid sprint ID: %s\n' \
-      "$_SB_SCRIPT_NAME" "$bound_id" >&2
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$bound_id")" >&2
     return 3
   fi
 
@@ -478,18 +534,28 @@ validate_binding() {
   # If env var is set but no binding file: mismatch.
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ] && { [ -z "${GAIA_BINDING_DIR:-}" ] || [ ! -f "$binding_file" ]; }; then
     printf '%s: error: binding_mismatch — GAIA_BOUND_SPRINT_ID is set (%s) but no binding file exists\n' \
-      "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" >&2
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")" >&2
     return 1
   fi
 
-  # Read the binding file.
+  # Read the binding file.  An unreadable file is an error, not "no file".
+  local _raw_file_id="" _cat_rc=0
+  _raw_file_id="$(cat "$binding_file" 2>/dev/null)" || _cat_rc=$?
+  _raw_file_id="$(printf '%s' "$_raw_file_id" | tr -d '\n')"
+  if [ "$_cat_rc" -ne 0 ] && [ -e "$binding_file" ]; then
+    printf '%s: error: binding file is unreadable: %s\n' \
+      "$_SB_SCRIPT_NAME" "$binding_file" >&2
+    return 1
+  fi
+
+  # Apply CRLF policy: strip one trailing CR.
   local file_id=""
-  file_id="$(cat "$binding_file" 2>/dev/null | tr -d '\n')" || file_id=""
+  file_id="$(_sb_strip_trailing_cr "$_raw_file_id")"
 
   # If env var is set and differs from the file: mismatch.
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ] && [ "$GAIA_BOUND_SPRINT_ID" != "$file_id" ]; then
     printf '%s: error: binding_mismatch — env GAIA_BOUND_SPRINT_ID=%s differs from binding file=%s\n' \
-      "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" "$file_id" >&2
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")" "$(_sb_sanitize_value "$file_id")" >&2
     return 1
   fi
 
@@ -811,17 +877,34 @@ resolve_sprint_arg() {
   local _file_bound_id=""
 
   # 1. Read the binding file first (authoritative source).
-  if [ -n "${GAIA_BINDING_DIR:-}" ] && [ -f "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
-    _file_bound_id="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null | tr -d '\n')" || _file_bound_id=""
-    if [ -n "$_file_bound_id" ]; then
-      # Shape-validate the bound ID from the binding file.
-      # Use case glob (not line-based grep) so multi-line values are rejected.
-      case "$_file_bound_id" in
-        *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
-          printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
-            "$_SB_SCRIPT_NAME" "$_file_bound_id" >&2
-          return "$SPRINT_INVALID_ID" ;;
-      esac
+  # No pre-read existence test: attempt cat directly to close the TOCTOU
+  # window.  Distinguish missing (unbound) from unreadable (error).
+  if [ -n "${GAIA_BINDING_DIR:-}" ]; then
+    local _rsa_raw="" _rsa_cat_rc=0
+    _rsa_raw="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" 2>/dev/null)" || _rsa_cat_rc=$?
+    _rsa_raw="$(printf '%s' "$_rsa_raw" | tr -d '\n')"
+    if [ "$_rsa_cat_rc" -ne 0 ]; then
+      # cat failed: distinguish missing from unreadable.
+      if [ -e "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
+        # File exists but is unreadable — error, not unbound (AC10).
+        printf '%s: error: binding file is unreadable: %s\n' \
+          "$_SB_SCRIPT_NAME" "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" >&2
+        return "$SPRINT_INVALID_ID"
+      fi
+      # File does not exist — no file binding (fall through to env).
+    else
+      # cat succeeded — apply CRLF policy.
+      _file_bound_id="$(_sb_strip_trailing_cr "$_rsa_raw")"
+      if [ -n "$_file_bound_id" ]; then
+        # Shape-validate the bound ID from the binding file.
+        # Use case glob (not line-based grep) so multi-line values are rejected.
+        case "$_file_bound_id" in
+          *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+            printf '%s: error: binding file contains invalid sprint ID shape: %s\n' \
+              "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$_file_bound_id")" >&2
+            return "$SPRINT_INVALID_ID" ;;
+        esac
+      fi
     fi
   fi
 
@@ -830,13 +913,13 @@ resolve_sprint_arg() {
     case "$GAIA_BOUND_SPRINT_ID" in
       *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
         printf '%s: error: bound sprint ID has invalid shape: %s\n' \
-          "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" >&2
+          "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")" >&2
         return "$SPRINT_INVALID_ID" ;;
     esac
     # If the binding file is also present and disagrees, refuse.
     if [ -n "$_file_bound_id" ] && [ "$GAIA_BOUND_SPRINT_ID" != "$_file_bound_id" ]; then
       printf '%s: error: binding_mismatch — env GAIA_BOUND_SPRINT_ID=%s differs from binding file=%s\n' \
-        "$_SB_SCRIPT_NAME" "$GAIA_BOUND_SPRINT_ID" "$_file_bound_id" >&2
+        "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")" "$(_sb_sanitize_value "$_file_bound_id")" >&2
       return "$SPRINT_BOUND_MISMATCH"
     fi
   fi
