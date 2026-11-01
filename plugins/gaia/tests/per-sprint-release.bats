@@ -1313,20 +1313,39 @@ YAML
 
 # ── Ledger record failure must surface in per-sprint-release ───────────
 
-@test "per_sprint_release_does_not_swallow_merge_ledger_record_failure" {
-  # Verify that per-sprint-release.sh does NOT have "|| true" after
-  # merge-ledger.sh record calls — the failure must propagate.
-  local psr_file="${PLUGIN_ROOT}/skills/gaia-release/scripts/per-sprint-release.sh"
+@test "per_sprint_release_exits_nonzero_when_merge_ledger_record_fails" {
+  cd "$PROJECT_DIR"
 
-  # Count lines that call merge-ledger record with || true
-  local swallowed
-  swallowed=$(/usr/bin/grep -c 'merge-ledger.*record.*|| true\|record.*|| true' "$psr_file" || true)
+  # Make the merge ledger dir read-only so the record call fails.
+  # The list sub-command (which reads) still succeeds because files
+  # were committed earlier.  But the record sub-command (which writes
+  # a new intent file) will fail because the dir is not writable.
+  local ledger_dir="$PROJECT_DIR/.gaia/state/merge"
 
-  # After the fix: zero swallowed lines
-  [ "$swallowed" = "0" ]
+  # First verify the baseline: release succeeds with a writable ledger
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
 
-  # Verify the record calls still exist (they were not accidentally removed)
-  local record_calls
-  record_calls=$(/usr/bin/grep -c 'record --mode release' "$psr_file" || true)
-  [ "$record_calls" -ge 1 ]
+  # Now make a fresh clone so we can re-run, and break the ledger dir
+  local project2="${BATS_TEST_TMPDIR}/project2"
+  git clone "$REMOTE_DIR" "$project2" 2>/dev/null
+  git -C "$project2" config user.email "test@test.com"
+  git -C "$project2" config user.name "Test"
+  # Copy state from original
+  cp -R "$PROJECT_DIR/.gaia" "$project2/.gaia"
+  # Remove the release tag so the script can run again
+  git -C "$project2" tag -d v0.1.0 2>/dev/null || true
+
+  # Make ledger dir unwritable so record fails
+  chmod 555 "$project2/.gaia/state/merge"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$project2" --config "$project2/.gaia/config/project-config.yaml"
+
+  # Restore permissions for cleanup
+  chmod 755 "$project2/.gaia/state/merge"
+
+  # The release must exit non-zero because record could not write
+  [ "$status" -ne 0 ]
 }
