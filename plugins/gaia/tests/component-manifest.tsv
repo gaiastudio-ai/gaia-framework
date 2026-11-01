@@ -889,9 +889,11 @@ skills	per-component-smoke.bats
 skills	pixel-diff-ac2-thresholds-and-masking.bats
 skills	pixel-diff-ac3-baseline-approval.bats
 skills	pixel-diff-ac4-no-baseline-unverified.bats
+skills	post-ci-smoke.bats
 skills	pr-body.bats
 skills	pr-create-title-prefix-guard.bats
 skills	pr-create.bats
+skills	preflight-gate.bats
 skills	promotion-chain-guard.bats
 skills	publish-gate-release-commit.bats
 skills	release-strategy.bats

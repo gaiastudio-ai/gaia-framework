@@ -1157,6 +1157,33 @@ if [ -z "$v_device_targets_json" ] && [ "$SHARED_EXISTS" -eq 1 ]; then
   v_device_targets_json=$(extract_device_targets_json "$SHARED_PATH")
 fi
 
+# preflight_commands / post_ci_smoke_commands — top-level arrays of strings.
+# Read with yq (real YAML parser) to avoid corrupting commands that contain
+# commas, brackets or quotes. Project-level only, no global/local merge.
+# When yq is missing and keys are present, fail loudly; when both keys are
+# absent, nothing is read and nothing fails.
+extract_command_array_json() {
+  local file="$1" key="$2"
+  [ -f "$file" ] || return 0
+  grep -qE "^${key}:" "$file" 2>/dev/null || return 0
+  if ! command -v yq >/dev/null 2>&1; then
+    printf 'resolve-config.sh: error: yq is required for %s but not found on PATH\n' "$key" >&2
+    return 1
+  fi
+  yq -o=json ".${key}" "$file" 2>/dev/null || return 0
+}
+v_preflight_commands_json=""
+v_post_ci_smoke_commands_json=""
+_rc_cfg=""
+if [ "$LOCAL_EXISTS" -eq 1 ]; then _rc_cfg="$LOCAL_PATH"
+elif [ "$SHARED_EXISTS" -eq 1 ]; then _rc_cfg="$SHARED_PATH"
+fi
+if [ -n "$_rc_cfg" ]; then
+  v_preflight_commands_json=$(extract_command_array_json "$_rc_cfg" preflight_commands) || exit $?
+  v_post_ci_smoke_commands_json=$(extract_command_array_json "$_rc_cfg" post_ci_smoke_commands) || exit $?
+fi
+unset _rc_cfg
+
 # stacks / environments / gates are structural sections; we do not flatten
 # them in v1. Downstream callers requiring full structural access should
 # consume the YAML directly or use --format json.
@@ -1781,6 +1808,15 @@ if [ "$FORMAT" = "shell" ]; then
     emit_pair_shell val_integration.template_output_review \
       "$v_val_integration_template_output_review"
   fi
+  # Preflight / post-CI smoke command arrays — emitted as single JSON-encoded
+  # string variables so no shell word-splitting of commands ever happens. The
+  # runner decodes with jq.
+  if [ -n "$v_preflight_commands_json" ]; then
+    emit_pair_shell preflight_commands_json "$v_preflight_commands_json"
+  fi
+  if [ -n "$v_post_ci_smoke_commands_json" ]; then
+    emit_pair_shell post_ci_smoke_commands_json "$v_post_ci_smoke_commands_json"
+  fi
 else
   if command -v jq >/dev/null 2>&1; then
     # Build the base object (existing surface) and post-merge any extended
@@ -1883,6 +1919,13 @@ else
     # the captured JSON string here.
     if [ -n "$v_device_targets_json" ]; then
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_device_targets_json" '. + {device_targets: $v}')
+    fi
+    # Preflight / post-CI smoke command arrays — passed through unchanged.
+    if [ -n "$v_preflight_commands_json" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_preflight_commands_json" '. + {preflight_commands: $v}')
+    fi
+    if [ -n "$v_post_ci_smoke_commands_json" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_post_ci_smoke_commands_json" '. + {post_ci_smoke_commands: $v}')
     fi
 
     # Emit base + new-sections merge.

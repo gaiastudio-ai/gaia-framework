@@ -9,6 +9,17 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Local preflight gate and post-CI smoke hook (2026-11-01)
+
+#### Added
+- `preflight_commands` — opt-in array of shell commands in `project-config.yaml` executed sequentially before every push in `/gaia-dev-story`. A non-zero exit (including 127 command-not-found) halts the push with a message naming the failing command and its exit code. Absent or empty = no-op.
+- `post_ci_smoke_commands` — opt-in array of shell commands executed after CI goes green and before merge. A non-zero exit halts the merge. Absent or empty = no-op. The smoke runs against the CI-verified commit.
+- `run-configured-commands.sh` — deterministic runner script shared by both gates. Reads arrays from project config via yq, executes each command in the story working tree, and reports failures with the command name and exit code.
+- Schema additions for both keys with trust-boundary documentation in the descriptions.
+- Config hydration passes both arrays through unchanged (read with yq, emitted with jq `--argjson`).
+- `/gaia-doctor` lists configured commands; `/gaia-readiness-check` flags empty-string entries.
+- Documentation updates in the dev-story command page and configuration reference.
+
 ### Walk-up path resolution: git-bounded outside HOME (2026-10-24)
 
 #### Changed

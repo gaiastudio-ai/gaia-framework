@@ -199,6 +199,13 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   sprint_status_mod
+  # preflight_commands: opt-in shell commands run before push. Operator sets
+  # them explicitly; an empty stub adds nothing over absence (opt-in no-op).
+  # x-no-auto-hydration in schema.
+  preflight_commands
+  # post_ci_smoke_commands: opt-in shell commands run after green CI. Same
+  # rationale as preflight_commands.
+  post_ci_smoke_commands
 )
 
 # ---- Logging helpers ------------------------------------------------------
