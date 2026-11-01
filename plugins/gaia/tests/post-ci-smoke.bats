@@ -3,6 +3,8 @@
 # run-configured-commands.sh runner, covering exit-code 1 scenarios
 # and the merge-halt path.
 
+load 'test_helper.bash'
+
 setup() {
   export BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR:-$(mktemp -d)}"
   SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/skills/gaia-dev-story/scripts/run-configured-commands.sh"

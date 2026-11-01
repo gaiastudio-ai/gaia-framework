@@ -2,6 +2,8 @@
 # preflight-gate.bats — tests for the preflight-commands and
 # post-CI-smoke-commands runner (run-configured-commands.sh).
 
+load 'test_helper.bash'
+
 setup() {
   export BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR:-$(mktemp -d)}"
   SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/skills/gaia-dev-story/scripts/run-configured-commands.sh"
