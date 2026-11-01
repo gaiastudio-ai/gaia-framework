@@ -208,9 +208,13 @@ _mk_aged_dead_sibling() {
   GIT_SEQUENCE_EDITOR="sed -i.bak 's/^pick/edit/' " \
     git -C "$wt" rebase -i HEAD~2 2>/dev/null || true
 
-  # The worktree should be in a rebase state (detached HEAD).
-  [ -d "$wt/.git/rebase-merge" ] || [ -d "$wt/.git/rebase-apply" ] \
-    || [ -f "$wt/.git" ] \
+  # The worktree should be in a rebase state.  In a linked worktree .git is
+  # always a file (not a directory), so checking for .git/rebase-merge would
+  # always fail; the rebase state lives in the resolved git dir instead.
+  local gitdir
+  gitdir="$(git -C "$wt" rev-parse --git-dir 2>/dev/null)" \
+    || { echo "cannot resolve git dir for $wt"; return 1; }
+  [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] \
     || { echo "rebase did not start; test fixture is broken"; return 1; }
 
   run worktree_prune_stale "$primary"
@@ -301,9 +305,13 @@ _mk_aged_dead_sibling() {
   git -C "$wt" add work.txt
   git -C "$wt" commit -qm "local work"
 
+  # Use an old timestamp so the age check does NOT short-circuit; the
+  # commits-ahead guard must be the one that rejects.
   local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
   local branch="refs/heads/feat/R5-S1-slug"
+  local old_ts=1000000000
   local reason; reason="$(_sw_lock_reason "R5-S1" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
 
   run _sw_reapable "$primary" "$wt" "$reason" "$branch"
   [ "$status" -ne 0 ] \
@@ -486,4 +494,184 @@ _mk_aged_dead_sibling() {
   run worktree_prune_stale "$primary"
   [ "$status" -eq 0 ] \
     || { echo "leading-zero timestamp caused a prune failure (exit $status)"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario: vanished directory re-create (AC1)
+# ---------------------------------------------------------------------------
+
+@test "worktree_create re-creates a worktree whose directory vanished but lock survived" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "V1-S1" "slug")"
+
+  # Commit so the branch has history; record the sha for later verification.
+  printf 'data\n' > "$wt/data.txt"
+  git -C "$wt" add data.txt
+  git -C "$wt" commit -qm "some work"
+  local pre_vanish_sha; pre_vanish_sha="$(git -C "$wt" rev-parse HEAD)"
+
+  # Simulate directory vanishing (manual rm -rf) while the lock survives.
+  rm -rf "$wt"
+  [ ! -d "$wt" ] || { echo "directory was not removed"; return 1; }
+
+  # The lock record still exists: the branch is still checked-out per porcelain.
+  local state; state="$(worktree_branch_state "$primary" "feat/V1-S1-slug")"
+  case "$state" in
+    checked-out:*) ;;
+    *) echo "expected checked-out state, got: $state"; return 1 ;;
+  esac
+
+  # worktree_create should detect the missing directory and re-create.
+  run worktree_create "$primary" "V1-S1" "slug"
+  [ "$status" -eq 0 ] \
+    || { echo "worktree_create failed on vanished directory (exit $status): ${lines[*]}"; return 1; }
+
+  # The returned path must match the expected worktree path.
+  # worktree_create echoes the path on stdout; `run` also captures stderr
+  # (log messages), so the path is in the last line.
+  local returned_path="${lines[${#lines[@]}-1]}"
+  [ "$returned_path" = "$wt" ] \
+    || { echo "output path mismatch: expected $wt, got $returned_path"; return 1; }
+
+  # The directory must exist and be a proper git worktree on the right branch.
+  [ -d "$wt" ] \
+    || { echo "worktree was not re-created at $wt"; return 1; }
+  local head_ref; head_ref="$(git -C "$wt" symbolic-ref HEAD 2>/dev/null)" \
+    || { echo "HEAD is not a symbolic ref (worktree may be detached)"; return 1; }
+  [ "$head_ref" = "refs/heads/feat/V1-S1-slug" ] \
+    || { echo "wrong branch: expected refs/heads/feat/V1-S1-slug, got $head_ref"; return 1; }
+
+  # The pre-vanish commit must be preserved (not lost by the re-create).
+  local post_sha; post_sha="$(git -C "$wt" rev-parse HEAD)"
+  [ "$post_sha" = "$pre_vanish_sha" ] \
+    || { echo "HEAD changed: expected $pre_vanish_sha, got $post_sha"; return 1; }
+
+  # The record must be re-locked (ownership recorded for reap safety).
+  local rec; rec="$(git -C "$primary" worktree list --porcelain | grep -A5 -F "$wt" || true)"
+  case "$rec" in
+    *locked*) ;;
+    *) echo "worktree record is not locked after re-create"; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Scenario: detached vanished record preserved when commits ahead (AC2)
+# ---------------------------------------------------------------------------
+
+@test "a detached vanished sibling with commits ahead is not reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "D1-S1")"
+
+  # Detach first, THEN commit so the commit is reachable only from the
+  # worktree's detached HEAD — not from any branch ref.
+  git -C "$wt" checkout --detach HEAD 2>/dev/null
+  printf 'work\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -qm "detached work"
+  local detached_sha; detached_sha="$(git -C "$wt" rev-parse HEAD)"
+
+  # Delete the branch so the commit is truly unreachable from any ref.
+  git -C "$primary" branch -D "feat/D1-S1-slug" 2>/dev/null || true
+
+  # Remove the directory; the git record and lock survive.
+  rm -rf "$wt"
+  [ ! -d "$wt" ] || { echo "directory was not removed"; return 1; }
+
+  # The record should be kept because the porcelain HEAD carries commits
+  # that are ahead of the base branch.
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+
+  # The record must still be registered (not pruned away).
+  local count; count="$(_wt_count "$primary" "$wt")"
+  [ "$count" -ge 1 ] \
+    || { echo "detached vanished sibling with commits was unregistered (reaped)"; return 1; }
+
+  # The detached commit must still be reachable even after a gc prune.
+  git -C "$primary" gc --prune=now 2>/dev/null || true
+  git -C "$primary" cat-file -e "$detached_sha" 2>/dev/null \
+    || { echo "detached commit $detached_sha was lost after gc"; return 1; }
+}
+
+@test "a detached vanished sibling with no commits ahead IS reaped" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(_mk_aged_dead_sibling "$primary" "D2-S1")"
+
+  # Detach without adding commits; HEAD is at the same point as base.
+  git -C "$wt" checkout --detach HEAD 2>/dev/null
+
+  # Remove the directory.
+  rm -rf "$wt"
+  [ ! -d "$wt" ] || { echo "directory was not removed"; return 1; }
+
+  run worktree_prune_stale "$primary"
+  [ "$status" -eq 0 ]
+
+  # The record should be gone: no commits ahead, aged, dead owner, dir gone.
+  local count; count="$(_wt_count "$primary" "$wt")"
+  [ "$count" -eq 0 ] \
+    || { echo "detached vanished sibling with no commits ahead was NOT reaped"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario: aged worktree with commits ahead survives (AC5 — ahead-check)
+# The young-worktree test (scenario 6) passes on the age check alone; this
+# aged variant proves the commits-ahead guard is independently exercised.
+# ---------------------------------------------------------------------------
+
+@test "_sw_reapable rejects an aged clean worktree whose branch is ahead" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "A1-S1" "slug")"
+  git -C "$wt" push -q -u origin HEAD
+
+  # Add a commit so the branch is 1 ahead (not merged).
+  printf 'ahead\n' > "$wt/ahead.txt"
+  git -C "$wt" add ahead.txt
+  git -C "$wt" commit -qm "unpushed ahead"
+
+  # Re-lock with an old timestamp so the age check passes (does not protect).
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local old_ts=1000000000
+  local reason; reason="$(_sw_lock_reason "A1-S1" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "$reason"
+
+  local branch="refs/heads/feat/A1-S1-slug"
+  run _sw_reapable "$primary" "$wt" "$reason" "$branch"
+  [ "$status" -ne 0 ] \
+    || { echo "_sw_reapable accepted an aged worktree with commits ahead"; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Scenario: unreadable HEAD fails closed (AC5)
+# ---------------------------------------------------------------------------
+
+@test "_sw_reapable fails closed when the worktree HEAD cannot be read" {
+  _source_lib || { echo "library not implemented: $LIB"; return 1; }
+  local primary; primary="$(_mk_pushed_primary_repo "$TEST_TMP/primary")"
+  local wt; wt="$(worktree_create "$primary" "UH-S1" "slug")"
+
+  # Detach and corrupt the HEAD so git -C cannot read it.
+  git -C "$wt" checkout --detach HEAD 2>/dev/null
+  # Remove the .git file so rev-parse HEAD fails inside the worktree.
+  rm -f "$wt/.git"
+  mkdir -p "$wt/.git"
+
+  local dead_pid; dead_pid="$( /bin/bash -c 'echo $$' )"
+  local old_ts=1000000000
+  local reason; reason="$(_sw_lock_reason "UH-S1" "$dead_pid")"
+  reason="${reason% ts *} ts $old_ts"
+  git -C "$primary" worktree unlock "$wt" 2>/dev/null || true
+  git -C "$primary" worktree lock "$wt" --reason "$reason"
+
+  # Call _sw_reapable with no branch (detached) — the path exists but HEAD
+  # is unreadable, so the function must fail closed (return 1, keep it).
+  run _sw_reapable "$primary" "$wt" "$reason" ""
+  [ "$status" -ne 0 ] \
+    || { echo "_sw_reapable accepted a worktree with unreadable HEAD"; return 1; }
 }

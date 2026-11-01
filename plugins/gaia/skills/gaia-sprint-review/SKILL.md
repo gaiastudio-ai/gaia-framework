@@ -96,7 +96,9 @@ SPRINT_ID="$(resolve_sprint_arg --command sprint-review "$@")"
 
 Without `--sprint` or a positional argument, the resolver defaults to the bound sprint or the single active sprint. The resolver accepts a positional sprint ID (e.g., `/gaia-sprint-review sprint-42`) for backward compatibility; a positional ID and a different `--sprint` value together are refused.
 
-On a closed sprint, the resolver returns exit 0 (historical read-only mode). The skill renders a read-only view of the review outcome without triggering transitions.
+On a closed sprint, the resolver returns exit 0 (historical read-only mode). The skill renders a read-only view of the review outcome without triggering transitions. In a session whose bound sprint is closed, the review runs in read-only historical mode without writes (an exception to the general closed-binding refusal for mutating commands).
+
+In concurrent-sprint mode, the review is scoped to the resolved sprint's stories and state file only. A second active sprint is not affected.
 
 ### Step 1 — Pre-Condition Gate (active → review)
 

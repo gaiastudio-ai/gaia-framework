@@ -310,6 +310,10 @@ on:
         description: "Component to release (blank = all affected)"
         required: false
         type: string
+      sprint_id:
+        description: "Sprint to release (concurrent mode only; blank = legacy flow)"
+        required: false
+        type: string
 jobs:
   plan:
     name: Determine affected components
@@ -355,6 +359,8 @@ jobs:
           fetch-depth: 0
 
       - name: Release component
+        env:
+          SPRINT_ID: \${{ github.event.inputs.sprint_id }}
         run: |
           # TODO(operator): wire your release command here — e.g.
           # version-bump.js scoped to \${{ matrix.stack }}, or
@@ -362,6 +368,9 @@ jobs:
           # scaffolding placeholders that do nothing.
           echo "Releasing component: \${{ matrix.stack }}"
           echo "Mode: \${{ github.event.inputs.mode }}"
+          if [ -n "\$SPRINT_ID" ]; then
+            echo "Sprint: \$SPRINT_ID"
+          fi
 RELEASE_EOF
 
   mv "$_tmp" "$wf"

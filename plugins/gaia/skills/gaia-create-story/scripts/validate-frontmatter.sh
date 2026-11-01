@@ -418,11 +418,11 @@ case "$review_gate_status" in
         print out
       }
     ')"
-    if [ "$normalized" != "review|status|report" ]; then
+    if [ "$normalized" != "review|status|report" ] && [ "$normalized" != "review|status|report|reviewed sha" ]; then
       # Count the columns for the diagnostic.
       col_count="$(printf '%s\n' "$normalized" | awk -F'|' '{print NF}')"
       append_finding "CRITICAL" "review_gate" \
-        "expected 3 columns 'Review|Status|Report', got ${col_count} columns '${header_trim}' (Report column drift breaks the reviews skill)"
+        "expected 3 or 4 columns 'Review|Status|Report[|Reviewed SHA]', got ${col_count} columns '${header_trim}'"
     fi
     ;;
   10)

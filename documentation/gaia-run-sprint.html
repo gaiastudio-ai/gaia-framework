@@ -112,10 +112,14 @@
       <p>The worktree reap heuristic honours one additional environment
       variable: <code>GAIA_WORKTREE_REAP_AGE_SECONDS</code> (default 1800).
       A dead-owner worktree with no commits ahead of the base branch is only
-      reaped once it is older than this many seconds.  Non-integer values fall
-      back to the default.  Set it to <code>0</code> to reap immediately (useful
-      in tests) or raise it if story sessions routinely exceed 30 minutes of
-      idle time between shell calls.</p>
+      reaped once the time elapsed since its <strong>creation</strong> exceeds
+      this many seconds.  Non-integer values fall back to the default.  Set it
+      to <code>0</code> to reap immediately (useful in tests) or raise it if
+      story sessions routinely exceed 30 minutes.  Lock reasons created before
+      the timestamp field was added (legacy reasons) carry no creation time and
+      are treated as old enough to reap; this is a one-time convergence that
+      clears itself once every worktree has been re-created with the current
+      format.</p>
 
       <p>Two further keys live in the same configuration section:
       <code>teammate_dispatch_ceiling</code>, the total number of concurrent

@@ -45,13 +45,15 @@ _log_err() { printf 'resolve-release-version: %s\n' "$1" >&2; }
 _parse_args() {
   CONFIG_PATH=""
   PROJECT_ROOT=""
+  COMMITS_BLOB=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --config)    CONFIG_PATH="$2"; shift 2 ;;
+      --config)       CONFIG_PATH="$2"; shift 2 ;;
       --project-root) PROJECT_ROOT="$2"; shift 2 ;;
+      --commits)      COMMITS_BLOB="$2"; shift 2 ;;
       --help|-h)
-        printf 'Usage: resolve-release-version.sh --config <path> --project-root <path>\n'
+        printf 'Usage: resolve-release-version.sh --config <path> --project-root <path> [--commits <blob>]\n'
         exit 0
         ;;
       *)
@@ -157,10 +159,14 @@ _resolve_conventional_commits() {
     exit 2
   fi
 
-  # Collect commits in the range using the ---COMMIT--- delimiter encoding
-  # that classify-commits.js expects for --stdin mode.
+  # Collect commits: either from --commits (sprint-scoped) or from the git range.
+  # --commits provides a pre-built blob of commit messages delimited by ---COMMIT---.
   local commit_blob
-  commit_blob="$(cd "$project_root" && git log --format='%B---COMMIT---' "${anchor}..HEAD" 2>/dev/null || true)"
+  if [ -n "${COMMITS_BLOB:-}" ]; then
+    commit_blob="$COMMITS_BLOB"
+  else
+    commit_blob="$(cd "$project_root" && git log --format='%B---COMMIT---' "${anchor}..HEAD" 2>/dev/null || true)"
+  fi
 
   if [ -z "$commit_blob" ]; then
     printf 'strategy=conventional-commits\n'

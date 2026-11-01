@@ -116,6 +116,7 @@ core	concurrent-sprint-drift.bats
 core	concurrent-sprint-glossary.bats
 core	concurrent-sprint-independence-cd.bats
 core	concurrent-sprint-ledger.bats
+core	concurrent-sprint-lifecycle-scoped.bats
 core	concurrent-sprint-lifecycle.bats
 core	concurrent-sprint-lock.bats
 core	concurrent-sprint-merge.bats
@@ -288,6 +289,8 @@ core	lock-story-status.bats
 core	manual-test-docs.bats
 core	meeting-dispatch-provenance-integration.bats
 core	meeting-val-bridge-anti-pattern.bats
+core	merge-ledger-and-tail.bats
+core	merge-review-gate.bats
 core	migrate-stories-to-canonical-layout.bats
 core	mod-empty-body.bats
 core	mod-mutant-kill.bats
@@ -306,6 +309,7 @@ core	orchestrator-file-list-intersection.bats
 core	parallel-execution-config.bats
 core	parse-force-design.bats
 core	path-split-resolution.bats
+core	per-sprint-release.bats
 core	phase-4b-cross-stack.bats
 core	phase-4b-reconciliation.bats
 core	phase-derivation.bats
@@ -331,6 +335,7 @@ core	retired-migrate-stories.bats
 core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
+core	review-gate-commit-bound.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
 core	review-parity/gaia-qa-tests/action-skill-contract.bats
@@ -366,6 +371,7 @@ core	skill-rename-preflight.bats
 core	skills/gaia-statusline-skill-md.bats
 core	skills/selective-tests-by-component-docs.bats
 core	skills/test-no-bare-name-persona-spawn.bats
+core	sprint-close-resolver.bats
 core	sprint-close-yq-fallback-and-dual-event.bats
 core	sprint-plan-phase-rendering.bats
 core	sprint-progress-snapshot-hook.bats
@@ -890,7 +896,6 @@ skills	promotion-chain-guard.bats
 skills	publish-gate-release-commit.bats
 skills	release-strategy.bats
 skills	skills/gaia-doctor-stray-snapshots.bats
-skills	sprint-close-resolver.bats
 skills	sprint-review-track-b-failed-routing.bats
 skills	sprint-review-track-b-findings-pipeline.bats
 skills	sprint-review-track-b-manual-test-dispatch.bats

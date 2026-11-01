@@ -6,6 +6,12 @@ allowed-tools: [Read, Grep, Glob, Bash]
 deprecated_aliases: [gaia-run-all-reviews]
 deprecated_since: sprint-37
 orchestration_class: heavy-procedural
+hooks:
+  PreToolUse:
+    - matcher: "Bash|Edit|Write"
+      hooks:
+        - type: command
+          command: ${CLAUDE_PLUGIN_ROOT}/scripts/lib/bypass-variable-guard.sh
 ---
 
 ## Orchestration Mode

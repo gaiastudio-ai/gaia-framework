@@ -121,15 +121,22 @@ _count_review_rows() {
 # Replace existing block
 # ---------------------------------------------------------------------------
 
-@test "init-review-gate: replaces existing block with canonical 6-row UNVERIFIED" {
+@test "init-review-gate: preserves existing verdicts and seeds only missing rows" {
   _seed_story_with_gate
   run "$INIT_SCRIPT" "$STORY_FILE"
   [ "$status" -eq 0 ]
-  # Bogus row is gone.
-  ! grep -q "Bogus Row" "$STORY_FILE"
-  # Code Review row is back to UNVERIFIED (PASSED stub was wiped).
-  grep -Fq "| Code Review | UNVERIFIED |" "$STORY_FILE"
-  [ "$(_count_review_rows "$STORY_FILE")" = "6" ]
+  # Existing PASSED verdict on Code Review preserved (non-destructive).
+  grep -Fq "| Code Review | PASSED | foo |" "$STORY_FILE"
+  # Bogus non-canonical row preserved (init does not remove rows).
+  grep -Fq "Bogus Row" "$STORY_FILE"
+  # Missing canonical rows seeded with UNVERIFIED.
+  grep -Fq "| QA Tests | UNVERIFIED |" "$STORY_FILE"
+  grep -Fq "| Security Review | UNVERIFIED |" "$STORY_FILE"
+  grep -Fq "| Test Automation | UNVERIFIED |" "$STORY_FILE"
+  grep -Fq "| Test Review | UNVERIFIED |" "$STORY_FILE"
+  grep -Fq "| Performance Review | UNVERIFIED |" "$STORY_FILE"
+  # All 6 canonical rows present (plus the bogus row = 7 total).
+  [ "$(_count_review_rows "$STORY_FILE")" = "7" ]
   # Exactly one Review Gate block.
   [ "$(grep -c '^## Review Gate' "$STORY_FILE")" = "1" ]
 }

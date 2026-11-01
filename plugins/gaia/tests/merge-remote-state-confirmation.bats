@@ -31,6 +31,10 @@ setup() {
   mkdir -p "$HOME"
   : > "$GIT_CONFIG_GLOBAL"
 
+  # Run from the test's own temp dir so the merge script's project-root
+  # walk-up never reaches a real project that happens to contain the checkout.
+  cd "$TEST_TMP" || return 1
+
   GH_ARGS="$TEST_TMP/gh-args.txt"
   export GH_ARGS
   : > "$GH_ARGS"
@@ -183,23 +187,18 @@ STUB
   [ "$status" -eq 0 ]
 }
 
-@test "branch cleanup the merge command abandoned is completed by the recovery path" {
+@test "branch cleanup is never attempted even when --delete-branch is passed" {
   export GH_SCENARIO=delete-branch
   run "$MERGE_SH" 42 STORY-KEY --strategy squash --delete-branch
   [ "$status" -eq 0 ]
   [[ "$output" == *"merged:squash"* ]]
+  # --delete-branch is accepted for backward compatibility but ignored;
+  # no gh api DELETE call should appear in the args log.
   run grep -F 'heads/feat/story-branch' "$GH_ARGS"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
 }
 
-@test "a head branch already absent from the remote does not fail the recovery path" {
-  export GH_SCENARIO=delete-branch-absent
-  run "$MERGE_SH" 42 STORY-KEY --strategy squash --delete-branch
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"merged:squash"* ]]
-}
-
-@test "branch cleanup is skipped when branch deletion was not requested" {
+@test "branch cleanup is also absent with --no-delete-branch (the default)" {
   export GH_SCENARIO=remote-merged
   run "$MERGE_SH" 42 STORY-KEY --strategy squash --no-delete-branch
   [ "$status" -eq 0 ]

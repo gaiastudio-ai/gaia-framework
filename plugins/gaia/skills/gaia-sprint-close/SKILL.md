@@ -109,10 +109,10 @@ Sprint resolution is handled internally by `close.sh`: it sources `session-bindi
 
   ```bash
   !${CLAUDE_PLUGIN_ROOT}/skills/gaia-triage-findings/scripts/triage-sentinel.sh \
-    check --sprint-id {sprint_id}
+    check '--sprint-id' '{sprint_id}'
   ```
 
-  The sentinel (`.gaia/memory/checkpoints/triage-findings-{sprint_id}-completed.json`) is written by `/gaia-triage-findings`'s finalize step when it runs against the active sprint.
+  The sentinel (`.gaia/memory/checkpoints/triage-findings-{sprint_id}-completed.json`) is written by `/gaia-triage-findings`'s finalize step when it runs against the active or review sprint.
 - On non-zero exit (sentinel absent → triage not run), refuse with `error: triage not run for {sprint_id}; run /gaia-triage-findings {sprint_id} first` and exit non-zero.
 - On exit 0 (sentinel present), proceed.
 

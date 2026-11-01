@@ -349,7 +349,27 @@
       },
       "additionalProperties": true
     },
-    "review_gate":              { "type": "object" },
+    "review_gate": {
+      "type": "object",
+      "properties": {
+        "manual_test_mode": {
+          "type": "string",
+          "enum": ["advisory", "gating"],
+          "default": "advisory",
+          "description": "Controls whether a FAILED manual-test verdict blocks the review-to-done transition (gating) or emits a non-blocking WARNING (advisory)."
+        },
+        "scope_globs": {
+          "type": "object",
+          "description": "Per-gate file-scope globs for carry-forward overlap detection. Each key is a gate slug (e.g. code-review, qa-tests) and each value is an array of glob patterns. When a carry-forward is requested, the diff between the old and new SHAs is checked against these globs; any overlap refuses the carry. Gates with no configured scope refuse carry-forward (fail closed).",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          }
+        }
+      },
+      "additionalProperties": true
+    },
     "team_conventions":         { "type": "object" },
     "agent_customizations":     { "type": "object" },
     "dev_story": {
