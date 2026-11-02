@@ -239,62 +239,113 @@ YAML
   grep -q 'numbered' <<< "$step8"
 }
 
-# --- Readiness empty-string check (anchored to step) ---
+# --- Readiness empty-string check (anchored to rule sentence) ---
 
 @test "readiness Step 9b flags empty-string entries as configuration error" {
   local step9b
   step9b="$(sed -n '/### Step 9b/,/### Step 10/p' "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md")"
-  # The step must check for empty strings.
-  grep -q 'empty string' <<< "$step9b"
-  # The step must report as WARNING.
-  grep -q 'WARNING' <<< "$step9b"
-  # The step must mention the key name.
-  grep -q 'preflight_commands' <<< "$step9b" || grep -q 'key name' <<< "$step9b"
+  # Pin the rule sentence: empty entries must be reported as a WARNING with key and index.
+  grep -qF 'must be reported as a WARNING finding with the key name and the index of the empty entry' <<< "$step9b"
 }
 
-# --- Dev-story SKILL.md wiring ---
+# --- Dev-story SKILL.md wiring (anchored on code fences) ---
 
-@test "preflight gate halts push before git-push.sh in Step 10" {
+@test "preflight runner invocation precedes git-push.sh in Step 10" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
-  # The runner reference and key must be present.
-  grep -q 'run-configured-commands.sh' <<< "$block"
-  grep -q 'preflight_commands' <<< "$block"
-  # The HALT-the-push wording must be present.
+  # Anchor on the runner code fence line, not prose.
+  grep -qF -- '--key preflight_commands' <<< "$block"
   grep -q 'HALT the push' <<< "$block"
-  # The preflight gate must appear BEFORE git-push.sh.
-  local preflight_line push_line
-  preflight_line="$(grep -n 'preflight_commands' <<< "$block" | head -1 | cut -d: -f1)"
+  # The runner --key line must appear BEFORE git-push.sh.
+  local runner_line push_line
+  runner_line="$(grep -nF -- '--key preflight_commands' <<< "$block" | head -1 | cut -d: -f1)"
   push_line="$(grep -n 'git-push.sh' <<< "$block" | head -1 | cut -d: -f1)"
-  [ -n "$preflight_line" ]
+  [ -n "$runner_line" ]
   [ -n "$push_line" ]
-  [ "$preflight_line" -lt "$push_line" ]
+  [ "$runner_line" -lt "$push_line" ]
 }
 
-@test "smoke hook halts merge between Step 12 and Step 13" {
+@test "smoke runner invocation follows CI wait and precedes Step 13" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   local between
   between="$(sed -n '/### Step 12/,/### Step 13/p' "$skill")"
-  # The runner reference and key must be present.
-  grep -q 'run-configured-commands.sh' <<< "$between"
-  grep -q 'post_ci_smoke_commands' <<< "$between"
-  # The HALT-the-merge wording must be present.
+  # Anchor on the runner code fence line.
+  grep -qF -- '--key post_ci_smoke_commands' <<< "$between"
   grep -q 'HALT the merge' <<< "$between"
+  # The CI-wait invocation must appear BEFORE the smoke runner.
+  local ci_line smoke_line
+  ci_line="$(grep -n 'ci-wait.sh' <<< "$between" | head -1 | cut -d: -f1)"
+  smoke_line="$(grep -nF -- '--key post_ci_smoke_commands' <<< "$between" | head -1 | cut -d: -f1)"
+  [ -n "$ci_line" ]
+  [ -n "$smoke_line" ]
+  [ "$ci_line" -lt "$smoke_line" ]
 }
 
-@test "removing preflight gate from Step 10 loses runner and halt wording" {
+@test "removing preflight gate from Step 10 loses runner invocation" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
-  grep -q 'run-configured-commands.sh' <<< "$block"
+  grep -qF -- '--key preflight_commands' <<< "$block"
   grep -q 'HALT the push' <<< "$block"
 }
 
-@test "removing smoke hook loses runner and halt wording" {
+@test "removing smoke hook loses runner invocation" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
   local between
   between="$(sed -n '/### Step 12/,/### Step 13/p' "$skill")"
-  grep -q 'run-configured-commands.sh' <<< "$between"
+  grep -qF -- '--key post_ci_smoke_commands' <<< "$between"
   grep -q 'HALT the merge' <<< "$between"
+}
+
+# --- Hydration without yq ---
+
+@test "resolve-config.sh fails loudly when yq absent and keys present" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  cat > "$CONFIG" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+preflight_commands:
+  - "make lint"
+YAML
+  local narrow="$BATS_TEST_TMPDIR/narrow-bin"
+  mkdir -p "$narrow"
+  for b in bash grep cat awk sed printf head wc cut tr date mktemp rm jq dirname pwd basename readlink; do
+    local p
+    p="$(command -v "$b" 2>/dev/null || true)"
+    [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
+  done
+  # Do NOT link yq.
+  run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  [ "$status" -ne 0 ]
+  grep -qi 'yq' <<< "$output"
+}
+
+# --- Comment does not produce false arrays ---
+
+@test "resolve-config.sh does not emit arrays when key appears only in a comment" {
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  cat > "$CONFIG" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+# preflight_commands disabled for now
+# post_ci_smoke_commands also off
+YAML
+  run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  [ "$status" -eq 0 ]
+  local has_pre has_post
+  has_pre="$(echo "$output" | jq 'has("preflight_commands")')"
+  has_post="$(echo "$output" | jq 'has("post_ci_smoke_commands")')"
+  [ "$has_pre" = "false" ]
+  [ "$has_post" = "false" ]
 }

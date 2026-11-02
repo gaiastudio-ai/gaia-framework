@@ -1166,8 +1166,9 @@ _extract_command_array_json() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
   if ! command -v yq >/dev/null 2>&1; then
-    # Fast-path: if grep finds no plausible key, skip (no yq needed).
-    grep -q "${key}" "$file" 2>/dev/null || return 0
+    # Fast-path: if grep finds no plausible key at line start, skip.
+    # Accepts bare, quoted, and trailing-space spellings but not comments.
+    grep -qE "^[\"']?${key}[\"']?[[:space:]]*:" "$file" 2>/dev/null || return 0
     printf 'resolve-config.sh: error: yq is required for %s but not found on PATH\n' "$key" >&2
     return 1
   fi
