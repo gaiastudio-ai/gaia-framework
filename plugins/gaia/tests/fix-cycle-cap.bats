@@ -80,15 +80,8 @@ _add_critical_finding() {
   local key="$1" defect="$2" owasp="${3:-A03}" impact="${4:-high impact}"
   bash "$RW" add --story "$key" --defect "$defect" --type security \
     --severity critical --gate security-review --impact "$impact" \
+    --owasp-category "$owasp" \
     --blocking --blocking-rationale "critical security"
-  # Write the OWASP category onto the latest entry's gate rating.
-  local reg
-  reg="$("$PLUGIN_ROOT/scripts/resolve-review-report-path.sh" --key "$key" --type findings-register)"
-  local last_idx
-  last_idx="$(yq '.entries | length - 1' "$reg")"
-  export _FIX_OWASP="$owasp"
-  yq -i ".entries[$last_idx].gate_ratings[0].owasp_category = strenv(_FIX_OWASP)" "$reg"
-  unset _FIX_OWASP
 }
 
 # Get the register path for a key.
@@ -141,6 +134,24 @@ YAML
   [ "$status" -eq 0 ]
   [[ "$output" == *"max_fix_cycles 2"* ]]
   [[ "$output" == *"escalate true"* ]]
+
+  # When config sets max_fix_cycles: 3, count-rounds (no --max) uses 3.
+  mkdir -p "$FIXTURE_DIR/.gaia/config"
+  cat > "$FIXTURE_DIR/.gaia/config/project-config.yaml" <<CONF
+project_root: "."
+project_path: "."
+memory_path: ".gaia/memory"
+checkpoint_path: ".gaia/memory/checkpoints"
+installed_path: "."
+framework_version: "1.225.0"
+date: "2026-11-01"
+review:
+  max_fix_cycles: 3
+CONF
+  run bash "$RW" count-rounds --story TEST-S1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"max_fix_cycles 3"* ]]
+  [[ "$output" == *"escalate false"* ]]
 
   # Doctor SKILL.md names the section and the key.
   /usr/bin/grep -q 'Review limits' "$DOCTOR_SKILL"
@@ -252,6 +263,19 @@ YAML
 
   # Missing timestamp.
   run bash "$RW" sign-off-finding $base_args --risk-accepted-by admin --owasp-category A07 --impact xss --round 1
+  [ "$status" -ne 0 ]
+
+  # Missing finding-id.
+  run bash "$RW" sign-off-finding --story TEST-S4 --risk-accepted-by admin --owasp-category A07 --impact xss --round 1 --timestamp 2026-11-01T12:00:00Z
+  [ "$status" -ne 0 ]
+
+  # After all rejections: nothing written (sign_off is absent/null).
+  [ "$(yq '.entries[-1].sign_off // "absent"' "$reg")" = "absent" ]
+
+  # Accept override is still blocked.
+  run bash "$RW" record-accept-override --story TEST-S4 \
+    --run-id "round-20261101T120001Z-40001" \
+    --decision accept --user admin --round 1 --timestamp "2026-11-01T12:00:00Z"
   [ "$status" -ne 0 ]
 
   # Complete — must succeed.
@@ -366,26 +390,35 @@ except jsonschema.ValidationError:
 
 @test "crashed gate counts as FAILED and repeated crashes escalate at the cap" {
   _mk_project TEST-EC4
-  # Round 1: gate crashes (outcome=errored, no report).
-  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261101T120001Z-40401" \
-    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261101T120001Z-40401" \
-    --gate security-review --outcome errored >/dev/null
-  # complete-round will fail (no report) — leave it open.
+  # Round 1: one gate completes normally (FAILED), one crashes.
+  # Complete-round succeeds because the completed gate has a report.
+  # The errored gate makes the round non-passing.
+  _run_failing_round TEST-EC4 "round-20261101T120001Z-40401"
 
-  # Round 2: same crash.
-  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261101T120002Z-40402" \
-    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261101T120002Z-40402" \
-    --gate security-review --outcome errored >/dev/null
-
-  # The open round (latest) with missing report and errored gate counts.
-  # The superseded round is NOT counted. So count=1 (only the open round).
-  # But the first round was superseded when the second was opened, so:
-  # round 1 = superseded (not counted), round 2 = open with missing report (counted).
-  # With cap=1, this escalates.
+  # Cap 1: one failing round escalates.
   run bash "$RW" count-rounds --story TEST-EC4 --max 1
   [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 1"* ]]
+  [[ "$output" == *"escalate true"* ]]
+
+  # Round 2: also fails.
+  _run_failing_round TEST-EC4 "round-20261101T120002Z-40402"
+
+  # Cap 2: two failing rounds escalate at exactly cap 2.
+  run bash "$RW" count-rounds --story TEST-EC4 --max 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 2"* ]]
+  [[ "$output" == *"escalate true"* ]]
+
+  # Open round with errored gate also counts.
+  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261101T120003Z-40403" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261101T120003Z-40403" \
+    --gate security-review --outcome errored >/dev/null
+
+  run bash "$RW" count-rounds --story TEST-EC4 --max 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 3"* ]]
   [[ "$output" == *"escalate true"* ]]
 }
 
@@ -428,10 +461,10 @@ except jsonschema.ValidationError:
   [ "$(yq '.rounds[-1].escalation.round_count' "$reg")" = "2" ]
   [ "$(yq '.rounds[-1].escalation.max_cycles' "$reg")" = "2" ]
 
-  # round-info surfaces the escalation (the field is visible in the YAML).
-  local esc_ts
-  esc_ts="$(yq '.rounds[-1].escalation.timestamp' "$reg")"
-  [ -n "$esc_ts" ] && [ "$esc_ts" != "null" ]
+  # round-info surfaces the escalation state for a resumed run.
+  run bash "$RW" round-info --story TEST-EC6
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"escalation_state escalated"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -578,13 +611,34 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# AC6 — suite exercises cap, ESCALATE choices, security block, incomplete
-# rejection and upgrade default under both shells (the meta-test)
+# Descope transition: documented as two sanctioned transitions
 # ---------------------------------------------------------------------------
 
-@test "bash version proof for dual-shell run" {
-  # This test's only job is to confirm BASH_VERSION is printed in the
-  # output so the transcript proves which shell ran. The real proof is
-  # that all other tests in this file pass under both bash 5 and 3.2.
-  [[ "$BASH_VERSION" =~ ^[0-9]+\.[0-9]+ ]]
+@test "descope route documented as blocked then backlog" {
+  /usr/bin/grep -q 'transition-story-status.sh.*--to blocked' "$RUN_ALL_SKILL"
+  /usr/bin/grep -q 'transition-story-status.sh.*--to backlog' "$RUN_ALL_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# Fail closed: round completed WITHOUT --verdict counts as non-passing
+# ---------------------------------------------------------------------------
+
+@test "round completed without --verdict counts as non-passing (fail closed)" {
+  _mk_project TEST-FC
+  # Complete a round without --verdict.
+  bash "$RW" record-round --story TEST-FC --run-id "round-20261101T120001Z-99901" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-FC --run-id "round-20261101T120001Z-99901" \
+    --gate security-review --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/fc-report.md"
+  bash "$RW" record-round-report --story TEST-FC --run-id "round-20261101T120001Z-99901" \
+    --gate security-review --report "$FIXTURE_DIR/fc-report.md"
+  bash "$RW" complete-round --story TEST-FC --run-id "round-20261101T120001Z-99901" \
+    --repo "$FIXTURE_DIR/repo"
+
+  # No composite_verdict on the round — fail closed: counts as non-passing.
+  run bash "$RW" count-rounds --story TEST-FC --max 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 1"* ]]
+  [[ "$output" == *"escalate true"* ]]
 }

@@ -696,7 +696,7 @@ _rw_resolve_story_file() {
 _rw_cmd_add() {
   local key="" defect="" ftype="" severity="" gate="" evidence="" impact=""
   local reproduction="" material=false blocking="" blocking_rationale=""
-  local requirement_or_risk="" dedup_key=""
+  local requirement_or_risk="" dedup_key="" owasp_category=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -708,6 +708,7 @@ _rw_cmd_add() {
       --evidence) [ "$#" -ge 2 ] || _rw_die 1 "--evidence requires a value"; evidence="$2"; shift 2 ;;
       --impact) [ "$#" -ge 2 ] || _rw_die 1 "--impact requires a value"; impact="$2"; shift 2 ;;
       --reproduction) [ "$#" -ge 2 ] || _rw_die 1 "--reproduction requires a value"; reproduction="$2"; shift 2 ;;
+      --owasp-category) [ "$#" -ge 2 ] || _rw_die 1 "--owasp-category requires a value"; owasp_category="$2"; shift 2 ;;
       --material) material=true; shift 1 ;;
       --blocking) blocking="true"; shift 1 ;;
       --blocking-rationale) [ "$#" -ge 2 ] || _rw_die 1 "--blocking-rationale requires a value"; blocking_rationale="$2"; shift 2 ;;
@@ -876,6 +877,13 @@ _rw_new_entry() {
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[0].material" "$material_bool"
   _rw_force_bool "$tmp" ".entries[$idx].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[0].blocking" "$blocking_bool"
+
+  # Write owasp_category when provided (security findings).
+  if [ -n "$owasp_category" ]; then
+    export _RW_OWASP="$owasp_category"
+    yq -i ".entries[$idx].gate_ratings[0].owasp_category = strenv(_RW_OWASP)" "$tmp"
+    unset _RW_OWASP
+  fi
 
   unset _RW_ID _RW_DEFECT _RW_TYPE _RW_SEVERITY _RW_GATE _RW_EVIDENCE
   unset _RW_IMPACT _RW_REPRODUCTION _RW_MATERIAL _RW_BLOCKING
@@ -2041,6 +2049,11 @@ _rw_cmd_round_info() {
   printf 'brief_path %s\n' "$brief_path"
   printf 'brief_sha256 %s\n' "$brief_sha"
 
+  # Print escalation state when present (consumed by resumed sprint runs).
+  local esc_state
+  esc_state="$(printf '%s' "$target_round_json" | jq -r '.escalation.state // "none"')" || esc_state="none"
+  printf 'escalation_state %s\n' "$esc_state"
+
   # Compute last_completed_run for each gate.
   local _g
   for _g in $_RW_CANONICAL_GATES; do
@@ -2696,24 +2709,29 @@ _rw_cmd_supersede_brief() {
 # Prints: round_count <N>, max_fix_cycles <M>, escalate true|false.
 
 _rw_cmd_count_rounds() {
-  local key="" max_cycles="" current_verdict=""
+  local key="" max_cycles=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
       --max) [ "$#" -ge 2 ] || _rw_die 1 "--max requires a value"; max_cycles="$2"; shift 2 ;;
-      --current-verdict) [ "$#" -ge 2 ] || _rw_die 1 "--current-verdict requires a value"; current_verdict="$2"; shift 2 ;;
       *) _rw_die 1 "count-rounds: unknown argument: $1" ;;
     esac
   done
 
   [ -n "$key" ] || _rw_die 1 "count-rounds: --story is required"
 
-  # Point-of-use default: when --max is omitted, use the hardcoded
-  # fallback of 2. This is the SINGLE default site — both the review
-  # orchestration and doctor read it from here.
+  # Point-of-use default: when --max is omitted, resolve from project
+  # config, falling back to the hardcoded default of 2. This is the
+  # SINGLE default site — the review orchestration and doctor both use
+  # count-rounds to read the effective cap.
   if [ -z "$max_cycles" ]; then
-    max_cycles=2
+    if [ -x "$SCRIPTS_DIR/resolve-config.sh" ]; then
+      max_cycles="$("$SCRIPTS_DIR/resolve-config.sh" --field review.max_fix_cycles 2>/dev/null)" || max_cycles=""
+    fi
+    if [ -z "$max_cycles" ]; then
+      max_cycles=2
+    fi
   fi
   _rw_require_integer "$max_cycles" "max_fix_cycles"
 
@@ -2738,13 +2756,12 @@ _rw_cmd_count_rounds() {
   local rounds_len
   rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
 
-  # Count non-passing rounds. This runs BEFORE complete-round. The
-  # orchestration passes --current-verdict FAILED|PASSED for the round
-  # being closed; we record it as a .verdict field so future calls see it.
-  # Only completed rounds with .verdict=FAILED count. Superseded rounds
-  # are NOT counted (they never reached completion). An open round without
-  # --current-verdict is checked by gate evidence (missing reports /
-  # errored gate_runs).
+  # Read-only count of non-passing rounds. A completed round is non-passing
+  # when its composite_verdict (written by complete-round --verdict) is not
+  # PASSED. Fail closed: a round without a recorded verdict counts as
+  # non-passing (a FAILED report left without --verdict is never silent).
+  # Superseded rounds are not counted. Open rounds count when gate evidence
+  # shows non-passing (missing reports or errored gate_runs).
   local count=0
   if [ "$rounds_len" != "0" ] && [ "$rounds_len" != "null" ]; then
     local idx=0
@@ -2754,63 +2771,34 @@ _rw_cmd_count_rounds() {
 
       case "$r_status" in
         complete)
-          # Check .composite_verdict (written by complete-round --verdict)
-          # or .verdict (written by count-rounds --current-verdict).
           local cv
-          cv="$(yq ".rounds[$idx].composite_verdict // .rounds[$idx].verdict // \"\"" "$reg_path" 2>/dev/null)" || cv=""
-          if [ "$cv" = "FAILED" ]; then
+          cv="$(yq ".rounds[$idx].composite_verdict // \"\"" "$reg_path" 2>/dev/null)" || cv=""
+          if [ "$cv" = "PASSED" ]; then
+            : # passing — do not count
+          else
+            # FAILED, any other explicit verdict, or absent (fail closed).
             count=$((count + 1))
-          elif [ -n "$cv" ] && [ "$cv" != "null" ] && [ "$cv" != '""' ] && [ "$cv" != "PASSED" ]; then
-            # Any non-PASSED explicit verdict counts as failing.
-            count=$((count + 1))
-          elif [ -z "$cv" ] || [ "$cv" = "null" ] || [ "$cv" = '""' ]; then
-            # Fallback for legacy rounds without an explicit verdict:
-            # any gate missing a report means non-passing.
-            local miss
-            miss="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss="0"
-            if [ "$miss" != "0" ] && [ "$miss" != "null" ]; then
-              count=$((count + 1))
-            fi
           fi
           ;;
         open)
-          # Current round: use --current-verdict if supplied.
-          if [ -n "$current_verdict" ]; then
-            case "$current_verdict" in
-              FAILED|failed) count=$((count + 1)) ;;
-            esac
-          else
-            # Gate-evidence fallback.
-            local miss_o
-            miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
-            local err_o
-            export _RW_OPEN_RID
-            _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
-            err_o="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_o="0"
-            unset _RW_OPEN_RID
-            if [ "$miss_o" != "0" ] && [ "$miss_o" != "null" ]; then
-              count=$((count + 1))
-            elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
-              count=$((count + 1))
-            fi
+          # Gate-evidence check for the current (not yet completed) round.
+          local miss_o
+          miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
+          local err_o
+          export _RW_OPEN_RID
+          _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
+          err_o="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_o="0"
+          unset _RW_OPEN_RID
+          if [ "$miss_o" != "0" ] && [ "$miss_o" != "null" ]; then
+            count=$((count + 1))
+          elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
+            count=$((count + 1))
           fi
           ;;
         # superseded: not counted — never reached completion.
       esac
       idx=$((idx + 1))
     done
-  fi
-
-  # Record --current-verdict on the latest round so future calls see it.
-  if [ -n "$current_verdict" ] && [ "$rounds_len" != "0" ]; then
-    local tmp
-    tmp="$(_rw_atomic_start "$reg_path")"
-    _RW_CLEANUP_TMP="$tmp"
-    local last_idx=$((rounds_len - 1))
-    export _RW_VERDICT="$current_verdict"
-    yq -i ".rounds[$last_idx].verdict = strenv(_RW_VERDICT)" "$tmp" 2>/dev/null || true
-    unset _RW_VERDICT
-    _rw_commit_register "$tmp" "$reg_path"
   fi
 
   release_lock 8 2>/dev/null || true
@@ -3135,7 +3123,7 @@ register-write.sh — sole writer for the shared findings register
 Usage:
   register-write.sh add --story <key> --defect <text> --type <type> --severity <sev>
       --gate <gate> [--evidence <text>] [--impact <text>] [--reproduction <text>]
-      [--material] [--blocking --blocking-rationale <text>]
+      [--owasp-category <cat>] [--material] [--blocking --blocking-rationale <text>]
       [--requirement-or-risk <text>] [--dedup-key <key>]
   register-write.sh merge --story <key> --source-id <RF-n> --target-id <RF-n>
   register-write.sh resolve-severity --story <key> --id <RF-n>
