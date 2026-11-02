@@ -199,6 +199,12 @@ Delegate operational readiness assessment to the **devops** subagent (Soren) via
 
 > `!${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-readiness-check 9 project_name="$PROJECT_NAME" gate_status=pending artifacts_inspected_count="$ARTIFACTS_INSPECTED_COUNT" stage=brownfield`
 
+### Step 9b — Configured command validation
+
+Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/project-config.yaml` (when present). For each array, check whether any entry is an empty string (`""`). An empty string is a configuration error — it would execute as a no-op shell command — and must be reported as a WARNING finding with the key name and the index of the empty entry. This check is schema-complementary: the schema validates type only (array of strings); this step validates content.
+
+When both keys are absent or empty, skip this step silently. When yq is not installed and a key is present, report a WARNING that the commands cannot be validated.
+
 ### Step 10 — Generate Gate Report
 
 Write the readiness report to `.gaia/artifacts/planning-artifacts/readiness-report.md` with YAML frontmatter containing machine-readable PASS/FAIL status for each check area.
