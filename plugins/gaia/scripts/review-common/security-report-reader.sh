@@ -94,10 +94,18 @@ else
   sec_in_round="$(yq '[.rounds[-1].selected_gates[] | select(.gate == "security-review")] | length' "$reg_path" 2>/dev/null)" || sec_in_round="0"
 
   if [ "$sec_in_round" = "0" ] || [ "$sec_in_round" = "null" ]; then
-    # Security gate not selected — check carried gates.
-    sec_carried="$(yq '[.rounds[-1].carried_gates[] | select(.gate == "security-review" and .report_path != "" and .report_path != null)] | length' "$reg_path" 2>/dev/null)" || sec_carried="0"
-    if [ "$sec_carried" != "0" ] && [ "$sec_carried" != "null" ]; then
-      printf 'security_gate_state assessed\n'
+    # Security gate not selected — check carried gates. Follow the carry
+    # chain: look up from_run's selected_gates for the report.
+    sec_carry_run="$(yq '.rounds[-1].carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$reg_path" 2>/dev/null)" || sec_carry_run=""
+    if [ -n "$sec_carry_run" ] && [ "$sec_carry_run" != "null" ]; then
+      export _SR_FROM_RUN="$sec_carry_run"
+      sec_carry_report="$(yq '(.rounds[] | select(.run_id == strenv(_SR_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$reg_path" 2>/dev/null)" || sec_carry_report=""
+      unset _SR_FROM_RUN
+      if [ -n "$sec_carry_report" ] && [ "$sec_carry_report" != "null" ]; then
+        printf 'security_gate_state assessed\n'
+      else
+        printf 'security_gate_state unassessed\n'
+      fi
     else
       printf 'security_gate_state unassessed\n'
     fi

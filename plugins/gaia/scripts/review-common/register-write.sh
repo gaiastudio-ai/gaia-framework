@@ -3083,10 +3083,19 @@ _rw_cmd_record_accept_override() {
     _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
   fi
   if [ -z "$_ao_sec_report" ] || [ "$_ao_sec_report" = "null" ]; then
-    # Check carried gates for a completed security-review report.
-    local _ao_sec_carried
-    _ao_sec_carried="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review" and .report_path != "" and .report_path != null)] | length' "$tmp" 2>/dev/null)" || _ao_sec_carried="0"
-    if [ "$_ao_sec_carried" = "0" ] || [ "$_ao_sec_carried" = "null" ]; then
+    # Check carried gates: follow the carry chain to the source round's
+    # selected_gates for the security-review report.
+    local _ao_carry_run
+    _ao_carry_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_carry_run=""
+    if [ -n "$_ao_carry_run" ] && [ "$_ao_carry_run" != "null" ]; then
+      export _RW_FROM_RUN="$_ao_carry_run"
+      local _ao_carry_report
+      _ao_carry_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_carry_report=""
+      unset _RW_FROM_RUN
+      if [ -z "$_ao_carry_report" ] || [ "$_ao_carry_report" = "null" ]; then
+        _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
+      fi
+    else
       _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
     fi
   fi
