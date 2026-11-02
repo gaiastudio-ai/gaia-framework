@@ -1791,7 +1791,7 @@ YAML
 # -- AC4: parent-exec name validation before lookup --------------------
 
 @test "invalid name never reaches printenv and no abort under set -euo pipefail" {
-  # Create a printenv stub on PATH that logs every call
+  # Printenv stub that logs every argument it receives
   local stub_dir="${BATS_TEST_TMPDIR}/pe-stubs"
   local log_file="${BATS_TEST_TMPDIR}/printenv-log"
   mkdir -p "$stub_dir"
@@ -1805,14 +1805,23 @@ STUBEOF
   export SAFE_VAR="harmless"
   local marker="${BATS_TEST_TMPDIR}/pwned-marker"
 
-  # Write a helper script to avoid quoting issues in bash -c
+  # Helper script avoids quoting issues.  The injection payload
+  # closes the ${...} early and splices a touch command — under the
+  # old eval path it creates the marker file.
   local helper="${BATS_TEST_TMPDIR}/pe-test-helper.sh"
   cat > "$helper" <<HELPEOF
 #!/usr/bin/env bash
 set -euo pipefail
 source "${PARENT_EXEC_SH}"
-# Injection payload: closes \${...} and injects touch
-_PE_ALLOWLIST=('SAFE_VAR' 'A-B' 'x;touch ${marker}' 'UNSET_VAR' 'PATH')
+_PE_ALLOWLIST=(
+  'SAFE_VAR'
+  '1bad'
+  'A-B'
+  'x;touch ${marker}'
+  'SAFE_VAR}"; touch "${marker}"; : "\${SAFE_VAR'
+  'UNSET_VAR'
+  'PATH'
+)
 parent_exec_build_env
 echo reached-end
 HELPEOF
@@ -1823,26 +1832,46 @@ HELPEOF
     bash "$helper" 2>&1)" || true
 
   # reached-end must print (no abort)
-  [[ "$result" == *"reached-end"* ]]
+  echo "$result" | /usr/bin/grep -qF 'reached-end'
 
   # SAFE_VAR=harmless must be forwarded
-  [[ "$result" == *"SAFE_VAR=harmless"* ]]
+  echo "$result" | /usr/bin/grep -qF 'SAFE_VAR=harmless'
 
   # The injection marker must NOT exist
   [ ! -f "$marker" ]
 
-  # The printenv log must NOT contain the invalid names (A-B, x;touch)
-  # UNSET_VAR is a valid name and may reach printenv (returns empty)
-  if [ -f "$log_file" ]; then
-    ! /usr/bin/grep -q 'A-B' "$log_file"
-    ! /usr/bin/grep -q 'x;touch' "$log_file"
-  fi
+  # The printenv log must exist (at least SAFE_VAR and PATH hit printenv)
+  [ -f "$log_file" ]
+
+  # Valid names SAFE_VAR, UNSET_VAR, PATH must appear in the log
+  /usr/bin/grep -q '^SAFE_VAR$' "$log_file"
+  /usr/bin/grep -q '^PATH$' "$log_file"
+  /usr/bin/grep -q '^UNSET_VAR$' "$log_file"
+
+  # Invalid names must NOT appear in the log
+  run /usr/bin/grep -c '1bad' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'A-B' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'x;touch' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'SAFE_VAR}' "$log_file"
+  [ "$output" = "0" ]
 }
 
-@test "parent-exec uses printenv not eval for variable lookup" {
+@test "parent-exec uses printenv not eval and no indirect expansion" {
+  # No eval as a command (excluding comments)
   local eval_count
   eval_count=$(/usr/bin/grep -v '^[[:space:]]*#' "$PARENT_EXEC_SH" | /usr/bin/grep -c 'eval ' || true)
   [ "$eval_count" = "0" ]
+
+  # No ${!var} indirect expansion
+  local indirect_count
+  indirect_count=$(/usr/bin/grep -v '^[[:space:]]*#' "$PARENT_EXEC_SH" | /usr/bin/grep -c '${!' || true)
+  [ "$indirect_count" = "0" ]
 }
 
 # -- AC5: atomic advance via fault injection before mv -----------------
