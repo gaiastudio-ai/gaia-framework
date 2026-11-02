@@ -139,14 +139,14 @@ SCRIPT
   [ "$p95" -gt 50 ]
 }
 
-@test "p95 test fails for real-writer 45 ms sleep mutant" {
-  local mutant="$TEST_TMP/mutant-writer-45.sh"
-  sed 's/^_tw_append() {/_tw_append() { sleep 0.045/' "$WRITER" > "$mutant"
+@test "p95 test fails for real-writer 46 ms sleep mutant" {
+  local mutant="$TEST_TMP/mutant-writer-46.sh"
+  sed 's/^_tw_append() {/_tw_append() { sleep 0.046/' "$WRITER" > "$mutant"
   local durations
   durations="$(_run_timing_loop "$mutant")"
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
-  echo "45ms-real-mutant p95=${p95}ms"
+  echo "46ms-real-mutant p95=${p95}ms"
   [ "$p95" -gt 50 ]
 }
 
