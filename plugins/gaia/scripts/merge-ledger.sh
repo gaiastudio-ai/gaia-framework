@@ -525,14 +525,6 @@ _ml_cmd_advance() {
   local tmp_file="${intent_file}.$$.tmp"
   sed "s/^state: .*/state: \"${new_state}\"/" "$intent_file" > "$tmp_file"
 
-  # Test-only fault injection: simulate a kill after sed but before
-  # the field appends and mv.  Not a user-facing surface.
-  if [ "${_ML_FAULT_AFTER_SED:-}" = "1" ]; then
-    _ml_unlock; trap - EXIT
-    _ml_log "FAULT INJECTED: exiting after sed, before appends+mv"
-    exit 99
-  fi
-
   # Append merge_sha if provided and transitioning to merged
   if [ "$new_state" = "merged" ] && [ -n "$merge_sha" ]; then
     _ml_safe_write_field "$tmp_file" merge_sha "$merge_sha"
@@ -545,6 +537,15 @@ _ml_cmd_advance() {
   # (for deadline resume across sessions)
   if [ "$new_state" = "merging" ]; then
     _ml_safe_write_field "$tmp_file" ci_wait_started "$ts"
+  fi
+
+  # Test-only fault injection: simulate a kill just before the final
+  # atomic mv.  The temp file has the new state + all appended fields;
+  # the real intent file is still the old version.  Not user-facing.
+  if [ "${_ML_FAULT_BEFORE_MV:-}" = "1" ]; then
+    _ml_unlock; trap - EXIT
+    _ml_log "FAULT INJECTED: exiting before mv"
+    exit 99
   fi
 
   mv "$tmp_file" "$intent_file"
