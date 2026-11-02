@@ -632,6 +632,7 @@ scripts-core	review-gate-sprint-scope.bats
 scripts-core	review-gate.bats
 scripts-core	review-runner.bats
 scripts-core	review-summary-gen-canonical-relpaths.bats
+scripts-core	review-telemetry.bats
 scripts-core	run-stack-tests.bats
 scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
