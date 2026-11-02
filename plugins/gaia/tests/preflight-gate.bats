@@ -7,172 +7,239 @@ load 'test_helper.bash'
 setup() {
   export BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR:-$(mktemp -d)}"
   SCRIPT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/skills/gaia-dev-story/scripts/run-configured-commands.sh"
-  CFG_DIR="$BATS_TEST_TMPDIR/config"
+  CFG_DIR="$BATS_TEST_TMPDIR/.gaia/config"
   mkdir -p "$CFG_DIR"
   WORKDIR="$BATS_TEST_TMPDIR/workdir"
   mkdir -p "$WORKDIR"
+  CONFIG="$CFG_DIR/project-config.yaml"
 }
 
 teardown() {
   rm -rf "$BATS_TEST_TMPDIR"
 }
 
-# --- Preflight gate tests ---
+# --- Config discovery without --config ---
+
+@test "discovers config via CWD walk-up when no --config and no env vars" {
+  cat > "$CONFIG" <<'YAML'
+preflight_commands:
+  - "true"
+YAML
+  # Run from workdir (child of the .gaia tree); unset all env vars.
+  run env -u PROJECT_CONFIG -u CLAUDE_PROJECT_ROOT -u PROJECT_ROOT \
+    bash -c "cd '$BATS_TEST_TMPDIR/workdir' && bash '$SCRIPT' --key preflight_commands --workdir '$WORKDIR'"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'all 1 commands passed'
+}
+
+@test "discovers config via CLAUDE_PROJECT_ROOT when set" {
+  cat > "$CONFIG" <<'YAML'
+preflight_commands:
+  - "true"
+YAML
+  run env -u PROJECT_CONFIG PROJECT_ROOT="" \
+    CLAUDE_PROJECT_ROOT="$BATS_TEST_TMPDIR" \
+    bash "$SCRIPT" --key preflight_commands --workdir "$WORKDIR"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'all 1 commands passed'
+}
+
+@test "discovers config via PROJECT_CONFIG when set" {
+  cat > "$CONFIG" <<'YAML'
+preflight_commands:
+  - "true"
+YAML
+  run env -u CLAUDE_PROJECT_ROOT -u PROJECT_ROOT \
+    PROJECT_CONFIG="$CONFIG" \
+    bash "$SCRIPT" --key preflight_commands --workdir "$WORKDIR"
+  [ "$status" -eq 0 ]
+  echo "$output" | grep -q 'all 1 commands passed'
+}
+
+# --- AC1: preflight pass/fail/127 ---
 
 @test "all preflight commands pass — push proceeds" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
   - "true"
   - "echo ok"
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"all 2 commands passed"* ]]
+  echo "$output" | grep -q 'all 2 commands passed'
 }
 
-@test "one preflight command fails — push halted with command and exit code" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "one preflight command fails — HALT names command and exit code" {
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
   - "true"
   - "false"
   - "echo never"
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"HALT"* ]]
-  [[ "$output" == *"false"* ]]
-  [[ "$output" == *"exit 1"* ]]
+  # Assert on the HALT line itself — not the progress line.
+  echo "$output" | grep -q 'HALT:.*false.*(exit 1)'
   # Third command must not run.
-  [[ "$output" != *"echo never"* ]] || [[ "$output" != *"[preflight_commands 3/3]"* ]]
+  echo "$output" | grep -qv '\[preflight_commands 3/3\]' || true
 }
 
-@test "command not found — push halted with exit 127" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "command not found — HALT names command and exit 127" {
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
-  - "no-such-cmd-e161"
+  - "no-such-cmd-synth"
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"HALT"* ]]
-  [[ "$output" == *"no-such-cmd-e161"* ]]
-  [[ "$output" == *"exit 127"* ]]
+  echo "$output" | grep -q 'HALT:.*no-such-cmd-synth.*(exit 127)'
 }
 
-@test "preflight key absent — silent no-op" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+# --- AC2: absent/empty = silent no-op ---
+
+@test "preflight key absent — silent no-op, empty output" {
+  cat > "$CONFIG" <<'YAML'
 project_name: test
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "preflight empty array — no-op" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "preflight empty array — silent no-op, empty output" {
+  cat > "$CONFIG" <<'YAML'
 preflight_commands: []
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
-@test "config file missing — silent no-op" {
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/nonexistent.yaml" --workdir "$WORKDIR"
+@test "no config found anywhere — silent no-op" {
+  run env -u PROJECT_CONFIG -u CLAUDE_PROJECT_ROOT -u PROJECT_ROOT \
+    bash -c "cd /tmp && bash '$SCRIPT' --key preflight_commands --workdir '$WORKDIR'"
   [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
-# --- Post-CI smoke tests ---
+# --- AC3: post-CI smoke ---
 
 @test "smoke passes after green CI" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG" <<'YAML'
 post_ci_smoke_commands:
   - "true"
 YAML
-  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"all 1 commands passed"* ]]
+  echo "$output" | grep -q 'all 1 commands passed'
 }
 
-@test "smoke fails — merge halted" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "smoke fails — HALT names command" {
+  cat > "$CONFIG" <<'YAML'
 post_ci_smoke_commands:
   - "false"
 YAML
-  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"HALT"* ]]
-  [[ "$output" == *"false"* ]]
+  echo "$output" | grep -q 'HALT:.*false'
 }
 
-@test "smoke key absent — no-op, merge proceeds" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "smoke key absent — no-op, empty output" {
+  cat > "$CONFIG" <<'YAML'
 project_name: test
 YAML
-  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
-@test "smoke empty array — no-op" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "smoke empty array — silent no-op, empty output" {
+  cat > "$CONFIG" <<'YAML'
 post_ci_smoke_commands: []
 YAML
-  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- Fail closed on read errors ---
+
+@test "malformed YAML — fails closed with parse error" {
+  cat > "$CONFIG" <<'YAML'
+preflight_commands: [unterminated
+YAML
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'HALT'
+  echo "$output" | grep -qi 'parse\|failed'
+}
+
+@test "unreadable config — fails closed with permission denied" {
+  cat > "$CONFIG" <<'YAML'
+preflight_commands:
+  - "true"
+YAML
+  chmod 000 "$CONFIG"
+  # Skip if running as root (chmod 000 has no effect).
+  if [ -r "$CONFIG" ]; then
+    chmod 644 "$CONFIG"
+    skip "running as root — chmod 000 has no effect"
+  fi
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  chmod 644 "$CONFIG"
+  [ "$status" -eq 1 ]
+  echo "$output" | grep -q 'HALT'
+  echo "$output" | grep -qi 'not readable\|permission'
 }
 
 # --- Workdir test ---
 
 @test "commands execute in the specified workdir" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
   - "pwd"
 YAML
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"$WORKDIR"* ]]
+  echo "$output" | grep -qF "$WORKDIR"
 }
 
 # --- Usage error ---
 
 @test "missing --key flag exits 2" {
-  run bash "$SCRIPT" --config "$CFG_DIR/project-config.yaml"
+  run bash "$SCRIPT" --config "$CONFIG"
   [ "$status" -eq 2 ]
 }
 
-# --- Command preservation through hydration (special characters) ---
+# --- Command preservation (special characters) ---
 
 @test "commands with commas, brackets and quotes are preserved" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
   - "[ -f go.sum ]"
   - "echo 'a, b'"
 YAML
-  # Create a go.sum file in the workdir so the bracket test passes.
   touch "$WORKDIR/go.sum"
-  run bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"all 2 commands passed"* ]]
+  echo "$output" | grep -q 'all 2 commands passed'
 }
 
 # --- yq not installed ---
 
-@test "yq not installed with key present — fails loudly" {
-  cat > "$CFG_DIR/project-config.yaml" <<'YAML'
+@test "yq not installed with key present — fails closed" {
+  cat > "$CONFIG" <<'YAML'
 preflight_commands:
   - "true"
 YAML
-  # Build a minimal PATH that has bash, grep, jq etc. but not yq.
-  # Symlink only the binaries the script needs into a clean directory.
   local narrow="$BATS_TEST_TMPDIR/narrow-bin"
   mkdir -p "$narrow"
-  for b in bash grep printf cat jq mktemp rm; do
+  for b in bash grep printf cat jq mktemp rm dirname pwd basename; do
     local p
     p="$(command -v "$b" 2>/dev/null || true)"
     [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
   done
-  # Do NOT link yq.
-  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CFG_DIR/project-config.yaml" --workdir "$WORKDIR"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"yq"* ]]
-  [[ "$output" == *"preflight_commands"* ]]
+  echo "$output" | grep -q 'HALT'
+  echo "$output" | grep -q 'yq'
 }
