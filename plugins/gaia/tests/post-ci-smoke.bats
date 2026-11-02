@@ -6,6 +6,8 @@ load 'test_helper.bash'
 
 setup() {
   export BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR:-$(mktemp -d)}"
+  # Clear root variables so resolve-config.sh tests use fixture paths only.
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH PROJECT_CONFIG
   PLUGIN_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   SCRIPT="$PLUGIN_ROOT/skills/gaia-dev-story/scripts/run-configured-commands.sh"
   CFG_DIR="$BATS_TEST_TMPDIR/.gaia/config"
