@@ -2139,27 +2139,27 @@ YAML
   # CR
   local r
   r="$(_sb_sanitize_value "$(printf 'a\rb')")"
-  printf '%s' "$r" | od -c | /usr/bin/grep -q '\\  r' || printf '%s' "$r" | /usr/bin/grep -qF '\r'
+  [[ "$r" == *'\\r'* ]] || [[ "$r" == *'\r'* ]]
 
   # TAB
   r="$(_sb_sanitize_value "$(printf 'a\tb')")"
-  printf '%s' "$r" | /usr/bin/grep -qF '\t'
+  [[ "$r" == *'\t'* ]]
 
   # ESC
   r="$(_sb_sanitize_value "$(printf 'a\x1bb')")"
-  printf '%s' "$r" | /usr/bin/grep -qF '\x1b'
+  [[ "$r" == *'\x1b'* ]]
 
   # BELL
   r="$(_sb_sanitize_value "$(printf 'a\ab')")"
-  printf '%s' "$r" | /usr/bin/grep -qF '\a'
+  [[ "$r" == *'\a'* ]]
 
   # DEL
   r="$(_sb_sanitize_value "$(printf 'a\x7fb')")"
-  printf '%s' "$r" | /usr/bin/grep -qF '\x7f'
+  [[ "$r" == *'\x7f'* ]]
 
   # Low control char (\x01)
   r="$(_sb_sanitize_value "$(printf 'a\x01b')")"
-  printf '%s' "$r" | /usr/bin/grep -qF '\x01'
+  [[ "$r" == *'\x01'* ]]
 
   # Clean value passes through unchanged.
   r="$(_sb_sanitize_value "sprint-900")"
