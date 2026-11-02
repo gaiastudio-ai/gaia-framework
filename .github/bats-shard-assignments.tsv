@@ -838,4 +838,4 @@
 1	merge-review-gate.bats	18
 2	merge-ledger-and-tail.bats	32
 2	per-sprint-release.bats	24
-4	review-telemetry.bats	30
+4	review-telemetry.bats	35

@@ -1620,11 +1620,13 @@ main() {
           # Non-blocking — a write failure is logged and the gate update
           # is unaffected. Fires only for canonical gate verdicts (not
           # plan-id ledger writes, not carry-forward).
+          # In-process: the writer is sourced (no subprocess spawn) so the
+          # write stays within the p95 <= 50 ms budget.
           if [ -z "$plan_id" ] && [ -n "$story_key" ]; then
-            _telemetry_sh="$(cd "$(dirname "$0")" && pwd)/review-telemetry-writer.sh"
-            if [ -x "$_telemetry_sh" ]; then
-              _tel_args=(gate-entry --story "$story_key" --gate "$gate_name" --verdict "$verdict")
-              # Pass the already-resolved story file to skip the lookup.
+            _telemetry_sh="${_RG_DIR}/review-telemetry-writer.sh"
+            if [ -f "$_telemetry_sh" ]; then
+              _TW_SOURCED=1 . "$_telemetry_sh"
+              _tel_args=(--story "$story_key" --gate "$gate_name" --verdict "$verdict")
               if [ -n "$STORY_FILE" ]; then
                 _tel_args+=(--story-file "$STORY_FILE")
               fi
@@ -1635,7 +1637,7 @@ main() {
                 _tel_args+=(--run-id "$telemetry_run_id")
               fi
               if [ -n "$telemetry_started_at" ]; then
-                _tel_now="$(perl -MTime::HiRes=time -e 'printf "%d", time*1000' 2>/dev/null)" || _tel_now=""
+                _tel_now="$(_tw_epoch_ms)"
                 _tel_args+=(--started-at "$telemetry_started_at")
                 if [ -n "$_tel_now" ]; then
                   _tel_args+=(--ended-at "$_tel_now")
@@ -1644,8 +1646,7 @@ main() {
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")
               fi
-              # Suppress stdout only; let stderr warnings through.
-              bash "$_telemetry_sh" "${_tel_args[@]}" >/dev/null || true
+              _tw_gate_entry "${_tel_args[@]}" || true
             fi
           fi
           ;;
