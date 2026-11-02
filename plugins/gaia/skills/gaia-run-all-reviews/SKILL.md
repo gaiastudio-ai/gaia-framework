@@ -152,6 +152,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--f
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
+**Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. When the user picks a choice, clear the escalation by completing the round (accept/descope) or recording "one more cycle" and proceeding to a new round. This detection runs BEFORE `record-round` so the escalated round is not superseded.
+
 **Substep 2.2b — Round-start sequence.** Before dispatching any gate, record the review round in the findings register. Execute these steps in order:
 
 1. **Resolve the story's code tree.** Read the dev-story checkpoint (`resume-checkpoint.sh read --skill gaia-dev-story --latest`) and extract `.key_variables.worktree_path`, but **only when `.key_variables.story_key` equals the current story key** (parallel stories write their own checkpoints — a mismatched key must fall through). Verify the path still appears in `git worktree list`. Otherwise match `refs/heads/feat/{story_key}-` in `git worktree list --porcelain` and use that worktree only when exactly one entry matches. Fall back to `${PROJECT_PATH}`. The resolved path is the code tree for the round.
@@ -333,16 +335,14 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 1. Call `register-write.sh count-rounds --story {key} --current-verdict {PASSED|FAILED}` where the verdict is the composite result of the round just consolidated. The subcommand resolves the configured cap from project config (falling back to the default of 2) and returns `round_count`, `max_fix_cycles`, and `escalate true|false`. The `--current-verdict` flag tells the subcommand the verdict of the current open round at the decision point.
 
-3. **Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads `escalated`, the story was halted mid-escalation — re-present the three choices without starting a new round or recounting.
-
-3. When `escalate true`:
+2. When `escalate true`:
    - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.
    - Present AskUserQuestion with exactly three choices:
      - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision. Accept does NOT move the story past the review gate — that stays an explicit human step.
      - **descope to backlog**: run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
      - **one more cycle**: grants exactly one further round before escalating again.
 
-4. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
+3. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
 
 For the security carve-out (blocking accept override):
 - Call `security-report-reader.sh --story {key}` to enumerate critical security findings.

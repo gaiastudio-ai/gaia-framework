@@ -93,7 +93,7 @@ Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the 
 
 ### Step 7 — Review limits
 
-Report the active review-process limits. Read the effective cap from `count-rounds` (the single point-of-use fallback) by calling `register-write.sh count-rounds --story _PROBE` on a non-existent key (exits 0 with `max_fix_cycles <N>`) and parsing the `max_fix_cycles` line:
+Report the active review-process limits. Read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`. When the output is empty, the effective cap is 2 (the single point-of-use fallback in `count-rounds`). Display the configured value or "2 (default)" when absent:
 
 ```
 Review limits:

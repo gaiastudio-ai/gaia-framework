@@ -94,23 +94,41 @@ else
   sec_in_round="$(yq '[.rounds[-1].selected_gates[] | select(.gate == "security-review")] | length' "$reg_path" 2>/dev/null)" || sec_in_round="0"
 
   if [ "$sec_in_round" = "0" ] || [ "$sec_in_round" = "null" ]; then
-    # Security gate not selected — check carried gates. Follow the carry
-    # chain: look up from_run's selected_gates for the report.
-    sec_carry_run="$(yq '.rounds[-1].carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$reg_path" 2>/dev/null)" || sec_carry_run=""
-    if [ -n "$sec_carry_run" ] && [ "$sec_carry_run" != "null" ]; then
-      export _SR_FROM_RUN="$sec_carry_run"
-      sec_carry_report="$(yq '(.rounds[] | select(.run_id == strenv(_SR_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$reg_path" 2>/dev/null)" || sec_carry_report=""
-      unset _SR_FROM_RUN
-      if [ -n "$sec_carry_report" ] && [ "$sec_carry_report" != "null" ]; then
-        printf 'security_gate_state assessed\n'
-      else
-        printf 'security_gate_state unassessed\n'
+    # Follow the full carry chain to find a completed security assessment.
+    hop_run="$(yq '.rounds[-1].carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$reg_path" 2>/dev/null)" || hop_run=""
+    found_assessed=""
+    hops=0
+    while [ -n "$hop_run" ] && [ "$hop_run" != "null" ] && [ "$hops" -lt 10 ]; do
+      export _SR_FROM_RUN="$hop_run"
+      hop_report="$(yq '(.rounds[] | select(.run_id == strenv(_SR_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$reg_path" 2>/dev/null)" || hop_report=""
+      if [ -n "$hop_report" ] && [ "$hop_report" != "null" ]; then
+        hop_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_SR_FROM_RUN) and .gate == "security-review" and .outcome == "completed")] | length' "$reg_path" 2>/dev/null)" || hop_outcome="0"
+        if [ "$hop_outcome" != "0" ] && [ "$hop_outcome" != "null" ]; then
+          found_assessed=1
+        fi
+        unset _SR_FROM_RUN; break
       fi
+      next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_SR_FROM_RUN))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$reg_path" 2>/dev/null)" || next_hop=""
+      unset _SR_FROM_RUN
+      hop_run="$next_hop"
+      hops=$((hops + 1))
+    done
+    if [ -n "$found_assessed" ]; then
+      printf 'security_gate_state assessed\n'
     else
       printf 'security_gate_state unassessed\n'
     fi
   elif [ -n "$sec_report" ] && [ "$sec_report" != "null" ]; then
-    printf 'security_gate_state assessed\n'
+    # Check gate_runs outcome — errored is not assessed.
+    latest_rid="$(yq '.rounds[-1].run_id' "$reg_path" 2>/dev/null)" || latest_rid=""
+    export _SR_RID="$latest_rid"
+    sec_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_SR_RID) and .gate == "security-review" and .outcome == "completed")] | length' "$reg_path" 2>/dev/null)" || sec_outcome="0"
+    unset _SR_RID
+    if [ "$sec_outcome" != "0" ] && [ "$sec_outcome" != "null" ]; then
+      printf 'security_gate_state assessed\n'
+    else
+      printf 'security_gate_state unassessed\n'
+    fi
   else
     printf 'security_gate_state unassessed\n'
   fi

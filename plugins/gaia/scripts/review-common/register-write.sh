@@ -2765,7 +2765,7 @@ _rw_cmd_count_rounds() {
   #   gate_runs entry is errored (a superseded round that was replaced
   #   before completing had non-passing evidence).
   # open: the caller passes --current-verdict FAILED|PASSED for the round
-  #   being decided; without it, gate evidence is checked.
+  #   being decided; without it, escalation state and gate evidence are checked.
   local count=0
   if [ "$rounds_len" != "0" ] && [ "$rounds_len" != "null" ]; then
     local idx=0
@@ -2807,7 +2807,14 @@ _rw_cmd_count_rounds() {
               *) count=$((count + 1)) ;;
             esac
           else
-            # Fallback: check gate evidence.
+            # Fallback: gate evidence + escalation state.
+            # An open round with an escalation marker was non-passing.
+            local esc_st
+            esc_st="$(yq ".rounds[$idx].escalation.state // \"\"" "$reg_path" 2>/dev/null)" || esc_st=""
+            if [ "$esc_st" = "escalated" ]; then
+              count=$((count + 1))
+              idx=$((idx + 1)); continue
+            fi
             local miss_o
             miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
             local err_o
@@ -3064,6 +3071,16 @@ _rw_cmd_record_accept_override() {
          [ -z "$_ao_so_ts" ] || [ "$_ao_so_ts" = "null" ]; then
         _ao_unresolved=$((_ao_unresolved + 1))
         _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+      else
+        # Also check the reviewer's OWASP category on the gate_rating —
+        # an unknown/empty category means the reviewer didn't classify the
+        # finding, so accept stays blocked.
+        local _ao_gr_owasp
+        _ao_gr_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].gate_ratings[] | select(.gate == \"security-review\") | .owasp_category // \"\"" "$tmp" 2>/dev/null)" || _ao_gr_owasp=""
+        if [ -z "$_ao_gr_owasp" ] || [ "$_ao_gr_owasp" = "null" ] || [ "$_ao_gr_owasp" = "unknown" ]; then
+          _ao_unresolved=$((_ao_unresolved + 1))
+          _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+        fi
       fi
       _ao_idx=$((_ao_idx + 1))
     done
@@ -3080,22 +3097,45 @@ _rw_cmd_record_accept_override() {
   local _ao_sec_in_selected
   _ao_sec_in_selected="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review")] | length' "$tmp" 2>/dev/null)" || _ao_sec_in_selected="0"
   if [ "$_ao_sec_in_selected" != "0" ] && [ "$_ao_sec_in_selected" != "null" ]; then
-    _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
+    # Check the gate_runs outcome — an errored run is not a completed assessment
+    # even if a partial report_path was recorded (crash after writing the file).
+    local _ao_sec_outcome
+    _ao_sec_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_RUN_ID) and .gate == "security-review" and .outcome == "completed")] | length' "$tmp" 2>/dev/null)" || _ao_sec_outcome="0"
+    if [ "$_ao_sec_outcome" != "0" ] && [ "$_ao_sec_outcome" != "null" ]; then
+      _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
+    fi
   fi
   if [ -z "$_ao_sec_report" ] || [ "$_ao_sec_report" = "null" ]; then
     # Check carried gates: follow the carry chain to the source round's
     # selected_gates for the security-review report.
-    local _ao_carry_run
-    _ao_carry_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_carry_run=""
-    if [ -n "$_ao_carry_run" ] && [ "$_ao_carry_run" != "null" ]; then
-      export _RW_FROM_RUN="$_ao_carry_run"
-      local _ao_carry_report
-      _ao_carry_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_carry_report=""
-      unset _RW_FROM_RUN
-      if [ -z "$_ao_carry_report" ] || [ "$_ao_carry_report" = "null" ]; then
-        _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
+    # Follow the full carry chain to the terminal round.
+    local _ao_hop_run
+    _ao_hop_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_hop_run=""
+    local _ao_found_report=""
+    local _ao_hops=0
+    while [ -n "$_ao_hop_run" ] && [ "$_ao_hop_run" != "null" ] && [ "$_ao_hops" -lt 10 ]; do
+      export _RW_FROM_RUN="$_ao_hop_run"
+      # Check if this round has security-review as a selected gate with a report.
+      local _ao_sel_report
+      _ao_sel_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sel_report=""
+      if [ -n "$_ao_sel_report" ] && [ "$_ao_sel_report" != "null" ]; then
+        # Also check the gate_runs outcome at the terminal round.
+        local _ao_hop_outcome
+        _ao_hop_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_FROM_RUN) and .gate == "security-review" and .outcome == "completed")] | length' "$tmp" 2>/dev/null)" || _ao_hop_outcome="0"
+        if [ "$_ao_hop_outcome" != "0" ] && [ "$_ao_hop_outcome" != "null" ]; then
+          _ao_found_report="$_ao_sel_report"
+        fi
+        unset _RW_FROM_RUN
+        break
       fi
-    else
+      # Follow another hop.
+      local _ao_next_hop
+      _ao_next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_next_hop=""
+      unset _RW_FROM_RUN
+      _ao_hop_run="$_ao_next_hop"
+      _ao_hops=$((_ao_hops + 1))
+    done
+    if [ -z "$_ao_found_report" ]; then
       _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
     fi
   fi

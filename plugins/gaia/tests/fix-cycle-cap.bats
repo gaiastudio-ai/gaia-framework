@@ -674,7 +674,7 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# Item 1: security review SKILL.md passes --owasp-category and --impact
+# Security review SKILL.md passes --owasp-category and --impact
 # ---------------------------------------------------------------------------
 
 @test "security review add call shape includes owasp-category and impact" {
@@ -694,7 +694,7 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# Item 3: forged and unsigned --signed-off-findings refusals
+# Forged and unsigned --signed-off-findings refusals
 # ---------------------------------------------------------------------------
 
 @test "record-accept-override rejects forged and unsigned signed-off-findings" {
@@ -730,7 +730,7 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# Item 4: Scenario 15c — valid carried security assessment
+# Scenario 15c — valid carried security assessment
 # ---------------------------------------------------------------------------
 
 @test "valid carried security assessment reads as assessed" {
@@ -762,7 +762,7 @@ Line2 end"
   # security-report-reader must report "assessed" (carried gate has a report).
   run bash "$SR" --story TEST-15C
   [ "$status" -eq 0 ]
-  [[ "$output" == *"assessed"* ]]
+  [[ "$output" == *"security_gate_state assessed"* ]]
 
   # record-accept-override must NOT block on the security gate (carried with
   # a completed report counts as assessed). It may still block on critical
@@ -777,7 +777,7 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# Item 3 supplement: triage disposition blocks accept
+# Triage disposition blocks accept
 # ---------------------------------------------------------------------------
 
 @test "critical finding in triage disposition blocks accept override" {
@@ -799,7 +799,7 @@ Line2 end"
 }
 
 # ---------------------------------------------------------------------------
-# Item 3 supplement: finding resolved once fixed (disposition=resolved) unblocks
+# Finding resolved once fixed (disposition=resolved) unblocks
 # ---------------------------------------------------------------------------
 
 @test "critical finding resolved once fixed unblocks accept" {
@@ -818,4 +818,95 @@ Line2 end"
     --run-id "round-20261102T120001Z-99701" \
     --decision accept --user admin --round 1 --timestamp "2026-11-02T12:00:00Z"
   [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Errored-but-reported security gate blocks accept
+# ---------------------------------------------------------------------------
+
+@test "errored security gate with report blocks accept override" {
+  _mk_project TEST-ERR
+  local rid="round-20261102T120001Z-77001"
+  bash "$RW" record-round --story TEST-ERR --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-ERR --run-id "$rid" --gate security-review \
+    --outcome errored >/dev/null
+  printf 'Verdict: FAILED (crash)\n' > "$FIXTURE_DIR/err-sec.md"
+  bash "$RW" record-round-report --story TEST-ERR --run-id "$rid" \
+    --gate security-review --report "$FIXTURE_DIR/err-sec.md"
+
+  # Reader must report unassessed (errored is not assessed).
+  run bash "$SR" --story TEST-ERR
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"security_gate_state unassessed"* ]]
+
+  # Accept must be blocked (errored gate, even with a report).
+  run bash "$RW" record-accept-override --story TEST-ERR \
+    --run-id "$rid" --decision accept --user admin --round 1 \
+    --timestamp "2026-11-02T12:00:00Z"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"blocked"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# SKILL wiring: count-rounds --current-verdict documented
+# ---------------------------------------------------------------------------
+
+@test "run-all-reviews SKILL documents count-rounds with --current-verdict" {
+  /usr/bin/grep -q 'count-rounds.*--current-verdict' "$RUN_ALL_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# SKILL wiring: record-escalation documented before asking
+# ---------------------------------------------------------------------------
+
+@test "run-all-reviews SKILL documents record-escalation before asking the user" {
+  /usr/bin/grep -q 'record-escalation.*--story.*--run-id.*--round-count' "$RUN_ALL_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# SKILL wiring: resume detection documented before record-round
+# ---------------------------------------------------------------------------
+
+@test "run-all-reviews SKILL documents resume detection before round-start" {
+  # Resume detection must appear BEFORE the round-start sequence.
+  local resume_line skill_line
+  resume_line=$(/usr/bin/grep -n 'Resume detection\|escalation_state.*escalated' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  skill_line=$(/usr/bin/grep -n 'Round-start sequence' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  [ -n "$resume_line" ] && [ -n "$skill_line" ]
+  [ "$resume_line" -lt "$skill_line" ]
+}
+
+# ---------------------------------------------------------------------------
+# Doctor documents review limits
+# ---------------------------------------------------------------------------
+
+@test "doctor SKILL documents review limits with the effective cap" {
+  /usr/bin/grep -q 'Review limits' "$DOCTOR_SKILL"
+  /usr/bin/grep -q 'review.max_fix_cycles' "$DOCTOR_SKILL"
+  /usr/bin/grep -q '2 (default)' "$DOCTOR_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# Unsigned listed id: resolved critical without sign-off blocks
+# ---------------------------------------------------------------------------
+
+@test "unsigned resolved critical in signed-off-findings is rejected" {
+  _mk_project TEST-UNSIGN
+  _run_failing_round TEST-UNSIGN "round-20261102T120001Z-66601"
+  _add_critical_finding TEST-UNSIGN "RCE" "A08" "remote code exec"
+
+  local reg; reg="$(_reg TEST-UNSIGN)"
+  local fid; fid="$(yq '.entries[-1].id' "$reg")"
+
+  # Resolve the finding (fixed in code, no sign-off).
+  bash "$RW" set-disposition --story TEST-UNSIGN --id "$fid" --disposition resolved
+
+  # Accept with this id in --signed-off-findings must be rejected
+  # because the finding has no complete sign-off record.
+  run bash "$RW" record-accept-override --story TEST-UNSIGN \
+    --run-id "round-20261102T120001Z-66601" \
+    --decision accept --user admin --round 1 --timestamp "2026-11-02T12:00:00Z" \
+    --signed-off-findings "$fid"
+  [ "$status" -ne 0 ]
 }
