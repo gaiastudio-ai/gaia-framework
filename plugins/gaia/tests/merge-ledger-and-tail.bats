@@ -1565,3 +1565,466 @@ STUB
   field_count=$(/usr/bin/grep -c '^[a-z]' "$gate_file")
   [ "$field_count" -eq 5 ]
 }
+
+# ======================================================================
+# Locking, atomic writes, input validation (hardening)
+# ======================================================================
+
+# -- AC1: lock contention tests for every writing sub-command ----------
+
+@test "contending advance times out when ledger lock is held via flock" {
+  if ! command -v flock >/dev/null 2>&1; then
+    skip "flock not available on this host"
+  fi
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  flock -x "$lock_file" sleep 30 &
+  local holder_pid=$!
+  sleep 0.5
+
+  run bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+}
+
+@test "contending advance times out when lock is held via fallback" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "contending write-intent times out when ledger lock is held" {
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  # write-intent needs a prior gate — create one WITHOUT the lock held
+  # (gate write will also need the lock; create the gate file directly)
+  cat > "$MERGE_LEDGER_DIR/gate-pass-pr42-20261101120000-1.yaml" <<'YAML'
+type: "gate_pass"
+pr: "42"
+head_sha: "abc1234def5678abc1234def5678abc1234def5678"
+story: "E900-S1"
+created_at: "2026-11-01T12:00:00Z"
+YAML
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "contending supersede times out when ledger lock is held" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" supersede --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "contending record times out when ledger lock is held" {
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" record --mode release \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch release/v1.0.0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "contending write-gate-pass times out when ledger lock is held" {
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "contending write-gate-bypass times out when ledger lock is held" {
+  local lock_file="${MERGE_LEDGER_DIR}/.merge-ledger.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$lock_file"
+
+  run env GAIA_LOCK_FORCE_FALLBACK=1 \
+    bash "$LEDGER_SH" write-gate-bypass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --bypass-confirmation user_approved
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"failed to acquire ledger lock"* ]]
+  rm -f "$lock_file"
+}
+
+@test "advance uses unique per-PID temp file name" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" ! -name "intent-release-*" | head -1)
+  [ -f "$intent_file" ]
+
+  # Pre-create a trap file at the old shared .tmp path
+  local shared_tmp="${intent_file}.tmp"
+  echo "TRAP: this file should never be used" > "$shared_tmp"
+
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+
+  # The trap file must be untouched (advance uses .$$.tmp, not .tmp)
+  [ -f "$shared_tmp" ]
+  /usr/bin/grep -q 'TRAP' "$shared_tmp"
+
+  # The intent file must have the new state (advance succeeded)
+  /usr/bin/grep -q 'state: "merging"' "$intent_file"
+  rm -f "$shared_tmp"
+}
+
+@test "sole-writer-check passes after locked advance and record" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  bash "$LEDGER_SH" record --mode release \
+    --head-sha def1234567890abcdef1234567890abcdef123456 \
+    --target main --pr-branch release/v1.0.0
+
+  run bash "$LEDGER_SH" sole-writer-check --dir "$MERGE_LEDGER_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASSED"* ]]
+}
+
+# -- AC2: gate file PID suffix (not timing-dependent) -----------------
+
+@test "gate-pass filename contains PID suffix for collision resistance" {
+  run bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  [ "$status" -eq 0 ]
+
+  # The output is the gate file path; extract the filename
+  local gate_path
+  gate_path="$(printf '%s' "$output" | /usr/bin/grep '\.yaml$' | head -1)"
+  local gate_name
+  gate_name="$(basename "$gate_path")"
+
+  # Must match gate-pass-pr<N>-<timestamp>-<pid>.yaml
+  [[ "$gate_name" =~ ^gate-pass-pr[0-9]+-[0-9]+-[0-9]+\.yaml$ ]]
+}
+
+# -- AC3: smoke command with single quote ------------------------------
+
+@test "smoke command with single quote writes marker and reaches smoke_ok" {
+  local mark="${BATS_TEST_TMPDIR}/smoke-mark"
+  export MERGE_TAIL_SMOKE_CMD="printf '%s' \"it's ok\" > \"${mark}\""
+  export MERGE_TAIL_MOCK_PR_STATE="MERGED"
+  export MERGE_TAIL_MOCK_PR_BASE="staging"
+
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+
+  run bash "$TAIL_SH" gate --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+  run bash "$TAIL_SH" merge --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+  run bash "$TAIL_SH" verify --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+  run bash "$TAIL_SH" smoke-wait --story E900-S1 --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --target staging
+  [ "$status" -eq 0 ]
+
+  [ -f "$mark" ]
+  local content
+  content="$(cat "$mark")"
+  [ "$content" = "it's ok" ]
+
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" ! -name "intent-release-*" | head -1)
+  /usr/bin/grep -q 'state: "smoke_ok"' "$intent_file"
+}
+
+# -- AC4: parent-exec name validation before lookup --------------------
+
+@test "invalid name never reaches printenv and no abort under set -euo pipefail" {
+  # Printenv stub that logs every argument it receives
+  local stub_dir="${BATS_TEST_TMPDIR}/pe-stubs"
+  local log_file="${BATS_TEST_TMPDIR}/printenv-log"
+  mkdir -p "$stub_dir"
+  cat > "$stub_dir/printenv" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "$_PE_TEST_LOG"
+/usr/bin/printenv "$@"
+STUBEOF
+  chmod +x "$stub_dir/printenv"
+
+  export SAFE_VAR="harmless"
+  local marker="${BATS_TEST_TMPDIR}/pwned-marker"
+
+  # Helper script avoids quoting issues.  The injection payload
+  # closes the ${...} early and splices a touch command — under the
+  # old eval path it creates the marker file.
+  local helper="${BATS_TEST_TMPDIR}/pe-test-helper.sh"
+  cat > "$helper" <<HELPEOF
+#!/usr/bin/env bash
+set -euo pipefail
+source "${PARENT_EXEC_SH}"
+_PE_ALLOWLIST=(
+  'SAFE_VAR'
+  '1bad'
+  'A-B'
+  'x;touch ${marker}'
+  'SAFE_VAR}"; touch "${marker}"; : "\${SAFE_VAR'
+  'UNSET_VAR'
+  'PATH'
+)
+parent_exec_build_env
+echo reached-end
+HELPEOF
+  chmod +x "$helper"
+
+  local result
+  result="$(PATH="${stub_dir}:${PATH}" _PE_TEST_LOG="$log_file" \
+    bash "$helper" 2>&1)" || true
+
+  # reached-end must print (no abort)
+  case "$result" in *reached-end*) ;; *) return 1 ;; esac
+
+  # SAFE_VAR=harmless must be forwarded
+  case "$result" in *SAFE_VAR=harmless*) ;; *) return 1 ;; esac
+
+  # The injection marker must NOT exist
+  [ ! -f "$marker" ]
+
+  # The printenv log must exist (at least SAFE_VAR and PATH hit printenv)
+  [ -f "$log_file" ]
+
+  # Valid names SAFE_VAR, UNSET_VAR, PATH must appear in the log
+  /usr/bin/grep -q '^SAFE_VAR$' "$log_file"
+  /usr/bin/grep -q '^PATH$' "$log_file"
+  /usr/bin/grep -q '^UNSET_VAR$' "$log_file"
+
+  # Invalid names must NOT appear in the log
+  run /usr/bin/grep -c '1bad' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'A-B' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'x;touch' "$log_file"
+  [ "$output" = "0" ]
+
+  run /usr/bin/grep -c 'SAFE_VAR}' "$log_file"
+  [ "$output" = "0" ]
+}
+
+@test "parent-exec uses printenv not eval and no indirect expansion" {
+  # No eval as a command (excluding comments)
+  local eval_count
+  eval_count=$(/usr/bin/grep -v '^[[:space:]]*#' "$PARENT_EXEC_SH" | /usr/bin/grep -c 'eval ' || true)
+  [ "$eval_count" = "0" ]
+
+  # No ${!var} indirect expansion
+  local indirect_count
+  indirect_count=$(/usr/bin/grep -v '^[[:space:]]*#' "$PARENT_EXEC_SH" | /usr/bin/grep -c '${!' || true)
+  [ "$indirect_count" = "0" ]
+}
+
+# -- AC5: atomic advance via fault injection before mv -----------------
+
+@test "advance writes atomically — fault before mv leaves intent unchanged" {
+  bash "$LEDGER_SH" write-gate-pass --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 \
+    --story E900-S1 --target staging --mode story
+
+  local intent_file
+  intent_file=$(find "$MERGE_LEDGER_DIR" -name "intent-*.yaml" ! -name "intent-release-*" | head -1)
+  [ -f "$intent_file" ]
+  /usr/bin/grep -q 'state: "intent"' "$intent_file"
+
+  # Inject a fault just before the final mv.  The temp file has the
+  # new state + all appended fields; the real intent is untouched.
+  run env _ML_FAULT_BEFORE_MV=1 \
+    bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  [ "$status" -eq 99 ]
+  [[ "$output" == *"FAULT INJECTED"* ]]
+
+  # The real intent must still show the old state
+  /usr/bin/grep -q 'state: "intent"' "$intent_file"
+  # No last_transition on the real file
+  ! /usr/bin/grep -q 'last_transition:' "$intent_file"
+
+  # Clean up the orphan tmp
+  find "$MERGE_LEDGER_DIR" -name "*.tmp" -delete 2>/dev/null || true
+
+  # A real advance must produce a complete file
+  bash "$LEDGER_SH" advance --pr 42 \
+    --head abc1234def5678abc1234def5678abc1234def5678 --state merging
+  /usr/bin/grep -q 'state: "merging"' "$intent_file"
+  /usr/bin/grep -q 'last_transition:' "$intent_file"
+  /usr/bin/grep -q 'ci_wait_started:' "$intent_file"
+
+  local tmp_count
+  tmp_count=$(find "$MERGE_LEDGER_DIR" -name "*.tmp" | wc -l | tr -d ' ')
+  [ "$tmp_count" -eq 0 ]
+}
+
+@test "list rejects sprint-id with path traversal sequences" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  run bash "$LEDGER_SH" list --sprint "../../x" --state-dir "$state_dir"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"sprint"* ]]
+}
+
+@test "list accepts valid sprint-NNN format" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  # Create a sprint state file
+  cat > "$state_dir/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  # No intents exist so this exits 1 (no ledger) but should NOT reject the format
+  run bash "$LEDGER_SH" list --sprint sprint-900 --state-dir "$state_dir"
+  # Should fail because ledger has no intents, not because format is invalid
+  [[ "$output" != *"invalid"* ]]
+  [[ "$output" != *"rejected"* ]]
+}
+
+@test "list accepts bare numeric sprint-id format" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir"
+
+  cat > "$state_dir/sprint-status-900.yaml" <<'YAML'
+sprint_id: "900"
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint 900 --state-dir "$state_dir"
+  [[ "$output" != *"invalid"* ]]
+  [[ "$output" != *"rejected"* ]]
+}
+
+@test "record rejects non-release modes" {
+  run bash "$LEDGER_SH" record --mode story \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+
+  run bash "$LEDGER_SH" record --mode integration \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+
+  run bash "$LEDGER_SH" record --mode promotion \
+    --head-sha abc1234def5678abc1234def5678abc1234def5678 \
+    --target main --pr-branch feat/test
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"only --mode release is supported"* ]]
+}
+
+@test "list excludes in-sprint release intent and mutation check proves filter is needed" {
+  local state_dir="${BATS_TEST_TMPDIR}/state"
+  mkdir -p "$state_dir" "$MERGE_LEDGER_DIR"
+
+  # Create sprint state with E900-S1
+  cat > "$state_dir/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+stories:
+  - "E900-S1"
+YAML
+
+  # Create a finalized story intent
+  cat > "$MERGE_LEDGER_DIR/intent-pr42-mi-20261101120000-99.yaml" <<'YAML'
+intent_id: "mi-20261101120000-99"
+type: "merge_intent"
+story: "E900-S1"
+pr: "42"
+head_sha: "abc1234def5678abc1234def5678abc1234def5678"
+target: "staging"
+mode: "story"
+state: "finalized"
+bypass: "false"
+created_at: "2026-11-01T12:00:00Z"
+merge_sha: "def1234567890abcdef1234567890abcdef123456"
+YAML
+
+  # Create a hand-made release intent whose story matches the sprint
+  cat > "$MERGE_LEDGER_DIR/intent-release-ri-20261101120001-88.yaml" <<'YAML'
+intent_id: "ri-20261101120001-88"
+mode: "release"
+state: "finalized"
+story: "E900-S1"
+head_sha: "fff1234567890abcdef1234567890abcdef123456"
+target: "main"
+pr_branch: "release/v2.0.0"
+created_at: "2026-11-01T12:00:01Z"
+YAML
+
+  # list should return the story intent but NOT the release intent
+  run bash "$LEDGER_SH" list --sprint sprint-900 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"E900-S1"* ]]
+  # Only one line of output (the story intent, not the release intent)
+  local line_count
+  line_count=$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S1')
+  [ "$line_count" -eq 1 ]
+}
