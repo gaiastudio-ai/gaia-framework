@@ -29,7 +29,7 @@ YAML
   run env -u PROJECT_CONFIG -u CLAUDE_PROJECT_ROOT -u PROJECT_ROOT \
     bash -c "cd '$BATS_TEST_TMPDIR/workdir' && bash '$SCRIPT' --key preflight_commands --workdir '$WORKDIR'"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 1 commands passed'
+  grep -q 'all 1 commands passed' <<< "$output"
 }
 
 @test "discovers config via CLAUDE_PROJECT_ROOT when set" {
@@ -41,7 +41,7 @@ YAML
     CLAUDE_PROJECT_ROOT="$BATS_TEST_TMPDIR" \
     bash "$SCRIPT" --key preflight_commands --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 1 commands passed'
+  grep -q 'all 1 commands passed' <<< "$output"
 }
 
 @test "discovers config via PROJECT_CONFIG when set" {
@@ -53,7 +53,7 @@ YAML
     PROJECT_CONFIG="$CONFIG" \
     bash "$SCRIPT" --key preflight_commands --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 1 commands passed'
+  grep -q 'all 1 commands passed' <<< "$output"
 }
 
 # --- AC1: preflight pass/fail/127 ---
@@ -66,7 +66,7 @@ preflight_commands:
 YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 2 commands passed'
+  grep -q 'all 2 commands passed' <<< "$output"
 }
 
 @test "one preflight command fails — HALT names command and exit code" {
@@ -79,9 +79,9 @@ YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
   # Assert on the HALT line itself — not the progress line.
-  echo "$output" | grep -q 'HALT:.*false.*(exit 1)'
+  grep -q 'HALT:.*false.*(exit 1)' <<< "$output"
   # Third command must not run.
-  echo "$output" | grep -qv '\[preflight_commands 3/3\]' || true
+  case "$output" in *"[preflight_commands 3/3]"*) return 1 ;; esac
 }
 
 @test "command not found — HALT names command and exit 127" {
@@ -91,7 +91,7 @@ preflight_commands:
 YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT:.*no-such-cmd-synth.*(exit 127)'
+  grep -q 'HALT:.*no-such-cmd-synth.*(exit 127)' <<< "$output"
 }
 
 # --- AC2: absent/empty = silent no-op ---
@@ -130,7 +130,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 1 commands passed'
+  grep -q 'all 1 commands passed' <<< "$output"
 }
 
 @test "smoke fails — HALT names command" {
@@ -140,7 +140,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT:.*false'
+  grep -q 'HALT:.*false' <<< "$output"
 }
 
 @test "smoke key absent — no-op, empty output" {
@@ -169,8 +169,8 @@ preflight_commands: [unterminated
 YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT'
-  echo "$output" | grep -qi 'parse\|failed'
+  grep -q 'HALT' <<< "$output"
+  grep -qi 'parse\|failed' <<< "$output"
 }
 
 @test "unreadable config — fails closed with permission denied" {
@@ -187,8 +187,8 @@ YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   chmod 644 "$CONFIG"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT'
-  echo "$output" | grep -qi 'not readable\|permission'
+  grep -q 'HALT' <<< "$output"
+  grep -qi 'not readable\|permission' <<< "$output"
 }
 
 # --- Workdir test ---
@@ -200,7 +200,7 @@ preflight_commands:
 YAML
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "$WORKDIR"
+  grep -qF "$WORKDIR" <<< "$output"
 }
 
 # --- Usage error ---
@@ -221,7 +221,7 @@ YAML
   touch "$WORKDIR/go.sum"
   run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 2 commands passed'
+  grep -q 'all 2 commands passed' <<< "$output"
 }
 
 # --- yq not installed ---
@@ -240,6 +240,6 @@ YAML
   done
   run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT'
-  echo "$output" | grep -q 'yq'
+  grep -q 'HALT' <<< "$output"
+  grep -q 'yq' <<< "$output"
 }

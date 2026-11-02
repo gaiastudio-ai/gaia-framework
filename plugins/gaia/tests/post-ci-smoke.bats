@@ -28,7 +28,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT:.*exit 1.*(exit 1)'
+  grep -q 'HALT:.*exit 1.*(exit 1)' <<< "$output"
 }
 
 @test "smoke multi-command — first passes, second fails, third skipped" {
@@ -40,7 +40,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  echo "$output" | grep -q 'HALT:.*exit 42.*(exit 42)'
+  grep -q 'HALT:.*exit 42.*(exit 42)' <<< "$output"
   # Third command must not appear.
   case "$output" in *should-not-run*) return 1 ;; esac
 }
@@ -53,7 +53,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'all 2 commands passed'
+  grep -q 'all 2 commands passed' <<< "$output"
 }
 
 @test "smoke key absent on config with other keys — no-op, empty output" {
@@ -75,7 +75,7 @@ post_ci_smoke_commands:
 YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -qF "$WORKDIR"
+  grep -qF "$WORKDIR" <<< "$output"
 }
 
 # --- Hydration tests (resolve-config.sh) ---
@@ -148,7 +148,7 @@ YAML
   run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format shell \
     --shared "$CONFIG"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -q 'preflight_commands_json'
+  grep -q 'preflight_commands_json' <<< "$output"
 }
 
 @test "resolve-config.sh omits arrays when both keys absent" {
@@ -194,12 +194,12 @@ YAML
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
   # The preflight gate must appear in the block.
-  echo "$block" | grep -q 'run-configured-commands.sh'
-  echo "$block" | grep -q 'preflight_commands'
+  grep -q 'run-configured-commands.sh' <<< "$block"
+  grep -q 'preflight_commands' <<< "$block"
   # The preflight gate must appear BEFORE git-push.sh in the block.
   local preflight_line push_line
-  preflight_line="$(echo "$block" | grep -n 'preflight_commands' | head -1 | cut -d: -f1)"
-  push_line="$(echo "$block" | grep -n 'git-push.sh' | head -1 | cut -d: -f1)"
+  preflight_line="$(grep -n 'preflight_commands' <<< "$block" | head -1 | cut -d: -f1)"
+  push_line="$(grep -n 'git-push.sh' <<< "$block" | head -1 | cut -d: -f1)"
   [ -n "$preflight_line" ]
   [ -n "$push_line" ]
   [ "$preflight_line" -lt "$push_line" ]
@@ -224,8 +224,8 @@ YAML
   # Both the runner reference and the preflight key must be inside step 10.
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
-  echo "$block" | grep -q 'run-configured-commands.sh'
-  echo "$block" | grep -q 'preflight_commands'
+  grep -q 'run-configured-commands.sh' <<< "$block"
+  grep -q 'preflight_commands' <<< "$block"
 }
 
 @test "removing smoke block would lose post_ci_smoke reference" {
@@ -233,6 +233,6 @@ YAML
   # Both the runner reference and the smoke key must exist between Steps 12-13.
   local between
   between="$(sed -n '/### Step 12/,/### Step 13/p' "$skill")"
-  echo "$between" | grep -q 'run-configured-commands.sh'
-  echo "$between" | grep -q 'post_ci_smoke_commands'
+  grep -q 'run-configured-commands.sh' <<< "$between"
+  grep -q 'post_ci_smoke_commands' <<< "$between"
 }
