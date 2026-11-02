@@ -572,9 +572,9 @@ Line2 end"
   _mk_project TEST-EC9b
   bash "$RW" record-round --story TEST-EC9b --run-id "round-20261101T120001Z-90910" \
     --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
-  run bash "$SR" --story TEST-EC9b
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"unassessed"* ]]
+  bash "$SR" --story TEST-EC9b > "$FIXTURE_DIR/sr-ec9b.txt" 2>&1
+  local sr_ec9b; sr_ec9b="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-ec9b.txt")"
+  [ "$sr_ec9b" = "security_gate_state unassessed" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -760,9 +760,9 @@ Line2 end"
     --gate code-review --report "$FIXTURE_DIR/cr-15c.md"
 
   # security-report-reader must report "assessed" (carried gate has a report).
-  run bash "$SR" --story TEST-15C
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"security_gate_state assessed"* ]]
+  bash "$SR" --story TEST-15C > "$FIXTURE_DIR/sr-15c.txt" 2>&1
+  local sr_15c; sr_15c="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-15c.txt")"
+  [ "$sr_15c" = "security_gate_state assessed" ]
 
   # record-accept-override must NOT block on the security gate (carried with
   # a completed report counts as assessed). It may still block on critical
@@ -836,9 +836,9 @@ Line2 end"
     --gate security-review --report "$FIXTURE_DIR/err-sec.md"
 
   # Reader must report unassessed (errored is not assessed).
-  run bash "$SR" --story TEST-ERR
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"security_gate_state unassessed"* ]]
+  bash "$SR" --story TEST-ERR > "$FIXTURE_DIR/sr-err.txt" 2>&1
+  local sr_line; sr_line="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-err.txt")"
+  [ "$sr_line" = "security_gate_state unassessed" ]
 
   # Accept must be blocked (errored gate, even with a report).
   run bash "$RW" record-accept-override --story TEST-ERR \
