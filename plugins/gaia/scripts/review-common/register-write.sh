@@ -2709,12 +2709,13 @@ _rw_cmd_supersede_brief() {
 # Prints: round_count <N>, max_fix_cycles <M>, escalate true|false.
 
 _rw_cmd_count_rounds() {
-  local key="" max_cycles=""
+  local key="" max_cycles="" current_verdict=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
       --max) [ "$#" -ge 2 ] || _rw_die 1 "--max requires a value"; max_cycles="$2"; shift 2 ;;
+      --current-verdict) [ "$#" -ge 2 ] || _rw_die 1 "--current-verdict requires a value"; current_verdict="$2"; shift 2 ;;
       *) _rw_die 1 "count-rounds: unknown argument: $1" ;;
     esac
   done
@@ -2756,12 +2757,15 @@ _rw_cmd_count_rounds() {
   local rounds_len
   rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
 
-  # Read-only count of non-passing rounds. A completed round is non-passing
-  # when its composite_verdict (written by complete-round --verdict) is not
-  # PASSED. Fail closed: a round without a recorded verdict counts as
-  # non-passing (a FAILED report left without --verdict is never silent).
-  # Superseded rounds are not counted. Open rounds count when gate evidence
-  # shows non-passing (missing reports or errored gate_runs).
+  # Read-only count of non-passing rounds at the decision point.
+  #
+  # complete: non-passing when composite_verdict is not PASSED (fail closed:
+  #   absent verdict counts as non-passing).
+  # superseded: non-passing when any selected gate has no report or any
+  #   gate_runs entry is errored (a superseded round that was replaced
+  #   before completing had non-passing evidence).
+  # open: the caller passes --current-verdict FAILED|PASSED for the round
+  #   being decided; without it, gate evidence is checked.
   local count=0
   if [ "$rounds_len" != "0" ] && [ "$rounds_len" != "null" ]; then
     local idx=0
@@ -2774,25 +2778,48 @@ _rw_cmd_count_rounds() {
           local cv
           cv="$(yq ".rounds[$idx].composite_verdict // \"\"" "$reg_path" 2>/dev/null)" || cv=""
           if [ "$cv" = "PASSED" ]; then
-            : # passing — do not count
+            : # passing
           else
-            # FAILED, any other explicit verdict, or absent (fail closed).
+            count=$((count + 1))
+          fi
+          ;;
+        superseded)
+          # A superseded round had non-passing evidence (missing reports
+          # or errored gates) that prevented completion.
+          local miss_s
+          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
+          local err_s
+          export _RW_SUP_RID
+          _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
+          err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
+          unset _RW_SUP_RID
+          if [ "$miss_s" != "0" ] && [ "$miss_s" != "null" ]; then
+            count=$((count + 1))
+          elif [ "$err_s" != "0" ] && [ "$err_s" != "null" ]; then
             count=$((count + 1))
           fi
           ;;
         open)
-          # Gate-evidence check for the current (not yet completed) round.
-          local miss_o
-          miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
-          local err_o
-          export _RW_OPEN_RID
-          _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
-          err_o="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_o="0"
-          unset _RW_OPEN_RID
-          if [ "$miss_o" != "0" ] && [ "$miss_o" != "null" ]; then
-            count=$((count + 1))
-          elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
-            count=$((count + 1))
+          # The caller passes the composite verdict at the decision point.
+          if [ -n "$current_verdict" ]; then
+            case "$current_verdict" in
+              PASSED|passed) ;; # passing
+              *) count=$((count + 1)) ;;
+            esac
+          else
+            # Fallback: check gate evidence.
+            local miss_o
+            miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
+            local err_o
+            export _RW_OPEN_RID
+            _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
+            err_o="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_o="0"
+            unset _RW_OPEN_RID
+            if [ "$miss_o" != "0" ] && [ "$miss_o" != "null" ]; then
+              count=$((count + 1))
+            elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
+              count=$((count + 1))
+            fi
           fi
           ;;
         # superseded: not counted — never reached completion.
@@ -3007,25 +3034,26 @@ _rw_cmd_record_accept_override() {
     _rw_abort_and_die 1 "record-accept-override: round not found for run-id: $run_id"
 
   # --- Security carve-out: fail closed ---
-  # Block accept while any open critical security finding lacks a complete
-  # sign-off, or the current round's security gate has no completed report.
+  # Block accept while any unresolved critical security finding (disposition
+  # other than "resolved") lacks a complete sign-off, or the current round's
+  # security gate has no completed report.
   local _ao_crit_count
-  _ao_crit_count="$(yq '[.entries[] | select(.severity == "critical" and .disposition == "open" and (.gate_ratings[] | .gate == "security-review"))] | length' "$tmp" 2>/dev/null)" || \
+  _ao_crit_count="$(yq '[.entries[] | select(.severity == "critical" and .disposition != "resolved" and (.gate_ratings[] | .gate == "security-review"))] | length' "$tmp" 2>/dev/null)" || \
     _rw_abort_and_die 1 "record-accept-override: cannot read entries (fail closed)"
 
   if [ "$_ao_crit_count" != "0" ] && [ "$_ao_crit_count" != "null" ]; then
-    # Check each open critical security finding for a complete sign-off.
+    # Check each unresolved critical security finding for a complete sign-off.
     local _ao_unresolved=0 _ao_blocking_ids=""
     local _ao_idx=0
     while [ "$_ao_idx" -lt "$_ao_crit_count" ]; do
       local _ao_fid _ao_disp _ao_so_user _ao_so_owasp _ao_so_impact _ao_so_fid _ao_so_round _ao_so_ts
-      _ao_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].id" "$tmp" 2>/dev/null)" || _ao_fid=""
-      _ao_so_user="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.risk_accepted_by // \"\"" "$tmp" 2>/dev/null)" || _ao_so_user=""
-      _ao_so_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.owasp_category // \"\"" "$tmp" 2>/dev/null)" || _ao_so_owasp=""
-      _ao_so_impact="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.impact // \"\"" "$tmp" 2>/dev/null)" || _ao_so_impact=""
-      _ao_so_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.finding_id // \"\"" "$tmp" 2>/dev/null)" || _ao_so_fid=""
-      _ao_so_round="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.round // \"\"" "$tmp" 2>/dev/null)" || _ao_so_round=""
-      _ao_so_ts="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition == \"open\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.timestamp // \"\"" "$tmp" 2>/dev/null)" || _ao_so_ts=""
+      _ao_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].id" "$tmp" 2>/dev/null)" || _ao_fid=""
+      _ao_so_user="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.risk_accepted_by // \"\"" "$tmp" 2>/dev/null)" || _ao_so_user=""
+      _ao_so_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.owasp_category // \"\"" "$tmp" 2>/dev/null)" || _ao_so_owasp=""
+      _ao_so_impact="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.impact // \"\"" "$tmp" 2>/dev/null)" || _ao_so_impact=""
+      _ao_so_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.finding_id // \"\"" "$tmp" 2>/dev/null)" || _ao_so_fid=""
+      _ao_so_round="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.round // \"\"" "$tmp" 2>/dev/null)" || _ao_so_round=""
+      _ao_so_ts="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.timestamp // \"\"" "$tmp" 2>/dev/null)" || _ao_so_ts=""
 
       # All six fields must be non-empty for a complete sign-off.
       if [ -z "$_ao_so_user" ] || [ "$_ao_so_user" = "null" ] || \
@@ -3045,20 +3073,21 @@ _rw_cmd_record_accept_override() {
     fi
   fi
 
-  # Check the current round's security gate for a completed report.
-  local _ao_sec_report
-  _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
-  # If security-review is a selected gate but has no report, block.
-  local _ao_sec_in_round
-  _ao_sec_in_round="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review")] | length' "$tmp" 2>/dev/null)" || _ao_sec_in_round="0"
-  if [ "$_ao_sec_in_round" != "0" ] && [ "$_ao_sec_in_round" != "null" ]; then
-    if [ -z "$_ao_sec_report" ] || [ "$_ao_sec_report" = "null" ]; then
-      # Check carried gates for security-review with a report.
-      local _ao_sec_carried
-      _ao_sec_carried="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review" and .report_path != "" and .report_path != null)] | length' "$tmp" 2>/dev/null)" || _ao_sec_carried="0"
-      if [ "$_ao_sec_carried" = "0" ] || [ "$_ao_sec_carried" = "null" ]; then
-        _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
-      fi
+  # Require a completed security assessment for the round (fail closed).
+  # Check selected gates first, then carried gates. Block if neither has
+  # a completed security-review report.
+  local _ao_sec_report=""
+  local _ao_sec_in_selected
+  _ao_sec_in_selected="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review")] | length' "$tmp" 2>/dev/null)" || _ao_sec_in_selected="0"
+  if [ "$_ao_sec_in_selected" != "0" ] && [ "$_ao_sec_in_selected" != "null" ]; then
+    _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
+  fi
+  if [ -z "$_ao_sec_report" ] || [ "$_ao_sec_report" = "null" ]; then
+    # Check carried gates for a completed security-review report.
+    local _ao_sec_carried
+    _ao_sec_carried="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review" and .report_path != "" and .report_path != null)] | length' "$tmp" 2>/dev/null)" || _ao_sec_carried="0"
+    if [ "$_ao_sec_carried" = "0" ] || [ "$_ao_sec_carried" = "null" ]; then
+      _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
     fi
   fi
 
@@ -3152,6 +3181,7 @@ Usage:
   register-write.sh supersede-brief --story <key> --run-id <id>
       --brief <new-path> --rationale <text>
   register-write.sh count-rounds --story <key> [--max <N>]
+      [--current-verdict <PASSED|FAILED>]
       [--current-verdict FAILED|PASSED]
   register-write.sh record-escalation --story <key> --run-id <id>
       --round-count <N> --max-cycles <M>

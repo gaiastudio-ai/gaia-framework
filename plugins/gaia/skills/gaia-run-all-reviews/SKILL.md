@@ -331,9 +331,9 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 **Substep 2.4a — Fix-cycle cap check.** After consolidation and before the scope-revision check, run the fix-cycle cap check. This runs BEFORE `complete-round` so that a round with an errored gate counts toward the cap at its decision point.
 
-1. Resolve the configured cap: read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`. When absent (empty output), use the point-of-use default of 2.
+1. Call `register-write.sh count-rounds --story {key} --current-verdict {PASSED|FAILED}` where the verdict is the composite result of the round just consolidated. The subcommand resolves the configured cap from project config (falling back to the default of 2) and returns `round_count`, `max_fix_cycles`, and `escalate true|false`. The `--current-verdict` flag tells the subcommand the verdict of the current open round at the decision point.
 
-2. Call `register-write.sh count-rounds --story {key} --max {cap}`. The subcommand returns `round_count`, `max_fix_cycles`, and `escalate true|false`.
+3. **Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads `escalated`, the story was halted mid-escalation — re-present the three choices without starting a new round or recounting.
 
 3. When `escalate true`:
    - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.

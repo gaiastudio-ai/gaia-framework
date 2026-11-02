@@ -47,9 +47,10 @@ S
   unset CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
 }
 
-# Run a full failing round through the real writers: record-round, record-run
-# (completed), record-round-report (with a FAILED verdict), count-rounds
-# (with --current-verdict FAILED to record the verdict), then complete-round.
+# Run a full failing round through the real writers. The round goes through
+# the SKILL's real order: record-round, record-run, record-round-report,
+# then count-rounds --current-verdict FAILED (decision point), then
+# complete-round --verdict FAILED.
 _run_failing_round() {
   local key="$1" rid="$2"
   bash "$RW" record-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
@@ -59,6 +60,8 @@ _run_failing_round() {
   printf 'Verdict: FAILED (round %s)\n' "$rid" > "$FIXTURE_DIR/report-${rid}.md"
   bash "$RW" record-round-report --story "$key" --run-id "$rid" \
     --gate security-review --report "$FIXTURE_DIR/report-${rid}.md"
+  # Decision point (cap check), then complete.
+  bash "$RW" count-rounds --story "$key" --current-verdict FAILED >/dev/null
   bash "$RW" complete-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" --verdict FAILED
 }
 
@@ -319,9 +322,19 @@ CONF
 
 @test "cap of 1 escalates after the first failing round" {
   _mk_project TEST-EC1
-  _run_failing_round TEST-EC1 "round-20261101T120001Z-10101"
 
-  run bash "$RW" count-rounds --story TEST-EC1 --max 1
+  # Build round 1 up to the decision point (open, report recorded, not yet
+  # completed) — the SKILL's real order.
+  bash "$RW" record-round --story TEST-EC1 --run-id "round-20261102T120001Z-10101" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-EC1 --run-id "round-20261102T120001Z-10101" \
+    --gate security-review --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/r1.md"
+  bash "$RW" record-round-report --story TEST-EC1 --run-id "round-20261102T120001Z-10101" \
+    --gate security-review --report "$FIXTURE_DIR/r1.md"
+
+  # Decision point: cap 1. The open round with --current-verdict FAILED counts.
+  run bash "$RW" count-rounds --story TEST-EC1 --max 1 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 1"* ]]
   [[ "$output" == *"escalate true"* ]]
@@ -390,33 +403,40 @@ except jsonschema.ValidationError:
 
 @test "crashed gate counts as FAILED and repeated crashes escalate at the cap" {
   _mk_project TEST-EC4
-  # Round 1: one gate completes normally (FAILED), one crashes.
-  # Complete-round succeeds because the completed gate has a report.
-  # The errored gate makes the round non-passing.
-  _run_failing_round TEST-EC4 "round-20261101T120001Z-40401"
 
-  # Cap 1: one failing round escalates.
-  run bash "$RW" count-rounds --story TEST-EC4 --max 1
+  # Round 1: gate crashes (errored, no report). complete-round will refuse
+  # so the round stays open until superseded by the next round.
+  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261102T120001Z-40401" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261102T120001Z-40401" \
+    --gate security-review --outcome errored >/dev/null
+
+  # At the decision point, the open errored round counts (--current-verdict).
+  run bash "$RW" count-rounds --story TEST-EC4 --max 1 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 1"* ]]
   [[ "$output" == *"escalate true"* ]]
 
-  # Round 2: also fails.
-  _run_failing_round TEST-EC4 "round-20261101T120002Z-40402"
+  # Round 2: another crash. Opening it supersedes round 1.
+  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261102T120002Z-40402" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261102T120002Z-40402" \
+    --gate security-review --outcome errored >/dev/null
 
-  # Cap 2: two failing rounds escalate at exactly cap 2.
-  run bash "$RW" count-rounds --story TEST-EC4 --max 2
+  # Cap 2: superseded round 1 (errored) + open round 2 (errored).
+  run bash "$RW" count-rounds --story TEST-EC4 --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 2"* ]]
   [[ "$output" == *"escalate true"* ]]
 
-  # Open round with errored gate also counts.
-  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261101T120003Z-40403" \
+  # Round 3: supersedes round 2.
+  bash "$RW" record-round --story TEST-EC4 --run-id "round-20261102T120003Z-40403" \
     --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261101T120003Z-40403" \
+  bash "$RW" record-run --story TEST-EC4 --run-id "round-20261102T120003Z-40403" \
     --gate security-review --outcome errored >/dev/null
 
-  run bash "$RW" count-rounds --story TEST-EC4 --max 2
+  # All three count: 2 superseded + 1 open.
+  run bash "$RW" count-rounds --story TEST-EC4 --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 3"* ]]
   [[ "$output" == *"escalate true"* ]]
