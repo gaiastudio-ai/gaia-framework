@@ -910,3 +910,270 @@ Line2 end"
     --signed-off-findings "$fid"
   [ "$status" -ne 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Multi-hop carry: 3-round chain reads as assessed, accept rc 0
+# ---------------------------------------------------------------------------
+
+@test "multi-hop carry chain: round 3 carried from 2 carried from 1 reads assessed" {
+  _mk_project TEST-MHC
+
+  # Round 1: security-review selected, completed, PASSED.
+  local rid1="round-20261102T120001Z-55501"
+  bash "$RW" record-round --story TEST-MHC --run-id "$rid1" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-MHC --run-id "$rid1" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/mhc-sec-r1.md"
+  bash "$RW" record-round-report --story TEST-MHC --run-id "$rid1" \
+    --gate security-review --report "$FIXTURE_DIR/mhc-sec-r1.md"
+  bash "$RW" complete-round --story TEST-MHC --run-id "$rid1" \
+    --repo "$FIXTURE_DIR/repo" --verdict PASSED
+
+  # Round 2: security-review carried from round 1, code-review selected.
+  local rid2="round-20261102T120002Z-55502"
+  bash "$RW" record-round --story TEST-MHC --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected" \
+    --carry "security-review=${rid1}:carried from prior round"
+  bash "$RW" record-run --story TEST-MHC --run-id "$rid2" --gate code-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/mhc-cr-r2.md"
+  bash "$RW" record-round-report --story TEST-MHC --run-id "$rid2" \
+    --gate code-review --report "$FIXTURE_DIR/mhc-cr-r2.md"
+  bash "$RW" complete-round --story TEST-MHC --run-id "$rid2" \
+    --repo "$FIXTURE_DIR/repo" --verdict FAILED
+
+  # Round 3: security-review carried from round 2 (which carries from 1).
+  local rid3="round-20261102T120003Z-55503"
+  bash "$RW" record-round --story TEST-MHC --run-id "$rid3" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected" \
+    --carry "security-review=${rid2}:carried from prior round"
+
+  # Reader must follow the full two-hop carry chain and report assessed.
+  run bash "$SR" --story TEST-MHC
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"security_gate_state assessed"* ]]
+
+  # Accept override must succeed (no critical findings, gate assessed via chain).
+  run bash "$RW" record-accept-override --story TEST-MHC \
+    --run-id "$rid3" --decision accept --user admin --round 3 \
+    --timestamp "2026-11-02T12:00:00Z"
+  [ "$status" -eq 0 ]
+  local ao; ao="$(yq '(.rounds[-1].accept_override.decision)' "$(_reg TEST-MHC)")"
+  [ "$ao" = "accept" ]
+}
+
+# ---------------------------------------------------------------------------
+# Missing reviewer OWASP category: accept stays blocked, reader shows unknown
+# ---------------------------------------------------------------------------
+
+@test "missing reviewer owasp category blocks accept and reader shows unknown" {
+  _mk_project TEST-NOCAT
+
+  local rid="round-20261102T120001Z-44401"
+  bash "$RW" record-round --story TEST-NOCAT --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-NOCAT --run-id "$rid" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/nocat-sec.md"
+  bash "$RW" record-round-report --story TEST-NOCAT --run-id "$rid" \
+    --gate security-review --report "$FIXTURE_DIR/nocat-sec.md"
+
+  # Add a critical finding WITHOUT --owasp-category.
+  bash "$RW" add --story TEST-NOCAT --defect "injection flaw" --type security \
+    --severity critical --gate security-review --impact "data breach" \
+    --blocking --blocking-rationale "critical security"
+
+  local reg; reg="$(_reg TEST-NOCAT)"
+  local fid; fid="$(yq '.entries[-1].id' "$reg")"
+
+  # Sign off with an owasp-category (the approver's classification).
+  bash "$RW" sign-off-finding --story TEST-NOCAT --finding-id "$fid" \
+    --risk-accepted-by admin --owasp-category "A03" --impact "data breach" \
+    --round 1 --timestamp "2026-11-02T12:00:00Z"
+
+  # Accept must still be blocked: the reviewer's gate_ratings has no category.
+  run bash "$RW" record-accept-override --story TEST-NOCAT \
+    --run-id "$rid" --decision accept --user admin --round 1 \
+    --timestamp "2026-11-02T12:00:00Z"
+  [ "$status" -ne 0 ]
+  [[ "${lines[*]}" == *"blocked"* ]]
+
+  # Reader must show "unknown" for OWASP, NOT the approver's "A03".
+  run bash "$SR" --story TEST-NOCAT
+  [ "$status" -eq 0 ]
+  # Extract the owasp value from the JSON output. The reader outputs
+  # multi-line JSON so use grep to isolate the field.
+  local owasp_line
+  owasp_line="$(printf '%s\n' "$output" | /usr/bin/grep -o '"owasp": *"[^"]*"' | head -1)"
+  [[ "$owasp_line" == *'"unknown"'* ]]
+  # Must NOT contain A03 (the approver's sign-off text).
+  [[ "$owasp_line" != *'"A03"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Halted all-FAILED round: open round with all reports counts toward cap
+# ---------------------------------------------------------------------------
+
+@test "halted round with all FAILED reports counts toward the cap" {
+  _mk_project TEST-HALT
+
+  # Round 1: completed FAILED.
+  _run_failing_round TEST-HALT "round-20261102T120001Z-33301"
+
+  # Round 2: all gates have reports (FAILED) but halted before complete-round.
+  local rid2="round-20261102T120002Z-33302"
+  bash "$RW" record-round --story TEST-HALT --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-HALT --run-id "$rid2" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/halt-r2.md"
+  bash "$RW" record-round-report --story TEST-HALT --run-id "$rid2" \
+    --gate security-review --report "$FIXTURE_DIR/halt-r2.md"
+  # Do NOT call complete-round — the round is halted.
+
+  # count-rounds without --current-verdict must count both rounds.
+  run bash "$RW" count-rounds --story TEST-HALT --max 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 2"* ]]
+  [[ "$output" == *"escalate true"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Deterministic lock test: count-rounds blocks while lock is held
+# ---------------------------------------------------------------------------
+
+@test "count-rounds blocks while the register lock is held" {
+  command -v flock >/dev/null 2>&1 || skip "flock not available"
+  _mk_project TEST-LOCK
+
+  _run_failing_round TEST-LOCK "round-20261102T120001Z-22201"
+
+  local reg; reg="$(_reg TEST-LOCK)"
+  local lockfile="${reg}.lock"
+
+  # Hold the lock with flock from a background process.
+  touch "$lockfile"
+  exec 7>>"$lockfile"
+  flock -x 7
+
+  # count-rounds should block (15s timeout in the writer).
+  # Start it with a short timeout in the background.
+  local start_ts; start_ts="$(date +%s)"
+  bash "$RW" count-rounds --story TEST-LOCK --max 2 > "$TMP/lock-out.txt" 2>&1 &
+  local cr_pid=$!
+
+  # Wait briefly — the process should still be running (blocked on lock).
+  sleep 1
+  if ! kill -0 "$cr_pid" 2>/dev/null; then
+    # Process finished too quickly — check that it took non-trivial time.
+    local end_ts; end_ts="$(date +%s)"
+    local elapsed=$((end_ts - start_ts))
+    # If it finished in <1s, the lock wasn't effective.
+    [ "$elapsed" -ge 1 ]
+  fi
+
+  # Release the lock.
+  flock -u 7
+  exec 7>&-
+
+  # Now the process should finish.
+  local cr_rc=0
+  wait "$cr_pid" || cr_rc=$?
+  [ "$cr_rc" -eq 0 ]
+
+  # Verify output is correct.
+  local out; out="$(cat "$TMP/lock-out.txt")"
+  [[ "$out" == *"round_count 1"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Descope: review->backlog is refused; review->blocked->backlog succeeds
+# ---------------------------------------------------------------------------
+
+@test "descope: review->backlog is refused by the state machine" {
+  # Source the state machine library and test the edge directly.
+  source "${PLUGIN_ROOT}/scripts/lib/story-state-machine.sh"
+
+  # review -> backlog must be rejected.
+  run validate_story_transition "review" "backlog"
+  [ "$status" -ne 0 ]
+
+  # review -> blocked is allowed.
+  run validate_story_transition "review" "blocked"
+  [ "$status" -eq 0 ]
+
+  # blocked -> backlog is allowed.
+  run validate_story_transition "blocked" "backlog"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Three escalation choices documented in the SKILL
+# ---------------------------------------------------------------------------
+
+@test "three escalation choices are documented with correct patterns" {
+  # Accept override: check the recording path.
+  /usr/bin/grep -q 'record-accept-override' "$RUN_ALL_SKILL"
+
+  # Descope to backlog: the two-step transition path.
+  /usr/bin/grep -q 'transition-story-status.sh.*--to blocked' "$RUN_ALL_SKILL"
+  /usr/bin/grep -q 'transition-story-status.sh.*--to backlog' "$RUN_ALL_SKILL"
+
+  # One more cycle: documented explicitly.
+  /usr/bin/grep -q 'one more cycle' "$RUN_ALL_SKILL"
+
+  # All three appear in the same escalation section (Substep 2.4a).
+  local sec_start sec_end
+  sec_start=$(/usr/bin/grep -n 'Substep 2.4a' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  sec_end=$(/usr/bin/grep -n 'Substep 2.4b' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  [ -n "$sec_start" ] && [ -n "$sec_end" ]
+  [ "$sec_start" -lt "$sec_end" ]
+
+  # The three choices appear between 2.4a and 2.4b.
+  local section; section="$(sed -n "${sec_start},${sec_end}p" "$RUN_ALL_SKILL")"
+  [[ "$section" == *"accept override"* ]]
+  [[ "$section" == *"descope to backlog"* ]]
+  [[ "$section" == *"one more cycle"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Doctor: effective cap reported with and without config
+# ---------------------------------------------------------------------------
+
+@test "doctor reports effective cap 2 (default) and configured value" {
+  # Without config: resolve-config returns empty, count-rounds defaults to 2.
+  _mk_project TEST-DOC
+  _run_failing_round TEST-DOC "round-20261102T120001Z-11101"
+  _run_failing_round TEST-DOC "round-20261102T120002Z-11102"
+
+  # No review section in config → count-rounds uses default 2.
+  run bash "$RW" count-rounds --story TEST-DOC
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"max_fix_cycles 2"* ]]
+  [[ "$output" == *"escalate true"* ]]
+
+  # With config: count-rounds reads the configured value.
+  mkdir -p "$FIXTURE_DIR/.gaia/config"
+  cat > "$FIXTURE_DIR/.gaia/config/project-config.yaml" <<CONF
+project_root: "."
+project_path: "."
+memory_path: ".gaia/memory"
+checkpoint_path: ".gaia/memory/checkpoints"
+installed_path: "."
+framework_version: "1.225.0"
+date: "2026-11-01"
+review:
+  max_fix_cycles: 5
+CONF
+  run bash "$RW" count-rounds --story TEST-DOC
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"max_fix_cycles 5"* ]]
+  [[ "$output" == *"escalate false"* ]]
+
+  # Doctor SKILL.md documents the "2 (default)" text.
+  /usr/bin/grep -q '2 (default)' "$DOCTOR_SKILL"
+
+  # Doctor SKILL.md documents the resolve-config command.
+  /usr/bin/grep -q 'resolve-config.sh --field review.max_fix_cycles' "$DOCTOR_SKILL"
+}

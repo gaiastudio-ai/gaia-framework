@@ -2826,10 +2826,15 @@ _rw_cmd_count_rounds() {
               count=$((count + 1))
             elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
               count=$((count + 1))
+            else
+              # Halted round: all selected gates have reports, none errored,
+              # but the round was never completed (e.g. scope-revision halt).
+              # Fail closed: count as non-passing.
+              count=$((count + 1))
             fi
           fi
           ;;
-        # superseded: not counted — never reached completion.
+        # Any other status (e.g. unknown): not counted.
       esac
       idx=$((idx + 1))
     done

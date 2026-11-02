@@ -151,11 +151,11 @@ while [ "$idx" -lt "$crit_count" ]; do
   f_id="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].id // \"unknown\"" "$reg_path" 2>/dev/null)" || f_id="unknown"
   f_disp="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].disposition // \"open\"" "$reg_path" 2>/dev/null)" || f_disp="open"
 
-  # OWASP category: from gate_ratings first, then sign_off, else "unknown".
+  # OWASP category: from gate_ratings only (the reviewer's classification).
+  # The sign-off category belongs to the approver and must not be shown
+  # as the reviewer's classification — that would let an approver inject
+  # a misleading category.
   f_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].gate_ratings[] | select(.gate == \"security-review\") | .owasp_category // \"\"" "$reg_path" 2>/dev/null)" || f_owasp=""
-  if [ -z "$f_owasp" ] || [ "$f_owasp" = "null" ]; then
-    f_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].sign_off.owasp_category // \"\"" "$reg_path" 2>/dev/null)" || f_owasp=""
-  fi
   [ -n "$f_owasp" ] && [ "$f_owasp" != "null" ] || f_owasp="unknown"
 
   # Impact: from entry.impact first, then sign_off.impact, else "unknown".
