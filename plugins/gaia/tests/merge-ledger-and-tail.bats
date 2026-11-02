@@ -1832,10 +1832,10 @@ HELPEOF
     bash "$helper" 2>&1)" || true
 
   # reached-end must print (no abort)
-  echo "$result" | /usr/bin/grep -qF 'reached-end'
+  case "$result" in *reached-end*) ;; *) return 1 ;; esac
 
   # SAFE_VAR=harmless must be forwarded
-  echo "$result" | /usr/bin/grep -qF 'SAFE_VAR=harmless'
+  case "$result" in *SAFE_VAR=harmless*) ;; *) return 1 ;; esac
 
   # The injection marker must NOT exist
   [ ! -f "$marker" ]
