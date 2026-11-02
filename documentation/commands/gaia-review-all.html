@@ -10,7 +10,7 @@
         <p class="sidebar-section-title">Categories</p>
         <ul><li><a href="../categories/getting-started.html">Getting Started</a></li><li><a href="../categories/discovery-research.html">Discovery &amp; Research</a></li><li><a href="../categories/planning.html">Planning</a></li><li><a href="../categories/sprint-management.html">Sprint Management</a></li><li><a href="../categories/development.html">Development</a></li><li><a href="../categories/testing.html">Testing</a></li><li><a href="../categories/reviews.html">Reviews</a></li><li><a href="../categories/validation.html">Validation</a></li><li><a href="../categories/deployment.html">Deployment</a></li><li><a href="../categories/configuration.html">Configuration</a></li><li><a href="../categories/documentation.html">Documentation &amp; Editorial</a></li><li><a href="../categories/creative.html">Creative &amp; Collaboration</a></li><li><a href="../categories/internal.html">Internal Skills</a></li></ul>
         <p class="sidebar-section-title">On this page</p>
-        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
+        <ul><li><a href="#what-it-does">What it does</a></li><li><a href="#when-to-use">When to use it</a></li><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#orchestration-mode">Orchestration mode</a></li><li><a href="#how-to-invoke">How to invoke</a></li><li><a href="#step-by-step">Step by step</a></li><li><a href="#inputs">Inputs</a></li><li><a href="#outputs">Outputs</a></li><li><a href="#example">Example session</a></li><li><a href="#what-next">What to run next</a></li><li><a href="#telemetry">Review telemetry</a></li><li><a href="#troubleshooting">Troubleshooting</a></li><li><a href="#related">Related commands</a></li></ul>
       </nav>
     </aside>
     <main class="main-content">
@@ -78,6 +78,29 @@ Running 6 reviews for E3-S7...
 
 Review Gate: 5/6 passed, 1 failed.
 Fix the security finding and re-run: /gaia-review-all E3-S7</code></pre></section>
+      <section id="telemetry"><h2>Review telemetry</h2>
+        <p>Each review gate verdict is automatically recorded in a <code>review-telemetry.jsonl</code> file inside the story's artifact folder. The file is append-only, one JSON line per entry, and never blocks or delays the review itself.</p>
+        <h3>Line types</h3>
+        <dl>
+          <dt><code>gate</code></dt>
+          <dd>One line per gate verdict (PASSED or FAILED). Fields: <code>schema_version</code>, <code>type</code>, <code>gate</code>, <code>round</code>, <code>run_id</code>, <code>start</code>, <code>end</code>, <code>duration_ms</code>, <code>verdict</code>, <code>mutation_score</code>, <code>token_estimate</code>.</dd>
+          <dt><code>round-summary</code></dt>
+          <dd>One line after all gates in a round complete. Fields: <code>schema_version</code>, <code>type</code>, <code>round</code>, <code>composite_verdict</code>, <code>total_duration_ms</code>, <code>total_tokens</code>, <code>gates</code> (object mapping each gate name to its verdict).</dd>
+          <dt><code>story-total</code></dt>
+          <dd>One line when a round reaches the COMPLETE composite (all six gates PASSED). Same fields as <code>round-summary</code>.</dd>
+        </dl>
+        <h3>Schema version</h3>
+        <p>Every line carries a <code>schema_version</code> field (currently <code>1</code>). Consumers should check this field before parsing. Future schema changes will increment the version.</p>
+        <h3>Nullable fields</h3>
+        <p>Fields that depend on orchestration context are <code>null</code> when their source is absent. Standalone review invocations (outside <code>/gaia-review-all</code>) write <code>round: null</code>, <code>run_id: null</code>, <code>start: null</code>, <code>duration_ms: null</code> and <code>token_estimate: null</code>.</p>
+        <h3>Safety properties</h3>
+        <ul>
+          <li>Append-only: existing lines are never rewritten or deleted.</li>
+          <li>No secrets: the file contains only the allowlisted metric fields. Source text, diff content, findings text and credentials are never written.</li>
+          <li>Non-blocking: a write failure is logged and the review continues.</li>
+          <li>Atomic: each write is a single <code>printf</code> call under PIPE_BUF, preventing partial or interleaved lines.</li>
+        </ul>
+      </section>
       <section id="what-next"><h2>What to run next</h2><p>After all reviews pass, run <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a> to verify the composite gate status and transition the story to done.</p></section>
       <section id="troubleshooting"><h2>Troubleshooting</h2><h3>"Story must be in review status"</h3><p>The story has not been implemented yet. Run <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a> first.</p><h3>A reviewer crashed</h3><p>The crashed reviewer is recorded as FAILED and the remaining reviews continue. Fix the underlying issue and re-run with <code>--force</code>.</p>
         <h3>I keep seeing the GAIA orchestration warning every time I start this command</h3>

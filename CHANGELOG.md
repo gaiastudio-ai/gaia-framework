@@ -20,6 +20,14 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 - `/gaia-doctor` lists configured commands; `/gaia-readiness-check` flags empty-string entries.
 - Documentation updates in the dev-story command page and configuration reference.
 
+### Review telemetry (2026-11-01)
+
+#### Added
+- `review-telemetry-writer.sh` — append-only per-story telemetry for review gate verdicts. Writes one JSON line per gate verdict, per round summary, and per story total to `review-telemetry.jsonl` in the story's artifact folder. Non-blocking (write errors are logged; the review continues). Atomic appends via single `printf` under PIPE_BUF.
+- `review-gate.sh update` now accepts optional `--started-at`, `--token-estimate`, `--telemetry-round` and `--telemetry-run-id` flags. When a verdict is PASSED or FAILED (not UNVERIFIED, not a ledger-only gate), the telemetry writer is called automatically.
+- `/gaia-run-all-reviews` Step 3 now writes a `round-summary` telemetry line after each round and a `story-total` line when the composite reaches COMPLETE.
+- Documentation page for `/gaia-review-all` now includes a "Review telemetry" section documenting the line schema, types, nullable fields and safety properties.
+
 ### Walk-up path resolution: git-bounded outside HOME (2026-10-24)
 
 #### Changed
