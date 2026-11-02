@@ -210,7 +210,24 @@ For each short_name in run:
      self-judge).
 
   4. Write the verdict via review-gate.sh update with --report (and
-     --execution-evidence for test-execution gates).
+     --execution-evidence for test-execution gates). Pass telemetry
+     flags so the per-gate telemetry line records non-null timing:
+
+     ```bash
+     bash scripts/review-gate.sh update \
+       --story {story_key} --gate "{gate_name}" --verdict {verdict} \
+       --report {report_path} \
+       --started-at {gate_start_epoch_ms} \
+       --token-estimate {token_estimate_from_throughput_telemetry} \
+       --telemetry-round {round_ordinal} \
+       --telemetry-run-id {run_id}
+     ```
+
+     **Value sources:**
+     - `--started-at`: record `$(perl -MTime::HiRes=time -e 'printf "%d", time*1000')` immediately before dispatching the gate skill; the writer computes `ended-at` at write time.
+     - `--token-estimate`: reuse the estimate from `throughput-telemetry.sh` when available; null otherwise.
+     - `--telemetry-round`: the 1-based ordinal of this review round (incremented each invocation of `/gaia-run-all-reviews`).
+     - `--telemetry-run-id`: the run ID minted at the start of Step 2.
 
   4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
 
@@ -398,6 +415,42 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
    ```
 
    The nudge block branches on the composite outcome (ALL PASSED → COMPLETE; N FAILED → BLOCKED with a "Blocking gates" list; N UNVERIFIED → PENDING with a "Pending gates" list).
+
+4. **Write review telemetry** after the composite verdict is known. Build a JSON object mapping each gate name to its verdict, then call the telemetry writer twice: a round-summary for every round, and a story-total when the composite is COMPLETE.
+
+   ```bash
+   # Build the per-gate verdict map (jq --arg per gate).
+   _gates_json="$(jq -nc \
+     --arg g1 "{code_verdict}" --arg g2 "{qa_verdict}" \
+     --arg g3 "{security_verdict}" --arg g4 "{test_auto_verdict}" \
+     --arg g5 "{test_review_verdict}" --arg g6 "{perf_verdict}" \
+     '{"Code Review":$g1,"QA Tests":$g2,"Security Review":$g3,
+       "Test Automation":$g4,"Test Review":$g5,"Performance Review":$g6}')"
+
+   bash scripts/review-telemetry-writer.sh round-summary \
+     --story {story_key} --round {round_ordinal} \
+     --composite-verdict {composite} \
+     --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+     --gates-json "$_gates_json"
+
+   # When the composite is COMPLETE (all six PASSED), append a story-total.
+   if [ "{composite}" = "COMPLETE" ]; then
+     bash scripts/review-telemetry-writer.sh story-total \
+       --story {story_key} --round {round_ordinal} \
+       --composite-verdict COMPLETE \
+       --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+       --gates-json "$_gates_json"
+   fi
+   ```
+
+   The telemetry writer is non-blocking: failures are logged and the review flow continues.
+
+   **Value sources for round-summary / story-total:**
+   - `{round_ordinal}`: the 1-based ordinal of this review round, same value passed to the per-gate telemetry flags.
+   - `{composite}`: the composite verdict string from `review-gate.sh review-gate-check` (COMPLETE / BLOCKED / PENDING).
+   - `{total_ms}`: sum of the per-gate `duration_ms` values recorded in the gate-entry lines for this round. Null when any gate's start time was absent.
+   - `{total_tokens}`: sum of the per-gate `token_estimate` values. Null when no gate supplied a token estimate.
+   - Per-gate verdicts: the six verdicts read from the Review Gate table after all gates finish (PASSED / FAILED / UNVERIFIED).
 
 ### Step 4: Composite Verdict GATING
 
