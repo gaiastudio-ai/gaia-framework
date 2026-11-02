@@ -281,12 +281,14 @@ _tw_gate_entry() {
   local jq_filter
   if [ -n "$started_at" ] && [ -z "$ended_at" ]; then
     # start given, end from jq wall-clock: compute duration inside jq.
-    jq_filter='{schema_version:$schema_version,type:$type,gate:$gate,
+    # Single end read via `as $e` prevents a future start from producing
+    # a negative duration (refuse with error, no line written).
+    jq_filter='(now*1000|floor) as $e |
+      if $e < $start then error("end before start") else
+      {schema_version:$schema_version,type:$type,gate:$gate,
       round:$round,run_id:$run_id,start:$start,
-      end:(now*1000|floor),
-      duration_ms:((now*1000|floor)-$start),
-      verdict:$verdict,
-      mutation_score:$mutation_score,token_estimate:$token_estimate}'
+      end:$e,duration_ms:($e-$start),verdict:$verdict,
+      mutation_score:$mutation_score,token_estimate:$token_estimate} end'
   elif [ -n "$ended_at" ]; then
     # Both start and end explicit: duration is end-start.
     jq_filter='{schema_version:$schema_version,type:$type,gate:$gate,

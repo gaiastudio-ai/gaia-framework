@@ -85,127 +85,79 @@ teardown() { common_teardown; }
   [ "$(jq -r '.type' "$JSONL")" = "story-total" ]
 }
 
-# ===== Timing: real p95 outside bats DEBUG trap =====
+# ===== Timing: real p95, no process started per sample =====
 
-@test "real in-process p95 is within 50 ms over 100 writes" {
-  # Run the timing loop in a child script to avoid bats DEBUG-trap overhead.
-  # Uses perl for timestamps (portable across bash 3.2 and 5).
-  local timing_script="$TEST_TMP/timing-loop.sh"
+# Helper: run a timing loop using bash `time` keyword (no subprocess per
+# sample). Writes per-write durations in ms to stdout. Takes the writer
+# source file as $1. Uses TIMEFORMAT (works on bash 3.2 and 5).
+_run_timing_loop() {
+  local writer_src="$1"
+  local timing_script="$TEST_TMP/timing-$RANDOM.sh"
   cat > "$timing_script" <<SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
-_TW_SOURCED=1 . "$WRITER"
-_ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
+_TW_SOURCED=1 . "$writer_src"
 SF="$STORY_DIR/story.md"
 export PROJECT_PATH="$TEST_TMP" PROJECT_ROOT="$TEST_TMP"
+TIMEFORMAT='%3R'
 for i in \$(seq 1 100); do
-  t1="\$(_ms)"
-  _tw_gate_entry --story E900-S1 --story-file "\$SF" \
-    --gate "Code Review" --verdict PASSED \
-    --started-at 1700000000000 --round "\$i" 2>/dev/null
-  t2="\$(_ms)"
-  echo \$(( t2 - t1 ))
+  tf="\$TEST_TMP/tw-time-\$\$-\$i"
+  { time _tw_gate_entry --story E900-S1 --story-file "\$SF" \
+      --gate "Code Review" --verdict PASSED \
+      --started-at 1700000000000 --round "\$i" 2>/dev/null ; } 2>"\$tf"
+  # Convert seconds.milliseconds to integer ms.
+  raw="\$(cat "\$tf")"
+  sec="\${raw%%.*}"
+  frac="\${raw#*.}"
+  frac="\${frac:0:3}"
+  while [ "\${#frac}" -lt 3 ]; do frac="\${frac}0"; done
+  echo \$(( sec * 1000 + 10#\$frac ))
+  rm -f "\$tf"
 done
 SCRIPT
   chmod +x "$timing_script"
+  bash "$timing_script"
+}
+
+@test "real in-process p95 is within 50 ms over 100 writes" {
   local durations
-  durations="$(bash "$timing_script")"
+  durations="$(_run_timing_loop "$WRITER")"
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "p95=${p95}ms"
-  # Budget: 50ms per write (the documented timing requirement).
-  # Measured: 24-25ms bash 5, 28-30ms bash 3.2.
   [ "$p95" -le 50 ]
 }
 
 @test "p95 test fails for tail-latency mutant (10% writes sleep 120 ms)" {
-  # Inject a tail-latency sleep into the REAL writer's _tw_append.
-  # Deterministic tail latency: every 10th write sleeps 120ms (writes 10,20,...100).
   local mutant="$TEST_TMP/mutant-writer-tail.sh"
   sed 's/^_tw_append() {/_tw_append() { _TW_TAIL_CTR=$(( ${_TW_TAIL_CTR:-0} + 1 )); if [ $(( _TW_TAIL_CTR % 10 )) -eq 0 ]; then sleep 0.12; fi/' "$WRITER" > "$mutant"
-  local timing_script="$TEST_TMP/tail-latency.sh"
-  cat > "$timing_script" <<SCRIPT
-#!/usr/bin/env bash
-set -euo pipefail
-_TW_SOURCED=1 . "$mutant"
-_ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
-SF="$STORY_DIR/story.md"
-export PROJECT_PATH="$TEST_TMP" PROJECT_ROOT="$TEST_TMP"
-for i in \$(seq 1 100); do
-  t1="\$(_ms)"
-  _tw_gate_entry --story E900-S1 --story-file "\$SF" \
-    --gate "Code Review" --verdict PASSED \
-    --started-at 1700000000000 --round "\$i" 2>/dev/null
-  t2="\$(_ms)"
-  echo \$(( t2 - t1 ))
-done
-SCRIPT
-  chmod +x "$timing_script"
   local durations
-  durations="$(bash "$timing_script")"
+  durations="$(_run_timing_loop "$mutant")"
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "tail-latency-mutant p95=${p95}ms"
-  # 10% of writes sleep 120ms; p95 must exceed the 50ms budget.
   [ "$p95" -gt 50 ]
 }
 
 @test "p95 test fails for real-writer 40 ms sleep mutant" {
-  # Inject a sleep into the REAL writer file (not a redefinition).
   local mutant="$TEST_TMP/mutant-writer-40.sh"
   sed 's/^_tw_append() {/_tw_append() { sleep 0.04/' "$WRITER" > "$mutant"
-  local timing_script="$TEST_TMP/timing-40ms.sh"
-  cat > "$timing_script" <<SCRIPT
-#!/usr/bin/env bash
-set -euo pipefail
-_TW_SOURCED=1 . "$mutant"
-_ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
-SF="$STORY_DIR/story.md"
-export PROJECT_PATH="$TEST_TMP" PROJECT_ROOT="$TEST_TMP"
-for i in \$(seq 1 10); do
-  t1="\$(_ms)"
-  _tw_gate_entry --story E900-S1 --story-file "\$SF" \
-    --gate "Code Review" --verdict PASSED --round "\$i" 2>/dev/null
-  t2="\$(_ms)"
-  echo \$(( t2 - t1 ))
-done
-SCRIPT
-  chmod +x "$timing_script"
   local durations
-  durations="$(bash "$timing_script")"
+  durations="$(_run_timing_loop "$mutant")"
   local p95
-  p95="$(printf '%s\n' $durations | sort -n | sed -n '10p')"
+  p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "40ms-real-mutant p95=${p95}ms"
-  # 40ms sleep + jq base (~12-25ms) = ~52-65ms; must exceed the 50ms budget.
   [ "$p95" -gt 50 ]
 }
 
 @test "p95 test fails for real-writer 60 ms sleep mutant" {
   local mutant="$TEST_TMP/mutant-writer-60.sh"
   sed 's/^_tw_append() {/_tw_append() { sleep 0.06/' "$WRITER" > "$mutant"
-  local timing_script="$TEST_TMP/timing-60ms.sh"
-  cat > "$timing_script" <<SCRIPT
-#!/usr/bin/env bash
-set -euo pipefail
-_TW_SOURCED=1 . "$mutant"
-_ms() { perl -MTime::HiRes=time -e 'printf "%d", time*1000'; }
-SF="$STORY_DIR/story.md"
-export PROJECT_PATH="$TEST_TMP" PROJECT_ROOT="$TEST_TMP"
-for i in \$(seq 1 10); do
-  t1="\$(_ms)"
-  _tw_gate_entry --story E900-S1 --story-file "\$SF" \
-    --gate "Code Review" --verdict PASSED --round "\$i" 2>/dev/null
-  t2="\$(_ms)"
-  echo \$(( t2 - t1 ))
-done
-SCRIPT
-  chmod +x "$timing_script"
   local durations
-  durations="$(bash "$timing_script")"
+  durations="$(_run_timing_loop "$mutant")"
   local p95
-  p95="$(printf '%s\n' $durations | sort -n | sed -n '10p')"
+  p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "60ms-real-mutant p95=${p95}ms"
-  # 60ms sleep + jq base (~12-25ms) = ~72-85ms; must exceed the 50ms budget.
   [ "$p95" -gt 50 ]
 }
 
@@ -470,3 +422,67 @@ SCRIPT
 
 @test "unknown subcommand exits 1" { run bash "$WRITER" bad-subcmd; [ "$status" -eq 1 ]; }
 @test "no arguments exits 1" { run bash "$WRITER"; [ "$status" -eq 1 ]; }
+
+# ===== Negative duration on the hook path =====
+
+@test "future --started-at through review-gate.sh writes no line and warns" {
+  local cap rc
+  cap="$(bash "$GATE_SCRIPT" update --story E900-S1 --gate "QA Tests" --verdict PASSED \
+    --started-at 99999999999999 2>&1 1>/dev/null)" && rc=0 || rc=$?
+  [ "$rc" -eq 0 ]
+  [ ! -f "$JSONL" ]
+  [[ "$cap" == *"end before start"* ]]
+}
+
+@test "written gate lines have end minus start equal to duration_ms" {
+  run bash "$GATE_SCRIPT" update --story E900-S1 --gate "Code Review" --verdict PASSED \
+    --started-at 1700000000000
+  [ "$status" -eq 0 ]; [ -f "$JSONL" ]
+  local l; l="$(cat "$JSONL")"
+  local s e d
+  s="$(jq '.start' <<< "$l")"
+  e="$(jq '.end' <<< "$l")"
+  d="$(jq '.duration_ms' <<< "$l")"
+  [ "$d" -eq $(( e - s )) ]
+  [ "$d" -ge 0 ]
+}
+
+# ===== Allowlist: exact key set on real write paths =====
+
+@test "review-gate with --started-at writes exactly the gate allowlist" {
+  run bash "$GATE_SCRIPT" update --story E900-S1 --gate "Code Review" --verdict PASSED \
+    --started-at 1700000000000 --token-estimate 100 \
+    --telemetry-round 1 --telemetry-run-id "round-20260101T000000Z-1"
+  [ "$status" -eq 0 ]; [ -f "$JSONL" ]
+  local keys; keys="$(jq -r 'keys[]' "$JSONL" | sort)"
+  local expected; expected="$(printf '%s\n' duration_ms end gate mutation_score round run_id schema_version start token_estimate type verdict | sort)"
+  [ "$keys" = "$expected" ]
+}
+
+@test "review-gate without --started-at writes exactly the gate allowlist" {
+  run bash "$GATE_SCRIPT" update --story E900-S1 --gate "Code Review" --verdict PASSED
+  [ "$status" -eq 0 ]; [ -f "$JSONL" ]
+  local keys; keys="$(jq -r 'keys[]' "$JSONL" | sort)"
+  local expected; expected="$(printf '%s\n' duration_ms end gate mutation_score round run_id schema_version start token_estimate type verdict | sort)"
+  [ "$keys" = "$expected" ]
+}
+
+@test "round-summary writes exactly the summary allowlist" {
+  local g='{"Code Review":"PASSED","QA Tests":"PASSED","Security Review":"PASSED","Test Automation":"PASSED","Test Review":"PASSED","Performance Review":"PASSED"}'
+  run bash "$WRITER" round-summary --story E900-S1 --round 1 --composite-verdict COMPLETE \
+    --total-duration-ms 5000 --total-tokens 1000 --gates-json "$g"
+  [ "$status" -eq 0 ]; [ -f "$JSONL" ]
+  local keys; keys="$(jq -r 'keys[]' "$JSONL" | sort)"
+  local expected; expected="$(printf '%s\n' composite_verdict gates round schema_version total_duration_ms total_tokens type | sort)"
+  [ "$keys" = "$expected" ]
+}
+
+@test "story-total writes exactly the summary allowlist" {
+  local g='{"Code Review":"PASSED","QA Tests":"PASSED","Security Review":"PASSED","Test Automation":"PASSED","Test Review":"PASSED","Performance Review":"PASSED"}'
+  run bash "$WRITER" story-total --story E900-S1 --round 1 --composite-verdict COMPLETE \
+    --total-duration-ms 5000 --total-tokens 1000 --gates-json "$g"
+  [ "$status" -eq 0 ]; [ -f "$JSONL" ]
+  local keys; keys="$(jq -r 'keys[]' "$JSONL" | sort)"
+  local expected; expected="$(printf '%s\n' composite_verdict gates round schema_version total_duration_ms total_tokens type | sort)"
+  [ "$keys" = "$expected" ]
+}
