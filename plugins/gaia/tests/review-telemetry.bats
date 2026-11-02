@@ -123,8 +123,9 @@ SCRIPT
 
 @test "p95 test fails for tail-latency mutant (10% writes sleep 120 ms)" {
   # Inject a tail-latency sleep into the REAL writer's _tw_append.
+  # Deterministic tail latency: every 10th write sleeps 120ms (writes 10,20,...100).
   local mutant="$TEST_TMP/mutant-writer-tail.sh"
-  sed 's/^_tw_append() {/_tw_append() { if [ $(( RANDOM % 10 )) -eq 0 ]; then sleep 0.12; fi/' "$WRITER" > "$mutant"
+  sed 's/^_tw_append() {/_tw_append() { _TW_TAIL_CTR=$(( ${_TW_TAIL_CTR:-0} + 1 )); if [ $(( _TW_TAIL_CTR % 10 )) -eq 0 ]; then sleep 0.12; fi/' "$WRITER" > "$mutant"
   local timing_script="$TEST_TMP/tail-latency.sh"
   cat > "$timing_script" <<SCRIPT
 #!/usr/bin/env bash
