@@ -946,6 +946,18 @@
           "description": "Deprecated and ignored. Kept for back-compatibility so existing configs pass schema validation. Will be removed in a future version."
         }
       }
+    },
+    "preflight_commands": {
+      "x-no-auto-hydration": true,
+      "description": "Shell commands executed sequentially before every push in /gaia-dev-story. Each entry runs as a command string in the story working tree. A non-zero exit (including 127 command-not-found) halts the push. Absent or empty = no-op (opt-in). TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline. Timeouts are the user's responsibility (wrap long-running commands with `timeout`).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "post_ci_smoke_commands": {
+      "x-no-auto-hydration": true,
+      "description": "Shell commands executed sequentially after CI completes green and before merge in /gaia-dev-story. A non-zero exit halts the merge. Absent or empty = no-op (opt-in). The smoke runs against the CI-verified commit; branch-drift detection is out of scope. TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline.",
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "allOf": [

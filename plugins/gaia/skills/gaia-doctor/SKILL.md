@@ -99,6 +99,16 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/lib/check-bypass-records.sh" --project-root 
 
 Scans the sprint audit directory for review gate bypass records and blocked bypass attempts. Reports every recorded bypass use (story, head, non-PASS rows) and warns when the bypass variable is present in the session environment. This is a read-only diagnostic — it never modifies state.
 
+### Step 8 — Configured command listing
+
+Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/project-config.yaml` (if present) and list them. When both keys are absent, skip this step silently.
+
+- For each key, print the array entries numbered (e.g. `  1: make lint`).
+- If the key is present but empty (`[]`), print `(empty — no commands configured)`.
+- If yq is not installed and a key is present, print a warning: `yq not installed — cannot read <key>`.
+
+This is a read-only listing. It never executes the commands.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-doctor/scripts/finalize.sh
