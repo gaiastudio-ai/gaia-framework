@@ -298,10 +298,28 @@ YAML
   grep -q 'HALT the merge' <<< "$between"
 }
 
+# --- Helper: build a narrow PATH without yq ---
+
+_build_no_yq_path() {
+  local narrow="$BATS_TEST_TMPDIR/narrow-bin"
+  mkdir -p "$narrow"
+  local b p
+  for b in bash grep cat awk sed printf head wc cut tr date mktemp rm jq dirname pwd basename readlink; do
+    p="$(command -v "$b" 2>/dev/null || true)"
+    [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
+  done
+  # Verify yq is actually hidden.
+  if env PATH="$narrow" command -v yq >/dev/null 2>&1; then
+    printf 'FAIL: yq is still reachable on the narrow PATH\n' >&2
+    return 1
+  fi
+  printf '%s' "$narrow"
+}
+
 # --- Hydration without yq ---
 
 @test "resolve-config.sh fails loudly when yq absent and keys present" {
-  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
   cat > "$CONFIG" <<'YAML'
 project_root: /tmp/test
 project_path: /tmp/test/src
@@ -313,23 +331,17 @@ date: "2026-01-01"
 preflight_commands:
   - "make lint"
 YAML
-  local narrow="$BATS_TEST_TMPDIR/narrow-bin"
-  mkdir -p "$narrow"
-  for b in bash grep cat awk sed printf head wc cut tr date mktemp rm jq dirname pwd basename readlink; do
-    local p
-    p="$(command -v "$b" 2>/dev/null || true)"
-    [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
-  done
-  # Do NOT link yq.
+  local narrow
+  narrow="$(_build_no_yq_path)"
   run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
   [ "$status" -ne 0 ]
-  grep -qi 'yq' <<< "$output"
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
 }
 
-# --- Comment does not produce false arrays ---
+# --- Comment-only config with no-yq PATH (pins the anchored grep) ---
 
-@test "resolve-config.sh does not emit arrays when key appears only in a comment" {
-  command -v jq >/dev/null 2>&1 || skip "jq not available"
+@test "resolve-config.sh ignores comment-only key when yq absent (no-yq path)" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
   cat > "$CONFIG" <<'YAML'
 project_root: /tmp/test
 project_path: /tmp/test/src
@@ -339,13 +351,56 @@ installed_path: /tmp/test/installed
 framework_version: "1.0.0"
 date: "2026-01-01"
 # preflight_commands disabled for now
-# post_ci_smoke_commands also off
 YAML
-  run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
   [ "$status" -eq 0 ]
-  local has_pre has_post
-  has_pre="$(echo "$output" | jq 'has("preflight_commands")')"
-  has_post="$(echo "$output" | jq 'has("post_ci_smoke_commands")')"
-  [ "$has_pre" = "false" ]
-  [ "$has_post" = "false" ]
+}
+
+@test "resolve-config.sh detects quoted key without yq (double-quote)" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf '"preflight_commands":\n  - "make lint"\nproject_root: /tmp/t\nproject_path: /tmp/t\nmemory_path: /tmp/t\ncheckpoint_path: /tmp/t\ninstalled_path: /tmp/t\nframework_version: "1.0.0"\ndate: "2026-01-01"\n' > "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  [ "$status" -ne 0 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
+@test "resolve-config.sh detects spaced key without yq (trailing space)" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf 'preflight_commands :\n  - "make lint"\nproject_root: /tmp/t\nproject_path: /tmp/t\nmemory_path: /tmp/t\ncheckpoint_path: /tmp/t\ninstalled_path: /tmp/t\nframework_version: "1.0.0"\ndate: "2026-01-01"\n' > "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  [ "$status" -ne 0 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
+# --- Runner: comment-only config without yq ---
+
+@test "runner ignores comment-only key when yq absent" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  cat > "$CONFIG" <<'YAML'
+# preflight_commands disabled
+YAML
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "runner halts on real key when yq absent" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  cat > "$CONFIG" <<'YAML'
+preflight_commands:
+  - "true"
+YAML
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
 }

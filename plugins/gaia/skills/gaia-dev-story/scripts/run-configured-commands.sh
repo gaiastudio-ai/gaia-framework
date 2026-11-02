@@ -107,8 +107,9 @@ fi
 # A grep pre-check would miss quoted keys ("preflight_commands":) and
 # trailing-space variants (preflight_commands :).
 if ! command -v yq >/dev/null 2>&1; then
-  # Fast-path: if no plausible key text at all, skip (no yq needed).
-  if ! grep -q "${config_key}" "$config_path" 2>/dev/null; then
+  # Fast-path: if no plausible key at line start, skip (no yq needed).
+  # Accepts bare, quoted, and trailing-space spellings but not comments.
+  if ! grep -qE "^[\"']?${config_key}[\"']?[[:space:]]*:" "$config_path" 2>/dev/null; then
     exit 0
   fi
   _halt "yq is required for ${config_key} but not found on PATH"

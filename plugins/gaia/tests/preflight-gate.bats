@@ -240,6 +240,5 @@ YAML
   done
   run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
-  grep -q 'HALT' <<< "$output"
-  grep -q 'yq' <<< "$output"
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
 }
