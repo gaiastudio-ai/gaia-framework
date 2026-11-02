@@ -839,4 +839,4 @@
 2	merge-ledger-and-tail.bats	32
 2	per-sprint-release.bats	24
 1	preflight-gate.bats	19
-1	post-ci-smoke.bats	15
+1	post-ci-smoke.bats	18

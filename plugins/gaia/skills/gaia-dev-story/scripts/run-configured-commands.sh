@@ -103,33 +103,41 @@ if [ ! -r "$config_path" ]; then
   _halt "config file not readable: ${config_path} (permission denied)"
 fi
 
-# Check whether the key exists. The grep must succeed cleanly — a grep
-# failure on a readable file (e.g. binary, encoding) is a read error.
-key_grep_rc=0
-grep -qE "^${config_key}:" "$config_path" 2>/dev/null || key_grep_rc=$?
-if [ "$key_grep_rc" -eq 1 ]; then
-  # grep found no match — key truly absent, silent no-op.
-  exit 0
-elif [ "$key_grep_rc" -ne 0 ]; then
-  # grep error (2+) — read error, fail closed.
-  _halt "could not read config file: ${config_path} (grep exit ${key_grep_rc})"
-fi
-
-# yq is required when the key is present.
+# yq is required to safely determine key presence and read the array.
+# A grep pre-check would miss quoted keys ("preflight_commands":) and
+# trailing-space variants (preflight_commands :).
 if ! command -v yq >/dev/null 2>&1; then
+  # Fast-path: if no plausible key text at all, skip (no yq needed).
+  if ! grep -q "${config_key}" "$config_path" 2>/dev/null; then
+    exit 0
+  fi
   _halt "yq is required for ${config_key} but not found on PATH"
 fi
 
-# Read the array as JSON. A yq failure on a readable file with the key
-# present is a parse error — fail closed, never silently skip.
+# Validate the file is parseable, then check key presence.
+# Distinguish "key absent" (silent no-op) from "parse error" (fail closed).
+yq_validate_err=""
+yq_validate_err="$(yq '.' "$config_path" 2>&1 >/dev/null)" || {
+  _halt "${config_key}: failed to parse config: ${yq_validate_err}"
+}
+
+# Use yq to determine presence — handles quoted keys, trailing spaces, etc.
+node_type=""
+node_type="$(yq ".${config_key} | type" "$config_path" 2>/dev/null)" || true
+if [ -z "$node_type" ] || [ "$node_type" = "!!null" ]; then
+  # Key truly absent or null — silent no-op.
+  exit 0
+fi
+
+# Read the array as JSON.
 commands_json=""
 yq_rc=0
 commands_json="$(yq -o=json ".${config_key}" "$config_path" 2>&1)" || yq_rc=$?
 if [ "$yq_rc" -ne 0 ]; then
-  _halt "${config_key}: failed to parse config (yq exit ${yq_rc}): ${commands_json}"
+  _halt "${config_key}: failed to read array (yq exit ${yq_rc}): ${commands_json}"
 fi
 
-# null or empty array — the key was present but has no entries. Silent no-op.
+# Empty array — the key was present but has no entries. Silent no-op.
 if [ -z "$commands_json" ] || [ "$commands_json" = "null" ] || [ "$commands_json" = "[]" ]; then
   exit 0
 fi

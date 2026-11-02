@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# post-ci-smoke.bats — additional tests: smoke runner, hydration,
-# doctor listing, readiness, and dev-story wiring.
+# post-ci-smoke.bats — tests: smoke runner, hydration, global.yaml isolation,
+# quoted-key handling, doctor listing, readiness, and dev-story wiring.
 
 load 'test_helper.bash'
 
@@ -43,7 +43,6 @@ YAML
   run bash "$SCRIPT" --key post_ci_smoke_commands --config "$CONFIG" --workdir "$WORKDIR"
   [ "$status" -eq 1 ]
   grep -q 'HALT:.*exit 42.*(exit 42)' <<< "$output"
-  # Third command must not appear.
   case "$output" in *should-not-run*) return 1 ;; esac
 }
 
@@ -80,6 +79,27 @@ YAML
   grep -qF "$WORKDIR" <<< "$output"
 }
 
+# --- Quoted/spaced key handling (fail closed, not fail open) ---
+
+@test "quoted key with double quotes is detected and commands run" {
+  cat > "$CONFIG" <<'YAML'
+"preflight_commands":
+  - "false"
+YAML
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -q 'HALT' <<< "$output"
+  grep -q 'false' <<< "$output"
+}
+
+@test "key with trailing space is detected and commands run" {
+  printf 'preflight_commands :\n  - "false"\n' > "$CONFIG"
+  run bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -q 'HALT' <<< "$output"
+  grep -q 'false' <<< "$output"
+}
+
 # --- Hydration tests (resolve-config.sh) ---
 
 @test "resolve-config.sh emits preflight_commands in JSON output" {
@@ -100,7 +120,6 @@ YAML
   run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json \
     --shared "$CONFIG"
   [ "$status" -eq 0 ]
-  # The JSON must contain the preflight_commands array.
   echo "$output" | jq -e '.preflight_commands' >/dev/null
   local count
   count="$(echo "$output" | jq '.preflight_commands | length')"
@@ -167,7 +186,6 @@ YAML
   run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json \
     --shared "$CONFIG"
   [ "$status" -eq 0 ]
-  # Must NOT contain preflight_commands or post_ci_smoke_commands.
   local has_pre has_post
   has_pre="$(echo "$output" | jq 'has("preflight_commands")')"
   has_post="$(echo "$output" | jq 'has("post_ci_smoke_commands")')"
@@ -175,30 +193,77 @@ YAML
   [ "$has_post" = "false" ]
 }
 
-# --- Doctor and readiness tests ---
+# --- Global.yaml isolation: arrays are project-level only ---
 
-@test "doctor SKILL.md contains configured command listing step" {
-  grep -q 'preflight_commands' "$PLUGIN_ROOT/skills/gaia-doctor/SKILL.md"
-  grep -q 'post_ci_smoke_commands' "$PLUGIN_ROOT/skills/gaia-doctor/SKILL.md"
+@test "global.yaml does not blank project-level command arrays" {
+  command -v yq >/dev/null 2>&1 || skip "yq not available"
+  command -v jq >/dev/null 2>&1 || skip "jq not available"
+  cat > "$CONFIG" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+preflight_commands:
+  - "make lint"
+post_ci_smoke_commands:
+  - "make smoke"
+YAML
+  local global="$CFG_DIR/global.yaml"
+  printf 'user_name: testuser\n' > "$global"
+  run bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json \
+    --shared "$CONFIG" --local "$global"
+  [ "$status" -eq 0 ]
+  local count
+  count="$(echo "$output" | jq '.preflight_commands | length')"
+  [ "$count" -eq 1 ]
+  local first
+  first="$(echo "$output" | jq -r '.preflight_commands[0]')"
+  [ "$first" = "make lint" ]
+  local smoke
+  smoke="$(echo "$output" | jq -r '.post_ci_smoke_commands[0]')"
+  [ "$smoke" = "make smoke" ]
 }
 
-@test "readiness SKILL.md contains empty-string validation step" {
-  grep -q 'empty.string' "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md" || \
-    grep -q 'empty-string' "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md" || \
-    grep -qi 'empty.*entry\|empty.*command' "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md"
+# --- Doctor listing (anchored to step) ---
+
+@test "doctor Step 8 lists preflight_commands with numbered entries" {
+  local step8
+  step8="$(sed -n '/### Step 8/,/## Finalize/p' "$PLUGIN_ROOT/skills/gaia-doctor/SKILL.md")"
+  # The step must mention both keys.
+  grep -q 'preflight_commands' <<< "$step8"
+  grep -q 'post_ci_smoke_commands' <<< "$step8"
+  # The step must describe numbered listing.
+  grep -q 'numbered' <<< "$step8"
+}
+
+# --- Readiness empty-string check (anchored to step) ---
+
+@test "readiness Step 9b flags empty-string entries as configuration error" {
+  local step9b
+  step9b="$(sed -n '/### Step 9b/,/### Step 10/p' "$PLUGIN_ROOT/skills/gaia-readiness-check/SKILL.md")"
+  # The step must check for empty strings.
+  grep -q 'empty string' <<< "$step9b"
+  # The step must report as WARNING.
+  grep -q 'WARNING' <<< "$step9b"
+  # The step must mention the key name.
+  grep -q 'preflight_commands' <<< "$step9b" || grep -q 'key name' <<< "$step9b"
 }
 
 # --- Dev-story SKILL.md wiring ---
 
-@test "preflight gate is inside Step 10 markers before git-push.sh" {
+@test "preflight gate halts push before git-push.sh in Step 10" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
-  # Extract the Step 10 block (between the markers).
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
-  # The preflight gate must appear in the block.
+  # The runner reference and key must be present.
   grep -q 'run-configured-commands.sh' <<< "$block"
   grep -q 'preflight_commands' <<< "$block"
-  # The preflight gate must appear BEFORE git-push.sh in the block.
+  # The HALT-the-push wording must be present.
+  grep -q 'HALT the push' <<< "$block"
+  # The preflight gate must appear BEFORE git-push.sh.
   local preflight_line push_line
   preflight_line="$(grep -n 'preflight_commands' <<< "$block" | head -1 | cut -d: -f1)"
   push_line="$(grep -n 'git-push.sh' <<< "$block" | head -1 | cut -d: -f1)"
@@ -207,34 +272,29 @@ YAML
   [ "$preflight_line" -lt "$push_line" ]
 }
 
-@test "smoke hook is between Step 12 and Step 13 in dev-story SKILL.md" {
+@test "smoke hook halts merge between Step 12 and Step 13" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
-  # The smoke block must appear after "Step 12" header and before "Step 13" header.
-  local step12_line step13_line smoke_line
-  step12_line="$(grep -n '### Step 12' "$skill" | head -1 | cut -d: -f1)"
-  step13_line="$(grep -n '### Step 13' "$skill" | head -1 | cut -d: -f1)"
-  smoke_line="$(grep -n 'post_ci_smoke_commands' "$skill" | head -1 | cut -d: -f1)"
-  [ -n "$step12_line" ]
-  [ -n "$step13_line" ]
-  [ -n "$smoke_line" ]
-  [ "$smoke_line" -gt "$step12_line" ]
-  [ "$smoke_line" -lt "$step13_line" ]
+  local between
+  between="$(sed -n '/### Step 12/,/### Step 13/p' "$skill")"
+  # The runner reference and key must be present.
+  grep -q 'run-configured-commands.sh' <<< "$between"
+  grep -q 'post_ci_smoke_commands' <<< "$between"
+  # The HALT-the-merge wording must be present.
+  grep -q 'HALT the merge' <<< "$between"
 }
 
-@test "removing preflight block from Step 10 would lose run-configured-commands" {
+@test "removing preflight gate from Step 10 loses runner and halt wording" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
-  # Both the runner reference and the preflight key must be inside step 10.
   local block
   block="$(sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$skill")"
   grep -q 'run-configured-commands.sh' <<< "$block"
-  grep -q 'preflight_commands' <<< "$block"
+  grep -q 'HALT the push' <<< "$block"
 }
 
-@test "removing smoke block would lose post_ci_smoke reference" {
+@test "removing smoke hook loses runner and halt wording" {
   local skill="$PLUGIN_ROOT/skills/gaia-dev-story/SKILL.md"
-  # Both the runner reference and the smoke key must exist between Steps 12-13.
   local between
   between="$(sed -n '/### Step 12/,/### Step 13/p' "$skill")"
   grep -q 'run-configured-commands.sh' <<< "$between"
-  grep -q 'post_ci_smoke_commands' <<< "$between"
+  grep -q 'HALT the merge' <<< "$between"
 }

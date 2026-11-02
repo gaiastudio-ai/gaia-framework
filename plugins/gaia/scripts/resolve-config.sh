@@ -1165,24 +1165,28 @@ fi
 _extract_command_array_json() {
   local file="$1" key="$2"
   [ -f "$file" ] || return 0
-  grep -qE "^${key}:" "$file" 2>/dev/null || return 0
   if ! command -v yq >/dev/null 2>&1; then
+    # Fast-path: if grep finds no plausible key, skip (no yq needed).
+    grep -q "${key}" "$file" 2>/dev/null || return 0
     printf 'resolve-config.sh: error: yq is required for %s but not found on PATH\n' "$key" >&2
     return 1
+  fi
+  # Use yq to determine presence — handles quoted keys, trailing spaces, etc.
+  local node_type
+  node_type="$(yq ".${key} | type" "$file" 2>/dev/null)" || return 0
+  # Absent or null key — skip.
+  if [ -z "$node_type" ] || [ "$node_type" = "!!null" ]; then
+    return 0
   fi
   yq -o=json ".${key}" "$file" 2>/dev/null || return 0
 }
 v_preflight_commands_json=""
 v_post_ci_smoke_commands_json=""
-_rc_cfg=""
-if [ "$LOCAL_EXISTS" -eq 1 ]; then _rc_cfg="$LOCAL_PATH"
-elif [ "$SHARED_EXISTS" -eq 1 ]; then _rc_cfg="$SHARED_PATH"
+# Project-level only — never read from the machine-local global.yaml.
+if [ "$SHARED_EXISTS" -eq 1 ]; then
+  v_preflight_commands_json=$(_extract_command_array_json "$SHARED_PATH" preflight_commands) || exit $?
+  v_post_ci_smoke_commands_json=$(_extract_command_array_json "$SHARED_PATH" post_ci_smoke_commands) || exit $?
 fi
-if [ -n "$_rc_cfg" ]; then
-  v_preflight_commands_json=$(_extract_command_array_json "$_rc_cfg" preflight_commands) || exit $?
-  v_post_ci_smoke_commands_json=$(_extract_command_array_json "$_rc_cfg" post_ci_smoke_commands) || exit $?
-fi
-unset _rc_cfg
 
 # stacks / environments / gates are structural sections; we do not flatten
 # them in v1. Downstream callers requiring full structural access should
