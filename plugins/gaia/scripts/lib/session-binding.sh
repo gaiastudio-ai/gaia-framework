@@ -695,7 +695,7 @@ _rsa_command_class() {
     run-sprint)       printf 'run-sprint' ;;
     action-items)     printf 'sprint-optional' ;;
     *)
-      printf '%s: error: unknown command class for: %s\n' "$_SB_SCRIPT_NAME" "$cmd" >&2
+      printf '%s: error: unknown command class for: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$cmd")" >&2
       return 1 ;;
   esac
 }
@@ -807,7 +807,7 @@ resolve_sprint_arg() {
         sprint_arg_count=$((sprint_arg_count + 1))
         if [ "$sprint_arg_count" -gt 1 ]; then
           printf '%s: error: repeated --sprint: "%s" and "%s"\n' \
-            "$_SB_SCRIPT_NAME" "$sprint_arg" "$val" >&2
+            "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sprint_arg")" "$(_sb_sanitize_value "$val")" >&2
           return "$SPRINT_REPEATED_ARG"
         fi
         sprint_arg="$val"
@@ -859,7 +859,7 @@ resolve_sprint_arg() {
   if [ -n "$new_sprint_arg" ]; then
     # Validate ID shape
     if ! printf '%s' "$new_sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      printf '%s: error: invalid sprint ID shape: %s\n' "$_SB_SCRIPT_NAME" "$new_sprint_arg" >&2
+      printf '%s: error: invalid sprint ID shape: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$new_sprint_arg")" >&2
       return "$SPRINT_INVALID_ID"
     fi
     # Check unused: not in any state file or archive
@@ -884,7 +884,7 @@ resolve_sprint_arg() {
   # --- Validate sprint_arg format (if provided) ---
   if [ -n "$sprint_arg" ]; then
     if ! printf '%s' "$sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$sprint_arg" >&2
+      printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sprint_arg")" >&2
       return "$SPRINT_INVALID_ID"
     fi
   fi
@@ -896,7 +896,7 @@ resolve_sprint_arg() {
       retro|sprint-review)
         if [ -n "$sprint_arg" ] && [ "$positional" != "$sprint_arg" ]; then
           printf '%s: error: positional sprint ID "%s" conflicts with --sprint "%s"\n' \
-            "$_SB_SCRIPT_NAME" "$positional" "$sprint_arg" >&2
+            "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$positional")" "$(_sb_sanitize_value "$sprint_arg")" >&2
           return "$SPRINT_POSITIONAL_CONFLICT"
         fi
         # If no --sprint but has positional, use it
@@ -925,7 +925,7 @@ resolve_sprint_arg() {
     if [ "$_rsa_cat_rc" -ne 0 ]; then
       # cat failed: distinguish missing from unreadable.
       if [ -e "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" ]; then
-        # File exists but is unreadable — error, not unbound (AC10).
+        # File exists but is unreadable — error, not unbound.
         printf '%s: error: binding file is unreadable: %s\n' \
           "$_SB_SCRIPT_NAME" "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME}" >&2
         return "$SPRINT_INVALID_ID"

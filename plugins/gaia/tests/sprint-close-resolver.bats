@@ -1826,7 +1826,7 @@ YAML
 # ---------- redundant tr in yaml_top_scalar ----------
 
 @test "yaml_top_scalar tr removal is detectable (tr -d still present in code)" {
-  # AC8 says: keep the tr -d and add a test that detects its removal.
+  # The tr -d '\r' is kept and this test detects its removal.
   # The yaml_top_scalar function must include a tr -d '\r' call.
   /usr/bin/grep -q "tr -d '\\\\r'" "$CLOSE_SH" || /usr/bin/grep -q 'tr -d.*\\r' "$CLOSE_SH"
 }
@@ -2470,4 +2470,177 @@ YAML
 
   # Binding file unchanged.
   [ "$(cat "$bind_dir/bound_sprint_id")" = "sprint-900" ]
+}
+
+# --- Remaining sanitizer call-site behavioural tests ---
+
+@test "close.sh resolver invalid --sprint sanitizes the value end-to-end" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --sprint "$(printf 'x\033[31my\nFAKE: ok')"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+  ! /usr/bin/grep -q '^FAKE: ok$' <<<"$output"
+}
+
+@test "close.sh sprint_id from YAML file sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  printf 'sprint_id: "s\\e[31mX"\nstatus: active\ntotal_points: 10\nstories:\n  - key: DEMO-S1\n    status: done\n' \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export GAIA_BOUND_SPRINT_ID="sprint-1"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "close.sh --force-with-rollover keys sanitize control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --force-with-rollover "$(printf 'X\033[31mY')"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "close.sh repeated --sprint= form sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --sprint=sprint-200 --sprint="$(printf 'b\033c')"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "close.sh unexpected positional sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" sprint-200 "$(printf 'z\033q')"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "close.sh positional vs --sprint conflict sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" "$(printf 'a\033b')" --sprint sprint-200
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "close.sh sprint_id not found sanitizes path" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  printf 'status: active\n' > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF 'sprint_id not found' <<<"$output"
+}
+
+@test "close.sh resolver mismatch sanitizes both IDs" {
+  _build_concurrent_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  yq -i '.sprint_id = "sprint-901"' "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml"
+
+  run bash "$CLOSE_SH" --sprint sprint-900
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF 'mismatch' <<<"$output"
+}
+
+@test "close.sh cross-check binding mismatch sanitizes bound value" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  local sid="xcheck-san-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-999' > "$bind_dir/bound_sprint_id"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF 'binding mismatch' <<<"$output"
+}
+
+@test "validate_binding no-file echo sanitizes the env value" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  export GAIA_BINDING_DIR="$TEST_TMP/vb-nofile-$$"
+  mkdir -p "$GAIA_BINDING_DIR"
+  export GAIA_BOUND_SPRINT_ID="$(printf 'sprint\033x')"
+
+  run validate_binding
+
+  [ "$status" -ne 0 ]
+  /usr/bin/grep -qF '\x1b' <<<"$output"
+  case "$output" in *$'\033'*) return 1 ;; esac
+}
+
+@test "write_binding already-bound echo sanitizes the existing value" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  cat > "$root/.gaia/state/sprint-status-sprint-901.yaml" <<'YAML'
+sprint_id: sprint-901
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/wb-ab-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  write_binding "sprint-900" "$root/.gaia/state"
+
+  run write_binding "sprint-901" "$root/.gaia/state"
+  [ "$status" -eq 2 ]
+  /usr/bin/grep -qF 'already bound to sprint-900' <<<"$output"
 }
