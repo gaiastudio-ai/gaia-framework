@@ -31,18 +31,38 @@ _SB_SCRIPT_NAME="${0##*/}"
 
 # Render control characters as C-style escape sequences for safe stderr
 # output.  Used by every call site that prints a user-supplied value.
-# Bash 3.2 + BSD sed compatible.  Each sed expression uses $'...' to
-# embed the literal control character in the search pattern.
+# Bash 3.2 compatible.  Processes byte-by-byte via od + awk to catch
+# every control character (0x00-0x1f, 0x7f) portably.
 _sb_sanitize_value() {
   local val="$1"
-  # printf '%s' (no trailing newline) + individual sed passes.
-  # BSD sed cannot match \n in a substitution pattern, but newlines in
-  # sprint/session IDs are already rejected by shape validation; the
-  # sanitizer handles the characters that matter for safe stderr display.
-  printf '%s' "$val" \
-    | sed $'s/\r/\\\\r/g' \
-    | sed $'s/\t/\\\\t/g' \
-    | sed $'s/\x1b/\\\\x1b/g'
+  printf '%s' "$val" | od -An -tx1 | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        h = $i
+        d = 0
+        for (c = 1; c <= length(h); c++) {
+          ch = substr(h, c, 1)
+          if      (ch ~ /[0-9]/) d = d*16 + (ch+0)
+          else if (ch == "a" || ch == "A") d = d*16 + 10
+          else if (ch == "b" || ch == "B") d = d*16 + 11
+          else if (ch == "c" || ch == "C") d = d*16 + 12
+          else if (ch == "d" || ch == "D") d = d*16 + 13
+          else if (ch == "e" || ch == "E") d = d*16 + 14
+          else if (ch == "f" || ch == "F") d = d*16 + 15
+        }
+        if      (d == 0)   printf "\\0"
+        else if (d == 7)   printf "\\a"
+        else if (d == 8)   printf "\\b"
+        else if (d == 9)   printf "\\t"
+        else if (d == 10)  printf "\\n"
+        else if (d == 13)  printf "\\r"
+        else if (d == 27)  printf "\\x1b"
+        else if (d == 127) printf "\\x7f"
+        else if (d < 32)   printf "\\x%02x", d
+        else               printf "%c", d
+      }
+    }
+  '
 }
 
 # ---------- CRLF helper ----------
@@ -50,10 +70,11 @@ _sb_sanitize_value() {
 # Strip ONE trailing CR from a value (the CRLF read-time policy).
 # A value with only a trailing CR is accepted after stripping.  A CR
 # anywhere else in the value makes it invalid (handled by the caller).
+# Uses bash builtins (no subshell) for speed on every binding read.
 _sb_strip_trailing_cr() {
   local val="$1"
-  # Remove exactly one trailing \r (sed on BSD and GNU).
-  printf '%s' "$val" | sed $'s/\r$//'
+  # ${val%$'\r'} removes exactly one trailing CR (bash 3.2+).
+  printf '%s' "${val%$'\r'}"
 }
 
 # ---------- Realpath helper ----------
@@ -341,7 +362,7 @@ write_binding() {
     return 1
   fi
   if printf '%s' "$sprint_id" | /usr/bin/grep -q '[^A-Za-z0-9._-]'; then
-    printf '%s: error: sprint ID contains invalid characters: %s\n' "$_SB_SCRIPT_NAME" "$sprint_id" >&2
+    printf '%s: error: sprint ID contains invalid characters: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sprint_id")" >&2
     return 1
   fi
   case "${sprint_id:0:1}" in
@@ -397,9 +418,14 @@ write_binding() {
   # Write the binding file atomically via temp file + hard link.
   # `ln tmp final` fails with EEXIST if another process created the file
   # first (write-once semantics, works on bash 3.2, no mv -n).
-  local _tmp_binding=""
-  _tmp_binding="${binding_file}.tmp.$$"
-  # Clean up the temp file on every exit path.
+  # mktemp in the same directory gives each caller a unique temp name
+  # so concurrent writers from subshells of one PID do not collide.
+  local _tmp_binding="" _binding_dir=""
+  _binding_dir="$(dirname "$binding_file")"
+  _tmp_binding="$(mktemp "${_binding_dir}/.bound_sprint_id.tmp.XXXXXX")" || {
+    printf '%s: error: mktemp failed for binding temp file\n' "$_SB_SCRIPT_NAME" >&2
+    return 1
+  }
   printf '%s' "$sprint_id" > "$_tmp_binding" 2>/dev/null || {
     rm -f "$_tmp_binding" 2>/dev/null || true
     printf '%s: error: failed to write temp binding file\n' "$_SB_SCRIPT_NAME" >&2
@@ -548,9 +574,22 @@ validate_binding() {
     return 1
   fi
 
+  # Empty file is an error (same rule as read_binding).
+  if [ -z "$_raw_file_id" ]; then
+    printf '%s: error: binding file is empty\n' "$_SB_SCRIPT_NAME" >&2
+    return 1
+  fi
+
   # Apply CRLF policy: strip one trailing CR.
   local file_id=""
   file_id="$(_sb_strip_trailing_cr "$_raw_file_id")"
+
+  # Reject embedded CR (a CR anywhere other than the stripped trailing position).
+  if printf '%s' "$file_id" | /usr/bin/grep -q '[^A-Za-z0-9._-]'; then
+    printf '%s: error: binding file contains invalid sprint ID: %s\n' \
+      "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$file_id")" >&2
+    return 1
+  fi
 
   # If env var is set and differs from the file: mismatch.
   if [ -n "${GAIA_BOUND_SPRINT_ID:-}" ] && [ "$GAIA_BOUND_SPRINT_ID" != "$file_id" ]; then

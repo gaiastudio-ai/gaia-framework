@@ -36,6 +36,22 @@ export LC_ALL
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source the shared sanitizer from session-binding.sh (single source of truth).
+_SB_SANITIZER="${SCRIPT_DIR}/../../../scripts/lib/session-binding.sh"
+if [ -f "$_SB_SANITIZER" ]; then
+  if ! type _sb_sanitize_value >/dev/null 2>&1; then
+    . "$_SB_SANITIZER"
+  fi
+fi
+_rss_sanitize() {
+  if type _sb_sanitize_value >/dev/null 2>&1; then
+    _sb_sanitize_value "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 IMPL_DIR=""
 SPRINT_STATUS=""
 ALL=0
@@ -45,17 +61,9 @@ while [ $# -gt 0 ]; do
     --impl-dir) IMPL_DIR="${2:-}"; shift 2 ;;
     --sprint-status) SPRINT_STATUS="${2:-}"; shift 2 ;;
     --all) ALL=1; shift ;;
-    *) printf 'resolve-sprint-stories.sh: unknown arg: %s\n' "$1" >&2; exit 1 ;;
+    *) printf 'resolve-sprint-stories.sh: unknown arg: %s\n' "$(_rss_sanitize "$1")" >&2; exit 1 ;;
   esac
 done
-
-# Sanitize a value for safe stderr output (renders control chars as C-style escapes).
-_rss_sanitize() {
-  printf '%s' "$1" \
-    | sed $'s/\r/\\\\r/g' \
-    | sed $'s/\t/\\\\t/g' \
-    | sed $'s/\x1b/\\\\x1b/g'
-}
 
 [ -n "$IMPL_DIR" ] || { printf 'resolve-sprint-stories.sh: --impl-dir is required\n' >&2; exit 1; }
 [ -d "$IMPL_DIR" ] || { printf 'resolve-sprint-stories.sh: not a directory: %s\n' "$(_rss_sanitize "$IMPL_DIR")" >&2; exit 1; }

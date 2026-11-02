@@ -425,8 +425,13 @@ fi
 # checked independently so a stale env that happens to match the file's sprint
 # does not mask a disagreement with the binding file.
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
+  _safe_env_id="$GAIA_BOUND_SPRINT_ID"
+  if type _sb_sanitize_value >/dev/null 2>&1; then
+    _safe_env_id="$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")"
+  fi
   if [ "$SPRINT_ID" != "$GAIA_BOUND_SPRINT_ID" ]; then
-    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$GAIA_BOUND_SPRINT_ID'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_env_id'"
+    exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
@@ -435,22 +440,23 @@ if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
   _cross_raw="$(printf '%s' "$_cross_raw" | tr -d '\n')"
   if [ "$_cross_cat_rc" -ne 0 ] && [ -e "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" ]; then
     # File exists but is unreadable — refuse, not treat as unbound.
-    die "binding file is unreadable — cannot verify binding for sprint '$SPRINT_ID'"
+    log "binding file is unreadable — cannot verify binding for sprint '$SPRINT_ID'"
+    exit "${SPRINT_INVALID_ID:-16}"
   fi
   # Apply CRLF policy: strip one trailing CR.
   _cross_bound=""
   if [ -n "$_cross_raw" ] && type _sb_strip_trailing_cr >/dev/null 2>&1; then
     _cross_bound="$(_sb_strip_trailing_cr "$_cross_raw")"
   else
-    _cross_bound="$(printf '%s' "$_cross_raw" | sed $'s/\r$//')"
+    _cross_bound="$(printf '%s' "${_cross_raw%$'\r'}")"
   fi
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
-    # Sanitize the bound value for safe stderr output.
     _safe_bound="$_cross_bound"
     if type _sb_sanitize_value >/dev/null 2>&1; then
       _safe_bound="$(_sb_sanitize_value "$_cross_bound")"
     fi
-    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_bound'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_bound'"
+    exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi
 

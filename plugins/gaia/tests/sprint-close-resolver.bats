@@ -685,7 +685,7 @@ teardown() {
 
   run bash "$CLOSE_SH"
 
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 15 ]
   [[ "$output" == *"binding mismatch"* ]]
   [[ "$output" == *"sprint-999"* ]]
   # State file must be unchanged.
@@ -1265,7 +1265,7 @@ JSON
 
   run bash "$CLOSE_SH"
 
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 16 ]
   [[ "$output" == *"invalid"* ]]
   # The CR must be rendered visibly as \r, never raw ^M.
   [[ "$output" == *"\\r"* ]]
@@ -1765,7 +1765,7 @@ YAML
 
 # ---------- AC6: unreadable binding file on override path ----------
 
-@test "unreadable binding file on override path refuses close" {
+@test "unreadable binding file on override path refuses close with exit 16" {
   _build_single_fixture "$TEST_TMP"
   export PROJECT_ROOT="$TEST_TMP"
   export CLAUDE_PROJECT_ROOT="$TEST_TMP"
@@ -1788,7 +1788,7 @@ YAML
 
   run bash "$CLOSE_SH"
 
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 16 ]
   [[ "$output" == *"unreadable"* ]]
   [ "$before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status.yaml")" ]
 
@@ -1896,6 +1896,9 @@ YAML
   # disagrees with the env (sprint-900).
   [ "$status" -eq 15 ]
   [[ "$output" == *"binding_mismatch"* ]]
+  # The message must show the CR-stripped file id — no raw CR in the output.
+  [[ "$output" == *"sprint-901"* ]]
+  [[ "$output" != *$'\r'* ]]
 
   # No state changes.
   [ "$s900_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml")" ]
@@ -1983,4 +1986,195 @@ YAML
   local line2
   line2="$(/usr/bin/grep 'never refuses for missing sprint context' "$skill_md")"
   [[ "$line2" == *"disagrees"* ]] || [[ "$line2" == *"mismatch"* ]]
+}
+
+# ---------- write_binding race safety ----------
+
+@test "write_binding concurrent subshell writers: only one wins" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  cat > "$root/.gaia/state/sprint-status-sprint-901.yaml" <<'YAML'
+sprint_id: sprint-901
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root"
+  export CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/race-test"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  # Two subshell writers racing for different sprints.
+  local rc1=0 rc2=0
+  (
+    source "$sb_sh"
+    export GAIA_BINDING_DIR="$bind_dir"
+    write_binding "sprint-900" "$root/.gaia/state"
+  ) 2>/dev/null &
+  local pid1=$!
+  (
+    source "$sb_sh"
+    export GAIA_BINDING_DIR="$bind_dir"
+    write_binding "sprint-901" "$root/.gaia/state"
+  ) 2>/dev/null &
+  local pid2=$!
+  wait "$pid1" || rc1=$?
+  wait "$pid2" || rc2=$?
+
+  # Exactly one must succeed (rc 0) and the other must fail (rc 2).
+  local winner_count=0
+  [ "$rc1" -eq 0 ] && winner_count=$((winner_count + 1))
+  [ "$rc2" -eq 0 ] && winner_count=$((winner_count + 1))
+  [ "$winner_count" -eq 1 ]
+
+  # The binding file must contain exactly one sprint id.
+  local content
+  content="$(cat "$bind_dir/bound_sprint_id")"
+  [[ "$content" == "sprint-900" ]] || [[ "$content" == "sprint-901" ]]
+
+  # No temp files left behind.
+  local temps
+  temps="$(find "$bind_dir" -name '.bound_sprint_id.tmp.*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$temps" -eq 0 ]
+}
+
+@test "write_binding uses mktemp not fixed temp name" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  # The write_binding function must use mktemp, not a fixed .tmp.$$ name.
+  /usr/bin/grep -q 'mktemp' "$sb_sh"
+  # Must NOT contain the old shared temp name pattern.
+  ! /usr/bin/grep -q 'binding_file.*\.tmp\.\$\$' "$sb_sh"
+}
+
+# ---------- validate_binding CRLF and empty file ----------
+
+@test "validate_binding rejects embedded CR in binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/vb-embcr"
+  mkdir -p "$bind_dir"
+  printf 'sprint\r-900' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+
+  run validate_binding
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid"* ]]
+  # Embedded CR must be rendered as \r, not raw.
+  [[ "$output" == *"\\r"* ]]
+}
+
+@test "validate_binding rejects empty binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/vb-empty"
+  mkdir -p "$bind_dir"
+  : > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+
+  run validate_binding
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"empty"* ]]
+}
+
+@test "validate_binding accepts CRLF binding file matching env" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/vb-crlf"
+  mkdir -p "$bind_dir"
+  printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+
+  run validate_binding
+
+  [ "$status" -eq 0 ]
+}
+
+# ---------- validate_binding unreadable file ----------
+
+@test "validate_binding refuses unreadable binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/vb-unread"
+  mkdir -p "$bind_dir"
+  printf 'sprint-900' > "$bind_dir/bound_sprint_id"
+  chmod 000 "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  export GAIA_BOUND_SPRINT_ID="sprint-900"
+
+  run validate_binding
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unreadable"* ]]
+
+  chmod 644 "$bind_dir/bound_sprint_id"
+}
+
+# ---------- Sanitizer call-site coverage ----------
+
+@test "sanitizer renders all control character classes" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # CR
+  local r
+  r="$(_sb_sanitize_value "$(printf 'a\rb')")"
+  printf '%s' "$r" | od -c | /usr/bin/grep -q '\\  r' || printf '%s' "$r" | /usr/bin/grep -qF '\r'
+
+  # TAB
+  r="$(_sb_sanitize_value "$(printf 'a\tb')")"
+  printf '%s' "$r" | /usr/bin/grep -qF '\t'
+
+  # ESC
+  r="$(_sb_sanitize_value "$(printf 'a\x1bb')")"
+  printf '%s' "$r" | /usr/bin/grep -qF '\x1b'
+
+  # BELL
+  r="$(_sb_sanitize_value "$(printf 'a\ab')")"
+  printf '%s' "$r" | /usr/bin/grep -qF '\a'
+
+  # DEL
+  r="$(_sb_sanitize_value "$(printf 'a\x7fb')")"
+  printf '%s' "$r" | /usr/bin/grep -qF '\x7f'
+
+  # Low control char (\x01)
+  r="$(_sb_sanitize_value "$(printf 'a\x01b')")"
+  printf '%s' "$r" | /usr/bin/grep -qF '\x01'
+
+  # Clean value passes through unchanged.
+  r="$(_sb_sanitize_value "sprint-900")"
+  [ "$r" = "sprint-900" ]
+}
+
+@test "resolve-sprint-stories.sh uses the shared sanitizer" {
+  local rss="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+  # Must source session-binding.sh (the shared sanitizer), not define its own.
+  /usr/bin/grep -q 'session-binding.sh' "$rss"
+  /usr/bin/grep -q '_sb_sanitize_value' "$rss"
+}
+
+@test "close.sh cross-check sanitizes the env binding value" {
+  local close_sh="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
+  # The GAIA_BOUND_SPRINT_ID cross-check must sanitize the value.
+  /usr/bin/grep -q '_sb_sanitize_value.*GAIA_BOUND_SPRINT_ID\|_safe_env_id' "$close_sh"
 }
