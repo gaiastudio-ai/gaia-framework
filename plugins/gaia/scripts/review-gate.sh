@@ -1278,6 +1278,8 @@ main() {
   # (gaia-sprint-close Step 3a) can query the sentinel without referencing a story key.
   local report_path="" execution_evidence="" report_missing_reason=""
   local sprint_scoped=""
+  local telemetry_started_at="" telemetry_token_estimate=""
+  local telemetry_round="" telemetry_run_id=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1339,6 +1341,22 @@ main() {
       --evidence)
         [ $# -ge 2 ] || die "--evidence requires a value"
         carry_evidence="$2"; shift 2
+        ;;
+      --started-at)
+        [ $# -ge 2 ] || die "--started-at requires a value"
+        telemetry_started_at="$2"; shift 2
+        ;;
+      --token-estimate)
+        [ $# -ge 2 ] || die "--token-estimate requires a value"
+        telemetry_token_estimate="$2"; shift 2
+        ;;
+      --telemetry-round)
+        [ $# -ge 2 ] || die "--telemetry-round requires a value"
+        telemetry_round="$2"; shift 2
+        ;;
+      --telemetry-run-id)
+        [ $# -ge 2 ] || die "--telemetry-run-id requires a value"
+        telemetry_run_id="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1595,6 +1613,43 @@ main() {
                 --target-key "$story_key" \
                 --edge-type "reviewed-in" \
                 --edge-target "$_brain_edge_target" >/dev/null 2>&1 || true
+            fi
+          fi
+
+          # Review telemetry hook: record gate verdict timing and metrics.
+          # Non-blocking — a write failure is logged and the gate update
+          # is unaffected. Fires only for canonical gate verdicts (not
+          # plan-id ledger writes, not carry-forward).
+          # In-process: the writer is sourced (no subprocess spawn) so the
+          # write stays within the p95 <= 50 ms budget. jq stamps the end
+          # time inside the JSON build (zero extra processes per write).
+          # Disabled by REVIEW_TELEMETRY_DISABLE=1 (for paired overhead tests).
+          if [ -z "$plan_id" ] && [ -n "$story_key" ] \
+             && [ "${REVIEW_TELEMETRY_DISABLE:-}" != "1" ]; then
+            _telemetry_sh="${_RG_DIR}/review-telemetry-writer.sh"
+            if [ -f "$_telemetry_sh" ]; then
+              # Source only once (idempotent guard).
+              if ! type _tw_gate_entry >/dev/null 2>&1; then
+                _TW_SOURCED=1 . "$_telemetry_sh"
+              fi
+              _tel_args=(--story "$story_key" --gate "$gate_name" --verdict "$verdict")
+              if [ -n "$STORY_FILE" ]; then
+                _tel_args+=(--story-file "$STORY_FILE")
+              fi
+              if [ -n "$telemetry_round" ]; then
+                _tel_args+=(--round "$telemetry_round")
+              fi
+              if [ -n "$telemetry_run_id" ]; then
+                _tel_args+=(--run-id "$telemetry_run_id")
+              fi
+              if [ -n "$telemetry_started_at" ]; then
+                _tel_args+=(--started-at "$telemetry_started_at")
+                # No --ended-at: jq stamps the end time inside the JSON build.
+              fi
+              if [ -n "$telemetry_token_estimate" ]; then
+                _tel_args+=(--token-estimate "$telemetry_token_estimate")
+              fi
+              _tw_gate_entry "${_tel_args[@]}" || true
             fi
           fi
           ;;
