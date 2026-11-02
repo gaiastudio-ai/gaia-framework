@@ -113,12 +113,9 @@ SCRIPT
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "p95=${p95}ms"
-  # Budget: 50ms per timing requirement. jq subprocess is irreducible
-  # (~30-50ms baseline, spikes under load). Per-write perl timestamp
-  # adds ~25ms in the test harness. CI tolerance: 200ms (covers load
-  # spikes). The mutant tests (40ms, 60ms, tail-latency) prove that
-  # an injected delay is detected regardless of baseline variance.
-  [ "$p95" -le 200 ]
+  # Budget: 50ms per write (the documented timing requirement).
+  # Measured: 24-25ms bash 5, 28-30ms bash 3.2.
+  [ "$p95" -le 50 ]
 }
 
 @test "p95 test fails for tail-latency mutant (10% writes sleep 120 ms)" {
@@ -149,9 +146,8 @@ SCRIPT
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '95p')"
   echo "tail-latency-mutant p95=${p95}ms"
-  # 10% of writes sleep 120ms, so p95 should see at least one slow write.
-  # Assert > the CI tolerance (100ms).
-  [ "$p95" -gt 100 ]
+  # 10% of writes sleep 120ms; p95 must exceed the 50ms budget.
+  [ "$p95" -gt 50 ]
 }
 
 @test "p95 test fails for real-writer 40 ms sleep mutant" {
@@ -180,9 +176,8 @@ SCRIPT
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '10p')"
   echo "40ms-real-mutant p95=${p95}ms"
-  # The 40ms sleep adds on top of the jq base. On CI (fast jq ~12ms),
-  # p95 is ~52ms; locally ~80-110ms. Assert > 35 (just below the sleep).
-  [ "$p95" -gt 35 ]
+  # 40ms sleep + jq base (~12-25ms) = ~52-65ms; must exceed the 50ms budget.
+  [ "$p95" -gt 50 ]
 }
 
 @test "p95 test fails for real-writer 60 ms sleep mutant" {
@@ -210,8 +205,8 @@ SCRIPT
   local p95
   p95="$(printf '%s\n' $durations | sort -n | sed -n '10p')"
   echo "60ms-real-mutant p95=${p95}ms"
-  # The 60ms sleep adds on top of the jq base. Assert > 55.
-  [ "$p95" -gt 55 ]
+  # 60ms sleep + jq base (~12-25ms) = ~72-85ms; must exceed the 50ms budget.
+  [ "$p95" -gt 50 ]
 }
 
 # ===== Overhead: writer present vs absent =====
@@ -238,10 +233,9 @@ SCRIPT
   mwo="$(printf '%s\n' "${without_t[@]}" | sort -n | sed -n '3p')"
   local oh=$(( mw - mwo )); [ "$oh" -lt 0 ] && oh=0
   echo "with=${mw}ms disabled=${mwo}ms overhead=${oh}ms"
-  # Tolerance: 200ms. The in-process jq call is the dominant cost; load
-  # spikes can push the jq call time beyond baseline. The 500ms mutant
-  # test proves that a systematic delay is detected.
-  [ "$oh" -le 200 ]
+  # Tolerance: 50ms. The in-process write is ~25ms; overhead is the
+  # difference between a PASSED update with the writer and one without.
+  [ "$oh" -le 50 ]
 }
 
 @test "overhead test fails with 500 ms sleep in real hook" {
