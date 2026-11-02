@@ -1052,37 +1052,33 @@ Line2 end"
   local reg; reg="$(_reg TEST-LOCK)"
   local lockfile="${reg}.lock"
 
-  # Hold the lock with flock from a background process.
+  # Hold the exclusive lock for 3 seconds in a background subshell.
   touch "$lockfile"
-  exec 7>>"$lockfile"
-  flock -x 7
-
-  # count-rounds should block (15s timeout in the writer).
-  # Start it with a short timeout in the background.
-  local start_ts; start_ts="$(date +%s)"
-  bash "$RW" count-rounds --story TEST-LOCK --max 2 > "$TMP/lock-out.txt" 2>&1 &
-  local cr_pid=$!
-
-  # Wait briefly — the process should still be running (blocked on lock).
+  (
+    exec 7>>"$lockfile"
+    flock -x 7
+    sleep 3
+    exec 7>&-
+  ) &
+  local holder_pid=$!
+  # Give the holder time to acquire the lock before starting count-rounds.
   sleep 1
-  if ! kill -0 "$cr_pid" 2>/dev/null; then
-    # Process finished too quickly — check that it took non-trivial time.
-    local end_ts; end_ts="$(date +%s)"
-    local elapsed=$((end_ts - start_ts))
-    # If it finished in <1s, the lock wasn't effective.
-    [ "$elapsed" -ge 1 ]
-  fi
 
-  # Release the lock.
-  flock -u 7
-  exec 7>&-
+  # Time count-rounds while the lock is held.
+  local start_ts; start_ts="$(date +%s)"
+  bash "$RW" count-rounds --story TEST-LOCK --max 2 > "$TMP/lock-out.txt" 2>&1
+  local cr_rc=$?
+  local end_ts; end_ts="$(date +%s)"
+  local elapsed=$((end_ts - start_ts))
+  wait "$holder_pid" 2>/dev/null || true
 
-  # Now the process should finish.
-  local cr_rc=0
-  wait "$cr_pid" || cr_rc=$?
+  # With the lock acquisition in count-rounds, it must wait for the
+  # holder to release (~2 seconds). Without it, the call finishes in
+  # under 2 seconds. This kills the lock-removed mutant.
   [ "$cr_rc" -eq 0 ]
+  [ "$elapsed" -ge 2 ]
 
-  # Verify output is correct.
+  # Output must be correct.
   local out; out="$(cat "$TMP/lock-out.txt")"
   [[ "$out" == *"round_count 1"* ]]
 }
