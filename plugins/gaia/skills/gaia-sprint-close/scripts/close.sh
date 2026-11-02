@@ -113,6 +113,23 @@ log()  { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die()  { log "$*"; exit 1; }
 warn() { log "$*"; }
 
+# Source session-binding.sh early so the sanitizer is available during
+# argument parsing (before provision_binding_dir is called later).
+_early_sb="${PLUGIN_SCRIPTS_DIR:-$(cd "$(dirname "$0")/../../../scripts" && pwd)}/lib/session-binding.sh"
+if [ -f "$_early_sb" ] && ! type _sb_sanitize_value >/dev/null 2>&1; then
+  . "$_early_sb"
+fi
+
+# Sanitize a value for safe stderr output.  Uses the shared sanitizer
+# from session-binding.sh when available; falls back to pass-through.
+_close_sanitize() {
+  if type _sb_sanitize_value >/dev/null 2>&1; then
+    _sb_sanitize_value "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # Read a top-level scalar YAML field from a file. Returns empty string if absent.
 # Disables pipefail locally so a missing key produces an empty string cleanly
 # under set -euo pipefail, not a propagated exit-1 from grep-no-match.
@@ -234,7 +251,7 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
       [ -n "$2" ] || die "--sprint requires a non-empty sprint ID"
       if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$2" ]; then
-        die "repeated --sprint: '$_SPRINT_FLAG' and '$2'"
+        die "repeated --sprint: '$(_close_sanitize "$_SPRINT_FLAG")' and '$(_close_sanitize "$2")'"
       fi
       _SPRINT_FLAG="$2"
       shift 2
@@ -243,7 +260,7 @@ while [ "$#" -gt 0 ]; do
       _SPRINT_FLAG_NEW="${1#--sprint=}"
       [ -n "$_SPRINT_FLAG_NEW" ] || die "--sprint requires a non-empty sprint ID"
       if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$_SPRINT_FLAG_NEW" ]; then
-        die "repeated --sprint: '$_SPRINT_FLAG' and '$_SPRINT_FLAG_NEW'"
+        die "repeated --sprint: '$(_close_sanitize "$_SPRINT_FLAG")' and '$(_close_sanitize "$_SPRINT_FLAG_NEW")'"
       fi
       _SPRINT_FLAG="$_SPRINT_FLAG_NEW"
       shift
@@ -258,12 +275,12 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     -*)
-      die "unknown argument: $1"
+      die "unknown argument: $(_close_sanitize "$1")"
       ;;
     *)
       # Positional argument: treat as sprint ID.
       if [ -n "$_POSITIONAL_SPRINT" ]; then
-        die "unexpected positional argument: $1 (already have $_POSITIONAL_SPRINT)"
+        die "unexpected positional argument: $(_close_sanitize "$1") (already have $(_close_sanitize "$_POSITIONAL_SPRINT"))"
       fi
       _POSITIONAL_SPRINT="$1"
       shift
@@ -333,7 +350,7 @@ trap '_close_cleanup' EXIT
 # values, refuse immediately with a conflict diagnostic.
 if [ -n "$_SPRINT_FLAG" ] && [ -n "$_POSITIONAL_SPRINT" ]; then
   if [ "$_SPRINT_FLAG" != "$_POSITIONAL_SPRINT" ]; then
-    die "positional sprint ID '$_POSITIONAL_SPRINT' conflicts with --sprint '$_SPRINT_FLAG'"
+    die "positional sprint ID '$(_close_sanitize "$_POSITIONAL_SPRINT")' conflicts with --sprint '$(_close_sanitize "$_SPRINT_FLAG")'"
   fi
 fi
 
@@ -353,7 +370,7 @@ if [ -z "${SPRINT_STATUS_YAML:-}" ] && [ -d "$_state_dir" ]; then
   _use_resolver=1
 else
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
-    warn "WARNING: SPRINT_STATUS_YAML is set — resolver and session binding bypassed; target file: ${SPRINT_STATUS_YAML}"
+    warn "WARNING: SPRINT_STATUS_YAML is set — resolver and session binding bypassed; target file: $(_close_sanitize "${SPRINT_STATUS_YAML}")"
   fi
 fi
 
@@ -407,14 +424,14 @@ if [ -n "${RESOLVED_SPRINT:-}" ]; then
 else
   YAML_PATH="$(resolve_yaml_path)"
 fi
-[ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $YAML_PATH"
+[ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $(_close_sanitize "$YAML_PATH")"
 
 SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
-[ -n "$SPRINT_ID" ] || die "sprint_id not found in $YAML_PATH"
+[ -n "$SPRINT_ID" ] || die "sprint_id not found in $(_close_sanitize "$YAML_PATH")"
 
 # Sanity: when the resolver gave us an ID, the state file must match.
 if [ -n "${RESOLVED_SPRINT:-}" ] && [ "$SPRINT_ID" != "$RESOLVED_SPRINT" ]; then
-  die "sprint ID mismatch: resolver gave '${RESOLVED_SPRINT}' but state file contains '${SPRINT_ID}'"
+  die "sprint ID mismatch: resolver gave '$(_close_sanitize "${RESOLVED_SPRINT}")' but state file contains '$(_close_sanitize "${SPRINT_ID}")'"
 fi
 
 # Cross-check: when SPRINT_STATUS_YAML bypassed the resolver, verify the
@@ -425,12 +442,8 @@ fi
 # checked independently so a stale env that happens to match the file's sprint
 # does not mask a disagreement with the binding file.
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
-  _safe_env_id="$GAIA_BOUND_SPRINT_ID"
-  if type _sb_sanitize_value >/dev/null 2>&1; then
-    _safe_env_id="$(_sb_sanitize_value "$GAIA_BOUND_SPRINT_ID")"
-  fi
   if [ "$SPRINT_ID" != "$GAIA_BOUND_SPRINT_ID" ]; then
-    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_env_id'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$(_close_sanitize "$GAIA_BOUND_SPRINT_ID")'"
     exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi
@@ -451,11 +464,7 @@ if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
     _cross_bound="$(printf '%s' "${_cross_raw%$'\r'}")"
   fi
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
-    _safe_bound="$_cross_bound"
-    if type _sb_sanitize_value >/dev/null 2>&1; then
-      _safe_bound="$(_sb_sanitize_value "$_cross_bound")"
-    fi
-    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_safe_bound'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$(_close_sanitize "$_cross_bound")'"
     exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi

@@ -125,7 +125,7 @@ teardown() {
   common_teardown
 }
 
-# ---------- AC1: Explicit --sprint flag ----------
+# ---------- Explicit --sprint flag ----------
 
 @test "explicit --sprint resolves via the shared resolver and closes the target sprint" {
   _build_concurrent_fixture "$TEST_TMP"
@@ -147,7 +147,7 @@ teardown() {
   [ "$s901_status" = "active" ]
 }
 
-# ---------- AC2: Session binding ----------
+# ---------- Session binding ----------
 
 @test "session-bound sprint is closed when no --sprint is passed" {
   _build_concurrent_fixture "$TEST_TMP"
@@ -178,7 +178,7 @@ teardown() {
   [ "$s901_status" = "active" ]
 }
 
-# ---------- AC3: Single-sprint default ----------
+# ---------- Single-sprint default ----------
 
 @test "single-sprint default closes the single active sprint without --sprint" {
   _build_single_fixture "$TEST_TMP"
@@ -194,7 +194,7 @@ teardown() {
   [[ "$output" == *"closed"* ]]
 }
 
-# ---------- AC4: Positional/flag conflict ----------
+# ---------- Positional/flag conflict ----------
 
 @test "positional and --sprint flag with different values produce conflict error" {
   _build_concurrent_fixture "$TEST_TMP"
@@ -213,7 +213,7 @@ teardown() {
   /usr/bin/grep -iq 'conflict' <<<"$output"
 }
 
-# ---------- AC5: Unknown sprint ID ----------
+# ---------- Unknown sprint ID ----------
 
 @test "--sprint with unknown ID exits with resolver not-found error" {
   _build_concurrent_fixture "$TEST_TMP"
@@ -231,7 +231,7 @@ teardown() {
   [[ "$output" != *"unknown argument"* ]]
 }
 
-# ---------- AC6: Resume exception with --sprint ----------
+# ---------- Resume exception with --sprint ----------
 
 @test "resume exception works when --sprint targets a closed sprint with missing archive" {
   _build_concurrent_fixture "$TEST_TMP"
@@ -553,7 +553,7 @@ teardown() {
   [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
 }
 
-# ---------- AC7: Bash 3.2 compatibility ----------
+# ---------- Bash 3.2 compatibility ----------
 
 @test "close.sh runs without syntax errors under /bin/bash 3.2" {
   # Skip on Linux CI where /bin/bash is v5+.
@@ -578,7 +578,7 @@ teardown() {
   [[ "$output" == *"closed"* ]]
 }
 
-# ---------- AC8: No leaked internal identifiers ----------
+# ---------- No leaked internal identifiers ----------
 
 @test "no internal traceability identifiers in published close.sh" {
   # Scan close.sh for leaked internal IDs.
@@ -1639,7 +1639,7 @@ YAML
   [ "$status" -eq 1 ]
 }
 
-# ---------- AC1: read_binding empty file returns rc 3 ----------
+# ---------- read_binding empty file returns rc 3 ----------
 
 @test "read_binding returns rc 3 on empty binding file" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
@@ -1670,7 +1670,7 @@ YAML
   [ "$status" -eq 1 ]
 }
 
-# ---------- AC2: session id path traversal ----------
+# ---------- session id path traversal ----------
 
 @test "path traversal session ID is rejected before cleanup dir computation" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
@@ -1686,7 +1686,7 @@ YAML
   [ "$validate_line" -lt "$provision_line" ]
 }
 
-# ---------- AC3: resolve_sprint_arg has no [ -f ] before cat ----------
+# ---------- resolve_sprint_arg has no [ -f ] before cat ----------
 
 @test "resolve_sprint_arg binding read has no [ -f ] existence test" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
@@ -1713,7 +1713,7 @@ YAML
   [ "$found_pre" -eq 0 ]
 }
 
-# ---------- AC4: sanitized stderr output ----------
+# ---------- sanitized stderr output ----------
 
 @test "terminal escape in session ID rejection is sanitized" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
@@ -1742,7 +1742,7 @@ YAML
   [[ "$result" != *$'\r'* ]]
 }
 
-# ---------- AC5: yaml_top_scalar quote-vs-comment ----------
+# ---------- yaml_top_scalar quote-vs-comment ----------
 
 @test "yaml_top_scalar preserves content after hash inside quoted value" {
   _build_single_fixture "$TEST_TMP"
@@ -1763,7 +1763,7 @@ YAML
   [ "$result" = "sp #1" ]
 }
 
-# ---------- AC6: unreadable binding file on override path ----------
+# ---------- unreadable binding file on override path ----------
 
 @test "unreadable binding file on override path refuses close with exit 16" {
   _build_single_fixture "$TEST_TMP"
@@ -1795,7 +1795,7 @@ YAML
   chmod 644 "$bind_dir/bound_sprint_id"
 }
 
-# ---------- AC7: CRLF binding file same sprint ----------
+# ---------- CRLF binding file same sprint ----------
 
 @test "CRLF binding file with same sprint as target does not refuse close" {
   _build_single_fixture "$TEST_TMP"
@@ -1823,7 +1823,7 @@ YAML
   [[ "$output" == *"closed"* ]]
 }
 
-# ---------- AC8: redundant tr in yaml_top_scalar ----------
+# ---------- redundant tr in yaml_top_scalar ----------
 
 @test "yaml_top_scalar tr removal is detectable (tr -d still present in code)" {
   # AC8 says: keep the tr -d and add a test that detects its removal.
@@ -1831,7 +1831,7 @@ YAML
   /usr/bin/grep -q "tr -d '\\\\r'" "$CLOSE_SH" || /usr/bin/grep -q 'tr -d.*\\r' "$CLOSE_SH"
 }
 
-# ---------- AC10: unreadable binding on resolver path ----------
+# ---------- unreadable binding on resolver path ----------
 
 @test "unreadable binding file on resolver path refuses with error, env does not win" {
   _build_concurrent_for_resolver "$TEST_TMP"
@@ -1867,7 +1867,7 @@ YAML
   chmod 644 "$bind_dir/bound_sprint_id"
 }
 
-# ---------- AC12: CRLF + stale env on resolver path ----------
+# ---------- CRLF + stale env on resolver path ----------
 
 @test "CRLF binding file with stale env refuses with binding_mismatch" {
   _build_concurrent_for_resolver "$TEST_TMP"
@@ -1905,7 +1905,7 @@ YAML
   [ "$s901_before" = "$(cat "$TEST_TMP/.gaia/state/sprint-status-sprint-901.yaml")" ]
 }
 
-# ---------- AC9: CRLF policy in resolve_sprint_arg ----------
+# ---------- CRLF policy in resolve_sprint_arg ----------
 
 @test "resolve_sprint_arg strips trailing CR from CRLF binding file" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
@@ -1972,7 +1972,7 @@ YAML
   [[ "$output" == *"\\r"* ]]
 }
 
-# ---------- AC11: action-items SKILL.md documents mismatch exception ----------
+# ---------- action-items SKILL.md documents mismatch exception ----------
 
 @test "action-items SKILL.md documents the mismatch exception" {
   local skill_md="$BATS_TEST_DIRNAME/../skills/gaia-action-items/SKILL.md"
@@ -2130,51 +2130,344 @@ YAML
   chmod 644 "$bind_dir/bound_sprint_id"
 }
 
-# ---------- Sanitizer call-site coverage ----------
+# ---------- Sanitizer unit + call-site coverage ----------
 
-@test "sanitizer renders all control character classes" {
+@test "sanitizer renders all control character classes including newline" {
   local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
   source "$sb_sh"
 
-  # CR
   local r
   r="$(_sb_sanitize_value "$(printf 'a\rb')")"
-  [[ "$r" == *'\\r'* ]] || [[ "$r" == *'\r'* ]]
+  [[ "$r" == *'\r'* ]]
 
-  # TAB
   r="$(_sb_sanitize_value "$(printf 'a\tb')")"
   [[ "$r" == *'\t'* ]]
 
-  # ESC
   r="$(_sb_sanitize_value "$(printf 'a\x1bb')")"
   [[ "$r" == *'\x1b'* ]]
 
-  # BELL
   r="$(_sb_sanitize_value "$(printf 'a\ab')")"
   [[ "$r" == *'\a'* ]]
 
-  # DEL
   r="$(_sb_sanitize_value "$(printf 'a\x7fb')")"
   [[ "$r" == *'\x7f'* ]]
 
-  # Low control char (\x01)
   r="$(_sb_sanitize_value "$(printf 'a\x01b')")"
   [[ "$r" == *'\x01'* ]]
+
+  # Newline
+  r="$(_sb_sanitize_value "$(printf 'a\nb')")"
+  [[ "$r" == *'\n'* ]]
 
   # Clean value passes through unchanged.
   r="$(_sb_sanitize_value "sprint-900")"
   [ "$r" = "sprint-900" ]
 }
 
-@test "resolve-sprint-stories.sh uses the shared sanitizer" {
-  local rss="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
-  # Must source session-binding.sh (the shared sanitizer), not define its own.
-  /usr/bin/grep -q 'session-binding.sh' "$rss"
-  /usr/bin/grep -q '_sb_sanitize_value' "$rss"
+@test "sanitizer handles >32-byte repeated value without od collapse" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  # 40 'a' characters — od without -v collapses repeated 16-byte lines.
+  local input
+  input="$(printf '%040d' 0 | tr 0 a)"
+  local r
+  r="$(_sb_sanitize_value "$input")"
+  [ "$r" = "$input" ]
+  # Must NOT contain \0 (od collapse artifact).
+  [[ "$r" != *'\0'* ]]
 }
 
-@test "close.sh cross-check sanitizes the env binding value" {
-  local close_sh="$BATS_TEST_DIRNAME/../skills/gaia-sprint-close/scripts/close.sh"
-  # The GAIA_BOUND_SPRINT_ID cross-check must sanitize the value.
-  /usr/bin/grep -q '_sb_sanitize_value.*GAIA_BOUND_SPRINT_ID\|_safe_env_id' "$close_sh"
+# --- Behavioural call-site tests: feed ESC+NL, assert escaped form in stderr ---
+
+@test "close.sh unknown argument sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" $'--evil\x1b[31m'
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "close.sh repeated --sprint sanitizes control chars" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  run bash "$CLOSE_SH" --sprint sprint-200 --sprint $'b\nFAKE: ok'
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\n"* ]]
+  [[ "$output" != *$'\nFAKE'* ]]
+}
+
+@test "close.sh SPRINT_STATUS_YAML warning sanitizes path" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+  export SPRINT_STATUS_YAML=$'bad\x1bpath'
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH"
+
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "close.sh env binding mismatch sanitizes value" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export GAIA_BOUND_SPRINT_ID=$'sprint\x1b999'
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "resolve-sprint-stories.sh unknown arg sanitizes control chars" {
+  local rss="$BATS_TEST_DIRNAME/../skills/gaia-triage-findings/scripts/resolve-sprint-stories.sh"
+
+  run bash "$rss" --impl-dir "$BATS_TEST_TMPDIR" $'--bad\x1barg'
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "validate_binding mismatch sanitizes control chars in env and file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/vb-san"
+  mkdir -p "$bind_dir"
+  printf 'sprint-900' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+  export GAIA_BOUND_SPRINT_ID=$'sprint\x1b999'
+
+  run validate_binding
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "resolve_sprint_arg env-shape sanitizes control chars" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  mkdir -p "$TEST_TMP/.gaia/state"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export GAIA_BOUND_SPRINT_ID=$'sprint\x1b999'
+  unset GAIA_BINDING_DIR
+
+  run resolve_sprint_arg --command sprint-close
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "write_binding invalid-character error sanitizes the sprint id" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/wb-san"
+  mkdir -p "$bind_dir"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  mkdir -p "$TEST_TMP/.gaia/state"
+  cat > "$TEST_TMP/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+
+  run write_binding $'sprint\x1b900' "$TEST_TMP/.gaia/state"
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+@test "read_binding invalid-id error sanitizes the value" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local bind_dir="$TEST_TMP/rb-san"
+  mkdir -p "$bind_dir"
+  printf 'sprint\x1b900' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  run read_binding
+
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"\\x1b"* ]]
+  [[ "$output" != *$'\x1b'* ]]
+}
+
+# --- CRLF through read_binding and write_binding re-entry ---
+
+@test "read_binding strips trailing CR from CRLF binding file" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/rb-crlf-$$"
+  mkdir -p "$bind_dir"
+  printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  run read_binding
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "sprint-900" ]
+}
+
+@test "write_binding re-entry accepts CRLF binding file with same sprint" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/wb-crlf-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  # Pre-create binding file with CRLF.
+  printf 'sprint-900\r\n' > "$bind_dir/bound_sprint_id"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  # Re-entry with same sprint must succeed (idempotent).
+  run write_binding "sprint-900" "$root/.gaia/state"
+
+  [ "$status" -eq 0 ]
+}
+
+# --- Cross-sprint CRLF binding file mismatch (different sprint) ---
+
+@test "CRLF binding file with different sprint refuses on override path" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Binding file holds sprint-999 with CRLF.
+  local sid="crlf-diff-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-999\r\n' > "$bind_dir/bound_sprint_id"
+
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  run bash "$CLOSE_SH"
+
+  # sprint-200 in file, sprint-999 in binding -> mismatch.
+  [ "$status" -eq 15 ]
+  [[ "$output" == *"sprint-200"* ]]
+  [[ "$output" == *"sprint-999"* ]]
+  # No raw CR in the output.
+  [[ "$output" != *$'\r'* ]]
+}
+
+# --- Deterministic write-once race test ---
+
+@test "write_binding write-once: second writer sees EEXIST deterministically" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+  source "$sb_sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  cat > "$root/.gaia/state/sprint-status-sprint-901.yaml" <<'YAML'
+sprint_id: sprint-901
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/det-race-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  export GAIA_BINDING_DIR="$bind_dir"
+
+  # First writer succeeds.
+  write_binding "sprint-900" "$root/.gaia/state"
+  [ -f "$bind_dir/bound_sprint_id" ]
+  [ "$(cat "$bind_dir/bound_sprint_id")" = "sprint-900" ]
+
+  # Second writer with different sprint fails with rc 2.
+  run write_binding "sprint-901" "$root/.gaia/state"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"already bound to sprint-900"* ]]
+
+  # Binding file unchanged.
+  [ "$(cat "$bind_dir/bound_sprint_id")" = "sprint-900" ]
+}
+
+@test "write_binding write-once: separate-process writer fails deterministically" {
+  local sb_sh="$BATS_TEST_DIRNAME/../scripts/lib/session-binding.sh"
+
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/state"
+  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
+sprint_id: sprint-900
+status: active
+total_points: 0
+stories: []
+YAML
+  cat > "$root/.gaia/state/sprint-status-sprint-901.yaml" <<'YAML'
+sprint_id: sprint-901
+status: active
+total_points: 0
+stories: []
+YAML
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+
+  local bind_dir="$root/.gaia/state/sessions/sep-race-$$"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+
+  # First writer (separate process).
+  GAIA_BINDING_DIR="$bind_dir" bash -c "source '$sb_sh'; write_binding sprint-900 '$root/.gaia/state'"
+  [ "$(cat "$bind_dir/bound_sprint_id")" = "sprint-900" ]
+
+  # Second writer (separate process, different sprint) must fail.
+  run bash -c "export GAIA_BINDING_DIR='$bind_dir' PROJECT_ROOT='$root' CLAUDE_PROJECT_ROOT='$root'; source '$sb_sh'; write_binding sprint-901 '$root/.gaia/state'"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"already bound to sprint-900"* ]]
+
+  # Binding file unchanged.
+  [ "$(cat "$bind_dir/bound_sprint_id")" = "sprint-900" ]
 }

@@ -35,7 +35,7 @@ _SB_SCRIPT_NAME="${0##*/}"
 # every control character (0x00-0x1f, 0x7f) portably.
 _sb_sanitize_value() {
   local val="$1"
-  printf '%s' "$val" | od -An -tx1 | awk '
+  printf '%s' "$val" | od -v -An -tx1 | awk '
     {
       for (i = 1; i <= NF; i++) {
         h = $i
@@ -70,7 +70,7 @@ _sb_sanitize_value() {
 # Strip ONE trailing CR from a value (the CRLF read-time policy).
 # A value with only a trailing CR is accepted after stripping.  A CR
 # anywhere else in the value makes it invalid (handled by the caller).
-# Uses bash builtins (no subshell) for speed on every binding read.
+# Uses bash parameter expansion for speed on every binding read.
 _sb_strip_trailing_cr() {
   local val="$1"
   # ${val%$'\r'} removes exactly one trailing CR (bash 3.2+).
