@@ -1310,3 +1310,42 @@ YAML
   [ "$status" -eq 0 ]
   [[ "$output" == *"PASSED"* ]]
 }
+
+# ── Ledger record failure must surface in per-sprint-release ───────────
+
+@test "per_sprint_release_exits_nonzero_when_merge_ledger_record_fails" {
+  cd "$PROJECT_DIR"
+
+  # Make the merge ledger dir read-only so the record call fails.
+  # The list sub-command (which reads) still succeeds because files
+  # were committed earlier.  But the record sub-command (which writes
+  # a new intent file) will fail because the dir is not writable.
+  local ledger_dir="$PROJECT_DIR/.gaia/state/merge"
+
+  # First verify the baseline: release succeeds with a writable ledger
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Now make a fresh clone so we can re-run, and break the ledger dir
+  local project2="${BATS_TEST_TMPDIR}/project2"
+  git clone "$REMOTE_DIR" "$project2" 2>/dev/null
+  git -C "$project2" config user.email "test@test.com"
+  git -C "$project2" config user.name "Test"
+  # Copy state from original
+  cp -R "$PROJECT_DIR/.gaia" "$project2/.gaia"
+  # Remove the release tag so the script can run again
+  git -C "$project2" tag -d v0.1.0 2>/dev/null || true
+
+  # Make ledger dir unwritable so record fails
+  chmod 555 "$project2/.gaia/state/merge"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$project2" --config "$project2/.gaia/config/project-config.yaml"
+
+  # Restore permissions for cleanup
+  chmod 755 "$project2/.gaia/state/merge"
+
+  # The release must exit non-zero because record could not write
+  [ "$status" -ne 0 ]
+}

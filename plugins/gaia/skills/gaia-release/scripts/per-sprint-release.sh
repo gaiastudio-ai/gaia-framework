@@ -335,19 +335,26 @@ _psr_create_merge_back_pr() {
     fi
   fi
 
-  # Record the release intent via the merge ledger (sole writer)
+  # Record the release intent via the merge ledger (sole writer).
+  # Failures must surface — a silent swallow hides broken state.
   local _psr_ml="${_PSR_PLUGIN_ROOT}/scripts/merge-ledger.sh"
   if [ -n "$pr_number" ]; then
-    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+    if ! MERGE_LEDGER_DIR="$_psr_ledger_dir" \
       bash "$_psr_ml" record --mode release \
         --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
-        --pr-number "$pr_number" >/dev/null 2>&1 || true
+        --pr-number "$pr_number" >/dev/null 2>&1; then
+      _psr_log "WARNING: merge-ledger record failed for release intent (PR #${pr_number})"
+      return 1
+    fi
     _psr_log "merge-back PR #${pr_number} opened on branch $pr_branch"
   else
-    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+    if ! MERGE_LEDGER_DIR="$_psr_ledger_dir" \
       bash "$_psr_ml" record --mode release \
         --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
-        >/dev/null 2>&1 || true
+        >/dev/null 2>&1; then
+      _psr_log "WARNING: merge-ledger record failed for release intent"
+      return 1
+    fi
     # Token fallback: print the one-click PR URL
     local remote_url=""
     remote_url="$(git -C "$project_root" remote get-url origin 2>/dev/null)" || remote_url=""
