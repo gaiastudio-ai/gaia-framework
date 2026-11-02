@@ -394,12 +394,14 @@ _mt_verb_smoke_wait() {
   if [ -f "$parent_exec_lib" ]; then
     # shellcheck source=lib/parent-exec.sh
     . "$parent_exec_lib"
-    # Run the smoke command and capture its exit code.  The detach library
-    # launches the runner in a new process group; we wait for the result
-    # file to appear.
-    local smoke_wrapper
-    smoke_wrapper="$(printf 'sh -c %s; echo $? > %s' "'${smoke_cmd}'" "'${smoke_result_file}'")"
-    parent_exec_run -- sh -c "$smoke_wrapper" || smoke_rc=$?
+    # Run the smoke command and capture its exit code.  The command is
+    # passed as an env variable to avoid shell-string interpolation issues
+    # with quotes and metacharacters in the command text.
+    parent_exec_run -- env \
+      _MT_SMOKE_CMD="$smoke_cmd" \
+      _MT_SMOKE_RESULT="$smoke_result_file" \
+      sh -c 'eval "$_MT_SMOKE_CMD"; echo $? > "$_MT_SMOKE_RESULT"' \
+      || smoke_rc=$?
     if [ -f "$smoke_result_file" ]; then
       smoke_rc="$(cat "$smoke_result_file")"
       rm -f "$smoke_result_file"

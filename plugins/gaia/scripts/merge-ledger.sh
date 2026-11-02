@@ -42,6 +42,34 @@ _ML_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ml_log() { printf '%s: %s\n' "$_ML_SCRIPT_NAME" "$*" >&2; }
 _ml_die() { _ml_log "$*"; exit 1; }
 
+# Source the shared lock helper (flock with hard-link fallback).
+_ML_LOCK_LIB="${_ML_SCRIPT_DIR}/lib/acquire-lock.sh"
+if [ -f "$_ML_LOCK_LIB" ]; then
+  # shellcheck source=lib/acquire-lock.sh
+  . "$_ML_LOCK_LIB"
+  _ML_HAS_LOCK=1
+else
+  _ML_HAS_LOCK=0
+fi
+
+# Lock / unlock the ledger directory.  The lock file is a dotfile
+# (.merge-ledger.lock) so sole-writer-check's glob skips it.
+_ml_lock() {
+  local ledger_dir="$1"
+  if [ "$_ML_HAS_LOCK" = "1" ]; then
+    local lock_file="${ledger_dir}/.merge-ledger.lock"
+    if ! acquire_lock "$lock_file" 5 7; then
+      _ml_die "failed to acquire ledger lock: $lock_file"
+    fi
+  fi
+}
+
+_ml_unlock() {
+  if [ "$_ML_HAS_LOCK" = "1" ]; then
+    release_lock 7 2>/dev/null || true
+  fi
+}
+
 # Resolve ledger directory
 _ml_resolve_ledger_dir() {
   if [ -n "${MERGE_LEDGER_DIR:-}" ]; then
@@ -261,15 +289,23 @@ _ml_cmd_write_gate_pass() {
 
   local ts=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  local gate_file=""
-  gate_file="$ledger_dir/gate-pass-pr${pr}-$(date -u +%Y%m%d%H%M%S).yaml"
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
 
-  : > "$gate_file"
-  _ml_safe_write_field "$gate_file" type gate_pass
-  _ml_safe_write_field "$gate_file" pr "$pr"
-  _ml_safe_write_field "$gate_file" head_sha "$head"
-  _ml_safe_write_field "$gate_file" story "$story"
-  _ml_safe_write_field "$gate_file" created_at "$ts"
+  local gate_file=""
+  gate_file="$ledger_dir/gate-pass-pr${pr}-$(date -u +%Y%m%d%H%M%S)-$$.yaml"
+
+  local gate_tmp="${gate_file}.$$.tmp"
+  : > "$gate_tmp"
+  _ml_safe_write_field "$gate_tmp" type gate_pass
+  _ml_safe_write_field "$gate_tmp" pr "$pr"
+  _ml_safe_write_field "$gate_tmp" head_sha "$head"
+  _ml_safe_write_field "$gate_tmp" story "$story"
+  _ml_safe_write_field "$gate_tmp" created_at "$ts"
+  mv "$gate_tmp" "$gate_file"
+
+  _ml_unlock
+  trap - EXIT
 
   _ml_log "gate_pass recorded for PR #${pr} at ${head}"
   printf '%s\n' "$gate_file"
@@ -303,16 +339,24 @@ _ml_cmd_write_gate_bypass() {
 
   local ts=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  local gate_file=""
-  gate_file="$ledger_dir/gate-bypass-pr${pr}-$(date -u +%Y%m%d%H%M%S).yaml"
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
 
-  : > "$gate_file"
-  _ml_safe_write_field "$gate_file" type gate_bypass
-  _ml_safe_write_field "$gate_file" pr "$pr"
-  _ml_safe_write_field "$gate_file" head_sha "$head"
-  _ml_safe_write_field "$gate_file" story "$story"
-  _ml_safe_write_field "$gate_file" bypass_confirmed "$bypass_confirmation"
-  _ml_safe_write_field "$gate_file" created_at "$ts"
+  local gate_file=""
+  gate_file="$ledger_dir/gate-bypass-pr${pr}-$(date -u +%Y%m%d%H%M%S)-$$.yaml"
+
+  local gate_tmp="${gate_file}.$$.tmp"
+  : > "$gate_tmp"
+  _ml_safe_write_field "$gate_tmp" type gate_bypass
+  _ml_safe_write_field "$gate_tmp" pr "$pr"
+  _ml_safe_write_field "$gate_tmp" head_sha "$head"
+  _ml_safe_write_field "$gate_tmp" story "$story"
+  _ml_safe_write_field "$gate_tmp" bypass_confirmed "$bypass_confirmation"
+  _ml_safe_write_field "$gate_tmp" created_at "$ts"
+  mv "$gate_tmp" "$gate_file"
+
+  _ml_unlock
+  trap - EXIT
 
   _ml_log "gate_bypass recorded for PR #${pr} at ${head} (confirmation: ${bypass_confirmation})"
   printf '%s\n' "$gate_file"
@@ -352,10 +396,14 @@ _ml_cmd_write_intent() {
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
   mkdir -p "$ledger_dir"
 
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
+
   # Check for prior gate record (write-ahead invariant)
   local gate_file=""
   gate_file="$(_ml_find_gate_record "$ledger_dir" "$pr" "$head")" || gate_file=""
   if [ -z "$gate_file" ]; then
+    _ml_unlock; trap - EXIT
     _ml_die "write-intent: no gate record (gate_pass or gate_bypass) found for PR #${pr} at head ${head} — merge intent rejected"
   fi
 
@@ -371,6 +419,7 @@ _ml_cmd_write_intent() {
         ;;
       *)
         # Already in-progress — return the existing intent (idempotent)
+        _ml_unlock; trap - EXIT
         _ml_log "existing intent found for PR #${pr} at ${head} (state: ${existing_state})"
         printf '%s\n' "$existing"
         return 0
@@ -392,17 +441,22 @@ _ml_cmd_write_intent() {
   intent_id="$(_ml_intent_id)"
   local intent_file="$ledger_dir/intent-pr${pr}-${intent_id}.yaml"
 
-  : > "$intent_file"
-  _ml_safe_write_field "$intent_file" intent_id "$intent_id"
-  _ml_safe_write_field "$intent_file" type merge_intent
-  _ml_safe_write_field "$intent_file" story "$story"
-  _ml_safe_write_field "$intent_file" pr "$pr"
-  _ml_safe_write_field "$intent_file" head_sha "$head"
-  _ml_safe_write_field "$intent_file" target "$target"
-  _ml_safe_write_field "$intent_file" mode "$mode"
-  _ml_safe_write_field "$intent_file" state intent
-  _ml_safe_write_field "$intent_file" bypass "$bypass_flag"
-  _ml_safe_write_field "$intent_file" created_at "$ts"
+  local intent_tmp="${intent_file}.$$.tmp"
+  : > "$intent_tmp"
+  _ml_safe_write_field "$intent_tmp" intent_id "$intent_id"
+  _ml_safe_write_field "$intent_tmp" type merge_intent
+  _ml_safe_write_field "$intent_tmp" story "$story"
+  _ml_safe_write_field "$intent_tmp" pr "$pr"
+  _ml_safe_write_field "$intent_tmp" head_sha "$head"
+  _ml_safe_write_field "$intent_tmp" target "$target"
+  _ml_safe_write_field "$intent_tmp" mode "$mode"
+  _ml_safe_write_field "$intent_tmp" state intent
+  _ml_safe_write_field "$intent_tmp" bypass "$bypass_flag"
+  _ml_safe_write_field "$intent_tmp" created_at "$ts"
+  mv "$intent_tmp" "$intent_file"
+
+  _ml_unlock
+  trap - EXIT
 
   _ml_log "merge intent created: ${intent_id} for PR #${pr} at ${head}"
   printf '%s\n' "$intent_file"
@@ -432,9 +486,13 @@ _ml_cmd_advance() {
   local ledger_dir=""
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
 
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
+
   local intent_file=""
   intent_file="$(_ml_find_latest_intent "$ledger_dir" "$pr" "$head")" || intent_file=""
   if [ -z "$intent_file" ]; then
+    _ml_unlock; trap - EXIT
     _ml_die "advance: no intent found for PR #${pr} at ${head}"
   fi
 
@@ -455,31 +513,45 @@ _ml_cmd_advance() {
     "${new_state}:${new_state}") valid=1 ;;
   esac
   if [ "$valid" -eq 0 ]; then
+    _ml_unlock; trap - EXIT
     _ml_die "advance: invalid transition ${current_state} -> ${new_state}"
   fi
 
-  # Update the state in the intent file
+  # Build the full updated file atomically: sed the state, then append
+  # all new fields to a single temp file, then mv into place.
   local ts=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  # Use sed to update the state field (BSD-safe: no -i)
-  local tmp_file="${intent_file}.tmp"
+  local tmp_file="${intent_file}.$$.tmp"
   sed "s/^state: .*/state: \"${new_state}\"/" "$intent_file" > "$tmp_file"
-  mv "$tmp_file" "$intent_file"
 
   # Append merge_sha if provided and transitioning to merged
   if [ "$new_state" = "merged" ] && [ -n "$merge_sha" ]; then
-    _ml_safe_write_field "$intent_file" merge_sha "$merge_sha"
+    _ml_safe_write_field "$tmp_file" merge_sha "$merge_sha"
   fi
 
   # Append transition timestamp
-  _ml_safe_write_field "$intent_file" last_transition "$ts"
+  _ml_safe_write_field "$tmp_file" last_transition "$ts"
 
   # Store CI-wait deadline fields when transitioning to merging
   # (for deadline resume across sessions)
   if [ "$new_state" = "merging" ]; then
-    _ml_safe_write_field "$intent_file" ci_wait_started "$ts"
+    _ml_safe_write_field "$tmp_file" ci_wait_started "$ts"
   fi
+
+  # Test-only fault injection: simulate a kill just before the final
+  # atomic mv.  The temp file has the new state + all appended fields;
+  # the real intent file is still the old version.  Not user-facing.
+  if [ "${_ML_FAULT_BEFORE_MV:-}" = "1" ]; then
+    _ml_unlock; trap - EXIT
+    _ml_log "FAULT INJECTED: exiting before mv"
+    exit 99
+  fi
+
+  mv "$tmp_file" "$intent_file"
+
+  _ml_unlock
+  trap - EXIT
 
   _ml_log "advanced PR #${pr} intent: ${current_state} -> ${new_state}"
   printf '%s\n' "$intent_file"
@@ -525,9 +597,13 @@ _ml_cmd_supersede() {
   local ledger_dir=""
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
 
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
+
   local intent_file=""
   intent_file="$(_ml_find_latest_intent "$ledger_dir" "$pr" "$head")" || intent_file=""
   if [ -z "$intent_file" ]; then
+    _ml_unlock; trap - EXIT
     _ml_log "no intent found for PR #${pr} at ${head} to supersede"
     return 0
   fi
@@ -538,6 +614,7 @@ _ml_cmd_supersede() {
   # Only non-terminal states can be superseded
   case "$current_state" in
     finalized|superseded)
+      _ml_unlock; trap - EXIT
       _ml_log "intent already in terminal state: ${current_state}"
       return 0
       ;;
@@ -546,10 +623,14 @@ _ml_cmd_supersede() {
   local ts=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  local tmp_file="${intent_file}.tmp"
+  # Atomic write: sed + append to temp, then mv into place
+  local tmp_file="${intent_file}.$$.tmp"
   sed "s/^state: .*/state: \"superseded\"/" "$intent_file" > "$tmp_file"
+  _ml_safe_write_field "$tmp_file" superseded_at "$ts"
   mv "$tmp_file" "$intent_file"
-  _ml_safe_write_field "$intent_file" superseded_at "$ts"
+
+  _ml_unlock
+  trap - EXIT
 
   _ml_log "superseded intent for PR #${pr} at ${head}"
   printf '%s\n' "$intent_file"
@@ -565,6 +646,26 @@ _ml_cmd_list() {
     esac
   done
   [ -z "$sprint_id" ] && _ml_die "list: --sprint required"
+
+  # Validate sprint-id format before building any file paths (path traversal guard).
+  # Accept bare numeric (e.g. "151") or prefixed (e.g. "sprint-151").
+  case "$sprint_id" in
+    sprint-[0-9]*)
+      # Strip the prefix for a secondary check: digits only after "sprint-"
+      local _sid_num="${sprint_id#sprint-}"
+      case "$_sid_num" in
+        *[!0-9]*) _ml_die "list: invalid sprint-id '$sprint_id' — must be a number or sprint-<number>" ;;
+      esac
+      ;;
+    [0-9]*)
+      case "$sprint_id" in
+        *[!0-9]*) _ml_die "list: invalid sprint-id '$sprint_id' — must be a number or sprint-<number>" ;;
+      esac
+      ;;
+    *)
+      _ml_die "list: invalid sprint-id '$sprint_id' — must be a number or sprint-<number>"
+      ;;
+  esac
 
   local ledger_dir=""
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
@@ -715,6 +816,9 @@ _ml_cmd_record() {
   ledger_dir="$(_ml_resolve_ledger_dir)" || _ml_die "cannot resolve ledger directory"
   mkdir -p "$ledger_dir"
 
+  _ml_lock "$ledger_dir"
+  trap '_ml_unlock' EXIT
+
   local ts=""
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || ts="1970-01-01T00:00:00Z"
 
@@ -722,18 +826,24 @@ _ml_cmd_record() {
   intent_id="ri-$(date -u +%Y%m%d%H%M%S)-$$"
 
   local intent_file="${ledger_dir}/intent-release-${intent_id}.yaml"
-  : > "$intent_file"
-  _ml_safe_write_field "$intent_file" intent_id "$intent_id"
-  _ml_safe_write_field "$intent_file" mode "release"
-  _ml_safe_write_field "$intent_file" state "intent"
-  _ml_safe_write_field "$intent_file" head_sha "$head_sha"
-  _ml_safe_write_field "$intent_file" target "$target"
-  _ml_safe_write_field "$intent_file" pr_branch "$pr_branch"
-  _ml_safe_write_field "$intent_file" created_at "$ts"
+  local intent_tmp="${intent_file}.$$.tmp"
+  : > "$intent_tmp"
+  _ml_safe_write_field "$intent_tmp" intent_id "$intent_id"
+  _ml_safe_write_field "$intent_tmp" mode "release"
+  _ml_safe_write_field "$intent_tmp" state "intent"
+  _ml_safe_write_field "$intent_tmp" head_sha "$head_sha"
+  _ml_safe_write_field "$intent_tmp" target "$target"
+  _ml_safe_write_field "$intent_tmp" pr_branch "$pr_branch"
+  _ml_safe_write_field "$intent_tmp" created_at "$ts"
 
   if [ -n "$pr_number" ]; then
-    _ml_safe_write_field "$intent_file" pr_number "$pr_number"
+    _ml_safe_write_field "$intent_tmp" pr_number "$pr_number"
   fi
+
+  mv "$intent_tmp" "$intent_file"
+
+  _ml_unlock
+  trap - EXIT
 
   printf '%s\n' "$intent_file"
 }
