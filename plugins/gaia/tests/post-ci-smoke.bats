@@ -273,13 +273,13 @@ YAML
   # Anchor on the runner code fence line.
   grep -qF -- '--key post_ci_smoke_commands' <<< "$between"
   grep -q 'HALT the merge' <<< "$between"
-  # The CI-wait invocation must appear BEFORE the smoke runner.
-  local ci_line smoke_line
-  ci_line="$(grep -n 'ci-wait.sh' <<< "$between" | head -1 | cut -d: -f1)"
+  # The green-CI outcome line must appear BEFORE the smoke runner.
+  local green_line smoke_line
+  green_line="$(grep -n 'CI checks passed. Proceed to Step 13' <<< "$between" | head -1 | cut -d: -f1)"
   smoke_line="$(grep -nF -- '--key post_ci_smoke_commands' <<< "$between" | head -1 | cut -d: -f1)"
-  [ -n "$ci_line" ]
+  [ -n "$green_line" ]
   [ -n "$smoke_line" ]
-  [ "$ci_line" -lt "$smoke_line" ]
+  [ "$green_line" -lt "$smoke_line" ]
 }
 
 @test "removing preflight gate from Step 10 loses runner invocation" {
@@ -308,8 +308,9 @@ _build_no_yq_path() {
     p="$(command -v "$b" 2>/dev/null || true)"
     [ -n "$p" ] && ln -sf "$p" "$narrow/$b"
   done
-  # Verify yq is actually hidden.
-  if env PATH="$narrow" command -v yq >/dev/null 2>&1; then
+  # Verify yq is actually hidden. Use bash -c because env can't find
+  # the 'command' builtin directly.
+  if env PATH="$narrow" bash -c 'command -v yq' >/dev/null 2>&1; then
     printf 'FAIL: yq is still reachable on the narrow PATH\n' >&2
     return 1
   fi
@@ -378,6 +379,16 @@ YAML
   grep -qF 'yq is required for preflight_commands' <<< "$output"
 }
 
+@test "resolve-config.sh detects single-quoted key without yq" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf "'preflight_commands':\n  - \"make lint\"\nproject_root: /tmp/t\nproject_path: /tmp/t\nmemory_path: /tmp/t\ncheckpoint_path: /tmp/t\ninstalled_path: /tmp/t\nframework_version: \"1.0.0\"\ndate: \"2026-01-01\"\n" > "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$PLUGIN_ROOT/scripts/resolve-config.sh" --format json --shared "$CONFIG"
+  [ "$status" -ne 0 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
 # --- Runner: comment-only config without yq ---
 
 @test "runner ignores comment-only key when yq absent" {
@@ -398,6 +409,36 @@ YAML
 preflight_commands:
   - "true"
 YAML
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
+@test "runner halts on double-quoted key when yq absent" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf '"preflight_commands":\n  - "true"\n' > "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
+@test "runner halts on single-quoted key when yq absent" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf "'preflight_commands':\n  - \"true\"\n" > "$CONFIG"
+  local narrow
+  narrow="$(_build_no_yq_path)"
+  run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  grep -qF 'yq is required for preflight_commands' <<< "$output"
+}
+
+@test "runner halts on spaced key when yq absent" {
+  [ -x "$(command -v jq)" ] || { echo "jq missing"; return 1; }
+  printf 'preflight_commands :\n  - "true"\n' > "$CONFIG"
   local narrow
   narrow="$(_build_no_yq_path)"
   run env PATH="$narrow" bash "$SCRIPT" --key preflight_commands --config "$CONFIG" --workdir "$WORKDIR"
