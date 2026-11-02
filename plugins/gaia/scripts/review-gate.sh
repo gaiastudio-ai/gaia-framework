@@ -1621,11 +1621,17 @@ main() {
           # is unaffected. Fires only for canonical gate verdicts (not
           # plan-id ledger writes, not carry-forward).
           # In-process: the writer is sourced (no subprocess spawn) so the
-          # write stays within the p95 <= 50 ms budget.
-          if [ -z "$plan_id" ] && [ -n "$story_key" ]; then
+          # write stays within the p95 <= 50 ms budget. jq stamps the end
+          # time inside the JSON build (zero extra processes per write).
+          # Disabled by REVIEW_TELEMETRY_DISABLE=1 (for paired overhead tests).
+          if [ -z "$plan_id" ] && [ -n "$story_key" ] \
+             && [ "${REVIEW_TELEMETRY_DISABLE:-}" != "1" ]; then
             _telemetry_sh="${_RG_DIR}/review-telemetry-writer.sh"
             if [ -f "$_telemetry_sh" ]; then
-              _TW_SOURCED=1 . "$_telemetry_sh"
+              # Source only once (idempotent guard).
+              if ! type _tw_gate_entry >/dev/null 2>&1; then
+                _TW_SOURCED=1 . "$_telemetry_sh"
+              fi
               _tel_args=(--story "$story_key" --gate "$gate_name" --verdict "$verdict")
               if [ -n "$STORY_FILE" ]; then
                 _tel_args+=(--story-file "$STORY_FILE")
@@ -1637,11 +1643,8 @@ main() {
                 _tel_args+=(--run-id "$telemetry_run_id")
               fi
               if [ -n "$telemetry_started_at" ]; then
-                _tel_now="$(_tw_epoch_ms)"
                 _tel_args+=(--started-at "$telemetry_started_at")
-                if [ -n "$_tel_now" ]; then
-                  _tel_args+=(--ended-at "$_tel_now")
-                fi
+                # No --ended-at: jq stamps the end time inside the JSON build.
               fi
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")

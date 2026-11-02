@@ -171,20 +171,19 @@ _tw_append() {
 }
 
 # Epoch-millisecond timestamp. Uses EPOCHREALTIME (bash 5.0+) when
-# available; falls back to perl. Returns empty on failure.
+# available — no subprocess. On bash 3.2 this function is not called;
+# jq's `now*1000|floor` stamps the end time inside the JSON build
+# (zero extra processes per write).
 _tw_epoch_ms() {
   if [ -n "${EPOCHREALTIME:-}" ]; then
-    # EPOCHREALTIME is seconds.microseconds; convert to ms.
     local sec="${EPOCHREALTIME%%.*}"
     local frac="${EPOCHREALTIME#*.}"
-    # Take first 3 digits of the fractional part (ms).
     frac="${frac:0:3}"
-    # Pad to 3 digits if shorter.
     while [ "${#frac}" -lt 3 ]; do frac="${frac}0"; done
     printf '%s%s' "$sec" "$frac"
-  else
-    perl -MTime::HiRes=time -e 'printf "%d", time*1000' 2>/dev/null || true
   fi
+  # No fallback — callers that need a timestamp on bash 3.2 use the
+  # jq now*1000 path instead.
 }
 
 # ---------- gate-entry ----------
@@ -224,6 +223,13 @@ _tw_gate_entry() {
   fi
 
   # --- Numeric field validation (before any arithmetic/argjson) ---
+  # Treat literal "null" the same as empty (JSON null in output).
+  [ "$started_at" = "null" ] && started_at=""
+  [ "$ended_at" = "null" ] && ended_at=""
+  [ "$token_estimate" = "null" ] && token_estimate=""
+  [ "$round" = "null" ] && round=""
+  [ "$mutation_score" = "null" ] && mutation_score=""
+
   if [ -n "$started_at" ] && ! _tw_is_integer "$started_at"; then
     _tw_err "gate-entry: --started-at must be a non-negative integer, got '$started_at' — skipping"; return 0
   fi
@@ -243,17 +249,18 @@ _tw_gate_entry() {
     _tw_err "gate-entry: --run-id contains unsafe characters — skipping"; return 0
   fi
 
-  # --- Compute duration ---
-  local duration_ms="null" jq_start="null" jq_end="null"
-  if [ -n "$started_at" ]; then
-    jq_start="$started_at"
-    if [ -n "$ended_at" ]; then
-      jq_end="$ended_at"
-      local diff=$(( ended_at - started_at ))
-      if [ "$diff" -lt 0 ]; then
-        _tw_err "gate-entry: negative duration (end < start) — skipping"; return 0
-      fi
-      duration_ms="$diff"
+  # --- Build typed values ---
+  local jq_start="null"
+  [ -n "$started_at" ] && jq_start="$started_at"
+
+  # end is always stamped when not explicitly provided (jq now*1000).
+  # When --ended-at is given, validate and use it; when --started-at is
+  # given without --ended-at, jq computes end from wall-clock; standalone
+  # calls (no --started-at) also stamp end from wall-clock.
+  if [ -n "$ended_at" ] && [ -n "$started_at" ]; then
+    local diff=$(( ended_at - started_at ))
+    if [ "$diff" -lt 0 ]; then
+      _tw_err "gate-entry: negative duration (end < start) — skipping"; return 0
     fi
   fi
 
@@ -268,7 +275,38 @@ _tw_gate_entry() {
     run_id_args=(--argjson run_id "null")
   fi
 
+  # Build the jq expression. duration_ms is computed inside jq when
+  # start is present and end is wall-clock stamped, keeping everything
+  # in one process.
+  local jq_filter
+  if [ -n "$started_at" ] && [ -z "$ended_at" ]; then
+    # start given, end from jq wall-clock: compute duration inside jq.
+    jq_filter='{schema_version:$schema_version,type:$type,gate:$gate,
+      round:$round,run_id:$run_id,start:$start,
+      end:(now*1000|floor),
+      duration_ms:((now*1000|floor)-$start),
+      verdict:$verdict,
+      mutation_score:$mutation_score,token_estimate:$token_estimate}'
+  elif [ -n "$ended_at" ]; then
+    # Both start and end explicit: duration is end-start.
+    jq_filter='{schema_version:$schema_version,type:$type,gate:$gate,
+      round:$round,run_id:$run_id,start:$start,end:$end,
+      duration_ms:($end-$start),
+      verdict:$verdict,
+      mutation_score:$mutation_score,token_estimate:$token_estimate}'
+  else
+    # No start, no end: stamp end from wall-clock, duration null.
+    jq_filter='{schema_version:$schema_version,type:$type,gate:$gate,
+      round:$round,run_id:$run_id,start:null,
+      end:(now*1000|floor),
+      duration_ms:null,
+      verdict:$verdict,
+      mutation_score:$mutation_score,token_estimate:$token_estimate}'
+  fi
+
   local line
+  local jq_end_val="null"
+  [ -n "$ended_at" ] && jq_end_val="$ended_at"
   line="$(jq -nc \
     --argjson schema_version "$_TW_SCHEMA_VERSION" \
     --arg type "gate" \
@@ -277,14 +315,10 @@ _tw_gate_entry() {
     --argjson round "$jq_round" \
     "${run_id_args[@]}" \
     --argjson start "$jq_start" \
-    --argjson end "$jq_end" \
-    --argjson duration_ms "$duration_ms" \
+    --argjson end "$jq_end_val" \
     --argjson mutation_score "$jq_mscore" \
     --argjson token_estimate "$jq_tokens" \
-    '{schema_version:$schema_version,type:$type,gate:$gate,
-      round:$round,run_id:$run_id,start:$start,end:$end,
-      duration_ms:$duration_ms,verdict:$verdict,
-      mutation_score:$mutation_score,token_estimate:$token_estimate}')" \
+    "$jq_filter")" \
     || { _tw_err "jq failed building gate-entry line"; return 0; }
 
   local path
@@ -321,6 +355,11 @@ _tw_summary() {
   if ! _tw_is_canonical_composite "$composite_verdict"; then
     _tw_err "$entry_type: --composite-verdict '$composite_verdict' is not canonical — skipping"; return 0
   fi
+
+  # Treat literal "null" the same as empty (JSON null in output).
+  [ "$round" = "null" ] && round=""
+  [ "$total_duration_ms" = "null" ] && total_duration_ms=""
+  [ "$total_tokens" = "null" ] && total_tokens=""
 
   # --- Numeric validation ---
   if [ -n "$round" ] && ! _tw_is_integer "$round"; then
