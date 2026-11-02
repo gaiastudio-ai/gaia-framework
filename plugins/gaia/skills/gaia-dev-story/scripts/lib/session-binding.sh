@@ -857,11 +857,12 @@ resolve_sprint_arg() {
 
   # --- New-sprint class (sprint-plan --new-sprint) ---
   if [ -n "$new_sprint_arg" ]; then
-    # Validate ID shape
-    if ! printf '%s' "$new_sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      printf '%s: error: invalid sprint ID shape: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$new_sprint_arg")" >&2
-      return "$SPRINT_INVALID_ID"
-    fi
+    # Validate ID shape (whole-value case glob rejects newlines/control chars).
+    case "$new_sprint_arg" in
+      *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+        printf '%s: error: invalid sprint ID shape: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$new_sprint_arg")" >&2
+        return "$SPRINT_INVALID_ID" ;;
+    esac
     # Check unused: not in any state file or archive
     local ns_status=""
     ns_status="$(_sb_sprint_status "$new_sprint_arg" "$state_dir")"
@@ -883,10 +884,12 @@ resolve_sprint_arg() {
 
   # --- Validate sprint_arg format (if provided) ---
   if [ -n "$sprint_arg" ]; then
-    if ! printf '%s' "$sprint_arg" | /usr/bin/grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$'; then
-      printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sprint_arg")" >&2
-      return "$SPRINT_INVALID_ID"
-    fi
+    # Whole-value case glob rejects newlines/control chars in the value.
+    case "$sprint_arg" in
+      *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+        printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$sprint_arg")" >&2
+        return "$SPRINT_INVALID_ID" ;;
+    esac
   fi
 
   # --- Positional conflict check ---

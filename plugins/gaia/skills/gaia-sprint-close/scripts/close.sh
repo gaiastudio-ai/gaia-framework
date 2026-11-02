@@ -509,7 +509,7 @@ if [ "$current_status" = "closed" ]; then
     done
 
     if [ "$_archive_count" -gt 0 ]; then
-      warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+      warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at $(_close_sanitize "${existing_closed_at:-(unknown)}")"
       _close_succeeded=1
       exit 0
     fi
@@ -518,7 +518,7 @@ if [ "$current_status" = "closed" ]; then
     warn "warning: sprint ${_SAFE_SPRINT_ID} is closed but archive is missing — resuming"
   else
     # Single-sprint mode: exit 0 regardless of archive presence.
-    warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+    warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at $(_close_sanitize "${existing_closed_at:-(unknown)}")"
     _close_succeeded=1
     exit 0
   fi
@@ -585,7 +585,7 @@ if [ "${#non_done_keys[@]}" -gt 0 ]; then
   expected_sorted=$(printf '%s\n' "${non_done_keys[@]}" | LC_ALL=C sort -u)
   provided_sorted=$(printf '%s\n' "${rollover_keys[@]}" | LC_ALL=C sort -u)
   if [ "$expected_sorted" != "$provided_sorted" ]; then
-    die "error: --force-with-rollover key mismatch; non-done stories are: ${non_done_keys[*]}; got: $(_close_sanitize "${rollover_keys[*]}")"
+    die "error: --force-with-rollover key mismatch; non-done stories are: $(_close_sanitize "${non_done_keys[*]}"); got: $(_close_sanitize "${rollover_keys[*]}")"
   fi
 elif [ "${#rollover_keys[@]}" -gt 0 ]; then
   # All stories done but caller passed rollover keys — refuse (mismatch).
