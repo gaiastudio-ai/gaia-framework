@@ -950,9 +950,10 @@ Line2 end"
     --carry "security-review=${rid2}:carried from prior round"
 
   # Reader must follow the full two-hop carry chain and report assessed.
-  run bash "$SR" --story TEST-MHC
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"security_gate_state assessed"* ]]
+  # Use a file capture to avoid bats-internal buffering differences.
+  bash "$SR" --story TEST-MHC > "$FIXTURE_DIR/sr-out.txt" 2>&1
+  local sr_line; sr_line="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-out.txt")"
+  [ "$sr_line" = "security_gate_state assessed" ]
 
   # Accept override must succeed (no critical findings, gate assessed via chain).
   run bash "$RW" record-accept-override --story TEST-MHC \
