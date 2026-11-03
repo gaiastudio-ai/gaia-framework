@@ -14,12 +14,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 #### Added
 - Review-process configuration: new `review` top-level section in `project-config.yaml` with `max_fix_cycles` (integer, minimum 1, default 2). After this many failing six-gate review rounds, the orchestration emits ESCALATE and asks the user to choose: accept override, descope to backlog, or one more cycle. Projects upgrading without a `review` section get the default cap of 2 automatically.
 - Critical-security carve-out: accept override is blocked when any critical security finding is unresolved or the security gate has no completed report (fail closed). Each sign-off requires all six fields (risk_accepted_by, OWASP category, impact, finding id, round, timestamp).
-- New `register-write.sh` subcommands: `count-rounds`, `record-escalation`, `sign-off-finding`, `record-accept-override`.
+- New `register-write.sh` subcommands: `count-rounds`, `record-escalation`, `resolve-escalation`, `sign-off-finding`, `record-accept-override`.
 - Security report reader helper (`scripts/review-common/security-report-reader.sh`) for extracting critical security findings from the findings register.
 - `/gaia-doctor` now reports the active fix-cycle cap under a "Review limits" section (showing the configured value or the effective default of 2).
 
 #### Changed
 - `/gaia-run-all-reviews` checks the fix-cycle cap before `complete-round` at the end of each round, so crashed-gate rounds count toward the cap at their decision point.
+
+### Local preflight gate and post-CI smoke hook (2026-11-01)
+
+#### Added
+- `preflight_commands` — opt-in array of shell commands in `project-config.yaml` executed sequentially before every push in `/gaia-dev-story`. A non-zero exit (including 127 command-not-found) halts the push with a message naming the failing command and its exit code. Absent or empty = no-op.
+- `post_ci_smoke_commands` — opt-in array of shell commands executed after CI goes green and before merge. A non-zero exit halts the merge. Absent or empty = no-op. The smoke runs against the CI-verified commit.
+- `run-configured-commands.sh` — deterministic runner script shared by both gates. Reads arrays from project config via yq, executes each command in the story working tree, and reports failures with the command name and exit code.
+- Schema additions for both keys with trust-boundary documentation in the descriptions.
+- Config hydration passes both arrays through unchanged (read with yq, emitted with jq `--argjson`).
+- `/gaia-doctor` lists configured commands; `/gaia-readiness-check` flags empty-string entries.
+- Documentation updates in the dev-story command page and configuration reference.
 
 ### Review telemetry (2026-11-01)
 

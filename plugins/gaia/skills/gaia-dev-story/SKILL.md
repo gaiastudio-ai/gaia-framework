@@ -737,6 +737,16 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 
 - Run `scripts/git-branch.sh` to verify branch state.
 - Stage and commit with conventional commit format.
+
+**Preflight gate (opt-in).** Before pushing, run the project-configured preflight commands. The gate is a deterministic runner, not agent judgement — it executes each configured command sequentially and halts on first failure.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/run-configured-commands.sh" \
+  --key preflight_commands --workdir "${PROJECT_PATH:-.}"
+```
+
+Exit 0 = all commands passed (or none configured) — proceed to push. Exit 1 = a command failed — HALT the push. The runner names the failing command and its exit code on stderr. When no `preflight_commands` key exists in project config, the gate is a silent no-op. The commands run unsandboxed with the user's own privileges from the project config; timeouts are the user's responsibility (wrap with `timeout`).
+
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth. The helper acts on `${PROJECT_PATH:-.}`, so in worktree mode it pushes the story worktree's branch; with the variable unset it uses the current directory exactly as before.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
 <!-- step 10 git-push wire end -->
@@ -826,6 +836,15 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
   - **Exit 1** with stderr containing "timed out" and no budget remaining → HALT the story run (CI has not passed).
   - **Exit 1** with other stderr → CI check failed. Report the failure, name the failing checks from stderr, and HALT the story run.
 - The script polls required checks via `gh pr checks --required` on each poll until the `gh` version reports the flag unsupported, then falls back to all checks (with a note on stderr). It validates JSON with jq, handles cancel buckets as failures, applies a two-poll stability rule to prevent early exit on late-registering checks, and respects a configurable grace window for repos where checks take time to appear.
+
+**Post-CI smoke hook (opt-in).** After CI goes green and before merge, run the project-configured post-CI smoke commands. The hook uses the same deterministic runner as the preflight gate.
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/run-configured-commands.sh" \
+  --key post_ci_smoke_commands --workdir "${PROJECT_PATH:-.}"
+```
+
+Exit 0 = all smoke commands passed (or none configured) — proceed to merge. Exit 1 = a command failed — HALT the merge. The smoke runs against the CI-verified commit; branch-drift detection is out of this step's scope. When no `post_ci_smoke_commands` key exists, nothing extra runs. The commands run unsandboxed with the user's own privileges.
 
 ### Step 13 -- Merge PR
 

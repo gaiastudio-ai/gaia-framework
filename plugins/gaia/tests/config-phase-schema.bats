@@ -431,3 +431,92 @@ YAML
   run validate_fixture "${TMP}/config-test-cmd.yaml"
   [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
 }
+
+# --- preflight_commands / post_ci_smoke_commands schema tests ---
+
+@test "schema contains preflight_commands property" {
+  /usr/bin/grep -q '"preflight_commands"' "$SCHEMA"
+}
+
+@test "schema contains post_ci_smoke_commands property" {
+  /usr/bin/grep -q '"post_ci_smoke_commands"' "$SCHEMA"
+}
+
+@test "schema accepts preflight_commands as array of strings" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-preflight-valid.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+preflight_commands:
+  - "make lint"
+  - "make test"
+YAML
+  run validate_fixture "${TMP}/config-preflight-valid.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema rejects preflight_commands as string" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-preflight-string.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+preflight_commands: "make check"
+YAML
+  run validate_fixture "${TMP}/config-preflight-string.yaml"
+  [ "$status" -ne 0 ]
+}
+
+@test "schema accepts post_ci_smoke_commands as array of strings" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-smoke-valid.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+post_ci_smoke_commands:
+  - "curl -f http://localhost:8080/health"
+YAML
+  run validate_fixture "${TMP}/config-smoke-valid.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema rejects post_ci_smoke_commands as integer" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-smoke-integer.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+post_ci_smoke_commands: 42
+YAML
+  run validate_fixture "${TMP}/config-smoke-integer.yaml"
+  [ "$status" -ne 0 ]
+}
+
+@test "schema trust-boundary note in preflight_commands description" {
+  /usr/bin/grep -A5 '"preflight_commands"' "$SCHEMA" | /usr/bin/grep -qi "trust boundary"
+}
+
+@test "schema trust-boundary note in post_ci_smoke_commands description" {
+  /usr/bin/grep -A5 '"post_ci_smoke_commands"' "$SCHEMA" | /usr/bin/grep -qi "trust boundary"
+}
