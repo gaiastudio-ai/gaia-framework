@@ -2761,9 +2761,8 @@ _rw_cmd_count_rounds() {
   #
   # complete: non-passing when composite_verdict is not PASSED (fail closed:
   #   absent verdict counts as non-passing).
-  # superseded: non-passing when any selected gate has no report or any
-  #   gate_runs entry is errored (a superseded round that was replaced
-  #   before completing had non-passing evidence).
+  # superseded: always non-passing (fail closed). A superseded round was
+  #   replaced before completing, so it never received a PASSED verdict.
   # open: the caller passes --current-verdict FAILED|PASSED for the round
   #   being decided; without it, escalation state and gate evidence are checked.
   local count=0
@@ -2784,20 +2783,9 @@ _rw_cmd_count_rounds() {
           fi
           ;;
         superseded)
-          # A superseded round had non-passing evidence (missing reports
-          # or errored gates) that prevented completion.
-          local miss_s
-          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
-          local err_s
-          export _RW_SUP_RID
-          _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
-          err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
-          unset _RW_SUP_RID
-          if [ "$miss_s" != "0" ] && [ "$miss_s" != "null" ]; then
-            count=$((count + 1))
-          elif [ "$err_s" != "0" ] && [ "$err_s" != "null" ]; then
-            count=$((count + 1))
-          fi
+          # A superseded round was replaced before completing — it never
+          # received a PASSED verdict. Count it as non-passing (fail closed).
+          count=$((count + 1))
           ;;
         open)
           # The caller passes the composite verdict at the decision point.
@@ -2912,6 +2900,66 @@ _rw_cmd_record_escalation() {
   yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.max_cycles = ${max_cycles}" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
   yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.timestamp = strenv(_RW_ESC_TS)" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
   unset _RW_ESC_STATE _RW_ESC_TS _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: resolve-escalation
+# ---------------------------------------------------------------------------
+# Resolves the escalation state on the current round after the user picks a
+# choice (accept, descope or one-more-cycle). Sets escalation.state to
+# "resolved:<choice>" so a resumed run does not re-present the choices.
+
+_rw_cmd_resolve_escalation() {
+  local key="" run_id="" choice=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --choice) [ "$#" -ge 2 ] || _rw_die 1 "--choice requires a value"; choice="$2"; shift 2 ;;
+      *) _rw_die 1 "resolve-escalation: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "resolve-escalation: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "resolve-escalation: --run-id is required"
+  [ -n "$choice" ] || _rw_die 1 "resolve-escalation: --choice is required"
+
+  case "$choice" in
+    accept|descope|one-more-cycle) ;;
+    *) _rw_die 1 "resolve-escalation: --choice must be accept, descope or one-more-cycle" ;;
+  esac
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "resolve-escalation: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists and has an escalation marker.
+  export _RW_RUN_ID="$run_id"
+  local esc_state
+  esc_state="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state // ""' "$tmp" 2>/dev/null)" || esc_state=""
+  if [ "$esc_state" != "escalated" ]; then
+    _rw_abort_and_die 1 "resolve-escalation: round $run_id is not in escalated state (state: ${esc_state:-none})"
+  fi
+
+  # Resolve the escalation.
+  export _RW_ESC_RESOLVED="resolved:${choice}"
+  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state = strenv(_RW_ESC_RESOLVED)' "$tmp" || _rw_die 1 "resolve-escalation: yq write failed"
+  unset _RW_ESC_RESOLVED _RW_RUN_ID
 
   _rw_commit_register "$tmp" "$reg_path"
 }
@@ -3085,6 +3133,16 @@ _rw_cmd_record_accept_override() {
         if [ -z "$_ao_gr_owasp" ] || [ "$_ao_gr_owasp" = "null" ] || [ "$_ao_gr_owasp" = "unknown" ]; then
           _ao_unresolved=$((_ao_unresolved + 1))
           _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+        else
+          # Check the reviewer's impact classification on the entry —
+          # a missing/unknown impact means the reviewer didn't classify the
+          # finding's impact, so accept stays blocked (same rule as category).
+          local _ao_entry_impact
+          _ao_entry_impact="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].impact // \"\"" "$tmp" 2>/dev/null)" || _ao_entry_impact=""
+          if [ -z "$_ao_entry_impact" ] || [ "$_ao_entry_impact" = "null" ] || [ "$_ao_entry_impact" = "unknown" ]; then
+            _ao_unresolved=$((_ao_unresolved + 1))
+            _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+          fi
         fi
       fi
       _ao_idx=$((_ao_idx + 1))
@@ -3236,9 +3294,10 @@ Usage:
       --brief <new-path> --rationale <text>
   register-write.sh count-rounds --story <key> [--max <N>]
       [--current-verdict <PASSED|FAILED>]
-      [--current-verdict FAILED|PASSED]
   register-write.sh record-escalation --story <key> --run-id <id>
       --round-count <N> --max-cycles <M>
+  register-write.sh resolve-escalation --story <key> --run-id <id>
+      --choice <accept|descope|one-more-cycle>
   register-write.sh sign-off-finding --story <key> --finding-id <RF-n>
       --risk-accepted-by <user> --owasp-category <cat> --impact <text>
       --round <N> --timestamp <iso>
@@ -3278,6 +3337,7 @@ case "${1:-}" in
   supersede-brief) shift; _rw_cmd_supersede_brief "$@" ;;
   count-rounds) shift; _rw_cmd_count_rounds "$@" ;;
   record-escalation) shift; _rw_cmd_record_escalation "$@" ;;
+  resolve-escalation) shift; _rw_cmd_resolve_escalation "$@" ;;
   sign-off-finding) shift; _rw_cmd_sign_off_finding "$@" ;;
   record-accept-override) shift; _rw_cmd_record_accept_override "$@" ;;
   -h|--help) _rw_usage; exit 0 ;;

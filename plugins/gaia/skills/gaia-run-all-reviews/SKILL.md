@@ -152,7 +152,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--f
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
-**Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. When the user picks a choice, clear the escalation by completing the round (accept/descope) or recording "one more cycle" and proceeding to a new round. This detection runs BEFORE `record-round` so the escalated round is not superseded.
+**Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads exactly `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. A `resolved:*` state means the user already acted — proceed normally. When the user picks a choice, call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice {accept|descope|one-more-cycle}` to clear the escalation state, then execute the choice. This detection runs BEFORE `record-round` so the escalated round is not superseded.
 
 **Substep 2.2b — Round-start sequence.** Before dispatching any gate, record the review round in the findings register. Execute these steps in order:
 
@@ -355,9 +355,9 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 2. When `escalate true`:
    - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.
    - Present AskUserQuestion with exactly three choices:
-     - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision. Accept does NOT move the story past the review gate — that stays an explicit human step.
-     - **descope to backlog**: run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
-     - **one more cycle**: grants exactly one further round before escalating again.
+     - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision, then call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice accept` to clear the escalation state. Accept does NOT move the story past the review gate — that stays an explicit human step.
+     - **descope to backlog**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice descope`, then run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
+     - **one more cycle**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice one-more-cycle`, then proceed to a new round. Grants exactly one further round before escalating again.
 
 3. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
 

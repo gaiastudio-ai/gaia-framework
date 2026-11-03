@@ -466,9 +466,12 @@ except jsonschema.ValidationError:
   local wpid=$!
   bash "$RW" count-rounds --story TEST-EC5 --max 2 --current-verdict FAILED > "$TMP/race.out" &
   local rpid=$!
-  wait "$wpid" "$rpid"
+  wait "$wpid"; local ws=$?
+  wait "$rpid"; local rs=$?
 
   # Both must succeed; count must be >= 1 (at least the first completed round).
+  [ "$ws" -eq 0 ]
+  [ "$rs" -eq 0 ]
   local rc; rc="$(cat "$TMP/race.out")"
   [[ "$rc" == *"round_count"* ]]
 }
@@ -853,7 +856,9 @@ Line2 end"
 # ---------------------------------------------------------------------------
 
 @test "run-all-reviews SKILL documents count-rounds with --current-verdict" {
-  /usr/bin/grep -q 'count-rounds.*--current-verdict' "$RUN_ALL_SKILL"
+  # Anchor on the backticked command, not the explanatory prose on the same
+  # line. Mutant M2 (dropping --current-verdict from the command) must fail.
+  /usr/bin/grep -q '`register-write.sh count-rounds --story {key} --current-verdict' "$RUN_ALL_SKILL"
 }
 
 # ---------------------------------------------------------------------------
@@ -862,6 +867,13 @@ Line2 end"
 
 @test "run-all-reviews SKILL documents record-escalation before asking the user" {
   /usr/bin/grep -q 'record-escalation.*--story.*--run-id.*--round-count' "$RUN_ALL_SKILL"
+  # M3b: record-escalation must appear BEFORE the AskUserQuestion choices
+  # (i.e. before the three choice bullets). Pin the ordering.
+  local esc_line choice_line
+  esc_line=$(/usr/bin/grep -n 'record-escalation.*--story.*--run-id.*--round-count' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  choice_line=$(/usr/bin/grep -n 'AskUserQuestion\|Present.*three choices' "$RUN_ALL_SKILL" | head -1 | cut -d: -f1)
+  [ -n "$esc_line" ] && [ -n "$choice_line" ]
+  [ "$esc_line" -lt "$choice_line" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -1019,7 +1031,7 @@ Line2 end"
 @test "halted round with all FAILED reports counts toward the cap" {
   _mk_project TEST-HALT
 
-  # Round 1: completed FAILED.
+  # Round 1: completed FAILED (the SKILL's real call order).
   _run_failing_round TEST-HALT "round-20261102T120001Z-33301"
 
   # Round 2: all gates have reports (FAILED) but halted before complete-round.
@@ -1038,6 +1050,25 @@ Line2 end"
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 2"* ]]
   [[ "$output" == *"escalate true"* ]]
+
+  # --- THE REAL PATH (SKILL always uses --current-verdict) ---
+  # Round 3 supersedes the halted round 2. The superseded round must still
+  # count toward the cap even though it has all reports and no errors.
+  local rid3="round-20261102T120003Z-33303"
+  bash "$RW" record-round --story TEST-HALT --run-id "$rid3" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-HALT --run-id "$rid3" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED (round 3)\n' > "$FIXTURE_DIR/halt-r3-uniq.md"
+  bash "$RW" record-round-report --story TEST-HALT --run-id "$rid3" \
+    --gate security-review --report "$FIXTURE_DIR/halt-r3-uniq.md"
+
+  # Decision point with --current-verdict FAILED (the SKILL path).
+  # Round 1 (complete, FAILED) + round 2 (superseded, halted) + round 3 (open).
+  run bash "$RW" count-rounds --story TEST-HALT --max 2 --current-verdict FAILED
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 3"* ]]
+  [[ "$output" == *"escalate true"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -1045,41 +1076,69 @@ Line2 end"
 # ---------------------------------------------------------------------------
 
 @test "count-rounds blocks while the register lock is held" {
-  command -v flock >/dev/null 2>&1 || skip "flock not available"
-  _mk_project TEST-LOCK
+  if ! command -v flock >/dev/null 2>&1; then
+    # On hosts that are expected to have flock (CI: Linux), fail not skip.
+    # On macOS without flock installed, skip remains acceptable.
+    if [ "$(uname -s)" = "Linux" ]; then
+      fail "flock is required on Linux but not on PATH"
+    fi
+    skip "flock not available on this macOS host"
+  fi
 
+  _mk_project TEST-LOCK
   _run_failing_round TEST-LOCK "round-20261102T120001Z-22201"
 
   local reg; reg="$(_reg TEST-LOCK)"
   local lockfile="${reg}.lock"
+  local ready_marker="$TMP/lock-ready"
+  local release_marker="$TMP/lock-released"
 
-  # Hold the exclusive lock for 3 seconds in a background subshell.
+  # Hold the exclusive lock in a background subshell. Write a ready marker
+  # after acquiring the lock; wait for the release marker to let go.
   touch "$lockfile"
   (
     exec 7>>"$lockfile"
     flock -x 7
-    sleep 3
+    touch "$ready_marker"
+    # Bounded wait for the release signal (max 15 s).
+    local waited=0
+    while [ ! -f "$release_marker" ] && [ "$waited" -lt 15 ]; do
+      sleep 0.2; waited=$((waited + 1))
+    done
     exec 7>&-
   ) &
   local holder_pid=$!
-  # Give the holder time to acquire the lock before starting count-rounds.
-  sleep 1
 
-  # Time count-rounds while the lock is held.
-  local start_ts; start_ts="$(date +%s)"
-  bash "$RW" count-rounds --story TEST-LOCK --max 2 > "$TMP/lock-out.txt" 2>&1
-  local cr_rc=$?
-  local end_ts; end_ts="$(date +%s)"
-  local elapsed=$((end_ts - start_ts))
+  # Bounded wait for the holder to acquire the lock (max 5 s).
+  local waited=0
+  while [ ! -f "$ready_marker" ] && [ "$waited" -lt 25 ]; do
+    sleep 0.2; waited=$((waited + 1))
+  done
+  if [ ! -f "$ready_marker" ]; then
+    kill "$holder_pid" 2>/dev/null
+    [ -f "$ready_marker" ]  # assertion — fails the test
+  fi
+
+  # While the lock is held, start count-rounds in the background.
+  bash "$RW" count-rounds --story TEST-LOCK --max 2 > "$TMP/lock-out.txt" 2>&1 &
+  local cr_pid=$!
+
+  # Give count-rounds a moment to start and block on the lock.
+  sleep 0.5
+
+  # Assert count-rounds has NOT produced output yet (still blocked).
+  if [ -s "$TMP/lock-out.txt" ]; then
+    kill "$holder_pid" 2>/dev/null; wait "$cr_pid" 2>/dev/null
+    [ ! -s "$TMP/lock-out.txt" ]  # assertion — fails the test
+  fi
+
+  # Release the lock.
+  touch "$release_marker"
   wait "$holder_pid" 2>/dev/null || true
+  wait "$cr_pid"; local cr_rc=$?
 
-  # With the lock acquisition in count-rounds, it must wait for the
-  # holder to release (~2 seconds). Without it, the call finishes in
-  # under 2 seconds. This kills the lock-removed mutant.
+  # count-rounds must succeed and report the correct count.
   [ "$cr_rc" -eq 0 ]
-  [ "$elapsed" -ge 2 ]
-
-  # Output must be correct.
   local out; out="$(cat "$TMP/lock-out.txt")"
   [[ "$out" == *"round_count 1"* ]]
 }
@@ -1173,4 +1232,373 @@ CONF
 
   # Doctor SKILL.md documents the resolve-config command.
   /usr/bin/grep -q 'resolve-config.sh --field review.max_fix_cycles' "$DOCTOR_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# Carried from a crashed round with no report blocks accept and reads unassessed
+# ---------------------------------------------------------------------------
+
+@test "carried from a crashed round with no report blocks accept" {
+  _mk_project TEST-CARRY-CRASH
+
+  # Round 1: security-review selected but errored with NO report.
+  local rid1="round-20261103T120001Z-80001"
+  bash "$RW" record-round --story TEST-CARRY-CRASH --run-id "$rid1" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-CRASH --run-id "$rid1" \
+    --gate security-review --outcome errored >/dev/null
+  # No report recorded for round 1 — the reviewer crashed.
+  bash "$RW" complete-round --story TEST-CARRY-CRASH --run-id "$rid1" \
+    --repo "$FIXTURE_DIR/repo" --verdict FAILED 2>/dev/null || true
+
+  # Round 2: security-review carried from round 1, code-review selected.
+  local rid2="round-20261103T120002Z-80002"
+  bash "$RW" record-round --story TEST-CARRY-CRASH --run-id "$rid2" \
+    --repo "$FIXTURE_DIR/repo" --gate "code-review=selected" \
+    --carry "security-review=${rid1}:carried from crashed round"
+  bash "$RW" record-run --story TEST-CARRY-CRASH --run-id "$rid2" \
+    --gate code-review --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/crash-cr-r2.md"
+  bash "$RW" record-round-report --story TEST-CARRY-CRASH --run-id "$rid2" \
+    --gate code-review --report "$FIXTURE_DIR/crash-cr-r2.md"
+
+  # Reader must report unassessed (carry chain has no completed report).
+  bash "$SR" --story TEST-CARRY-CRASH > "$FIXTURE_DIR/sr-crash.txt" 2>&1
+  local sr_line; sr_line="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-crash.txt")"
+  [ "$sr_line" = "security_gate_state unassessed" ]
+
+  # Accept must be blocked (carried gate has no completed report).
+  run bash "$RW" record-accept-override --story TEST-CARRY-CRASH \
+    --run-id "$rid2" --decision accept --user admin --round 2 \
+    --timestamp "2026-11-03T12:00:00Z"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"blocked"* ]] || [[ "$output" == *"no completed report"* ]]
+
+  # Sub-case: carried from a round with a report but errored outcome.
+  # The reader must still say unassessed because the run errored.
+  _mk_project TEST-CARRY-ERR
+  local rid_e1="round-20261103T120001Z-80011"
+  bash "$RW" record-round --story TEST-CARRY-ERR --run-id "$rid_e1" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-ERR --run-id "$rid_e1" \
+    --gate security-review --outcome errored >/dev/null
+  # Report was written before the crash.
+  printf 'Verdict: FAILED (crash)\n' > "$FIXTURE_DIR/err-carry-r1.md"
+  bash "$RW" record-round-report --story TEST-CARRY-ERR --run-id "$rid_e1" \
+    --gate security-review --report "$FIXTURE_DIR/err-carry-r1.md"
+  bash "$RW" complete-round --story TEST-CARRY-ERR --run-id "$rid_e1" \
+    --repo "$FIXTURE_DIR/repo" --verdict FAILED 2>/dev/null || true
+
+  # Round 2 carries security from round 1.
+  local rid_e2="round-20261103T120002Z-80012"
+  bash "$RW" record-round --story TEST-CARRY-ERR --run-id "$rid_e2" \
+    --repo "$FIXTURE_DIR/repo" --gate "code-review=selected" \
+    --carry "security-review=${rid_e1}:carried from errored round"
+
+  # Reader must say unassessed (errored outcome, even with a report).
+  bash "$SR" --story TEST-CARRY-ERR > "$FIXTURE_DIR/sr-carry-err.txt" 2>&1
+  local sr_err; sr_err="$(/usr/bin/grep 'security_gate_state' "$FIXTURE_DIR/sr-carry-err.txt")"
+  [ "$sr_err" = "security_gate_state unassessed" ]
+
+  # Accept must be blocked.
+  run bash "$RW" record-accept-override --story TEST-CARRY-ERR \
+    --run-id "$rid_e2" --decision accept --user admin --round 2 \
+    --timestamp "2026-11-03T12:00:00Z"
+  [ "$status" -ne 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Missing reviewer impact blocks accept override
+# ---------------------------------------------------------------------------
+
+@test "missing reviewer impact blocks accept override" {
+  _mk_project TEST-NOIMP
+
+  local rid="round-20261103T120001Z-90001"
+  bash "$RW" record-round --story TEST-NOIMP --run-id "$rid" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-NOIMP --run-id "$rid" \
+    --gate security-review --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/noimp-sec.md"
+  bash "$RW" record-round-report --story TEST-NOIMP --run-id "$rid" \
+    --gate security-review --report "$FIXTURE_DIR/noimp-sec.md"
+
+  # Add a critical finding WITHOUT --impact but WITH --owasp-category.
+  bash "$RW" add --story TEST-NOIMP --defect "injection flaw" --type security \
+    --severity critical --gate security-review --owasp-category "A03" \
+    --blocking --blocking-rationale "critical security"
+
+  local reg; reg="$(_reg TEST-NOIMP)"
+  local fid; fid="$(yq '.entries[-1].id' "$reg")"
+
+  # Sign off with all fields (the approver fills in impact).
+  bash "$RW" sign-off-finding --story TEST-NOIMP --finding-id "$fid" \
+    --risk-accepted-by admin --owasp-category "A03" --impact "high severity" \
+    --round 1 --timestamp "2026-11-03T12:00:00Z"
+
+  # Accept must still be blocked: the reviewer's entry.impact is missing.
+  run bash "$RW" record-accept-override --story TEST-NOIMP \
+    --run-id "$rid" --decision accept --user admin --round 1 \
+    --timestamp "2026-11-03T12:00:00Z"
+  [ "$status" -ne 0 ]
+
+  # Reader must show "unknown" for impact, NOT the approver's text.
+  run bash "$SR" --story TEST-NOIMP
+  [ "$status" -eq 0 ]
+  local impact_line
+  impact_line="$(printf '%s\n' "$output" | /usr/bin/grep -o '"impact": *"[^"]*"' | head -1)"
+  [[ "$impact_line" == *'"unknown"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Escalation state cleared after each choice
+# ---------------------------------------------------------------------------
+
+@test "resolve-escalation clears the escalated state for each choice" {
+  _mk_project TEST-RESESC
+
+  # Build up to the escalation point.
+  _run_failing_round TEST-RESESC "round-20261103T120001Z-70001"
+  _run_failing_round TEST-RESESC "round-20261103T120002Z-70002"
+  local rid2="round-20261103T120002Z-70002"
+
+  bash "$RW" record-escalation --story TEST-RESESC \
+    --run-id "$rid2" --round-count 2 --max-cycles 2
+
+  local reg; reg="$(_reg TEST-RESESC)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg")" = "escalated" ]
+
+  # --- Accept choice ---
+  bash "$RW" record-accept-override --story TEST-RESESC \
+    --run-id "$rid2" --decision accept --user admin --round 2 \
+    --timestamp "2026-11-03T12:00:00Z"
+  bash "$RW" resolve-escalation --story TEST-RESESC --run-id "$rid2" --choice accept
+  [ "$(yq '.rounds[-1].escalation.state' "$reg")" = "resolved:accept" ]
+
+  # round-info must NOT report "escalated" after resolving.
+  run bash "$RW" round-info --story TEST-RESESC
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"escalation_state escalated"* ]]
+  [[ "$output" == *"escalation_state resolved:accept"* ]]
+}
+
+@test "resolve-escalation with descope choice clears the state" {
+  _mk_project TEST-RESDESC
+  _run_failing_round TEST-RESDESC "round-20261103T120001Z-71001"
+  _run_failing_round TEST-RESDESC "round-20261103T120002Z-71002"
+  local rid2="round-20261103T120002Z-71002"
+
+  bash "$RW" record-escalation --story TEST-RESDESC \
+    --run-id "$rid2" --round-count 2 --max-cycles 2
+
+  bash "$RW" resolve-escalation --story TEST-RESDESC --run-id "$rid2" --choice descope
+  local reg; reg="$(_reg TEST-RESDESC)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg")" = "resolved:descope" ]
+
+  # round-info confirms the resolved state.
+  run bash "$RW" round-info --story TEST-RESDESC
+  [[ "$output" == *"escalation_state resolved:descope"* ]]
+}
+
+@test "resolve-escalation with one-more-cycle choice clears the state" {
+  _mk_project TEST-RESOMC
+  _run_failing_round TEST-RESOMC "round-20261103T120001Z-72001"
+  _run_failing_round TEST-RESOMC "round-20261103T120002Z-72002"
+  local rid2="round-20261103T120002Z-72002"
+
+  bash "$RW" record-escalation --story TEST-RESOMC \
+    --run-id "$rid2" --round-count 2 --max-cycles 2
+
+  bash "$RW" resolve-escalation --story TEST-RESOMC --run-id "$rid2" --choice one-more-cycle
+  local reg; reg="$(_reg TEST-RESOMC)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg")" = "resolved:one-more-cycle" ]
+
+  # A new round after one-more-cycle: round 3 fails, escalation at cap.
+  _run_failing_round TEST-RESOMC "round-20261103T120003Z-72003"
+  run bash "$RW" count-rounds --story TEST-RESOMC --max 2 --current-verdict FAILED
+  [[ "$output" == *"round_count 3"* ]]
+  [[ "$output" == *"escalate true"* ]]
+}
+
+@test "resolve-escalation rejects non-escalated round" {
+  _mk_project TEST-RESBAD
+  _run_failing_round TEST-RESBAD "round-20261103T120001Z-73001"
+  local rid1="round-20261103T120001Z-73001"
+
+  # No escalation recorded — resolve must fail.
+  run bash "$RW" resolve-escalation --story TEST-RESBAD --run-id "$rid1" --choice accept
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not in escalated state"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# resolve-escalation wired into the SKILL for each choice
+# ---------------------------------------------------------------------------
+
+@test "run-all-reviews SKILL wires resolve-escalation after each choice" {
+  # Each choice must be followed by a resolve-escalation call.
+  /usr/bin/grep -q 'resolve-escalation.*--choice accept' "$RUN_ALL_SKILL"
+  /usr/bin/grep -q 'resolve-escalation.*--choice descope' "$RUN_ALL_SKILL"
+  /usr/bin/grep -q 'resolve-escalation.*--choice one-more-cycle' "$RUN_ALL_SKILL"
+
+  # The resolve-escalation call must appear in Substep 2.2a too (resume doc).
+  /usr/bin/grep -q 'resolve-escalation' "$RUN_ALL_SKILL"
+}
+
+# ---------------------------------------------------------------------------
+# End-to-end descope through the transition tooling
+# ---------------------------------------------------------------------------
+
+_mk_transition_project() {
+  # Set up a minimal project tree that transition-story-status.sh can work with.
+  local key="$1"
+  FIXTURE_DIR="$TMP/trans-${key}-$$"
+  mkdir -p "$FIXTURE_DIR/ia/epic-E900-fixture/stories"
+  cat > "$FIXTURE_DIR/ia/epic-E900-fixture/stories/${key}-x.md" <<S
+---
+template: 'story'
+key: "${key}"
+title: "test story"
+epic: "E900"
+status: review
+sprint_id: sprint-test
+---
+## Acceptance Criteria
+
+- [ ] AC1: x
+
+**Status:** review
+S
+  # Create a git repo.
+  mkdir -p "$FIXTURE_DIR/repo"
+  git -C "$FIXTURE_DIR/repo" init -q
+  git -C "$FIXTURE_DIR/repo" -c user.email=a@b -c user.name=t commit -q --allow-empty -m init
+
+  # epics-and-stories.md.
+  mkdir -p "$FIXTURE_DIR/pa"
+  cat > "$FIXTURE_DIR/pa/epics-and-stories.md" <<EAS
+# Epics and Stories
+
+## E900 — Fixture
+
+### Story ${key}: test story
+- **Status:** review
+- **Priority:** high
+- **Risk:** medium
+EAS
+
+  # sprint-status.yaml.
+  mkdir -p "$FIXTURE_DIR/.gaia/state"
+  cat > "$FIXTURE_DIR/.gaia/state/sprint-status.yaml" <<SPR
+sprint_id: sprint-test
+status: active
+total_points: 5
+completed_points: 0
+stories:
+  - key: "${key}"
+    status: review
+    points: 5
+SPR
+
+  # story-index.yaml.
+  cat > "$FIXTURE_DIR/ia/epic-E900-fixture/stories/story-index.yaml" <<IDX
+- story_key: "${key}"
+  title: "test story"
+  epic: "E900"
+  priority: "high"
+  risk: "medium"
+  author: ""
+  file: "${key}-x.md"
+  status: review
+IDX
+
+  # Memory path (for the lock file).
+  mkdir -p "$FIXTURE_DIR/.gaia/memory"
+
+  export IMPLEMENTATION_ARTIFACTS="$FIXTURE_DIR/ia" \
+         PROJECT_ROOT="$FIXTURE_DIR" \
+         PLANNING_ARTIFACTS="$FIXTURE_DIR/pa" \
+         EPICS_AND_STORIES="$FIXTURE_DIR/pa/epics-and-stories.md" \
+         SPRINT_STATUS_YAML="$FIXTURE_DIR/.gaia/state/sprint-status.yaml"
+  unset CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
+}
+
+@test "descope: transition tooling refuses review->backlog, allows review->blocked->backlog" {
+  local trans="${PLUGIN_ROOT}/scripts/transition-story-status.sh"
+  [ -x "$trans" ] || [ -f "$trans" ] || skip "transition-story-status.sh not found"
+
+  _mk_transition_project TEST-TRANS1
+
+  # review -> backlog must be refused (exit 7 = invalid transition).
+  run bash "$trans" TEST-TRANS1 --to backlog
+  [ "$status" -eq 7 ]
+
+  # review -> blocked is allowed.
+  run bash "$trans" TEST-TRANS1 --to blocked
+  [ "$status" -eq 0 ]
+
+  # Verify the status changed.
+  local story_path="$FIXTURE_DIR/ia/epic-E900-fixture/stories/TEST-TRANS1-x.md"
+  local cur; cur="$(yq '.status' "$story_path" 2>/dev/null || /usr/bin/grep -m1 '^status:' "$story_path" | awk '{print $2}')"
+  [[ "$cur" == *"blocked"* ]]
+
+  # blocked -> backlog is allowed.
+  run bash "$trans" TEST-TRANS1 --to backlog
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Three escalation choices driven end-to-end through scripts
+# ---------------------------------------------------------------------------
+
+@test "escalation choices driven end-to-end: accept, descope, one-more-cycle" {
+  # --- Accept choice ---
+  _mk_project TEST-CHO-A
+  _run_failing_round TEST-CHO-A "round-20261103T120001Z-85001"
+  _run_failing_round TEST-CHO-A "round-20261103T120002Z-85002"
+  local rid_a="round-20261103T120002Z-85002"
+  bash "$RW" record-escalation --story TEST-CHO-A \
+    --run-id "$rid_a" --round-count 2 --max-cycles 2
+  # Accept the override.
+  bash "$RW" record-accept-override --story TEST-CHO-A \
+    --run-id "$rid_a" --decision accept --user admin --round 2 \
+    --timestamp "2026-11-03T12:00:00Z"
+  # Resolve the escalation.
+  bash "$RW" resolve-escalation --story TEST-CHO-A --run-id "$rid_a" --choice accept
+  # Complete the round.
+  bash "$RW" complete-round --story TEST-CHO-A --run-id "$rid_a" \
+    --repo "$FIXTURE_DIR/repo" --verdict FAILED
+  local reg_a; reg_a="$(_reg TEST-CHO-A)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg_a")" = "resolved:accept" ]
+  [ "$(yq '.rounds[-1].accept_override.decision' "$reg_a")" = "accept" ]
+  [ "$(yq '.rounds[-1].status' "$reg_a")" = "complete" ]
+
+  # --- Descope choice ---
+  _mk_project TEST-CHO-D
+  _run_failing_round TEST-CHO-D "round-20261103T120001Z-86001"
+  _run_failing_round TEST-CHO-D "round-20261103T120002Z-86002"
+  local rid_d="round-20261103T120002Z-86002"
+  bash "$RW" record-escalation --story TEST-CHO-D \
+    --run-id "$rid_d" --round-count 2 --max-cycles 2
+  # Resolve as descope.
+  bash "$RW" resolve-escalation --story TEST-CHO-D --run-id "$rid_d" --choice descope
+  local reg_d; reg_d="$(_reg TEST-CHO-D)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg_d")" = "resolved:descope" ]
+
+  # --- One-more-cycle choice ---
+  _mk_project TEST-CHO-O
+  _run_failing_round TEST-CHO-O "round-20261103T120001Z-87001"
+  _run_failing_round TEST-CHO-O "round-20261103T120002Z-87002"
+  local rid_o="round-20261103T120002Z-87002"
+  bash "$RW" record-escalation --story TEST-CHO-O \
+    --run-id "$rid_o" --round-count 2 --max-cycles 2
+  # Resolve as one-more-cycle.
+  bash "$RW" resolve-escalation --story TEST-CHO-O --run-id "$rid_o" --choice one-more-cycle
+  local reg_o; reg_o="$(_reg TEST-CHO-O)"
+  [ "$(yq '.rounds[-1].escalation.state' "$reg_o")" = "resolved:one-more-cycle" ]
+  # Run one more round (round 3), then check escalation triggers again.
+  _run_failing_round TEST-CHO-O "round-20261103T120003Z-87003"
+  run bash "$RW" count-rounds --story TEST-CHO-O --max 2 --current-verdict FAILED
+  [[ "$output" == *"round_count 3"* ]]
+  [[ "$output" == *"escalate true"* ]]
 }

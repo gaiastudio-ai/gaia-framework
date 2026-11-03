@@ -158,11 +158,10 @@ while [ "$idx" -lt "$crit_count" ]; do
   f_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].gate_ratings[] | select(.gate == \"security-review\") | .owasp_category // \"\"" "$reg_path" 2>/dev/null)" || f_owasp=""
   [ -n "$f_owasp" ] && [ "$f_owasp" != "null" ] || f_owasp="unknown"
 
-  # Impact: from entry.impact first, then sign_off.impact, else "unknown".
+  # Impact: from entry.impact only (the reviewer's classification).
+  # The sign-off impact belongs to the approver and must not be shown
+  # as the reviewer's — that would let an approver inject misleading text.
   f_impact="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].impact // \"\"" "$reg_path" 2>/dev/null)" || f_impact=""
-  if [ -z "$f_impact" ] || [ "$f_impact" = "null" ]; then
-    f_impact="$(yq "[.entries[] | select(.severity == \"critical\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$idx].sign_off.impact // \"\"" "$reg_path" 2>/dev/null)" || f_impact=""
-  fi
   [ -n "$f_impact" ] && [ "$f_impact" != "null" ] || f_impact="unknown"
 
   # Sign-off: complete only if ALL six fields are present.
