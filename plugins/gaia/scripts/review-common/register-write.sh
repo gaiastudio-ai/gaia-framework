@@ -2761,9 +2761,9 @@ _rw_cmd_count_rounds() {
   #
   # complete: non-passing when composite_verdict is not PASSED (fail closed:
   #   absent verdict counts as non-passing).
-  # superseded: always non-passing (fail closed). The register has no per-gate
-  #   verdict for a superseded round; a passing round at the decision point
-  #   is handled by the --current-verdict PASSED short-circuit.
+  # superseded: non-passing unless every selected gate has a report, no
+  #   gate_runs entry errored, and every report's Verdict: line is PASSED.
+  #   Counts in every other case (fail closed).
   # open: the caller passes --current-verdict FAILED|PASSED for the round
   #   being decided; without it, escalation state and gate evidence are checked.
   local count=0
@@ -2784,12 +2784,47 @@ _rw_cmd_count_rounds() {
           fi
           ;;
         superseded)
-          # A superseded round was replaced before completing. It never
-          # received a composite_verdict, so count it as non-passing (fail
-          # closed). The register has no per-gate verdict for superseded
-          # rounds; a passing round at the decision point is handled by
-          # the --current-verdict PASSED short-circuit instead.
-          count=$((count + 1))
+          # A superseded round was replaced before completing. It does NOT
+          # count only when every selected gate has a report, no gate_runs
+          # entry errored, and every report's first Verdict: line is PASSED.
+          # It counts in every other case (fail closed).
+          local _sup_count=1
+          local miss_s
+          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
+          if [ "$miss_s" = "0" ] || [ "$miss_s" = "null" ]; then
+            export _RW_SUP_RID
+            _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
+            local err_s
+            err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
+            unset _RW_SUP_RID
+            if [ "$err_s" = "0" ] || [ "$err_s" = "null" ]; then
+              # All gates have reports and none errored. Check each report
+              # file for a PASSED verdict line.
+              local _sup_all_pass=1
+              local _sup_gi=0
+              local _sup_glen
+              _sup_glen="$(yq ".rounds[$idx].selected_gates | length" "$reg_path" 2>/dev/null)" || _sup_glen="0"
+              while [ "$_sup_gi" -lt "$_sup_glen" ]; do
+                local _sup_rpath
+                _sup_rpath="$(yq ".rounds[$idx].selected_gates[$_sup_gi].report_path // \"\"" "$reg_path" 2>/dev/null)" || _sup_rpath=""
+                if [ -n "$_sup_rpath" ] && [ -f "$_sup_rpath" ]; then
+                  local _sup_vline
+                  _sup_vline="$(/usr/bin/grep -m1 '^Verdict:' "$_sup_rpath" 2>/dev/null || true)"
+                  case "$_sup_vline" in
+                    *PASSED*) ;; # this gate passed
+                    *) _sup_all_pass=0; break ;;
+                  esac
+                else
+                  _sup_all_pass=0; break
+                fi
+                _sup_gi=$((_sup_gi + 1))
+              done
+              if [ "$_sup_all_pass" -eq 1 ] && [ "$_sup_glen" -gt 0 ]; then
+                _sup_count=0
+              fi
+            fi
+          fi
+          count=$((count + _sup_count))
           ;;
         open)
           # The caller passes the composite verdict at the decision point.

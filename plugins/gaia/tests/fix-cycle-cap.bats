@@ -1664,19 +1664,20 @@ _run_halted_round() {
   [[ "$output" == *"escalate false"* ]] || return 1
 }
 
-@test "case c: F, P (complete), F -> round_count 2, escalate false at cap 3" {
+@test "case c: F, halted all-PASSED (superseded), F -> round_count 2, escalate false at cap 3" {
   _mk_project TEST-CASE-C
 
   # Round 1: completed FAILED.
   _run_failing_round TEST-CASE-C "round-20261103T130001Z-93001"
 
-  # Round 2: completed PASSED (a passing round never counts).
-  _run_passing_round TEST-CASE-C "round-20261103T130002Z-93002"
+  # Round 2: halted with all gates PASSED (report says PASSED, not completed).
+  # This round will be superseded when round 3 starts.
+  _run_halted_round TEST-CASE-C "round-20261103T130002Z-93002" "PASSED"
 
-  # Round 3: fails.
+  # Round 3: supersedes round 2, fails.
   _run_failing_round TEST-CASE-C "round-20261103T130003Z-93003"
 
-  # Cap 3: round 1 (complete, FAILED=1) + round 2 (complete, PASSED=0)
+  # Cap 3: round 1 (complete, FAILED=1) + round 2 (superseded, all-PASSED=0)
   # + round 3 (complete, FAILED=1) = round_count 2, escalate false.
   run bash "$RW" count-rounds --story TEST-CASE-C --max 3 --current-verdict FAILED
   [ "$status" -eq 0 ]
