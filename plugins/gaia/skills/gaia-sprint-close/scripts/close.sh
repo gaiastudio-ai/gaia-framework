@@ -113,6 +113,23 @@ log()  { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 die()  { log "$*"; exit 1; }
 warn() { log "$*"; }
 
+# Source session-binding.sh early so the sanitizer is available during
+# argument parsing (before provision_binding_dir is called later).
+_early_sb="${PLUGIN_SCRIPTS_DIR:-$(cd "$(dirname "$0")/../../../scripts" && pwd)}/lib/session-binding.sh"
+if [ -f "$_early_sb" ] && ! type _sb_sanitize_value >/dev/null 2>&1; then
+  . "$_early_sb"
+fi
+
+# Sanitize a value for safe stderr output.  Uses the shared sanitizer
+# from session-binding.sh when available; falls back to pass-through.
+_close_sanitize() {
+  if type _sb_sanitize_value >/dev/null 2>&1; then
+    _sb_sanitize_value "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # Read a top-level scalar YAML field from a file. Returns empty string if absent.
 # Disables pipefail locally so a missing key produces an empty string cleanly
 # under set -euo pipefail, not a propagated exit-1 from grep-no-match.
@@ -123,9 +140,28 @@ yaml_top_scalar() {
   line=$(grep "^${key}:" "$path" 2>/dev/null | head -1)
   set -o pipefail
   [ -z "$line" ] && { printf ''; return 0; }
-  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//" | tr -d "\"'")
-  # Strip inline YAML comments (# ...) and trailing whitespace/CR.
-  value=$(printf '%s' "$value" | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//' | tr -d '\r')
+  value=$(printf '%s' "$line" | sed "s/^${key}:[[:space:]]*//")
+  # Strip inline YAML comments BEFORE removing quotes so a # inside
+  # a quoted value is preserved.  A comment is a # preceded by whitespace
+  # that is NOT inside single or double quotes.
+  # Approach: if the value starts with a quote, extract the quoted content
+  # and ignore any # after the closing quote.  Otherwise strip # normally.
+  case "$value" in
+    \"*)
+      # Double-quoted: extract content between the first pair of double quotes.
+      value=$(printf '%s' "$value" | sed 's/^"\([^"]*\)".*/\1/')
+      ;;
+    \'*)
+      # Single-quoted: extract content between the first pair of single quotes.
+      value=$(printf '%s' "$value" | sed "s/^'\\([^']*\\)'.*/\\1/")
+      ;;
+    *)
+      # Unquoted: strip inline comments and surrounding quotes.
+      value=$(printf '%s' "$value" | sed 's/[[:space:]]*#.*$//' | tr -d "\"'")
+      ;;
+  esac
+  # Strip trailing whitespace and CR.
+  value=$(printf '%s' "$value" | sed 's/[[:space:]]*$//' | tr -d '\r')
   printf '%s' "$value"
 }
 
@@ -215,7 +251,7 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || die "--sprint requires a sprint ID"
       [ -n "$2" ] || die "--sprint requires a non-empty sprint ID"
       if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$2" ]; then
-        die "repeated --sprint: '$_SPRINT_FLAG' and '$2'"
+        die "repeated --sprint: '$(_close_sanitize "$_SPRINT_FLAG")' and '$(_close_sanitize "$2")'"
       fi
       _SPRINT_FLAG="$2"
       shift 2
@@ -224,7 +260,7 @@ while [ "$#" -gt 0 ]; do
       _SPRINT_FLAG_NEW="${1#--sprint=}"
       [ -n "$_SPRINT_FLAG_NEW" ] || die "--sprint requires a non-empty sprint ID"
       if [ -n "$_SPRINT_FLAG" ] && [ "$_SPRINT_FLAG" != "$_SPRINT_FLAG_NEW" ]; then
-        die "repeated --sprint: '$_SPRINT_FLAG' and '$_SPRINT_FLAG_NEW'"
+        die "repeated --sprint: '$(_close_sanitize "$_SPRINT_FLAG")' and '$(_close_sanitize "$_SPRINT_FLAG_NEW")'"
       fi
       _SPRINT_FLAG="$_SPRINT_FLAG_NEW"
       shift
@@ -239,12 +275,12 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     -*)
-      die "unknown argument: $1"
+      die "unknown argument: $(_close_sanitize "$1")"
       ;;
     *)
       # Positional argument: treat as sprint ID.
       if [ -n "$_POSITIONAL_SPRINT" ]; then
-        die "unexpected positional argument: $1 (already have $_POSITIONAL_SPRINT)"
+        die "unexpected positional argument: $(_close_sanitize "$1") (already have $(_close_sanitize "$_POSITIONAL_SPRINT"))"
       fi
       _POSITIONAL_SPRINT="$1"
       shift
@@ -265,6 +301,12 @@ if [ -f "$SESSION_BINDING_SH" ]; then
   _pre_provision_sid=""
   _pre_provision_sid="$(_sb_derive_session_id 2>/dev/null)" || _pre_provision_sid=""
   if [ -n "$_pre_provision_sid" ]; then
+    # Validate the session ID before using it in a path computation.
+    # An unvalidated session ID (e.g. ../../x) would let the cleanup
+    # rmdir escape the sessions directory.
+    if ! _sb_validate_session_id "$_pre_provision_sid" 2>/dev/null; then
+      die "invalid session ID — cannot compute cleanup directory"
+    fi
     _pre_provision_root="$(_sb_resolve_project_root 2>/dev/null)" || _pre_provision_root=""
     if [ -n "$_pre_provision_root" ]; then
       _pre_provision_dir="${_pre_provision_root%/}/.gaia/state/${_SB_SESSION_DIR_NAME:-sessions}/${_pre_provision_sid}"
@@ -308,7 +350,7 @@ trap '_close_cleanup' EXIT
 # values, refuse immediately with a conflict diagnostic.
 if [ -n "$_SPRINT_FLAG" ] && [ -n "$_POSITIONAL_SPRINT" ]; then
   if [ "$_SPRINT_FLAG" != "$_POSITIONAL_SPRINT" ]; then
-    die "positional sprint ID '$_POSITIONAL_SPRINT' conflicts with --sprint '$_SPRINT_FLAG'"
+    die "positional sprint ID '$(_close_sanitize "$_POSITIONAL_SPRINT")' conflicts with --sprint '$(_close_sanitize "$_SPRINT_FLAG")'"
   fi
 fi
 
@@ -328,7 +370,7 @@ if [ -z "${SPRINT_STATUS_YAML:-}" ] && [ -d "$_state_dir" ]; then
   _use_resolver=1
 else
   if [ -n "${SPRINT_STATUS_YAML:-}" ]; then
-    warn "WARNING: SPRINT_STATUS_YAML is set — resolver and session binding bypassed; target file: ${SPRINT_STATUS_YAML}"
+    warn "WARNING: SPRINT_STATUS_YAML is set — resolver and session binding bypassed; target file: $(_close_sanitize "${SPRINT_STATUS_YAML}")"
   fi
 fi
 
@@ -382,14 +424,17 @@ if [ -n "${RESOLVED_SPRINT:-}" ]; then
 else
   YAML_PATH="$(resolve_yaml_path)"
 fi
-[ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $YAML_PATH"
+[ -f "$YAML_PATH" ] || die "sprint-status.yaml not found at $(_close_sanitize "$YAML_PATH")"
 
 SPRINT_ID="$(yaml_top_scalar sprint_id "$YAML_PATH")"
-[ -n "$SPRINT_ID" ] || die "sprint_id not found in $YAML_PATH"
+[ -n "$SPRINT_ID" ] || die "sprint_id not found in $(_close_sanitize "$YAML_PATH")"
+# Sanitized form for stderr output (the raw SPRINT_ID may contain control chars
+# from the YAML file).
+_SAFE_SPRINT_ID="$(_close_sanitize "$SPRINT_ID")"
 
 # Sanity: when the resolver gave us an ID, the state file must match.
 if [ -n "${RESOLVED_SPRINT:-}" ] && [ "$SPRINT_ID" != "$RESOLVED_SPRINT" ]; then
-  die "sprint ID mismatch: resolver gave '${RESOLVED_SPRINT}' but state file contains '${SPRINT_ID}'"
+  die "sprint ID mismatch: resolver gave '$(_close_sanitize "${RESOLVED_SPRINT}")' but state file contains '$(_close_sanitize "${SPRINT_ID}")'"
 fi
 
 # Cross-check: when SPRINT_STATUS_YAML bypassed the resolver, verify the
@@ -401,14 +446,29 @@ fi
 # does not mask a disagreement with the binding file.
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BOUND_SPRINT_ID:-}" ]; then
   if [ "$SPRINT_ID" != "$GAIA_BOUND_SPRINT_ID" ]; then
-    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$GAIA_BOUND_SPRINT_ID'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$_SAFE_SPRINT_ID' but session is bound to '$(_close_sanitize "$GAIA_BOUND_SPRINT_ID")'"
+    exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi
 if [ -n "${SPRINT_STATUS_YAML:-}" ] && [ -n "${GAIA_BINDING_DIR:-}" ]; then
+  _cross_raw="" _cross_cat_rc=0
+  _cross_raw="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null)" || _cross_cat_rc=$?
+  _cross_raw="$(printf '%s' "$_cross_raw" | tr -d '\n')"
+  if [ "$_cross_cat_rc" -ne 0 ] && [ -e "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" ]; then
+    # File exists but is unreadable — refuse, not treat as unbound.
+    log "binding file is unreadable — cannot verify binding for sprint '$_SAFE_SPRINT_ID'"
+    exit "${SPRINT_INVALID_ID:-16}"
+  fi
+  # Apply CRLF policy: strip one trailing CR.
   _cross_bound=""
-  _cross_bound="$(cat "${GAIA_BINDING_DIR}/${_SB_BINDING_FILENAME:-bound_sprint_id}" 2>/dev/null | tr -d '\n')" || _cross_bound=""
+  if [ -n "$_cross_raw" ] && type _sb_strip_trailing_cr >/dev/null 2>&1; then
+    _cross_bound="$(_sb_strip_trailing_cr "$_cross_raw")"
+  else
+    _cross_bound="$(printf '%s' "${_cross_raw%$'\r'}")"
+  fi
   if [ -n "$_cross_bound" ] && [ "$SPRINT_ID" != "$_cross_bound" ]; then
-    die "binding mismatch: SPRINT_STATUS_YAML targets sprint '$SPRINT_ID' but session is bound to '$_cross_bound'"
+    log "binding mismatch: SPRINT_STATUS_YAML targets sprint '$_SAFE_SPRINT_ID' but session is bound to '$(_close_sanitize "$_cross_bound")'"
+    exit "${SPRINT_BOUND_MISMATCH:-15}"
   fi
 fi
 
@@ -449,16 +509,16 @@ if [ "$current_status" = "closed" ]; then
     done
 
     if [ "$_archive_count" -gt 0 ]; then
-      warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+      warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at $(_close_sanitize "${existing_closed_at:-(unknown)}")"
       _close_succeeded=1
       exit 0
     fi
     # Archive missing — resume. Will be passed to the close writer below.
     _RESUME_MODE=1
-    warn "warning: sprint ${SPRINT_ID} is closed but archive is missing — resuming"
+    warn "warning: sprint ${_SAFE_SPRINT_ID} is closed but archive is missing — resuming"
   else
     # Single-sprint mode: exit 0 regardless of archive presence.
-    warn "warning: sprint ${SPRINT_ID} already closed at ${existing_closed_at:-(unknown)}"
+    warn "warning: sprint ${_SAFE_SPRINT_ID} already closed at $(_close_sanitize "${existing_closed_at:-(unknown)}")"
     _close_succeeded=1
     exit 0
   fi
@@ -493,7 +553,7 @@ if [ "${retro_match_count:-0}" -eq 0 ] && [ -x "$RESOLVER_HELPER" ]; then
 fi
 
 if [ "${retro_match_count:-0}" -eq 0 ]; then
-  die "error: retro doc not found for ${SPRINT_ID}; run /gaia-retro first"
+  die "error: retro doc not found for ${_SAFE_SPRINT_ID}; run /gaia-retro first"
 fi
 
 # ---------- Step 3 — Pre-condition: all-done or force ----------
@@ -519,17 +579,17 @@ fi
 
 if [ "${#non_done_keys[@]}" -gt 0 ]; then
   if [ "${#rollover_keys[@]}" -eq 0 ]; then
-    die "error: sprint ${SPRINT_ID} has non-done stories: ${non_done_keys[*]}; pass --force-with-rollover to proceed"
+    die "error: sprint ${_SAFE_SPRINT_ID} has non-done stories: $(_close_sanitize "${non_done_keys[*]}"); pass --force-with-rollover to proceed"
   fi
   # Validate the provided keys are exactly the non-done set (sorted comparison).
   expected_sorted=$(printf '%s\n' "${non_done_keys[@]}" | LC_ALL=C sort -u)
   provided_sorted=$(printf '%s\n' "${rollover_keys[@]}" | LC_ALL=C sort -u)
   if [ "$expected_sorted" != "$provided_sorted" ]; then
-    die "error: --force-with-rollover key mismatch; non-done stories are: ${non_done_keys[*]}; got: ${rollover_keys[*]}"
+    die "error: --force-with-rollover key mismatch; non-done stories are: $(_close_sanitize "${non_done_keys[*]}"); got: $(_close_sanitize "${rollover_keys[*]}")"
   fi
 elif [ "${#rollover_keys[@]}" -gt 0 ]; then
   # All stories done but caller passed rollover keys — refuse (mismatch).
-  die "error: --force-with-rollover key mismatch; no non-done stories but got: ${rollover_keys[*]}"
+  die "error: --force-with-rollover key mismatch; no non-done stories but got: $(_close_sanitize "${rollover_keys[*]}")"
 fi
 
 # ---------- Step 3a — Pre-condition: sprint-review sentinel (unconditional) --
@@ -563,10 +623,10 @@ fi
 
 if [ "$_sentinel_found" -ne 1 ]; then
   if [ "$FORCE_BYPASS_SENTINEL" -eq 1 ]; then
-    warn "warning: no sprint-review sentinel for ${SPRINT_ID}; proceeding due to --force (audited bypass)"
+    warn "warning: no sprint-review sentinel for ${_SAFE_SPRINT_ID}; proceeding due to --force (audited bypass)"
     _sentinel_force_bypassed=1
   else
-    die "sprint-close refused: no sprint-review sentinel for ${SPRINT_ID}; run /gaia-sprint-review first, OR pass --force for the documented bypass"
+    die "sprint-close refused: no sprint-review sentinel for ${_SAFE_SPRINT_ID}; run /gaia-sprint-review first, OR pass --force for the documented bypass"
   fi
 else
   _sentinel_force_bypassed=0
@@ -660,7 +720,7 @@ if [ -x "$LIFECYCLE_EVENT_SH" ]; then
       --type sprint_closed \
       --workflow gaia-sprint-close \
       --data "$data_payload" \
-    || die "lifecycle-event.sh failed for sprint ${SPRINT_ID} close"
+    || die "lifecycle-event.sh failed for sprint ${_SAFE_SPRINT_ID} close"
 else
   # Fallback: write JSONL line directly. Same nested-data schema as the helper.
   mkdir -p "$MEMORY_PATH"

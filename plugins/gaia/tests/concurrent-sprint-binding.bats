@@ -679,10 +679,11 @@ YAML
 # NFS noclobber best-effort (documented limitation)
 # =========================================================================
 
-@test "noclobber and realpath containment are implemented" {
+@test "write-once and realpath containment are implemented" {
   # This test verifies the defense mechanisms exist in the source code,
   # not that NFS atomicity is enforced (documented limitation).
-  /usr/bin/grep -q 'set -C' "$SESSION_BINDING"
+  # write_binding uses temp file + hard link (ln) for atomic write-once.
+  /usr/bin/grep -q 'ln .*_tmp_binding.*binding_file' "$SESSION_BINDING"
   /usr/bin/grep -q 'realpath' "$SESSION_BINDING"
   /usr/bin/grep -q '_sb_check_containment' "$SESSION_BINDING"
 }
