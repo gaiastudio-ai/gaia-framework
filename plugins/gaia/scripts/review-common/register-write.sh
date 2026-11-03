@@ -608,6 +608,54 @@ _rw_file_sha256() {
   _rw_sha256 < "$1"
 }
 
+# Parse a report file's verdict.  Returns "PASSED" when the first Verdict
+# line in the file is an unambiguous PASSED/APPROVE token in any of the
+# framework's decorated formats (bare, bold, heading).  Returns "not-passed"
+# otherwise.  An unreadable, missing, or empty file returns "not-passed"
+# (fail closed).
+#
+# Accepted forms (anchored, exact token — substring matches are rejected):
+#   Verdict: PASSED         Verdict: APPROVE
+#   **Verdict:** PASSED     **Verdict: PASSED**   **Verdict: APPROVE**
+#   ## Verdict: PASSED      # Verdict: APPROVE    ### Verdict: PASSED
+#   Trailing whitespace is tolerated.
+_rw_parse_report_verdict() {
+  local _rpv_file="$1"
+  [ -f "$_rpv_file" ] && [ -r "$_rpv_file" ] || { printf 'not-passed'; return 0; }
+  local _rpv_line
+  # Match only lines starting with an optional markdown heading (# + space)
+  # or bold (**) prefix, followed by Verdict.  A bare leading space is not
+  # a known decorator and is rejected (fail closed).
+  # Accepted prefixes: (none), "# ", "## ", "### ", "**", "***".
+  _rpv_line="$(/usr/bin/grep -m1 -E '^(#{1,6} |\*{1,3})?Verdict' "$_rpv_file" 2>/dev/null || true)"
+  [ -n "$_rpv_line" ] || { printf 'not-passed'; return 0; }
+  # Strip markdown decoration: leading #/*/space, trailing */space.
+  local _rpv_clean="$_rpv_line"
+  # Remove leading hashes + space  (## Verdict: ...)
+  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[!#]*}"}"
+  # Remove leading asterisks  (**Verdict: ...)
+  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[!*]*}"}"
+  # Remove leading space
+  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[! ]*}"}"
+  # Remove trailing asterisks and space
+  _rpv_clean="${_rpv_clean%"${_rpv_clean##*[!* ]}"}"
+  # Now expect: Verdict[:][ ]TOKEN  or  Verdict:**[ ]TOKEN
+  # Normalise: strip bold around Verdict and colon variants.
+  case "$_rpv_clean" in
+    Verdict:*|Verdict'**:'*) ;;
+    *) printf 'not-passed'; return 0 ;;
+  esac
+  # Extract the token after the colon (possibly with ** between).
+  local _rpv_after="${_rpv_clean#*:}"
+  _rpv_after="${_rpv_after#"${_rpv_after%%[!* ]*}"}"
+  # Trailing cleanup
+  _rpv_after="${_rpv_after%"${_rpv_after##*[!* ]}"}"
+  case "$_rpv_after" in
+    PASSED|APPROVE) printf 'PASSED' ;;
+    *) printf 'not-passed' ;;
+  esac
+}
+
 # Validate a round run-id against the canonical pattern.
 _rw_validate_round_id() {
   local id="$1"
@@ -1955,9 +2003,19 @@ _rw_cmd_record_round_report() {
     _rw_abort_and_die 1 "record-round-report: report already recorded on another round; use a carry with applicability rationale for cross-round reuse"
   fi
 
-  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH)' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
+  # Parse the report's verdict at record time so count-rounds never needs to
+  # re-read the file (the canonical report path is overwritten each round).
+  local _rrr_verdict
+  _rrr_verdict="$(_rw_parse_report_verdict "$report")"
+  export _RW_RVERDICT="$_rrr_verdict"
 
-  unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH
+  yq -i '
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) |
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH) |
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_verdict = strenv(_RW_RVERDICT)
+  ' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
+
+  unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH _RW_RVERDICT
 
   _rw_commit_register "$tmp" "$reg_path"
 }
@@ -2784,43 +2842,105 @@ _rw_cmd_count_rounds() {
           fi
           ;;
         superseded)
-          # A superseded round was replaced before completing. It does NOT
-          # count only when every selected gate has a report, no gate_runs
-          # entry errored, and every report's first Verdict: line is PASSED.
-          # It counts in every other case (fail closed).
+          # A superseded round was replaced before completing.  It does NOT
+          # count only when every gate (selected AND carried) has a stored
+          # PASSED verdict, no gate_runs entry errored, and at least one
+          # gate exists.  It counts in every other case (fail closed).
+          #
+          # Verdicts are read from the report_verdict field stored at
+          # record-round-report time — never by re-reading the report file
+          # (the canonical report path is overwritten each round).
           local _sup_count=1
-          local miss_s
-          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
-          if [ "$miss_s" = "0" ] || [ "$miss_s" = "null" ]; then
-            export _RW_SUP_RID
-            _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
-            local err_s
-            err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
-            unset _RW_SUP_RID
-            if [ "$err_s" = "0" ] || [ "$err_s" = "null" ]; then
-              # All gates have reports and none errored. Check each report
-              # file for a PASSED verdict line.
-              local _sup_all_pass=1
-              local _sup_gi=0
-              local _sup_glen
-              _sup_glen="$(yq ".rounds[$idx].selected_gates | length" "$reg_path" 2>/dev/null)" || _sup_glen="0"
-              while [ "$_sup_gi" -lt "$_sup_glen" ]; do
-                local _sup_rpath
-                _sup_rpath="$(yq ".rounds[$idx].selected_gates[$_sup_gi].report_path // \"\"" "$reg_path" 2>/dev/null)" || _sup_rpath=""
-                if [ -n "$_sup_rpath" ] && [ -f "$_sup_rpath" ]; then
-                  local _sup_vline
-                  _sup_vline="$(/usr/bin/grep -m1 '^Verdict:' "$_sup_rpath" 2>/dev/null || true)"
-                  case "$_sup_vline" in
-                    *PASSED*) ;; # this gate passed
-                    *) _sup_all_pass=0; break ;;
-                  esac
-                else
-                  _sup_all_pass=0; break
+
+          # --- selected gates: stored verdict check ---
+          local _sup_glen
+          _sup_glen="$(yq ".rounds[$idx].selected_gates | length" "$reg_path" 2>/dev/null)" || _sup_glen="0"
+          if [ "$_sup_glen" != "0" ] && [ "$_sup_glen" != "null" ]; then
+            local _sup_miss_s
+            _sup_miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || _sup_miss_s="0"
+            if [ "$_sup_miss_s" = "0" ] || [ "$_sup_miss_s" = "null" ]; then
+              export _RW_SUP_RID
+              _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
+              local _sup_err_s
+              _sup_err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || _sup_err_s="0"
+              unset _RW_SUP_RID
+              if [ "$_sup_err_s" = "0" ] || [ "$_sup_err_s" = "null" ]; then
+                # All selected gates have reports and none errored.
+                # Read the stored report_verdict for each gate.
+                local _sup_all_pass=1
+                local _sup_gi=0
+                while [ "$_sup_gi" -lt "$_sup_glen" ]; do
+                  local _sup_rv
+                  _sup_rv="$(yq ".rounds[$idx].selected_gates[$_sup_gi].report_verdict // \"\"" "$reg_path" 2>/dev/null)" || _sup_rv=""
+                  if [ "$_sup_rv" != "PASSED" ]; then
+                    _sup_all_pass=0; break
+                  fi
+                  _sup_gi=$((_sup_gi + 1))
+                done
+
+                # --- carried gates: resolve through the carry chain ---
+                if [ "$_sup_all_pass" -eq 1 ]; then
+                  local _sup_clen
+                  _sup_clen="$(yq ".rounds[$idx].carried_gates | length" "$reg_path" 2>/dev/null)" || _sup_clen="0"
+                  if [ "$_sup_clen" != "0" ] && [ "$_sup_clen" != "null" ]; then
+                    local _sup_ci=0
+                    while [ "$_sup_ci" -lt "$_sup_clen" ]; do
+                      local _sup_cgate _sup_cfrom
+                      _sup_cgate="$(yq ".rounds[$idx].carried_gates[$_sup_ci].gate" "$reg_path" 2>/dev/null)" || _sup_cgate=""
+                      _sup_cfrom="$(yq ".rounds[$idx].carried_gates[$_sup_ci].from_run" "$reg_path" 2>/dev/null)" || _sup_cfrom=""
+
+                      # Walk the carry chain to find the terminal selected gate.
+                      local _sup_hop_run="$_sup_cfrom" _sup_hop_gate="$_sup_cgate"
+                      local _sup_hops=0 _sup_visited=":" _sup_resolved=false
+                      while [ "$_sup_hops" -lt 10 ]; do
+                        case "$_sup_visited" in
+                          *":$_sup_hop_run:"*) _sup_all_pass=0; _sup_resolved=true; break ;;
+                        esac
+                        _sup_visited="${_sup_visited}${_sup_hop_run}:"
+                        _sup_hops=$((_sup_hops + 1))
+
+                        export _RW_HOP_RUN="$_sup_hop_run" _RW_HOP_GATE="$_sup_hop_gate"
+                        # Check if the gate is a selected gate in the target round.
+                        local _sup_in_sel
+                        _sup_in_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$reg_path" 2>/dev/null)" || _sup_in_sel="0"
+                        if [ "$_sup_in_sel" != "0" ] && [ "$_sup_in_sel" != "null" ]; then
+                          # Terminal: read its stored verdict.
+                          local _sup_hop_rv
+                          _sup_hop_rv="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_verdict // ""' "$reg_path" 2>/dev/null)" || _sup_hop_rv=""
+                          unset _RW_HOP_RUN _RW_HOP_GATE
+                          if [ "$_sup_hop_rv" != "PASSED" ]; then
+                            _sup_all_pass=0
+                          fi
+                          _sup_resolved=true
+                          break
+                        fi
+                        # Check if it is carried further.
+                        local _sup_in_car
+                        _sup_in_car="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$reg_path" 2>/dev/null)" || _sup_in_car="0"
+                        if [ "$_sup_in_car" != "0" ] && [ "$_sup_in_car" != "null" ]; then
+                          local _sup_next_hop
+                          _sup_next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .from_run' "$reg_path" 2>/dev/null)" || _sup_next_hop=""
+                          unset _RW_HOP_RUN _RW_HOP_GATE
+                          _sup_hop_run="$_sup_next_hop"
+                          continue
+                        fi
+                        # Gate not found — fail closed.
+                        unset _RW_HOP_RUN _RW_HOP_GATE
+                        _sup_all_pass=0; _sup_resolved=true; break
+                      done
+                      if [ "$_sup_resolved" != "true" ]; then
+                        # Chain too long — fail closed.
+                        _sup_all_pass=0
+                      fi
+                      if [ "$_sup_all_pass" -eq 0 ]; then break; fi
+                      _sup_ci=$((_sup_ci + 1))
+                    done
+                  fi
                 fi
-                _sup_gi=$((_sup_gi + 1))
-              done
-              if [ "$_sup_all_pass" -eq 1 ] && [ "$_sup_glen" -gt 0 ]; then
-                _sup_count=0
+
+                if [ "$_sup_all_pass" -eq 1 ]; then
+                  _sup_count=0
+                fi
               fi
             fi
           fi
