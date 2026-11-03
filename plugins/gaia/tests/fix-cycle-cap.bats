@@ -59,7 +59,7 @@ _run_failing_round() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED (round %s)\n' "$rid" > "$FIXTURE_DIR/report-${rid}.md"
   bash "$RW" record-round-report --story "$key" --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/report-${rid}.md"
+    --gate security-review --report "$FIXTURE_DIR/report-${rid}.md" --verdict FAILED
   # Decision point (cap check), then complete.
   bash "$RW" count-rounds --story "$key" --current-verdict FAILED >/dev/null
   bash "$RW" complete-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" --verdict FAILED
@@ -74,7 +74,7 @@ _run_passing_round() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/pass-${rid}.md"
   bash "$RW" record-round-report --story "$key" --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/pass-${rid}.md"
+    --gate security-review --report "$FIXTURE_DIR/pass-${rid}.md" --verdict PASSED
   bash "$RW" complete-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" --verdict PASSED
 }
 
@@ -331,7 +331,7 @@ CONF
     --gate security-review --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/r1.md"
   bash "$RW" record-round-report --story TEST-EC1 --run-id "round-20261102T120001Z-10101" \
-    --gate security-review --report "$FIXTURE_DIR/r1.md"
+    --gate security-review --report "$FIXTURE_DIR/r1.md" --verdict FAILED
 
   # Decision point: cap 1. The open round with --current-verdict FAILED counts.
   run bash "$RW" count-rounds --story TEST-EC1 --max 1 --current-verdict FAILED
@@ -458,7 +458,7 @@ except jsonschema.ValidationError:
     --gate security-review --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/r2.md"
   bash "$RW" record-round-report --story TEST-EC5 --run-id "round-20261102T120002Z-50502" \
-    --gate security-review --report "$FIXTURE_DIR/r2.md"
+    --gate security-review --report "$FIXTURE_DIR/r2.md" --verdict FAILED
 
   # Writer (complete-round) and reader (count-rounds) race for the lock.
   bash "$RW" complete-round --story TEST-EC5 --run-id "round-20261102T120002Z-50502" \
@@ -666,7 +666,7 @@ Line2 end"
     --gate security-review --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/fc-report.md"
   bash "$RW" record-round-report --story TEST-FC --run-id "round-20261102T120001Z-99901" \
-    --gate security-review --report "$FIXTURE_DIR/fc-report.md"
+    --gate security-review --report "$FIXTURE_DIR/fc-report.md" --verdict FAILED
   bash "$RW" complete-round --story TEST-FC --run-id "round-20261102T120001Z-99901" \
     --repo "$FIXTURE_DIR/repo"
 
@@ -747,7 +747,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/sec-15c.md"
   bash "$RW" record-round-report --story TEST-15C --run-id "$rid1" \
-    --gate security-review --report "$FIXTURE_DIR/sec-15c.md"
+    --gate security-review --report "$FIXTURE_DIR/sec-15c.md" --verdict PASSED
   bash "$RW" complete-round --story TEST-15C --run-id "$rid1" \
     --repo "$FIXTURE_DIR/repo" --verdict PASSED
 
@@ -760,7 +760,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/cr-15c.md"
   bash "$RW" record-round-report --story TEST-15C --run-id "$rid2" \
-    --gate code-review --report "$FIXTURE_DIR/cr-15c.md"
+    --gate code-review --report "$FIXTURE_DIR/cr-15c.md" --verdict FAILED
 
   # security-report-reader must report "assessed" (carried gate has a report).
   bash "$SR" --story TEST-15C > "$FIXTURE_DIR/sr-15c.txt" 2>&1
@@ -836,7 +836,7 @@ Line2 end"
     --outcome errored >/dev/null
   printf 'Verdict: FAILED (crash)\n' > "$FIXTURE_DIR/err-sec.md"
   bash "$RW" record-round-report --story TEST-ERR --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/err-sec.md"
+    --gate security-review --report "$FIXTURE_DIR/err-sec.md" --verdict FAILED
 
   # Reader must report unassessed (errored is not assessed).
   bash "$SR" --story TEST-ERR > "$FIXTURE_DIR/sr-err.txt" 2>&1
@@ -940,7 +940,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/mhc-sec-r1.md"
   bash "$RW" record-round-report --story TEST-MHC --run-id "$rid1" \
-    --gate security-review --report "$FIXTURE_DIR/mhc-sec-r1.md"
+    --gate security-review --report "$FIXTURE_DIR/mhc-sec-r1.md" --verdict PASSED
   bash "$RW" complete-round --story TEST-MHC --run-id "$rid1" \
     --repo "$FIXTURE_DIR/repo" --verdict PASSED
 
@@ -953,7 +953,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/mhc-cr-r2.md"
   bash "$RW" record-round-report --story TEST-MHC --run-id "$rid2" \
-    --gate code-review --report "$FIXTURE_DIR/mhc-cr-r2.md"
+    --gate code-review --report "$FIXTURE_DIR/mhc-cr-r2.md" --verdict FAILED
   bash "$RW" complete-round --story TEST-MHC --run-id "$rid2" \
     --repo "$FIXTURE_DIR/repo" --verdict FAILED
 
@@ -992,7 +992,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/nocat-sec.md"
   bash "$RW" record-round-report --story TEST-NOCAT --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/nocat-sec.md"
+    --gate security-review --report "$FIXTURE_DIR/nocat-sec.md" --verdict FAILED
 
   # Add a critical finding WITHOUT --owasp-category.
   bash "$RW" add --story TEST-NOCAT --defect "injection flaw" --type security \
@@ -1044,7 +1044,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/halt-r2.md"
   bash "$RW" record-round-report --story TEST-HALT --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/halt-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/halt-r2.md" --verdict FAILED
   # Do NOT call complete-round — the round is halted.
 
   # count-rounds without --current-verdict must count both rounds.
@@ -1063,7 +1063,7 @@ Line2 end"
     --outcome completed >/dev/null
   printf 'Verdict: FAILED (round 3)\n' > "$FIXTURE_DIR/halt-r3-uniq.md"
   bash "$RW" record-round-report --story TEST-HALT --run-id "$rid3" \
-    --gate security-review --report "$FIXTURE_DIR/halt-r3-uniq.md"
+    --gate security-review --report "$FIXTURE_DIR/halt-r3-uniq.md" --verdict FAILED
 
   # Decision point with --current-verdict FAILED (the SKILL path).
   # Round 1 (complete, FAILED) + round 2 (superseded, counted) + round 3 (open, FAILED).
@@ -1262,7 +1262,7 @@ CONF
     --gate code-review --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/crash-cr-r2.md"
   bash "$RW" record-round-report --story TEST-CARRY-CRASH --run-id "$rid2" \
-    --gate code-review --report "$FIXTURE_DIR/crash-cr-r2.md"
+    --gate code-review --report "$FIXTURE_DIR/crash-cr-r2.md" --verdict FAILED
 
   # Reader must report unassessed (carry chain has no completed report).
   bash "$SR" --story TEST-CARRY-CRASH > "$FIXTURE_DIR/sr-crash.txt" 2>&1
@@ -1287,7 +1287,7 @@ CONF
   # Report was written before the crash.
   printf 'Verdict: FAILED (crash)\n' > "$FIXTURE_DIR/err-carry-r1.md"
   bash "$RW" record-round-report --story TEST-CARRY-ERR --run-id "$rid_e1" \
-    --gate security-review --report "$FIXTURE_DIR/err-carry-r1.md"
+    --gate security-review --report "$FIXTURE_DIR/err-carry-r1.md" --verdict FAILED
   bash "$RW" complete-round --story TEST-CARRY-ERR --run-id "$rid_e1" \
     --repo "$FIXTURE_DIR/repo" --verdict FAILED 2>/dev/null || true
 
@@ -1323,7 +1323,7 @@ CONF
     --gate security-review --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/noimp-sec.md"
   bash "$RW" record-round-report --story TEST-NOIMP --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/noimp-sec.md"
+    --gate security-review --report "$FIXTURE_DIR/noimp-sec.md" --verdict FAILED
 
   # Add a critical finding WITHOUT --impact but WITH --owasp-category.
   bash "$RW" add --story TEST-NOIMP --defect "injection flaw" --type security \
@@ -1621,7 +1621,7 @@ _run_halted_round() {
     --outcome completed >/dev/null
   printf 'Verdict: %s\n' "$verdict" > "$FIXTURE_DIR/halt-${rid}.md"
   bash "$RW" record-round-report --story "$key" --run-id "$rid" \
-    --gate security-review --report "$FIXTURE_DIR/halt-${rid}.md"
+    --gate security-review --report "$FIXTURE_DIR/halt-${rid}.md" --verdict "$verdict"
 }
 
 @test "case a: F, F -> escalate, one more cycle, P -> escalate false" {
@@ -1699,7 +1699,7 @@ _run_halted_round() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED (round 2)\n' > "$FIXTURE_DIR/case-d-r2.md"
   bash "$RW" record-round-report --story TEST-CASE-D --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/case-d-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/case-d-r2.md" --verdict FAILED
 
   # Round 1 (superseded, counted — fail closed) + round 2 (open, FAILED)
   # = round_count 2, escalate true at cap 2.
@@ -1717,20 +1717,20 @@ _run_halted_round() {
 
 # Helper: run a halted round using a SHARED canonical report path.
 _run_halted_round_canonical() {
-  local key="$1" rid="$2" report_path="$3" verdict_text="${4:-FAILED}"
+  local key="$1" rid="$2" report_path="$3" verdict_text="${4:-FAILED}" stored_verdict="${5:-FAILED}"
   bash "$RW" record-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
     --gate "security-review=selected"
   bash "$RW" record-run --story "$key" --run-id "$rid" --gate security-review \
     --outcome completed >/dev/null
   printf '%s\n' "$verdict_text" > "$report_path"
   bash "$RW" record-round-report --story "$key" --run-id "$rid" \
-    --gate security-review --report "$report_path"
+    --gate security-review --report "$report_path" --verdict "$stored_verdict"
 }
 
 # Helper: run a full failing round using a SHARED canonical report path.
 _run_failing_round_canonical() {
   local key="$1" rid="$2" report_path="$3"
-  _run_halted_round_canonical "$key" "$rid" "$report_path" "Verdict: FAILED round $rid"
+  _run_halted_round_canonical "$key" "$rid" "$report_path" "Verdict: FAILED round $rid" "FAILED"
   bash "$RW" count-rounds --story "$key" --current-verdict FAILED >/dev/null
   bash "$RW" complete-round --story "$key" --run-id "$rid" --repo "$FIXTURE_DIR/repo" --verdict FAILED
 }
@@ -1744,7 +1744,7 @@ _run_failing_round_canonical() {
 
   # Round 2: halted with PASSED — report says Verdict: PASSED.
   # This overwrites the same report path as round 1.
-  _run_halted_round_canonical TEST-CC "round-20261103T140002Z-95002" "$rpath" "Verdict: PASSED"
+  _run_halted_round_canonical TEST-CC "round-20261103T140002Z-95002" "$rpath" "Verdict: PASSED" "PASSED"
 
   # Round 3: supersedes round 2, fails — overwrites the same report path again.
   local rid3="round-20261103T140003Z-95003"
@@ -1754,10 +1754,10 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED round 3\n' > "$rpath"
   bash "$RW" record-round-report --story TEST-CC --run-id "$rid3" \
-    --gate security-review --report "$rpath"
+    --gate security-review --report "$rpath" --verdict FAILED
 
-  # The report file now holds round 3's FAILED verdict, but the stored
-  # verdict for round 2 was captured as PASSED at record time.
+  # The report file now holds round 3's FAILED text, but the stored
+  # verdict for round 2 was recorded as PASSED via --verdict.
   run bash "$RW" count-rounds --story TEST-CC --max 3 --current-verdict FAILED
   [ "$status" -eq 0 ]
   # Round 1 (complete FAILED=1) + round 2 (superseded all-PASSED=0) + round 3 (open FAILED=1) = 2.
@@ -1770,7 +1770,7 @@ _run_failing_round_canonical() {
   local rpath="$FIXTURE_DIR/security-review-TEST-CVAN.md"
 
   # Round 1: security FAILED, halted.
-  _run_halted_round_canonical TEST-CVAN "round-20261103T140001Z-96001" "$rpath" "Verdict: FAILED"
+  _run_halted_round_canonical TEST-CVAN "round-20261103T140001Z-96001" "$rpath" "Verdict: FAILED" "FAILED"
 
   # Round 2: security PASSED + code-review FAILED — overwrites the same path.
   local rid2="round-20261103T140002Z-96002"
@@ -1780,12 +1780,12 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$rpath"
   bash "$RW" record-round-report --story TEST-CVAN --run-id "$rid2" \
-    --gate security-review --report "$rpath"
+    --gate security-review --report "$rpath" --verdict PASSED
   bash "$RW" record-run --story TEST-CVAN --run-id "$rid2" --gate code-review \
     --outcome completed >/dev/null
   printf 'Verdict: FAILED round 2 code-review\n' > "$FIXTURE_DIR/code-review-TEST-CVAN.md"
   bash "$RW" record-round-report --story TEST-CVAN --run-id "$rid2" \
-    --gate code-review --report "$FIXTURE_DIR/code-review-TEST-CVAN.md"
+    --gate code-review --report "$FIXTURE_DIR/code-review-TEST-CVAN.md" --verdict FAILED
 
   # The file now says PASSED (round 2's security), but round 1's stored verdict is FAILED.
   run bash "$RW" count-rounds --story TEST-CVAN --max 2 --current-verdict FAILED
@@ -1799,115 +1799,179 @@ _run_failing_round_canonical() {
 # Decorated verdict forms: real framework report formats must be accepted
 # ---------------------------------------------------------------------------
 
-@test "decorated PASSED forms are accepted by the stored verdict" {
-  local forms=(
-    '**Verdict:** PASSED'
-    '## Verdict: PASSED'
-    '**Verdict: PASSED**'
-    '**Verdict: APPROVE**'
-    'Verdict: APPROVE'
-    '# Verdict: PASSED'
-    '### Verdict: PASSED'
-    'Verdict:   PASSED  '
-  )
-  local i=0
-  for form in "${forms[@]}"; do
-    _mk_project "TEST-DEC-$i"
-    local rpath="$FIXTURE_DIR/report-dec-$i.md"
-    # Round 1: halted with the decorated verdict form.
-    local rid="round-20261103T150001Z-$((97000 + i))"
-    bash "$RW" record-round --story "TEST-DEC-$i" --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
-      --gate "security-review=selected"
-    bash "$RW" record-run --story "TEST-DEC-$i" --run-id "$rid" --gate security-review \
-      --outcome completed >/dev/null
-    printf '%s\n' "$form" > "$rpath"
-    bash "$RW" record-round-report --story "TEST-DEC-$i" --run-id "$rid" \
-      --gate security-review --report "$rpath"
-    # Round 2: supersedes round 1, FAILED.
-    local rid2="round-20261103T150002Z-$((97100 + i))"
-    bash "$RW" record-round --story "TEST-DEC-$i" --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
-      --gate "security-review=selected"
-    bash "$RW" record-run --story "TEST-DEC-$i" --run-id "$rid2" --gate security-review \
-      --outcome completed >/dev/null
-    printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-dec-r2-$i.md"
-    bash "$RW" record-round-report --story "TEST-DEC-$i" --run-id "$rid2" \
-      --gate security-review --report "$FIXTURE_DIR/report-dec-r2-$i.md"
-    # The decorated PASSED round should NOT count.
-    run bash "$RW" count-rounds --story "TEST-DEC-$i" --max 2 --current-verdict FAILED
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"round_count 1"* ]] || { echo "FAIL on form: $form — got: $output"; return 1; }
-    i=$((i + 1))
-  done
+@test "report text PASSED but recorded FAILED: round counts (text is ignored)" {
+  _mk_project TEST-TXT-V1
+  local rpath="$FIXTURE_DIR/report-txt-v1.md"
+  local rid="round-20261103T150001Z-97000"
+  bash "$RW" record-round --story TEST-TXT-V1 --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-TXT-V1 --run-id "$rid" --gate security-review \
+    --outcome completed >/dev/null
+  # Report TEXT says PASSED, but the recorded verdict is FAILED.
+  printf 'Verdict: PASSED\n' > "$rpath"
+  bash "$RW" record-round-report --story TEST-TXT-V1 --run-id "$rid" \
+    --gate security-review --report "$rpath" --verdict FAILED
+  # Round 2 supersedes, FAILED.
+  local rid2="round-20261103T150002Z-97100"
+  bash "$RW" record-round --story TEST-TXT-V1 --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-TXT-V1 --run-id "$rid2" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-txt-v1-r2.md"
+  bash "$RW" record-round-report --story TEST-TXT-V1 --run-id "$rid2" \
+    --gate security-review --report "$FIXTURE_DIR/report-txt-v1-r2.md" --verdict FAILED
+  # The recorded verdict is FAILED, so the round counts — text is irrelevant.
+  run bash "$RW" count-rounds --story TEST-TXT-V1 --max 2 --current-verdict FAILED
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 2"* ]] || return 1
+  [[ "$output" == *"escalate true"* ]] || return 1
+}
+
+@test "report text with Verdict heading + FAILED prose but recorded PASSED: round not counted" {
+  _mk_project TEST-TXT-V2
+  local rpath="$FIXTURE_DIR/report-txt-v2.md"
+  local rid="round-20261103T150001Z-97010"
+  bash "$RW" record-round --story TEST-TXT-V2 --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-TXT-V2 --run-id "$rid" --gate security-review \
+    --outcome completed >/dev/null
+  # Report has a ## Verdict heading with FAILED-looking prose, but recorded PASSED.
+  printf '## Verdict\n\nFAILED — blocking issues found.\n\n**Verdict: REQUEST_CHANGES**\n' > "$rpath"
+  bash "$RW" record-round-report --story TEST-TXT-V2 --run-id "$rid" \
+    --gate security-review --report "$rpath" --verdict PASSED
+  # Round 2 supersedes, FAILED.
+  local rid2="round-20261103T150002Z-97110"
+  bash "$RW" record-round --story TEST-TXT-V2 --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-TXT-V2 --run-id "$rid2" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-txt-v2-r2.md"
+  bash "$RW" record-round-report --story TEST-TXT-V2 --run-id "$rid2" \
+    --gate security-review --report "$FIXTURE_DIR/report-txt-v2-r2.md" --verdict FAILED
+  # The recorded verdict is PASSED, so the superseded round does NOT count.
+  run bash "$RW" count-rounds --story TEST-TXT-V2 --max 2 --current-verdict FAILED
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 1"* ]] || return 1
+  [[ "$output" == *"escalate false"* ]] || return 1
 }
 
 # ---------------------------------------------------------------------------
 # Substring match must fail closed: lines containing PASSED that are not
 # ---------------------------------------------------------------------------
 
-@test "malformed verdict lines are counted (fail closed, not open)" {
-  local bad_lines=(
-    'Verdict: NOT PASSED'
-    'Verdict: FAILED (pass 4 was PASSED)'
-    'Verdict: UNVERIFIED (PASSED not proven)'
-  )
-  local i=0
-  for bad in "${bad_lines[@]}"; do
-    _mk_project "TEST-BAD-$i"
-    local rpath="$FIXTURE_DIR/report-bad-$i.md"
-    local rid="round-20261103T160001Z-$((98000 + i))"
-    bash "$RW" record-round --story "TEST-BAD-$i" --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
-      --gate "security-review=selected"
-    bash "$RW" record-run --story "TEST-BAD-$i" --run-id "$rid" --gate security-review \
-      --outcome completed >/dev/null
-    printf '%s\n' "$bad" > "$rpath"
-    bash "$RW" record-round-report --story "TEST-BAD-$i" --run-id "$rid" \
-      --gate security-review --report "$rpath"
-    # Round 2 supersedes, FAILED.
-    local rid2="round-20261103T160002Z-$((98100 + i))"
-    bash "$RW" record-round --story "TEST-BAD-$i" --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
-      --gate "security-review=selected"
-    bash "$RW" record-run --story "TEST-BAD-$i" --run-id "$rid2" --gate security-review \
-      --outcome completed >/dev/null
-    printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-bad-r2-$i.md"
-    bash "$RW" record-round-report --story "TEST-BAD-$i" --run-id "$rid2" \
-      --gate security-review --report "$FIXTURE_DIR/report-bad-r2-$i.md"
-    # The malformed verdict must count (fail closed): round_count 2.
-    run bash "$RW" count-rounds --story "TEST-BAD-$i" --max 2 --current-verdict FAILED
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"round_count 2"* ]] || { echo "FAIL on line: $bad — got: $output"; return 1; }
-    [[ "$output" == *"escalate true"* ]] || { echo "FAIL escalate on line: $bad — got: $output"; return 1; }
-    i=$((i + 1))
+@test "record-round-report rejects missing --verdict" {
+  _mk_project TEST-NO-VERD
+  local rid="round-20261103T160001Z-98000"
+  bash "$RW" record-round --story TEST-NO-VERD --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-NO-VERD --run-id "$rid" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-no-verd.md"
+  # Omit --verdict: must fail.
+  run bash "$RW" record-round-report --story TEST-NO-VERD --run-id "$rid" \
+    --gate security-review --report "$FIXTURE_DIR/report-no-verd.md"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--verdict is required"* ]] || return 1
+}
+
+@test "record-round-report rejects invalid --verdict values" {
+  _mk_project TEST-BAD-VERD
+  local rid="round-20261103T160001Z-98010"
+  bash "$RW" record-round --story TEST-BAD-VERD --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-BAD-VERD --run-id "$rid" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/report-bad-verd.md"
+  local bad_vals=( "APPROVE" "BLOCKED" "not-passed" "passed" "failed" "" )
+  local v
+  for v in "${bad_vals[@]}"; do
+    run bash "$RW" record-round-report --story TEST-BAD-VERD --run-id "$rid" \
+      --gate security-review --report "$FIXTURE_DIR/report-bad-verd.md" --verdict "$v"
+    [ "$status" -ne 0 ] || { echo "FAIL: accepted invalid verdict: '$v'"; return 1; }
   done
 }
 
-@test "PASSED first, FAILED later in same report: first line wins, round not counted" {
-  _mk_project TEST-PF
-  local rpath="$FIXTURE_DIR/report-pf.md"
-  local rid="round-20261103T160001Z-98500"
-  bash "$RW" record-round --story TEST-PF --run-id "$rid" --repo "$FIXTURE_DIR/repo" \
-    --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-PF --run-id "$rid" --gate security-review \
+@test "carried gate whose source stored FAILED counts toward the cap" {
+  # This exercises the carry-chain walk specifically for a FAILED source.
+  _mk_project TEST-CARRY-F
+  # Round 0: code-review selected, completed, FAILED.
+  local rid0="round-20261103T160001Z-98500"
+  bash "$RW" record-round --story TEST-CARRY-F --run-id "$rid0" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-F --run-id "$rid0" --gate code-review \
     --outcome completed >/dev/null
-  # First Verdict line says PASSED but a later one says FAILED.
-  printf 'Verdict: PASSED\n\nUpdate:\nVerdict: FAILED\n' > "$rpath"
-  bash "$RW" record-round-report --story TEST-PF --run-id "$rid" \
-    --gate security-review --report "$rpath"
-  # Round 2 supersedes, FAILED.
-  local rid2="round-20261103T160002Z-98600"
-  bash "$RW" record-round --story TEST-PF --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
-    --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-PF --run-id "$rid2" --gate security-review \
+  printf 'Code review failed.\n' > "$FIXTURE_DIR/cr-carry-f-r0.md"
+  bash "$RW" record-round-report --story TEST-CARRY-F --run-id "$rid0" \
+    --gate code-review --report "$FIXTURE_DIR/cr-carry-f-r0.md" --verdict FAILED
+  bash "$RW" complete-round --story TEST-CARRY-F --run-id "$rid0" \
+    --repo "$FIXTURE_DIR/repo" --verdict FAILED
+  # Round 1: security selected PASSED, code-review carried from round 0 (FAILED).
+  local rid1="round-20261103T160002Z-98600"
+  bash "$RW" record-round --story TEST-CARRY-F --run-id "$rid1" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected" \
+    --carry "code-review=${rid0}:carried from prior round"
+  bash "$RW" record-run --story TEST-CARRY-F --run-id "$rid1" --gate security-review \
     --outcome completed >/dev/null
-  printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-pf-r2.md"
-  bash "$RW" record-round-report --story TEST-PF --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-pf-r2.md"
-  # The first-line-only parse sees PASSED, so the stored verdict is PASSED.
-  # By design: the ruling says "every report's first Verdict: line is PASSED"
-  # determines whether the round counts.  First line wins.
-  run bash "$RW" count-rounds --story TEST-PF --max 2 --current-verdict FAILED
+  printf 'Security passed.\n' > "$FIXTURE_DIR/sec-carry-f-r1.md"
+  bash "$RW" record-round-report --story TEST-CARRY-F --run-id "$rid1" \
+    --gate security-review --report "$FIXTURE_DIR/sec-carry-f-r1.md" --verdict PASSED
+  # Round 2 supersedes round 1, FAILED.
+  local rid2="round-20261103T160003Z-98700"
+  bash "$RW" record-round --story TEST-CARRY-F --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-F --run-id "$rid2" --gate security-review \
+    --outcome completed >/dev/null
+  printf 'Verdict: FAILED r2\n' > "$FIXTURE_DIR/sec-carry-f-r2.md"
+  bash "$RW" record-round-report --story TEST-CARRY-F --run-id "$rid2" \
+    --gate security-review --report "$FIXTURE_DIR/sec-carry-f-r2.md" --verdict FAILED
+  # Round 0 (complete FAILED=1) + round 1 (superseded: selected PASSED but
+  # carried code-review FAILED=1) + round 2 (open FAILED=1) = 3.
+  run bash "$RW" count-rounds --story TEST-CARRY-F --max 3 --current-verdict FAILED
   [ "$status" -eq 0 ]
-  # First line is PASSED: round does NOT count (first line wins).
-  [[ "$output" == *"round_count 1"* ]] || return 1
+  [[ "$output" == *"round_count 3"* ]] || return 1
+  [[ "$output" == *"escalate true"* ]] || return 1
+}
+
+@test "carried gate not found in source round counts (fail closed)" {
+  _mk_project TEST-CARRY-NF
+  # Round 0: only code-review selected.
+  local rid0="round-20261103T160001Z-98800"
+  bash "$RW" record-round --story TEST-CARRY-NF --run-id "$rid0" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-NF --run-id "$rid0" --gate code-review \
+    --outcome completed >/dev/null
+  printf 'Code review passed.\n' > "$FIXTURE_DIR/cr-nf-r0.md"
+  bash "$RW" record-round-report --story TEST-CARRY-NF --run-id "$rid0" \
+    --gate code-review --report "$FIXTURE_DIR/cr-nf-r0.md" --verdict PASSED
+  bash "$RW" complete-round --story TEST-CARRY-NF --run-id "$rid0" \
+    --repo "$FIXTURE_DIR/repo" --verdict PASSED
+  # Round 1: carries security-review from round 0, but round 0 has NO
+  # security-review gate — the carry target does not exist.
+  local rid1="round-20261103T160002Z-98900"
+  bash "$RW" record-round --story TEST-CARRY-NF --run-id "$rid1" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected" \
+    --carry "security-review=${rid0}:carried from prior round"
+  bash "$RW" record-run --story TEST-CARRY-NF --run-id "$rid1" --gate code-review \
+    --outcome completed >/dev/null
+  printf 'Code review passed round 1.\n' > "$FIXTURE_DIR/cr-nf-r1.md"
+  bash "$RW" record-round-report --story TEST-CARRY-NF --run-id "$rid1" \
+    --gate code-review --report "$FIXTURE_DIR/cr-nf-r1.md" --verdict PASSED
+  # Round 2 supersedes round 1, FAILED.
+  local rid2="round-20261103T160003Z-99000"
+  bash "$RW" record-round --story TEST-CARRY-NF --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
+    --gate "code-review=selected"
+  bash "$RW" record-run --story TEST-CARRY-NF --run-id "$rid2" --gate code-review \
+    --outcome completed >/dev/null
+  printf 'Code review failed.\n' > "$FIXTURE_DIR/cr-nf-r2.md"
+  bash "$RW" record-round-report --story TEST-CARRY-NF --run-id "$rid2" \
+    --gate code-review --report "$FIXTURE_DIR/cr-nf-r2.md" --verdict FAILED
+  # Round 0 (complete PASSED=0) + round 1 (superseded: selected PASSED but
+  # carried security-review NOT FOUND in round 0 → fail closed=1) + round 2
+  # (open FAILED=1) = 2.
+  run bash "$RW" count-rounds --story TEST-CARRY-NF --max 2 --current-verdict FAILED
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 2"* ]] || return 1
+  [[ "$output" == *"escalate true"* ]] || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -1924,7 +1988,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$rpath"
   bash "$RW" record-round-report --story TEST-MISS --run-id "$rid" \
-    --gate security-review --report "$rpath"
+    --gate security-review --report "$rpath" --verdict PASSED
   # Delete the report after recording — the stored verdict was PASSED.
   rm -f "$rpath"
   # Round 2 supersedes, FAILED.
@@ -1935,7 +1999,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-miss-r2.md"
   bash "$RW" record-round-report --story TEST-MISS --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-miss-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/report-miss-r2.md" --verdict FAILED
   # The stored verdict from record time was PASSED — file deletion does not
   # change the stored value.  count-rounds reads the stored verdict only.
   run bash "$RW" count-rounds --story TEST-MISS --max 2 --current-verdict FAILED
@@ -1954,7 +2018,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$rpath"
   bash "$RW" record-round-report --story TEST-NOVERDICT --run-id "$rid" \
-    --gate security-review --report "$rpath"
+    --gate security-review --report "$rpath" --verdict PASSED
   # Round 2 supersedes.
   local rid2="round-20261103T170002Z-99052"
   bash "$RW" record-round --story TEST-NOVERDICT --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
@@ -1963,7 +2027,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED unique nv\n' > "$FIXTURE_DIR/report-nv-r2.md"
   bash "$RW" record-round-report --story TEST-NOVERDICT --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-nv-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/report-nv-r2.md" --verdict FAILED
   # Force-clear the stored report_verdict on round 1 to simulate a register
   # written before the verdict-capture feature existed.
   local reg_path
@@ -1995,7 +2059,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-norep-r2.md"
   bash "$RW" record-round-report --story TEST-NOREP --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-norep-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/report-norep-r2.md" --verdict FAILED
   # Round 1 has no report path: must count (fail closed).
   run bash "$RW" count-rounds --story TEST-NOREP --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
@@ -2013,7 +2077,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$rpath"
   bash "$RW" record-round-report --story TEST-ERR --run-id "$rid" \
-    --gate security-review --report "$rpath"
+    --gate security-review --report "$rpath" --verdict PASSED
   # Record an errored run after the completed one.
   bash "$RW" record-run --story TEST-ERR --run-id "$rid" --gate security-review \
     --outcome errored >/dev/null
@@ -2025,7 +2089,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-err-r2.md"
   bash "$RW" record-round-report --story TEST-ERR --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-err-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/report-err-r2.md" --verdict FAILED
   # The errored run means the round counts even though the stored verdict was PASSED.
   run bash "$RW" count-rounds --story TEST-ERR --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
@@ -2048,7 +2112,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/report-zero-r2.md"
   bash "$RW" record-round-report --story TEST-ZERO --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/report-zero-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/report-zero-r2.md" --verdict FAILED
   # Force-empty the selected_gates on round 1 to simulate a corrupt register.
   local reg_path
   reg_path="$(find "$FIXTURE_DIR/ia" -name 'findings-register*.yaml' -not -name '*.lock' -type f | head -1)"
@@ -2076,7 +2140,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: FAILED\n' > "$FIXTURE_DIR/code-review-r0.md"
   bash "$RW" record-round-report --story TEST-CARRY --run-id "$rid0" \
-    --gate code-review --report "$FIXTURE_DIR/code-review-r0.md"
+    --gate code-review --report "$FIXTURE_DIR/code-review-r0.md" --verdict FAILED
   bash "$RW" complete-round --story TEST-CARRY --run-id "$rid0" \
     --repo "$FIXTURE_DIR/repo" --verdict FAILED
 
@@ -2089,7 +2153,7 @@ _run_failing_round_canonical() {
     --outcome completed >/dev/null
   printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/sec-r1.md"
   bash "$RW" record-round-report --story TEST-CARRY --run-id "$rid1" \
-    --gate security-review --report "$FIXTURE_DIR/sec-r1.md"
+    --gate security-review --report "$FIXTURE_DIR/sec-r1.md" --verdict PASSED
 
   # Round 2: supersedes round 1, FAILED.
   local rid2="round-20261103T180003Z-99403"
@@ -2100,7 +2164,7 @@ _run_failing_round_canonical() {
   # Unique report content avoids the cross-round SHA reuse guard.
   printf 'Verdict: FAILED\nsecurity round 2 unique content\n' > "$FIXTURE_DIR/sec-r2.md"
   bash "$RW" record-round-report --story TEST-CARRY --run-id "$rid2" \
-    --gate security-review --report "$FIXTURE_DIR/sec-r2.md"
+    --gate security-review --report "$FIXTURE_DIR/sec-r2.md" --verdict FAILED
 
   # Round 0 (complete FAILED=1) + round 1 (superseded: selected PASSED but
   # carried code-review has FAILED source=1) + round 2 (open FAILED=1) = 3.
@@ -2108,4 +2172,16 @@ _run_failing_round_canonical() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 3"* ]] || return 1
   [[ "$output" == *"escalate true"* ]] || return 1
+}
+
+# ---------------------------------------------------------------------------
+# SKILL wiring: step 4b passes --verdict to record-round-report
+# ---------------------------------------------------------------------------
+
+@test "run-all-reviews SKILL step 4b passes --verdict to record-round-report" {
+  # Per-line assertion: the step 4b call includes --verdict.
+  local line
+  line="$(/usr/bin/grep 'record-round-report' "$RUN_ALL_SKILL" | /usr/bin/grep '4b')"
+  [ -n "$line" ]
+  [[ "$line" == *"--verdict"* ]] || { echo "step 4b missing --verdict: $line"; return 1; }
 }

@@ -15,7 +15,7 @@
 #   record-run     Record a gate-run entry (with monotonic seq)
 #   gate-status    Query gate status for a run (stdout: RAN / UNVERIFIED)
 #   record-round   Record a new review round with gates, commit SHA and req version
-#   record-round-report  Record a gate's report path and hash for a round
+#   record-round-report  Record a gate's report path, hash and verdict for a round
 #   round-info     Read-only: print round status, SHA, versions, per-gate evidence
 #   complete-round Complete a round after all gates pass
 #   assert-round-complete  Guard: exit 0 if latest round complete or legacy
@@ -608,53 +608,11 @@ _rw_file_sha256() {
   _rw_sha256 < "$1"
 }
 
-# Parse a report file's verdict.  Returns "PASSED" when the first Verdict
-# line in the file is an unambiguous PASSED/APPROVE token in any of the
-# framework's decorated formats (bare, bold, heading).  Returns "not-passed"
-# otherwise.  An unreadable, missing, or empty file returns "not-passed"
-# (fail closed).
-#
-# Accepted forms (anchored, exact token — substring matches are rejected):
-#   Verdict: PASSED         Verdict: APPROVE
-#   **Verdict:** PASSED     **Verdict: PASSED**   **Verdict: APPROVE**
-#   ## Verdict: PASSED      # Verdict: APPROVE    ### Verdict: PASSED
-#   Trailing whitespace is tolerated.
-_rw_parse_report_verdict() {
-  local _rpv_file="$1"
-  [ -f "$_rpv_file" ] && [ -r "$_rpv_file" ] || { printf 'not-passed'; return 0; }
-  local _rpv_line
-  # Match only lines starting with an optional markdown heading (# + space)
-  # or bold (**) prefix, followed by Verdict.  A bare leading space is not
-  # a known decorator and is rejected (fail closed).
-  # Accepted prefixes: (none), "# ", "## ", "### ", "**", "***".
-  _rpv_line="$(/usr/bin/grep -m1 -E '^(#{1,6} |\*{1,3})?Verdict' "$_rpv_file" 2>/dev/null || true)"
-  [ -n "$_rpv_line" ] || { printf 'not-passed'; return 0; }
-  # Strip markdown decoration: leading #/*/space, trailing */space.
-  local _rpv_clean="$_rpv_line"
-  # Remove leading hashes + space  (## Verdict: ...)
-  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[!#]*}"}"
-  # Remove leading asterisks  (**Verdict: ...)
-  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[!*]*}"}"
-  # Remove leading space
-  _rpv_clean="${_rpv_clean#"${_rpv_clean%%[! ]*}"}"
-  # Remove trailing asterisks and space
-  _rpv_clean="${_rpv_clean%"${_rpv_clean##*[!* ]}"}"
-  # Now expect: Verdict[:][ ]TOKEN  or  Verdict:**[ ]TOKEN
-  # Normalise: strip bold around Verdict and colon variants.
-  case "$_rpv_clean" in
-    Verdict:*|Verdict'**:'*) ;;
-    *) printf 'not-passed'; return 0 ;;
-  esac
-  # Extract the token after the colon (possibly with ** between).
-  local _rpv_after="${_rpv_clean#*:}"
-  _rpv_after="${_rpv_after#"${_rpv_after%%[!* ]*}"}"
-  # Trailing cleanup
-  _rpv_after="${_rpv_after%"${_rpv_after##*[!* ]}"}"
-  case "$_rpv_after" in
-    PASSED|APPROVE) printf 'PASSED' ;;
-    *) printf 'not-passed' ;;
-  esac
-}
+# _rw_parse_report_verdict — REMOVED.
+# The verdict is now supplied as an explicit --verdict argument on
+# record-round-report.  The caller passes the verdict that the review step
+# recorded for the gate (the same value given to review-gate.sh update).
+# Report text is never read for verdict purposes.
 
 # Validate a round run-id against the canonical pattern.
 _rw_validate_round_id() {
@@ -1930,7 +1888,7 @@ _rw_cmd_record_round() {
 # ---------------------------------------------------------------------------
 
 _rw_cmd_record_round_report() {
-  local key="" run_id="" gate="" report=""
+  local key="" run_id="" gate="" report="" verdict=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1938,6 +1896,7 @@ _rw_cmd_record_round_report() {
       --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
       --gate) [ "$#" -ge 2 ] || _rw_die 1 "--gate requires a value"; gate="$2"; shift 2 ;;
       --report) [ "$#" -ge 2 ] || _rw_die 1 "--report requires a value"; report="$2"; shift 2 ;;
+      --verdict) [ "$#" -ge 2 ] || _rw_die 1 "--verdict requires a value"; verdict="$2"; shift 2 ;;
       *) _rw_die 1 "record-round-report: unknown argument: $1" ;;
     esac
   done
@@ -1946,6 +1905,11 @@ _rw_cmd_record_round_report() {
   [ -n "$run_id" ] || _rw_die 1 "record-round-report: --run-id is required"
   [ -n "$gate" ] || _rw_die 1 "record-round-report: --gate is required"
   [ -n "$report" ] || _rw_die 1 "record-round-report: --report is required"
+  [ -n "$verdict" ] || _rw_die 1 "record-round-report: --verdict is required"
+  case "$verdict" in
+    PASSED|FAILED|UNVERIFIED) ;; # valid
+    *) _rw_die 1 "record-round-report: --verdict must be PASSED, FAILED or UNVERIFIED; got: $verdict" ;;
+  esac
 
   _rw_validate_key "$key"
   _rw_validate_round_id "$run_id"
@@ -2003,11 +1967,8 @@ _rw_cmd_record_round_report() {
     _rw_abort_and_die 1 "record-round-report: report already recorded on another round; use a carry with applicability rationale for cross-round reuse"
   fi
 
-  # Parse the report's verdict at record time so count-rounds never needs to
-  # re-read the file (the canonical report path is overwritten each round).
-  local _rrr_verdict
-  _rrr_verdict="$(_rw_parse_report_verdict "$report")"
-  export _RW_RVERDICT="$_rrr_verdict"
+  # Store the caller-supplied verdict so count-rounds reads it directly.
+  export _RW_RVERDICT="$verdict"
 
   yq -i '
     (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) |
@@ -3447,7 +3408,7 @@ Usage:
   register-write.sh record-round --story <key> --run-id <id> --repo <path>
       --gate <name>=<reason> ... [--carry <name>=<run-id>:<rationale> ...]
   register-write.sh record-round-report --story <key> --run-id <id>
-      --gate <name> --report <path>
+      --gate <name> --report <path> --verdict <PASSED|FAILED|UNVERIFIED>
   register-write.sh round-info --story <key> [--run-id <id>]
   register-write.sh complete-round --story <key> --run-id <id> --repo <path>
       [--verdict <PASSED|FAILED>]

@@ -229,7 +229,7 @@ For each short_name in run:
      - `--telemetry-round`: the 1-based ordinal of this review round (incremented each invocation of `/gaia-run-all-reviews`).
      - `--telemetry-run-id`: the run ID minted at the start of Step 2.
 
-  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
+  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path} --verdict {verdict}` to record the gate's report path, hash and verdict in the round. The `{verdict}` is the same value the review step just recorded for this gate (the value given to `review-gate.sh update --verdict`).
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
@@ -369,7 +369,7 @@ For the security carve-out (blocking accept override):
 **Substep 2.4b — Scope-revision check and round completion.** After consolidation and before the summary write:
 
 1. **Call `round-info`** again and compare `current_version` vs `accepted_version`. On a mismatch, HALT and ask the user to classify the change:
-   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
+   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report --verdict {verdict}`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
    - For `unrelated_enhancement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind unrelated_enhancement --decision {text} --followon {story-key}`. Tell the user to revert the out-of-scope AC edit, then re-run `complete-round`.
 
 2. **Call `complete-round`** — this runs after consolidation and before the summary write:
