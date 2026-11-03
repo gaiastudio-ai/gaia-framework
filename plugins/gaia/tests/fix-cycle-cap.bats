@@ -1054,10 +1054,8 @@ Line2 end"
   [[ "$output" == *"escalate true"* ]] || return 1
 
   # --- THE REAL PATH (SKILL always uses --current-verdict) ---
-  # Round 3 supersedes the halted round 2. The superseded round 2 has all
-  # reports and no errored gates, so it is not counted (cannot distinguish
-  # halted-PASSED from halted-FAILED in the register). The cap check still
-  # works because round 1 (complete FAILED) + round 3 (open FAILED) = 2.
+  # Round 3 supersedes the halted round 2. The superseded round counts
+  # (fail closed) because it never received a PASSED verdict.
   local rid3="round-20261102T120003Z-33303"
   bash "$RW" record-round --story TEST-HALT --run-id "$rid3" --repo "$FIXTURE_DIR/repo" \
     --gate "security-review=selected"
@@ -1068,10 +1066,10 @@ Line2 end"
     --gate security-review --report "$FIXTURE_DIR/halt-r3-uniq.md"
 
   # Decision point with --current-verdict FAILED (the SKILL path).
-  # Round 1 (complete, FAILED) + round 2 (superseded, not counted) + round 3 (open, FAILED).
+  # Round 1 (complete, FAILED) + round 2 (superseded, counted) + round 3 (open, FAILED).
   run bash "$RW" count-rounds --story TEST-HALT --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
-  [[ "$output" == *"round_count 2"* ]] || return 1
+  [[ "$output" == *"round_count 3"* ]] || return 1
   [[ "$output" == *"escalate true"* ]] || return 1
 }
 
@@ -1666,48 +1664,45 @@ _run_halted_round() {
   [[ "$output" == *"escalate false"* ]] || return 1
 }
 
-@test "case c: F, halted all-PASSED, F -> round_count 2, escalate false at cap 3" {
+@test "case c: F, P (complete), F -> round_count 2, escalate false at cap 3" {
   _mk_project TEST-CASE-C
 
   # Round 1: completed FAILED.
   _run_failing_round TEST-CASE-C "round-20261103T130001Z-93001"
 
-  # Round 2: halted with all gates passing (report recorded, not completed).
-  _run_halted_round TEST-CASE-C "round-20261103T130002Z-93002" "PASSED"
+  # Round 2: completed PASSED (a passing round never counts).
+  _run_passing_round TEST-CASE-C "round-20261103T130002Z-93002"
 
-  # Round 3: supersedes round 2, fails.
+  # Round 3: fails.
   _run_failing_round TEST-CASE-C "round-20261103T130003Z-93003"
 
-  # Cap 3: round 1 (complete, FAILED) + round 2 (superseded, all-PASSED = not
-  # counted) + round 3 (complete, FAILED) = round_count 2, escalate false.
+  # Cap 3: round 1 (complete, FAILED=1) + round 2 (complete, PASSED=0)
+  # + round 3 (complete, FAILED=1) = round_count 2, escalate false.
   run bash "$RW" count-rounds --story TEST-CASE-C --max 3 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 2"* ]] || return 1
   [[ "$output" == *"escalate false"* ]] || return 1
 }
 
-@test "case d: halted all-FAILED round still counts toward the cap" {
+@test "case d: halted all-FAILED round (superseded) counts toward the cap" {
   _mk_project TEST-CASE-D
 
-  # Round 1: completed FAILED.
-  _run_failing_round TEST-CASE-D "round-20261103T130001Z-94001"
+  # Round 1: halted with all gates FAILED (report recorded, not completed).
+  _run_halted_round TEST-CASE-D "round-20261103T130001Z-94001" "FAILED"
 
-  # Round 2: halted with all gates FAILED (report recorded, not completed).
-  _run_halted_round TEST-CASE-D "round-20261103T130002Z-94002" "FAILED"
-
-  # Round 3: supersedes round 2, then decision at cap 2.
-  local rid3="round-20261103T130003Z-94003"
-  bash "$RW" record-round --story TEST-CASE-D --run-id "$rid3" --repo "$FIXTURE_DIR/repo" \
+  # Round 2: supersedes round 1, decision at cap 2.
+  local rid2="round-20261103T130002Z-94002"
+  bash "$RW" record-round --story TEST-CASE-D --run-id "$rid2" --repo "$FIXTURE_DIR/repo" \
     --gate "security-review=selected"
-  bash "$RW" record-run --story TEST-CASE-D --run-id "$rid3" --gate security-review \
+  bash "$RW" record-run --story TEST-CASE-D --run-id "$rid2" --gate security-review \
     --outcome completed >/dev/null
-  printf 'Verdict: FAILED (round 3)\n' > "$FIXTURE_DIR/case-d-r3.md"
-  bash "$RW" record-round-report --story TEST-CASE-D --run-id "$rid3" \
-    --gate security-review --report "$FIXTURE_DIR/case-d-r3.md"
+  printf 'Verdict: FAILED (round 2)\n' > "$FIXTURE_DIR/case-d-r2.md"
+  bash "$RW" record-round-report --story TEST-CASE-D --run-id "$rid2" \
+    --gate security-review --report "$FIXTURE_DIR/case-d-r2.md"
 
-  # Round 1 (complete, FAILED) + round 2 (superseded, all reports, no errors
-  # — not counted; the register has no per-round verdict for superseded rounds)
-  # + round 3 (open, FAILED) = round_count 2, escalate true at cap 2.
+  # Round 1 (superseded, counted — fail closed) + round 2 (open, FAILED)
+  # = round_count 2, escalate true at cap 2.
+  # The superseded round MUST count; without it, round_count would be 1.
   run bash "$RW" count-rounds --story TEST-CASE-D --max 2 --current-verdict FAILED
   [ "$status" -eq 0 ]
   [[ "$output" == *"round_count 2"* ]] || return 1

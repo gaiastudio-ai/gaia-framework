@@ -2761,9 +2761,9 @@ _rw_cmd_count_rounds() {
   #
   # complete: non-passing when composite_verdict is not PASSED (fail closed:
   #   absent verdict counts as non-passing).
-  # superseded: non-passing unless every selected gate has a report and every
-  #   gate_runs entry for the round completed (not errored). A round where
-  #   every review passed never counts, even when halted before completion.
+  # superseded: always non-passing (fail closed). The register has no per-gate
+  #   verdict for a superseded round; a passing round at the decision point
+  #   is handled by the --current-verdict PASSED short-circuit.
   # open: the caller passes --current-verdict FAILED|PASSED for the round
   #   being decided; without it, escalation state and gate evidence are checked.
   local count=0
@@ -2784,25 +2784,12 @@ _rw_cmd_count_rounds() {
           fi
           ;;
         superseded)
-          # A superseded round was replaced before completing. Count it
-          # when a selected gate has no report or any gate_runs entry
-          # errored. A round where every gate has a report and none
-          # errored is treated as passing and not counted.
-          local miss_s
-          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
-          if [ "$miss_s" != "0" ] && [ "$miss_s" != "null" ]; then
-            count=$((count + 1))
-          else
-            export _RW_SUP_RID
-            _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
-            local err_s
-            err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
-            unset _RW_SUP_RID
-            if [ "$err_s" != "0" ] && [ "$err_s" != "null" ]; then
-              count=$((count + 1))
-            fi
-            # else: all gates have reports and none errored — not counted
-          fi
+          # A superseded round was replaced before completing. It never
+          # received a composite_verdict, so count it as non-passing (fail
+          # closed). The register has no per-gate verdict for superseded
+          # rounds; a passing round at the decision point is handled by
+          # the --current-verdict PASSED short-circuit instead.
+          count=$((count + 1))
           ;;
         open)
           # The caller passes the composite verdict at the decision point.
