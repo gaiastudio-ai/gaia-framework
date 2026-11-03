@@ -2761,8 +2761,9 @@ _rw_cmd_count_rounds() {
   #
   # complete: non-passing when composite_verdict is not PASSED (fail closed:
   #   absent verdict counts as non-passing).
-  # superseded: always non-passing (fail closed). A superseded round was
-  #   replaced before completing, so it never received a PASSED verdict.
+  # superseded: non-passing unless every selected gate has a report and every
+  #   gate_runs entry for the round completed (not errored). A round where
+  #   every review passed never counts, even when halted before completion.
   # open: the caller passes --current-verdict FAILED|PASSED for the round
   #   being decided; without it, escalation state and gate evidence are checked.
   local count=0
@@ -2783,9 +2784,25 @@ _rw_cmd_count_rounds() {
           fi
           ;;
         superseded)
-          # A superseded round was replaced before completing — it never
-          # received a PASSED verdict. Count it as non-passing (fail closed).
-          count=$((count + 1))
+          # A superseded round was replaced before completing. Count it
+          # when a selected gate has no report or any gate_runs entry
+          # errored. A round where every gate has a report and none
+          # errored is treated as passing and not counted.
+          local miss_s
+          miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_s="0"
+          if [ "$miss_s" != "0" ] && [ "$miss_s" != "null" ]; then
+            count=$((count + 1))
+          else
+            export _RW_SUP_RID
+            _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
+            local err_s
+            err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_s="0"
+            unset _RW_SUP_RID
+            if [ "$err_s" != "0" ] && [ "$err_s" != "null" ]; then
+              count=$((count + 1))
+            fi
+            # else: all gates have reports and none errored — not counted
+          fi
           ;;
         open)
           # The caller passes the composite verdict at the decision point.
@@ -2833,6 +2850,15 @@ _rw_cmd_count_rounds() {
 
   printf 'round_count %s\n' "$count"
   printf 'max_fix_cycles %s\n' "$max_cycles"
+
+  # A passing round at the decision point stops the counter and never
+  # escalates, regardless of the historical round count.
+  case "$current_verdict" in
+    PASSED|passed)
+      printf 'escalate false\n'
+      exit 0
+      ;;
+  esac
 
   if [ "$count" -ge "$max_cycles" ]; then
     printf 'escalate true\n'
