@@ -897,6 +897,12 @@ resolve_sprint_arg() {
   if [ -n "$positional" ]; then
     case "$command_name" in
       retro|sprint-review)
+        # Validate the positional value (whole-value check, same as --sprint).
+        case "$positional" in
+          *[!A-Za-z0-9._-]*|[!A-Za-z0-9]*|'')
+            printf '%s: error: invalid sprint ID: %s\n' "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$positional")" >&2
+            return "$SPRINT_INVALID_ID" ;;
+        esac
         if [ -n "$sprint_arg" ] && [ "$positional" != "$sprint_arg" ]; then
           printf '%s: error: positional sprint ID "%s" conflicts with --sprint "%s"\n' \
             "$_SB_SCRIPT_NAME" "$(_sb_sanitize_value "$positional")" "$(_sb_sanitize_value "$sprint_arg")" >&2
