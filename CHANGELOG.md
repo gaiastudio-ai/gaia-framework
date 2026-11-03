@@ -9,6 +9,18 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Fix-cycle cap with escalation and critical-security carve-out
+
+#### Added
+- Review-process configuration: new `review` top-level section in `project-config.yaml` with `max_fix_cycles` (integer, minimum 1, default 2). After this many failing six-gate review rounds, the orchestration emits ESCALATE and asks the user to choose: accept override, descope to backlog, or one more cycle. Projects upgrading without a `review` section get the default cap of 2 automatically.
+- Critical-security carve-out: accept override is blocked when any critical security finding is unresolved or the security gate has no completed report (fail closed). Each sign-off requires all six fields (risk_accepted_by, OWASP category, impact, finding id, round, timestamp).
+- New `register-write.sh` subcommands: `count-rounds`, `record-escalation`, `resolve-escalation`, `sign-off-finding`, `record-accept-override`.
+- Security report reader helper (`scripts/review-common/security-report-reader.sh`) for extracting critical security findings from the findings register.
+- `/gaia-doctor` now reports the active fix-cycle cap under a "Review limits" section (showing the configured value or the effective default of 2).
+
+#### Changed
+- `/gaia-run-all-reviews` checks the fix-cycle cap before `complete-round` at the end of each round, so crashed-gate rounds count toward the cap at their decision point.
+
 ### Local preflight gate and post-CI smoke hook (2026-11-01)
 
 #### Added

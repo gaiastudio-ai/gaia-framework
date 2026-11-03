@@ -890,6 +890,10 @@ v_dev_story_tdd_review_phases=$(merge_doubly_nested_key dev_story tdd_review pha
 v_dev_story_tdd_review_qa_auto_in_yolo=$(merge_doubly_nested_key dev_story tdd_review qa_auto_in_yolo)
 v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story tdd_review qa_timeout_seconds)
 
+# review.max_fix_cycles — surfaced only when explicitly configured.
+# The point-of-use default of 2 lives in the orchestration layer, not here.
+v_review_max_fix_cycles=$(merge_nested_key review max_fix_cycles)
+
 # brownfield deterministic-tools master flag + per-tool override.
 # Depth-2 nested keys (the resolver supports up to depth-3 but only
 # ASCII-underscore segments, so the per-tool override uses the flat
@@ -1628,6 +1632,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_ci_cd_ci_wait_timeout_minutes" ;;
     sprint.max_concurrent_active)
       printf '%s\n' "$v_sprint_max_concurrent_active" ;;
+    review.max_fix_cycles)
+      printf '%s\n' "$v_review_max_fix_cycles" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
@@ -1751,6 +1757,7 @@ emit_all_body() {
   [ -n "$v_ci_platform_pipeline" ]              && emit_pair_shell ci_platform.pipeline             "$v_ci_platform_pipeline"
   [ -n "$v_platforms" ]                         && emit_pair_shell platforms                        "$v_platforms"
   [ -n "$v_project_kind" ]                      && emit_pair_shell project_kind                     "$v_project_kind"
+  [ -n "$v_review_max_fix_cycles" ]              && emit_pair_shell review.max_fix_cycles            "$v_review_max_fix_cycles"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller
   # when a command-substitution body returns non-zero (the chain above is
   # `[ -n ... ] && emit ...`, which exits 1 when the variable is empty).

@@ -349,6 +349,20 @@
       },
       "additionalProperties": true
     },
+    "review": {
+      "description": "Review-process configuration. Controls the fix-cycle cap and escalation behaviour for the six-gate review loop. The cap takes effect on upgrade: projects without this section get the documented default of 2 from the single point-of-use fallback in the orchestration layer. Managed elsewhere (never auto-hydrated by the config reconciler); the schema carries x-no-auto-hydration as defense-in-depth.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-no-auto-hydration": true,
+      "properties": {
+        "max_fix_cycles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "Maximum number of full six-gate review rounds before escalation. After this many failing rounds the orchestration emits ESCALATE and asks the user to choose: accept override, descope to backlog, or one more cycle. Default 2 when absent (supplied by a single point-of-use fallback)."
+        }
+      }
+    },
     "review_gate": {
       "type": "object",
       "properties": {

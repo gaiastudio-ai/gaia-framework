@@ -64,6 +64,14 @@ This warning is shown once per session.
         <h3>Round lifecycle</h3>
         <p>Each invocation records a review round in the story's findings register, binding the round to the specific commit SHA and requirement version at the time of review. The round tracks which gates were selected, which were carried forward from a prior round, and the report path and hash for each gate.</p>
         <p>Before dispatching gates, the orchestrator calls <code>record-round</code> to open the round. After each gate, it records the gate's report via <code>record-round-report</code>. At consolidation, if the story's acceptance criteria changed since the round started, the orchestrator halts and asks the user to classify the change as an essential missing requirement (which re-runs the affected gates) or an unrelated enhancement (which requires reverting the out-of-scope edit). After consolidation, it calls <code>complete-round</code> and passes the round's run id, commit SHA and requirement version to the summary writer. An impact assessment is recorded when the commit differs from the previous round.</p>
+        <h3>Fix-cycle cap and escalation</h3>
+        <p>After consolidation and before <code>complete-round</code>, the orchestrator checks the fix-cycle cap. The cap is set by <code>review.max_fix_cycles</code> in <code>project-config.yaml</code> (default 2 when absent). After this many failing rounds, the orchestrator emits ESCALATE and asks the user to choose:</p>
+        <ul>
+          <li><strong>Accept override</strong> — records the decision in the findings register. Blocked when any critical security finding is unresolved or the security gate has no completed report. Does not move the story past the review gate.</li>
+          <li><strong>Descope to backlog</strong> — transitions the story to blocked, then backlog.</li>
+          <li><strong>One more cycle</strong> — grants exactly one further round before escalating again.</li>
+        </ul>
+        <p>A round that passes stops the counter and never escalates. A crashed gate is recorded as FAILED and counts toward the cap at the decision point.</p>
       </section>
       <section id="example"><h2>Example session</h2><pre><code>> /gaia-review-all E3-S7
 

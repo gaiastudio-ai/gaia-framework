@@ -358,7 +358,8 @@ Map the findings to the canonical Review Gate vocabulary (case-sensitive: `PASSE
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh add \
   --story {story_key} --defect "{finding}" --type security \
-  --severity {severity} --gate security-review ...
+  --severity {severity} --gate security-review \
+  --owasp-category "{owasp_category}" --impact "{impact_description}" ...
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh record-run \
   --story {story_key} --run-id {run_id} --gate security-review --outcome completed
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \

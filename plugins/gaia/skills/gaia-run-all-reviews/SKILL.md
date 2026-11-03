@@ -152,6 +152,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--f
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
+**Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads exactly `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. A `resolved:*` state means the user already acted — proceed normally. When the user picks a choice, call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice {accept|descope|one-more-cycle}` to clear the escalation state, then execute the choice. This detection runs BEFORE `record-round` so the escalated round is not superseded.
+
 **Substep 2.2b — Round-start sequence.** Before dispatching any gate, record the review round in the findings register. Execute these steps in order:
 
 1. **Resolve the story's code tree.** Read the dev-story checkpoint (`resume-checkpoint.sh read --skill gaia-dev-story --latest`) and extract `.key_variables.worktree_path`, but **only when `.key_variables.story_key` equals the current story key** (parallel stories write their own checkpoints — a mismatched key must fall through). Verify the path still appears in `git worktree list`. Otherwise match `refs/heads/feat/{story_key}-` in `git worktree list --porcelain` and use that worktree only when exactly one entry matches. Fall back to `${PROJECT_PATH}`. The resolved path is the code tree for the round.
@@ -227,7 +229,7 @@ For each short_name in run:
      - `--telemetry-round`: the 1-based ordinal of this review round (incremented each invocation of `/gaia-run-all-reviews`).
      - `--telemetry-run-id`: the run ID minted at the start of Step 2.
 
-  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
+  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path} --verdict {verdict}` to record the gate's report path, hash and verdict in the round. The `{verdict}` is the same value the review step just recorded for this gate (the value given to `review-gate.sh update --verdict`).
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
@@ -346,15 +348,33 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 > Summary file is written by script, not LLM. The LLM produces optional one-line synopses via `--synopsis-file`; everything else is deterministic.
 
+**Substep 2.4a — Fix-cycle cap check.** After consolidation and before the scope-revision check, run the fix-cycle cap check. This runs BEFORE `complete-round` so that a round with an errored gate counts toward the cap at its decision point.
+
+1. Call `register-write.sh count-rounds --story {key} --current-verdict {PASSED|FAILED}` where the verdict is the composite result of the round just consolidated. The subcommand resolves the configured cap from project config (falling back to the default of 2) and returns `round_count`, `max_fix_cycles`, and `escalate true|false`. The `--current-verdict` flag tells the subcommand the verdict of the current open round at the decision point.
+
+2. When `escalate true`:
+   - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.
+   - Present AskUserQuestion with exactly three choices:
+     - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision, then call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice accept` to clear the escalation state. Accept does NOT move the story past the review gate — that stays an explicit human step.
+     - **descope to backlog**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice descope`, then run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
+     - **one more cycle**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice one-more-cycle`, then proceed to a new round. Grants exactly one further round before escalating again.
+
+3. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
+
+For the security carve-out (blocking accept override):
+- Call `security-report-reader.sh --story {key}` to enumerate critical security findings.
+- Also check the current round's security gate: if its verdict is UNVERIFIED or it was recorded FAILED with no completed security report (a carried-over security gate with a completed report from an earlier round of the same story counts as assessed), block accept.
+- A finding counts as resolved once it has disposition `resolved` or carries a complete sign-off record (all six fields: risk_accepted_by, owasp_category, impact, finding_id, round, timestamp via `register-write.sh sign-off-finding`).
+
 **Substep 2.4b — Scope-revision check and round completion.** After consolidation and before the summary write:
 
 1. **Call `round-info`** again and compare `current_version` vs `accepted_version`. On a mismatch, HALT and ask the user to classify the change:
-   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
+   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report --verdict {verdict}`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
    - For `unrelated_enhancement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind unrelated_enhancement --decision {text} --followon {story-key}`. Tell the user to revert the out-of-scope AC edit, then re-run `complete-round`.
 
 2. **Call `complete-round`** — this runs after consolidation and before the summary write:
    ```
-   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree}
+   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree} --verdict {PASSED|FAILED}
    ```
    HALT on any non-zero exit.
 

@@ -146,7 +146,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'code review passed\n' > "$report"
   run env LC_ALL=C "$BASH_UNDER_TEST" "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # 4. Complete the round.
@@ -201,7 +201,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Move HEAD.
@@ -255,7 +255,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Complete the round.
@@ -295,7 +295,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -376,7 +376,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Complete — should succeed (no predecessor with a different SHA).

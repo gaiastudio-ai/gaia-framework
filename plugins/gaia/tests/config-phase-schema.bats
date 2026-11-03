@@ -357,6 +357,54 @@ print('ok')
   [[ "$output" == *"ok"* ]]
 }
 
+@test "review.max_fix_cycles rejects 0, -1, 2.5 and string values" {
+  if ! have_validator; then
+    skip "no JSON Schema validator available (ajv or python-jsonschema)"
+  fi
+  # Valid baseline config.
+  local base="${TMP}/review-valid.yaml"
+  cat > "$base" <<'YAML'
+project_name: test-project
+project_root: "/tmp/test-project"
+project_path: "/tmp/test-project/src"
+memory_path: "/tmp/test-project/_memory"
+checkpoint_path: "/tmp/test-project/_memory/checkpoints"
+installed_path: "/tmp/test-project/.gaia"
+framework_version: "1.225.0"
+date: "2026-11-01"
+YAML
+
+  # Valid value (integer >= 1) must pass.
+  cp "$base" "${TMP}/review-ok.yaml"
+  printf 'review:\n  max_fix_cycles: 3\n' >> "${TMP}/review-ok.yaml"
+  run validate_fixture "${TMP}/review-ok.yaml"
+  [ "$status" -eq 0 ] || { echo "valid cap 3 rejected: $output"; return 1; }
+
+  # 0 must be rejected (minimum: 1).
+  cp "$base" "${TMP}/review-zero.yaml"
+  printf 'review:\n  max_fix_cycles: 0\n' >> "${TMP}/review-zero.yaml"
+  run validate_fixture "${TMP}/review-zero.yaml"
+  [ "$status" -ne 0 ]
+
+  # -1 must be rejected.
+  cp "$base" "${TMP}/review-neg.yaml"
+  printf 'review:\n  max_fix_cycles: -1\n' >> "${TMP}/review-neg.yaml"
+  run validate_fixture "${TMP}/review-neg.yaml"
+  [ "$status" -ne 0 ]
+
+  # 2.5 must be rejected (type: integer).
+  cp "$base" "${TMP}/review-float.yaml"
+  printf 'review:\n  max_fix_cycles: 2.5\n' >> "${TMP}/review-float.yaml"
+  run validate_fixture "${TMP}/review-float.yaml"
+  [ "$status" -ne 0 ]
+
+  # "two" must be rejected (type: integer).
+  cp "$base" "${TMP}/review-str.yaml"
+  printf 'review:\n  max_fix_cycles: "two"\n' >> "${TMP}/review-str.yaml"
+  run validate_fixture "${TMP}/review-str.yaml"
+  [ "$status" -ne 0 ]
+}
+
 @test "config with per-stack test_cmd validates against schema" {
   if ! have_validator; then
     skip "no JSON Schema validator available (ajv or python-jsonschema)"

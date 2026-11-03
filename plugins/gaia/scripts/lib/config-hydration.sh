@@ -190,6 +190,12 @@ _CONFIG_HYDRATION_MANAGED_ELSEWHERE=(
   # as defense-in-depth documentation; this entry registers it for the
   # reconciler's managed-elsewhere check.
   parallel_execution
+  # review: operator-managed review-process configuration (fix-cycle cap).
+  # Never auto-hydrated by the reconciler — operators set the cap explicitly.
+  # The schema property also carries `x-no-auto-hydration: true` as
+  # defense-in-depth documentation; this entry registers it for the
+  # reconciler's managed-elsewhere check.
+  review
   # sprint_status_mod: operator-managed user alias list and waiting-agent
   # threshold. Never auto-hydrated, because an empty stub would mean exactly
   # what the section's ABSENCE already means (built-in defaults) while adding

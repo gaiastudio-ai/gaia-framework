@@ -427,7 +427,7 @@ _make_commit() {
   printf 'report content\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Complete the round.
@@ -466,7 +466,7 @@ _make_commit() {
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Move HEAD.
@@ -502,7 +502,7 @@ _make_commit() {
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Edit the AC text (changes the requirement version).
@@ -558,7 +558,7 @@ _make_commit() {
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -770,7 +770,7 @@ _make_commit() {
   local sec_rpt="$TEST_TMP/sec-report.md"
   printf 'security review round 1\n' > "$sec_rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate security-review --report "$sec_rpt"
+    --run-id "$VALID_RUN_ID" --gate security-review --report "$sec_rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -797,7 +797,7 @@ _make_commit() {
   local rpt="$TEST_TMP/cr-report.md"
   printf 'code review round 2\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -916,7 +916,7 @@ _make_commit() {
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Edit the AC.
@@ -961,7 +961,7 @@ _make_commit() {
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "$VALID_RUN_ID" \
-    --gate code-review --report "$report"
+    --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Edit the AC.
@@ -1282,7 +1282,7 @@ _make_commit() {
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -1365,7 +1365,7 @@ _make_commit() {
 
   run "$SCRIPT" record-round-report --story TEST-S1 \
     --run-id "not-valid" \
-    --gate code-review --report "/tmp/report.md"
+    --gate code-review --report "/tmp/report.md" --verdict FAILED
   [ "$status" -eq 1 ]
   # Must be a run-id validation error, not "unknown subcommand".
   [[ "$output" != *"unknown subcommand"* ]] || false
@@ -1655,7 +1655,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Try to complete — should fail because only 1 of 6 gates accounted for.
@@ -1699,7 +1699,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -1826,7 +1826,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Then a standalone run of the same gate.
@@ -1865,7 +1865,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Round 2: carries code-review from round 1.
@@ -1890,7 +1890,7 @@ YAML
   local sec_report="$TEST_TMP/security-review-report.md"
   printf 'security review report for round 3\n' > "$sec_report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_3" --gate security-review --report "$sec_report"
+    --run-id "$VALID_RUN_ID_3" --gate security-review --report "$sec_report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # complete-round should resolve the 2-hop carry chain successfully.
@@ -1946,7 +1946,7 @@ YAML
   local rpt="$TEST_TMP/qa-report.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "round-20261016T100000Z-2" --gate qa-tests --report "$rpt"
+    --run-id "round-20261016T100000Z-2" --gate qa-tests --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # complete-round should detect the cycle and exit 1.
@@ -1983,7 +1983,7 @@ YAML
   local rpt="$TEST_TMP/qa-report.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "round-20261016T100000Z-1" --gate qa-tests --report "$rpt"
+    --run-id "round-20261016T100000Z-1" --gate qa-tests --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -2025,7 +2025,7 @@ YAML
   local rpt="$TEST_TMP/sec-report.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "round-20261016T100000Z-2" --gate security-review --report "$rpt"
+    --run-id "round-20261016T100000Z-2" --gate security-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # complete-round should fail: code-review carried from round 1, but round 1
@@ -2084,7 +2084,7 @@ YAML
     --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -2166,7 +2166,7 @@ YAML
     local rpt="$TEST_TMP/${g}-report.md"
     printf 'report\n' > "$rpt"
     run "$SCRIPT" record-round-report --story TEST-S1 \
-      --run-id "$VALID_RUN_ID_2" --gate "$g" --report "$rpt"
+      --run-id "$VALID_RUN_ID_2" --gate "$g" --report "$rpt" --verdict FAILED
     [ "$status" -eq 0 ]
   done
 
@@ -2197,7 +2197,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'original report content\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Round 2: carries code-review from round 1.
@@ -2217,7 +2217,7 @@ YAML
     --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_report"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # complete-round should refuse: the carried report's SHA no longer matches.
@@ -2247,7 +2247,7 @@ YAML
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -2525,7 +2525,7 @@ line2"
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -2599,7 +2599,7 @@ line2"
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Snapshot the register before the failing attempt.
@@ -2661,7 +2661,7 @@ line2"
   local rpt="$TEST_TMP/rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -2789,7 +2789,7 @@ YAML
   local rpt="$TEST_TMP/cr-rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" complete-round --story TEST-S1 \
@@ -3028,7 +3028,7 @@ YAML
   local rpt="$TEST_TMP/rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -3163,7 +3163,7 @@ SHIMEOF
   local rpt="$TEST_TMP/rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -3180,7 +3180,7 @@ SHIMEOF
   local rpt2="$TEST_TMP/rpt2.md"
   printf 'report2\n' > "$rpt2"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt2"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$rpt2" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local reg
@@ -3223,7 +3223,7 @@ SHIMEOF
   local rpt="$TEST_TMP/rpt.md"
   printf 'round 1 code review\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -3249,7 +3249,7 @@ SHIMEOF
     local r="$TEST_TMP/${g}-report2.md"
     printf 'round 2 %s\n' "$g" > "$r"
     run "$SCRIPT" record-round-report --story TEST-S1 \
-      --run-id "$VALID_RUN_ID_2" --gate "$g" --report "$r"
+      --run-id "$VALID_RUN_ID_2" --gate "$g" --report "$r" --verdict FAILED
     [ "$status" -eq 0 ]
   done
 
@@ -3289,7 +3289,7 @@ SHIMEOF
   local rpt="$TEST_TMP/rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -3307,7 +3307,7 @@ SHIMEOF
   local rpt2="$TEST_TMP/rpt2.md"
   printf 'report2\n' > "$rpt2"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$rpt2"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$rpt2" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local reg
@@ -3344,7 +3344,7 @@ SHIMEOF
   local rpt="$TEST_TMP/rpt.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -3433,7 +3433,7 @@ SHIMEOF
   local report="$TEST_TMP/code-review-report.md"
   printf 'report\n' > "$report"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local reg
@@ -4168,7 +4168,7 @@ SHIM
   local rpt="$TEST_TMP/cr1.md"
   printf 'round 1 code review\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4195,7 +4195,7 @@ SHIM
     local _r="$TEST_TMP/${_g}-report.md"
     printf 'round 2 %s\n' "$_g" > "$_r"
     run "$SCRIPT" record-round-report --story TEST-S1 \
-      --run-id "$VALID_RUN_ID_2" --gate "$_g" --report "$_r"
+      --run-id "$VALID_RUN_ID_2" --gate "$_g" --report "$_r" --verdict FAILED
     [ "$status" -eq 0 ]
   done
 
@@ -4224,7 +4224,7 @@ SHIM
   local rpt="$TEST_TMP/cr-errored.md"
   printf 'code review errored round 1\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Round 2 carries code-review from round 1.
@@ -4239,7 +4239,7 @@ SHIM
   local rpt2="$TEST_TMP/qa.md"
   printf 'qa tests round 2\n' > "$rpt2"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$rpt2"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$rpt2" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Should fail — the terminal code-review run was "errored", not "completed".
@@ -4266,7 +4266,7 @@ SHIM
   local rpt="$TEST_TMP/cr-to-delete.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Delete the report file.
@@ -4297,7 +4297,7 @@ SHIM
   local rpt="$TEST_TMP/cr.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Bind original brief.
@@ -4379,7 +4379,7 @@ SHIM
   local rpt="$TEST_TMP/cr-tamper.md"
   printf 'verdict: FAILED\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Tamper with the report.
@@ -4409,7 +4409,7 @@ SHIM
   local rpt="$TEST_TMP/cr.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4419,7 +4419,7 @@ SHIM
   local forged="$TEST_TMP/forged.md"
   printf 'forged\n' > "$forged"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$forged"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$forged" --verdict FAILED
   [ "$status" -eq 1 ]
 }
 
@@ -4444,7 +4444,7 @@ SHIM
   local rpt="$TEST_TMP/cr.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 1 ]
 }
 
@@ -4474,7 +4474,7 @@ SHIM
     IMPLEMENTATION_ARTIFACTS=\"$IMPLEMENTATION_ARTIFACTS\" \
     PROJECT_ROOT=\"$PROJECT_ROOT\" \
     \"$SCRIPT\" record-round-report --story TEST-S1 \
-    --run-id \"$VALID_RUN_ID\" --gate code-review --report reports/cr.md"
+    --run-id \"$VALID_RUN_ID\" --gate code-review --report reports/cr.md --verdict FAILED"
   [ "$status" -eq 0 ]
 
   # The stored path must be absolute.
@@ -4559,7 +4559,7 @@ SHIM
   local rpt="$TEST_TMP/cr-errored.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # assert-round-complete must fail AND name the gate.
@@ -4585,7 +4585,7 @@ SHIM
   local rpt="$TEST_TMP/cr-no-run.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   run "$SCRIPT" assert-round-complete --story TEST-S1
@@ -4625,7 +4625,7 @@ SHIM
   local rpt="$TEST_TMP/sec.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate security-review --report "$rpt"
+    --run-id "$VALID_RUN_ID_2" --gate security-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # assert-round-complete must name the carried gate.
@@ -4659,7 +4659,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4680,7 +4680,7 @@ SHIM
 
   # Re-use round 1's report as round 2's evidence — must be refused.
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 1 ]
   grep -qi "already recorded\|reuse" <<<"$output"
 }
@@ -4705,7 +4705,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4723,7 +4723,7 @@ SHIM
 
   # Same report, same commit — must still be refused (carry is the sanctioned path).
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 1 ]
   grep -qi "already recorded\|reuse" <<<"$output"
 }
@@ -4743,14 +4743,14 @@ SHIM
   local report1="$TEST_TMP/cr-v1.md"
   printf 'version 1\n' > "$report1"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report1"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report1" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Replace with a different report on the same round's gate.
   local report2="$TEST_TMP/cr-v2.md"
   printf 'version 2\n' > "$report2"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report2"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report2" --verdict FAILED
   [ "$status" -eq 0 ]
 }
 
@@ -4773,7 +4773,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local reg
@@ -4800,7 +4800,7 @@ SHIM
 
   # This must succeed — the path is reused but content is different.
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Verify stored path and sha changed.
@@ -4838,7 +4838,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4855,7 +4855,7 @@ SHIM
 
   # Same path AND same content — must be refused (SHA matches).
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 1 ]
   grep -qi "already recorded\|reuse" <<<"$output"
 
@@ -4887,7 +4887,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4906,7 +4906,7 @@ SHIM
     --run-id "$VALID_RUN_ID_2" --gate qa-tests --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_report"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_report" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # complete-round must succeed — the carry is legitimate.
@@ -4933,7 +4933,7 @@ SHIM
     --run-id "$VALID_RUN_ID" --gate code-review --outcome completed
   [ "$status" -eq 0 ]
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$original"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$original" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -4953,7 +4953,7 @@ SHIM
 
   # The copy has a different path but the same SHA — must be refused.
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$copy"
+    --run-id "$VALID_RUN_ID_2" --gate code-review --report "$copy" --verdict FAILED
   [ "$status" -eq 1 ]
   grep -qi "already recorded\|reuse" <<<"$output"
 }
@@ -4994,7 +4994,7 @@ SHIMEOF
   before_sha="$(shasum "$reg" | awk '{print $1}')"
 
   run env PATH="$shim_dir:$PATH" "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$report"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$report" --verdict FAILED
   [ "$status" -eq 2 ]
 
   # Register must be unchanged.
@@ -5055,7 +5055,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-tagged.md"
   printf 'tagged test report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Inject a tagged !!int payload into gate_runs[0].seq after the gate run
@@ -5120,7 +5120,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-hex.md"
   printf 'hex test report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local reg
@@ -5244,7 +5244,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Shim yq to fail only on the scope_revisions read (used by
@@ -5284,7 +5284,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   local real_yq
@@ -5322,7 +5322,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-carried.md"
   printf 'carried outcome test\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -5340,7 +5340,7 @@ SHIMEOF
   local qa_rpt="$TEST_TMP/qa-carried.md"
   printf 'qa carried outcome test\n' > "$qa_rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Shim: fail the scope_revisions query on the SECOND call only —
@@ -5372,7 +5372,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-carried2.md"
   printf 'carried outcome test 2\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
   run "$SCRIPT" complete-round --story TEST-S1 \
     --run-id "$VALID_RUN_ID" --repo "$repo_dir"
@@ -5391,7 +5391,7 @@ SHIMEOF
   local qa_rpt="$TEST_TMP/qa-carried2.md"
   printf 'qa carried outcome test 2\n' > "$qa_rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt"
+    --run-id "$VALID_RUN_ID_2" --gate qa-tests --report "$qa_rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Shim the carried-gate outcome read to fail (second scope_revisions call).
@@ -5423,7 +5423,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-hashfail.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Edit the report so it would mismatch if the hash is checked.
@@ -5465,7 +5465,7 @@ SHIMEOF
   local rpt="$TEST_TMP/cr-blank.md"
   printf 'report\n' > "$rpt"
   run "$SCRIPT" record-round-report --story TEST-S1 \
-    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt"
+    --run-id "$VALID_RUN_ID" --gate code-review --report "$rpt" --verdict FAILED
   [ "$status" -eq 0 ]
 
   # Blank the sha in the register.
