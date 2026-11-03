@@ -345,6 +345,13 @@ This warning is shown once per session.
             change touches), not the story key. The story key appears in a
             <code>Story:</code> line in the commit body. The push is blocked
             if you are on a protected branch (main or staging).
+            <strong>Preflight gate (opt-in):</strong> before pushing, the
+            runner executes each command listed in
+            <code>preflight_commands</code> sequentially and halts on the
+            first non-zero exit. When the key is absent or empty, the gate
+            is a silent no-op. <em>Trust boundary:</em> these commands run
+            unsandboxed with the user's own privileges; review them as you
+            would any script in your CI pipeline.
           </li>
           <li>
             <span class="step-title">Create pull request</span>
@@ -369,8 +376,15 @@ This warning is shown once per session.
           </li>
           <li>
             <span class="step-title">Merge PR</span>
-            Merges the PR using the repository's configured merge strategy.
-            Handles conflicts and branch protection rules.
+            <strong>Post-CI smoke hook (opt-in):</strong> after CI goes
+            green and before merge, the runner executes each command
+            listed in <code>post_ci_smoke_commands</code> sequentially
+            and halts on the first non-zero exit. The smoke runs against
+            the CI-verified commit. When the key is absent or empty,
+            nothing extra runs. <em>Trust boundary:</em> same as the
+            preflight gate. Then merges the PR using the repository's
+            configured merge strategy. Handles conflicts and branch
+            protection rules.
           </li>
           <li>
             <span class="step-title">Post-completion verification</span>

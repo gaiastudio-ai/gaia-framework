@@ -185,6 +185,20 @@
         </li>
       </ul>
 
+      <h2>Dev-story gates</h2>
+      <ul class="command-list">
+        <li>
+          <span class="command-name">preflight_commands</span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Array of shell commands run before every push in <code>/gaia-dev-story</code>. Non-zero exit halts the push. Absent or empty = no-op. <strong>Trust boundary:</strong> commands run unsandboxed with the user's own privileges.</span>
+        </li>
+        <li>
+          <span class="command-name">post_ci_smoke_commands</span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Array of shell commands run after CI goes green and before merge in <code>/gaia-dev-story</code>. Non-zero exit halts the merge. Absent or empty = no-op. The smoke runs against the CI-verified commit. <strong>Trust boundary:</strong> same as preflight.</span>
+        </li>
+      </ul>
+
       <h2>Statusline</h2>
       <ul class="command-list">
         <li>
