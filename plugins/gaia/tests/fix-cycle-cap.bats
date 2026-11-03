@@ -2179,9 +2179,31 @@ _run_failing_round_canonical() {
 # ---------------------------------------------------------------------------
 
 @test "run-all-reviews SKILL step 4b passes --verdict to record-round-report" {
-  # Per-line assertion: the step 4b call includes --verdict.
+  # Per-line assertion: the step 4b COMMAND (inside backticks) includes --verdict.
   local line
   line="$(/usr/bin/grep 'record-round-report' "$RUN_ALL_SKILL" | /usr/bin/grep '4b')"
   [ -n "$line" ]
-  [[ "$line" == *"--verdict"* ]] || { echo "step 4b missing --verdict: $line"; return 1; }
+  # Extract the backticked command and check --verdict appears inside it.
+  local cmd
+  cmd="$(printf '%s' "$line" | sed -n 's/.*`\(register-write.sh record-round-report[^`]*\)`.*/\1/p')"
+  [ -n "$cmd" ] || { echo "no backticked command found in: $line"; return 1; }
+  [[ "$cmd" == *"--verdict"* ]] || { echo "step 4b command missing --verdict: $cmd"; return 1; }
+}
+
+@test "open round with PASSED current-verdict is not counted (short-circuit)" {
+  _mk_project TEST-OPEN-P
+  _run_failing_round TEST-OPEN-P "round-20261103T190001Z-88801"
+  # Open round 2 with a PASSED report, not yet completed.
+  bash "$RW" record-round --story TEST-OPEN-P --run-id "round-20261103T190002Z-88802" \
+    --repo "$FIXTURE_DIR/repo" --gate "security-review=selected"
+  bash "$RW" record-run --story TEST-OPEN-P --run-id "round-20261103T190002Z-88802" \
+    --gate security-review --outcome completed >/dev/null
+  printf 'Verdict: PASSED\n' > "$FIXTURE_DIR/open-p.md"
+  bash "$RW" record-round-report --story TEST-OPEN-P --run-id "round-20261103T190002Z-88802" \
+    --gate security-review --report "$FIXTURE_DIR/open-p.md" --verdict PASSED
+  # The open round should NOT count (current verdict is PASSED).
+  run bash "$RW" count-rounds --story TEST-OPEN-P --max 2 --current-verdict PASSED
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"round_count 1"* ]] || return 1
+  [[ "$output" == *"escalate false"* ]] || return 1
 }
