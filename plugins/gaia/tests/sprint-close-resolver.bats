@@ -2624,6 +2624,159 @@ JSON
   _assert_escaped_no_raw "$output"
 }
 
+# -- close.sh cross-check YAML sprint_id with ESC via binding dir --
+# Reaches ~470 where SPRINT_ID from YAML is printed.  No GAIA_BOUND_SPRINT_ID
+# so the env check at ~449 is skipped and the binding-dir cross-check fires.
+@test "close.sh cross-check YAML sprint_id with ESC via binding dir: escaped, no raw ESC" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # YAML sprint_id carries a real ESC byte.
+  printf "sprint_id: s\033X\nstatus: active\ntotal_points: 10\nstories:\n  - key: DEMO-S1\n    status: done\n" \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  # Binding dir at the canonical session path so provision_binding_dir
+  # passes the spoofing check.  The binding file holds a different sprint
+  # than the YAML, so the cross-check mismatch at ~470 fires.
+  local sid="cxt-$$"
+  export CLAUDE_CODE_SESSION_ID="$sid"
+  local bind_dir="$TEST_TMP/.gaia/state/sessions/$sid"
+  mkdir -p "$bind_dir"
+  chmod 0700 "$bind_dir"
+  printf 'sprint-999' > "$bind_dir/bound_sprint_id"
+  unset GAIA_BOUND_SPRINT_ID
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
+# -- close.sh concurrent idempotent close with ESC in sprint_id and closed_at --
+# Reaches ~512 (concurrent mode + archive present) where both SPRINT_ID and
+# closed_at are printed.
+@test "close.sh concurrent idempotent close with ESC in sprint_id and closed_at: escaped, no raw ESC" {
+  local root="$TEST_TMP"
+  mkdir -p "$root/.gaia/config" "$root/.gaia/state" "$root/.gaia/memory/checkpoints"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts/sprint-archive"
+  export PROJECT_ROOT="$root" CLAUDE_PROJECT_ROOT="$root"
+  export PROJECT_PATH="$root" PROJECT_CONFIG="$root/.gaia/config/project-config.yaml"
+
+  # Enable concurrent mode.
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+sprint:
+  max_concurrent_active: 2
+YAML
+
+  # YAML with ESC in sprint_id and closed_at, status closed.
+  printf "sprint_id: s\033X\nstatus: closed\nclosed_at: \"2026\033[31mZ\"\ntotal_points: 1\nstories: []\n" \
+    > "$root/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$root/.gaia/state/sprint-status.yaml"
+
+  # Archive file must exist for the concurrent-mode idempotent path.
+  touch "$root/.gaia/artifacts/implementation-artifacts/sprint-archive/$(printf 's\033X')-closed-2026.yaml"
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -eq 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
+# -- close.sh single-sprint idempotent close with ESC in sprint_id --
+# Reaches ~521 where SPRINT_ID is printed via $_SAFE_SPRINT_ID.
+@test "close.sh single-sprint idempotent close with ESC in sprint_id: escaped, no raw ESC" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  printf "sprint_id: s\033X\nstatus: closed\nclosed_at: \"2026-10\"\ntotal_points: 10\nstories:\n  - key: DEMO-S1\n    status: done\n" \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH" --sprint "$(printf 's\033X')"
+
+  [ "$status" -eq 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
+# -- close.sh non-done stories with ESC key, no rollover --
+# Reaches ~582 where the non-done key array is printed.
+@test "close.sh non-done stories with ESC key, no rollover: escaped, no raw ESC" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  # Non-done story with ESC in the key.
+  printf "sprint_id: sprint-200\nstatus: active\ntotal_points: 1\nstories:\n  - key: \"K\033[31mX\"\n    status: in-progress\n" \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  touch "$TEST_TMP/.gaia/artifacts/implementation-artifacts/retrospective-sprint-200-2026-10-21.md"
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/sprint-review-sprint-200-val-dispatched.json" <<'JSON'
+{"agent":"val","status":"PASSED","summary":"test","findings":[]}
+JSON
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/triage-findings-sprint-200-completed.json" <<'JSON'
+{"sprint_id":"sprint-200","completed_at":"2026-10-21T00:00:00Z"}
+JSON
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH"
+
+  [ "$status" -ne 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
+# -- close.sh non-done ESC key with rollover mismatch --
+# Reaches ~588 where the non-done keys (first wrapper) are printed.
+@test "close.sh non-done ESC key with rollover mismatch: escaped, no raw ESC" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+
+  printf "sprint_id: sprint-200\nstatus: active\ntotal_points: 1\nstories:\n  - key: \"K\033[31mX\"\n    status: in-progress\n" \
+    > "$TEST_TMP/.gaia/state/sprint-status.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+  touch "$TEST_TMP/.gaia/artifacts/implementation-artifacts/retrospective-sprint-200-2026-10-21.md"
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/sprint-review-sprint-200-val-dispatched.json" <<'JSON'
+{"agent":"val","status":"PASSED","summary":"test","findings":[]}
+JSON
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/triage-findings-sprint-200-completed.json" <<'JSON'
+{"sprint_id":"sprint-200","completed_at":"2026-10-21T00:00:00Z"}
+JSON
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH" --force-with-rollover OTHER
+
+  [ "$status" -ne 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
+# -- close.sh all-done rollover ESC key (restores coverage of ~592) --
+# All stories done, --force-with-rollover carries ESC, reaching ~592.
+@test "close.sh all-done rollover with ESC key: escaped, no raw ESC" {
+  _build_single_fixture "$TEST_TMP"
+  export PROJECT_ROOT="$TEST_TMP" CLAUDE_PROJECT_ROOT="$TEST_TMP"
+  export PROJECT_PATH="$TEST_TMP" PROJECT_CONFIG="$TEST_TMP/.gaia/config/project-config.yaml"
+  export SPRINT_STATUS_YAML="$TEST_TMP/.gaia/state/sprint-status.yaml"
+
+  touch "$TEST_TMP/.gaia/artifacts/implementation-artifacts/retrospective-sprint-200-2026-10-21.md"
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/sprint-review-sprint-200-val-dispatched.json" <<'JSON'
+{"agent":"val","status":"PASSED","summary":"test","findings":[]}
+JSON
+  cat > "$TEST_TMP/.gaia/memory/checkpoints/triage-findings-sprint-200-completed.json" <<'JSON'
+{"sprint_id":"sprint-200","completed_at":"2026-10-21T00:00:00Z"}
+JSON
+  unset GAIA_BOUND_SPRINT_ID GAIA_BINDING_DIR
+
+  run bash "$CLOSE_SH" --force-with-rollover "$(printf 'X\033Y')"
+
+  [ "$status" -ne 0 ]
+  _assert_escaped_no_raw "$output"
+}
+
 # -- close.sh repeated --sprint= with ESC --
 @test "close.sh repeated --sprint= with ESC: escaped, no raw ESC" {
   _build_single_fixture "$TEST_TMP"
@@ -2722,12 +2875,6 @@ JSON
 
   local root="$TEST_TMP"
   mkdir -p "$root/.gaia/state"
-  cat > "$root/.gaia/state/sprint-status-sprint-900.yaml" <<'YAML'
-sprint_id: sprint-900
-status: active
-total_points: 0
-stories: []
-YAML
   cat > "$root/.gaia/state/sprint-status-sprint-901.yaml" <<'YAML'
 sprint_id: sprint-901
 status: active
@@ -2741,12 +2888,14 @@ YAML
   chmod 0700 "$bind_dir"
   export GAIA_BINDING_DIR="$bind_dir"
 
-  write_binding "sprint-900" "$root/.gaia/state"
+  # Write binding file directly with a real ESC byte — write_binding
+  # validates shape, so a raw printf is the only way to plant a control
+  # byte that the reader must sanitize.
+  printf 'sprint\033[31m900' > "$bind_dir/bound_sprint_id"
 
   run write_binding "sprint-901" "$root/.gaia/state"
   [ "$status" -eq 2 ]
-  # The "already bound to" message must contain the sprint id (sanitized).
-  /usr/bin/grep -qF 'already bound to sprint-900' <<<"$output"
+  _assert_escaped_no_raw "$output"
 }
 
 # -- resolve_sprint_arg --command with ESC --
