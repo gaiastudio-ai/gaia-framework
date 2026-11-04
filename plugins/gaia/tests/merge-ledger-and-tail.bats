@@ -2028,3 +2028,141 @@ YAML
   line_count=$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S1')
   [ "$line_count" -eq 1 ]
 }
+
+# ── AC8 equivalence: awk reader matches old per-field reader on edge cases ──
+
+@test "list_awk_reader_equivalence_writer_produced_intents" {
+  # Build intents via the REAL writer, then list and compare against
+  # expected output (the same output the old per-field reader produced).
+  local state_dir="${BATS_TEST_TMPDIR}/eq-state"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-950.yaml" <<'YAML'
+sprint_id: "sprint-950"
+status: "closed"
+stories:
+  - "E900-S1"
+  - "E900-S2"
+  - "E900-S3"
+YAML
+
+  # Three stories via the real writer with different state progressions.
+  # S1: finalized with a different merge_sha (merge wins over head)
+  bash "$LEDGER_SH" write-gate-pass --pr 201 --head aaa0001 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 201 --head aaa0001 --story E900-S1 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state merging
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state merged --merge-sha bbb0001
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state verified
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state smoke_ok
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state finalized
+
+  # S2: merged (no further progression), merge_sha provided
+  bash "$LEDGER_SH" write-gate-pass --pr 202 --head aaa0002 --story E900-S2
+  bash "$LEDGER_SH" write-intent --pr 202 --head aaa0002 --story E900-S2 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 202 --head aaa0002 --state merging
+  bash "$LEDGER_SH" advance --pr 202 --head aaa0002 --state merged --merge-sha bbb0002
+
+  # S3: merged without merge_sha (head_sha used as fallback)
+  bash "$LEDGER_SH" write-gate-pass --pr 203 --head aaa0003 --story E900-S3
+  bash "$LEDGER_SH" write-intent --pr 203 --head aaa0003 --story E900-S3 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 203 --head aaa0003 --state merging
+  bash "$LEDGER_SH" advance --pr 203 --head aaa0003 --state merged
+
+  run bash "$LEDGER_SH" list --sprint sprint-950 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+
+  # S1: merge_sha wins over head_sha
+  [[ "$output" == *"bbb0001 E900-S1"* ]]
+  # S2: merge_sha provided
+  [[ "$output" == *"bbb0002 E900-S2"* ]]
+  # S3: no merge_sha → head_sha fallback
+  [[ "$output" == *"aaa0003 E900-S3"* ]]
+
+  # Exactly three output lines (no duplicates, no release intents)
+  local out_count
+  out_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S')"
+  [ "$out_count" -eq 3 ]
+}
+
+@test "list_awk_reader_duplicate_merge_sha_first_wins" {
+  # An idempotent advance --state merged --merge-sha <other> appends a
+  # second merge_sha line. The reader must use the FIRST occurrence.
+  local state_dir="${BATS_TEST_TMPDIR}/eq-dup"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-951.yaml" <<'YAML'
+sprint_id: "sprint-951"
+status: "closed"
+stories:
+  - "E900-S4"
+YAML
+
+  bash "$LEDGER_SH" write-gate-pass --pr 204 --head aaa0004 --story E900-S4
+  bash "$LEDGER_SH" write-intent --pr 204 --head aaa0004 --story E900-S4 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merging
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merged --merge-sha bbb0004
+
+  # Idempotent re-advance with a DIFFERENT merge sha
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merged --merge-sha ccc0004
+
+  run bash "$LEDGER_SH" list --sprint sprint-951 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+
+  # First merge_sha wins
+  [[ "$output" == *"bbb0004 E900-S4"* ]]
+}
+
+@test "list_awk_reader_missing_mode_field_still_lists" {
+  # A legacy intent without a mode field should still be listed (mode
+  # defaults to empty, which is not "release").
+  local state_dir="${BATS_TEST_TMPDIR}/eq-nomode"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-952.yaml" <<'YAML'
+sprint_id: "sprint-952"
+status: "closed"
+stories:
+  - "E900-S5"
+YAML
+
+  # Hand-written legacy intent (no mode field)
+  cat > "$state_dir/merge/intent-pr205-legacy.yaml" <<'YAML'
+story: "E900-S5"
+state: "finalized"
+head_sha: "aaa0005"
+merge_sha: "bbb0005"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint sprint-952 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbb0005 E900-S5"* ]]
+}
+
+@test "list_awk_reader_empty_mode_field_not_release" {
+  # An intent with mode: "" should not be treated as release-mode.
+  local state_dir="${BATS_TEST_TMPDIR}/eq-emptymode"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-953.yaml" <<'YAML'
+sprint_id: "sprint-953"
+status: "closed"
+stories:
+  - "E900-S6"
+YAML
+
+  cat > "$state_dir/merge/intent-pr206-emptymode.yaml" <<'YAML'
+story: "E900-S6"
+state: "merged"
+mode: ""
+head_sha: "aaa0006"
+merge_sha: "bbb0006"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint sprint-953 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbb0006 E900-S6"* ]]
+}

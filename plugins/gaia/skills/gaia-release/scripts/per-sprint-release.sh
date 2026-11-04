@@ -37,6 +37,13 @@ _PSR_SCRIPT_NAME="per-sprint-release"
 _PSR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _PSR_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$_PSR_SCRIPT_DIR/../../.." && pwd)}"
 
+# Script-level paths so the EXIT/INT/TERM trap can reach them even after
+# the locals that created them go out of scope.
+_PSR_RELEASE_WORKTREE=""
+_PSR_MERGEBACK_WORKTREE=""
+_PSR_PROJECT_ROOT_FOR_CLEANUP=""
+_PSR_MERGE_BACK_PR=""
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -278,17 +285,18 @@ _psr_create_merge_back_pr() {
   # Use a temporary worktree so the primary checkout's branch is never affected.
   local mb_worktree=""
   mb_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-mergeback-XXXXXX")"
+  _PSR_MERGEBACK_WORKTREE="$mb_worktree"
 
   # Create (or reuse) the merge-back branch based on main.
   if git -C "$project_root" rev-parse --verify "$pr_branch" >/dev/null 2>&1; then
     # Branch already exists (rerun after partial failure)
-    git -C "$project_root" worktree add "$mb_worktree" "$pr_branch" 2>/dev/null || {
+    git -C "$project_root" worktree add "$mb_worktree" "$pr_branch" >/dev/null 2>&1 || {
       rm -rf "$mb_worktree" 2>/dev/null || true
       _psr_log "WARNING: could not create merge-back worktree on existing branch $pr_branch"
       return 1
     }
   else
-    git -C "$project_root" worktree add -b "$pr_branch" "$mb_worktree" main 2>/dev/null || {
+    git -C "$project_root" worktree add -b "$pr_branch" "$mb_worktree" main >/dev/null 2>&1 || {
       rm -rf "$mb_worktree" 2>/dev/null || true
       _psr_log "WARNING: could not create merge-back worktree"
       return 1
@@ -301,6 +309,7 @@ _psr_create_merge_back_pr() {
       git -C "$project_root" worktree remove --force "$mb_worktree" 2>/dev/null || true
       rm -rf "$mb_worktree" 2>/dev/null || true
     fi
+    _PSR_MERGEBACK_WORKTREE=""
   }
 
   # Copy version files and CHANGELOG from the tagged commit in the release worktree
@@ -397,7 +406,9 @@ _psr_create_merge_back_pr() {
   # Clean up merge-back worktree (primary checkout's branch was never changed)
   _psr_mb_cleanup
 
-  printf '%s\n' "${pr_number:-}"
+  # Return the PR number via the script-level variable (not via stdout,
+  # so callers do not need a command-substitution subshell).
+  _PSR_MERGE_BACK_PR="${pr_number:-}"
 }
 
 # ---------------------------------------------------------------------------
@@ -534,12 +545,19 @@ EOF
   local l6_path="${_psr_state_dir}/.release.lock"
   local l6_timeout=120
 
-  # Set up cleanup trap (release L6 if held, remove worktrees when created)
+  # Set up cleanup trap (release L6 if held, remove worktrees when created).
+  # Uses script-level _PSR_*_WORKTREE variables so the trap reaches them
+  # even when the locals that created them are out of scope.
   _psr_cleanup() {
     release_lock 9 2>/dev/null || true
-    if [ -n "${release_worktree:-}" ] && [ -d "$release_worktree" ]; then
-      git -C "$_psr_project_root" worktree remove --force "$release_worktree" 2>/dev/null || true
-      rm -rf "$release_worktree" 2>/dev/null || true
+    local _pr="${_PSR_PROJECT_ROOT_FOR_CLEANUP:-}"
+    if [ -n "${_PSR_MERGEBACK_WORKTREE:-}" ] && [ -d "$_PSR_MERGEBACK_WORKTREE" ] && [ -n "$_pr" ]; then
+      git -C "$_pr" worktree remove --force "$_PSR_MERGEBACK_WORKTREE" 2>/dev/null || true
+      rm -rf "$_PSR_MERGEBACK_WORKTREE" 2>/dev/null || true
+    fi
+    if [ -n "${_PSR_RELEASE_WORKTREE:-}" ] && [ -d "$_PSR_RELEASE_WORKTREE" ] && [ -n "$_pr" ]; then
+      git -C "$_pr" worktree remove --force "$_PSR_RELEASE_WORKTREE" 2>/dev/null || true
+      rm -rf "$_PSR_RELEASE_WORKTREE" 2>/dev/null || true
     fi
   }
   trap '_psr_cleanup' EXIT
@@ -572,6 +590,8 @@ EOF
   # ── Step 8: Create a detached worktree and cherry-pick ─────────────
   local release_worktree=""
   release_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-release-XXXXXX")"
+  _PSR_RELEASE_WORKTREE="$release_worktree"
+  _PSR_PROJECT_ROOT_FOR_CLEANUP="$_psr_project_root"
   # Use a detached worktree from the tag
   git -C "$_psr_project_root" worktree add --detach "$release_worktree" "$latest_tag" 2>/dev/null || {
     # Fallback: clone and checkout the tag
@@ -757,14 +777,15 @@ EOF
   release_lock 9 2>/dev/null || true
 
   # ── Step 17: Create merge-back PR ──────────────────────────────────
-  local pr_number=""
-  pr_number="$(_psr_create_merge_back_pr "$_psr_project_root" "$new_version" "$version_files" "$release_worktree")"
+  # Called directly (not in a command substitution) so the EXIT trap
+  # can reach the merge-back worktree if the function is interrupted.
+  _psr_create_merge_back_pr "$_psr_project_root" "$new_version" "$version_files" "$release_worktree"
 
   _psr_log "per-sprint release complete: v${new_version} for sprint $_psr_sprint_id"
   printf 'version=%s\n' "$new_version"
   printf 'tag=v%s\n' "$new_version"
-  if [ -n "$pr_number" ]; then
-    printf 'merge_back_pr=%s\n' "$pr_number"
+  if [ -n "$_PSR_MERGE_BACK_PR" ]; then
+    printf 'merge_back_pr=%s\n' "$_PSR_MERGE_BACK_PR"
   fi
 }
 

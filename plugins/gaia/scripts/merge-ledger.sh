@@ -743,18 +743,41 @@ EOF
   for f in "$ledger_dir"/intent-*.yaml; do
     [ -f "$f" ] || continue
 
+    # Single awk pass per intent file — extracts all needed fields at once
+    # instead of one sed call per field, reducing I/O from O(fields x M)
+    # to O(M).  Preserves the old per-field sed reader's exact semantics:
+    #   - First occurrence of each key wins (the old sed | head -1).
+    #   - Quoted values: opening/closing quotes stripped, content between
+    #     them returned (empty string for "").
+    #   - Unquoted values: returned as-is including any trailing spaces
+    #     (the old sed captured everything between the optional quotes).
+    #   - Uses \037 (unit separator) as the output field delimiter so
+    #     empty fields are never collapsed by IFS whitespace splitting.
     local _ml_awk_out=""
     _ml_awk_out="$(awk '
-      /^story: */      { sub(/^story: *"?/, ""); sub(/"? *$/, ""); story=$0 }
-      /^state: */      { sub(/^state: *"?/, ""); sub(/"? *$/, ""); state=$0 }
-      /^mode: */       { sub(/^mode: *"?/, "");  sub(/"? *$/, ""); mode=$0 }
-      /^merge_sha: */  { sub(/^merge_sha: *"?/, ""); sub(/"? *$/, ""); merge_sha=$0 }
-      /^head_sha: */   { sub(/^head_sha: *"?/, ""); sub(/"? *$/, ""); head_sha=$0 }
-      END { printf "%s\t%s\t%s\t%s\t%s\n", story, state, mode, merge_sha, head_sha }
+      function extract(line, key,    v, q1, q2) {
+        # Strip "key: " prefix (with optional spaces after colon)
+        sub("^" key ": *", "", line)
+        v = line
+        # If starts with quote, strip matching quotes (same as old sed)
+        if (substr(v, 1, 1) == "\"") {
+          q1 = index(v, "\"")
+          v = substr(v, q1 + 1)
+          q2 = index(v, "\"")
+          if (q2 > 0) { v = substr(v, 1, q2 - 1) }
+        }
+        return v
+      }
+      /^story: /      && !got_story      { story     = extract($0, "story");     got_story=1 }
+      /^state: /      && !got_state      { state     = extract($0, "state");     got_state=1 }
+      /^mode: /       && !got_mode       { mode      = extract($0, "mode");      got_mode=1 }
+      /^merge_sha: /  && !got_merge_sha  { merge_sha = extract($0, "merge_sha"); got_merge_sha=1 }
+      /^head_sha: /   && !got_head_sha   { head_sha  = extract($0, "head_sha");  got_head_sha=1 }
+      END { printf "%s\037%s\037%s\037%s\037%s\n", story, state, mode, merge_sha, head_sha }
     ' "$f")" || continue
 
     local f_story="" f_state="" f_mode="" f_merge_sha="" f_head_sha=""
-    IFS='	' read -r f_story f_state f_mode f_merge_sha f_head_sha <<EOF
+    IFS="$(printf '\037')" read -r f_story f_state f_mode f_merge_sha f_head_sha <<EOF
 $_ml_awk_out
 EOF
 
