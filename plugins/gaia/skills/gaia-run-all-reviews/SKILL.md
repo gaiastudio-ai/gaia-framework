@@ -107,6 +107,10 @@ This loads the story file, walks all six reviewers in canonical order, writes on
   4. Test Automation (gaia-test-automate) — gate "Test Automation", short-name `test-automate`
   5. Test Review (gaia-test-review) — gate "Test Review", short-name `test-review`
   6. Performance Review (gaia-review-perf) — gate "Performance Review", short-name `review-perf`
+- **Heavy / light classification.** Reviewers that spawn test suites, mutation runs, or property-test subprocesses are **heavy**; the rest are **light**. Heavy reviewers acquire a slot from the system-wide counting semaphore (`scripts/lib/heavy-reviewer-slots.sh`) at the point where they execute external processes; the semaphore caps concurrent heavy reviewers to `review.max_concurrent_heavy_reviewers` (default 4, independent of `parallel_execution.max_parallel_dev_slots`). Classification:
+  - **Heavy:** QA Tests (`qa-test-runner.sh` runs suites), Test Automation (`phase2-execute.sh` runs generated tests and coverage commands).
+  - **Light:** Code Review, Security Review, Test Review, Performance Review (analysis-only, no subprocess execution).
+  This skill dispatches reviews through the Skill tool and only documents the classification. The slot acquisition happens inside the heavy scripts themselves.
 - **Action-skill exclusion.** `/gaia-test-automate` is an **action skill, not a review skill**. The "Test Automation" judgment in slot #4 above is a review (read test files, judge automation adequacy) and MUST NOT invoke `/gaia-test-automate` itself — generation is action-taking and would mutate the codebase mid-review. `/gaia-test-automate` is **triggered on demand** by:
   - explicit user invocation (`/gaia-test-automate {story_key}`),
   - `/gaia-review-qa` gap findings (uncovered ACs in `qa-test-cases-{story_key}.json`),

@@ -664,6 +664,17 @@ fi
 # STEP 4 — Bridge execution
 # =========================================================================
 
+# Acquire a heavy-reviewer slot before running tests.
+_P2_SLOT_HELPER="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/heavy-reviewer-slots.sh"
+if [ -f "$_P2_SLOT_HELPER" ]; then
+  # shellcheck source=../../../../scripts/lib/heavy-reviewer-slots.sh
+  source "$_P2_SLOT_HELPER"
+  heavy_reviewer_acquire
+  trap 'heavy_reviewer_release' EXIT INT TERM HUP
+else
+  info "heavy-reviewer-slots.sh not found; proceeding without concurrency cap"
+fi
+
 info "Step 4: Test Execution Bridge invocation"
 
 # Canonical-first evidence dir; fall back to legacy layout when not present.

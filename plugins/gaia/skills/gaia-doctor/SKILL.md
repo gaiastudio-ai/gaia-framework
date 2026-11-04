@@ -93,12 +93,14 @@ Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the 
 
 ### Step 7 — Review limits
 
-Report the active review-process limits. Read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`. When the output is empty, the effective cap is 2 (the single point-of-use fallback in `count-rounds`). Display the configured value or "2 (default)" when absent:
+Report the active review-process limits. Read `review.max_fix_cycles` and `review.max_concurrent_heavy_reviewers` from project config via `resolve-config.sh --field`. When each output is empty, the effective cap is its point-of-use default (2 for fix cycles, 4 for heavy-reviewer slots). Display the configured value or the default when absent:
 
 ```
 Review limits:
-  max_fix_cycles: 7                 (when configured)
-  max_fix_cycles: 2 (default)       (when absent from config)
+  max_fix_cycles:                 7                 (when configured)
+  max_fix_cycles:                 2 (default)       (when absent from config)
+  max_concurrent_heavy_reviewers: 3                 (when configured)
+  max_concurrent_heavy_reviewers: 4 (default)       (when absent from config)
 ```
 
 This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.
