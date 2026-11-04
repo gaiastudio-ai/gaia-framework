@@ -131,15 +131,14 @@ _hrs_count_live_slots() {
 }
 
 # --- Create a slot file (must be called under mutex) ---
-
-# --- Create a slot file (must be called under mutex) ---
-# Uses BASHPID when available (bash 4+) for unique per-subshell naming;
-# falls back to $$ + $RANDOM for bash 3.2 where subshells share $$.
+# Slot filename uses $$ + $RANDOM for uniqueness. $RANDOM is reseeded per
+# subshell in both bash 3.2 and 5, so concurrent subshells that share $$
+# still get distinct filenames. The PID recorded inside the file ($$) is
+# the one kill -0 checks during dead-holder reclaim.
 
 _hrs_create_slot() {
-  local my_pid="${BASHPID:-$$}"
-  local slot_file="${_HRS_SLOT_DIR}/slot-${my_pid}.${RANDOM}"
-  printf '%s %s\n' "$my_pid" "$(date +%s)" > "$slot_file"
+  local slot_file="${_HRS_SLOT_DIR}/slot-$$.${RANDOM}"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$slot_file"
   _HRS_MY_SLOT="$slot_file"
 }
 
