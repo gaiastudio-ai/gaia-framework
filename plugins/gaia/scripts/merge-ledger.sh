@@ -735,15 +735,59 @@ _ml_cmd_list() {
 $stories
 EOF
 
-  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents
+  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents.
   local found_any=false
   for f in "$ledger_dir"/intent-*.yaml; do
     [ -f "$f" ] || continue
 
-    local f_story="" f_state="" f_merge_sha="" f_head_sha="" f_mode=""
-    f_story="$(_ml_read_field "$f" story)" || continue
-    f_state="$(_ml_read_field "$f" state)" || continue
-    f_mode="$(_ml_read_field "$f" mode)" || f_mode=""
+    # Single awk pass per intent file — extracts all needed fields at once
+    # instead of one sed call per field, reducing I/O from O(fields x M)
+    # to O(M).  Each key is gated on the old full-line regex
+    # ^key: *"?[^"]*"?$ so malformed lines (CRLF, trailing characters
+    # after the closing quote, embedded quotes) are rejected the same way
+    # the old per-field sed reader rejected them.  First matching line
+    # wins (the old sed | head -1).  One field per output line — values
+    # cannot contain newlines, so no delimiter collision is possible.
+    local _ml_awk_out=""
+    # The trailing `printf .` prevents $() from stripping all newlines
+    # when every field is empty (e.g. a CRLF intent where no line matches
+    # the regex).  The sentinel is removed before reading.
+    _ml_awk_out="$(awk '
+      function extract(line, key,    v) {
+        if (line !~ ("^" key ": *\"?[^\"]*\"?$")) return "\001"
+        v = line
+        sub("^" key ": *", "", v)
+        sub(/^"/, "", v)
+        sub(/"$/, "", v)
+        return v
+      }
+      {
+        for (i = 1; i <= 5; i++) {
+          k = K[i]
+          if (!(k in got) && index($0, k ":") == 1) {
+            r = extract($0, k)
+            if (r != "\001") { got[k] = 1; val[k] = r }
+          }
+        }
+      }
+      BEGIN { K[1]="story"; K[2]="state"; K[3]="mode"; K[4]="merge_sha"; K[5]="head_sha" }
+      END { for (i = 1; i <= 5; i++) print val[K[i]] }
+    ' "$f" && printf .)" || continue
+    _ml_awk_out="${_ml_awk_out%.}"
+
+    local f_story="" f_state="" f_mode="" f_merge_sha="" f_head_sha=""
+    {
+      IFS= read -r f_story
+      IFS= read -r f_state
+      IFS= read -r f_mode
+      IFS= read -r f_merge_sha
+      IFS= read -r f_head_sha
+    } <<EOF
+$_ml_awk_out
+EOF
+
+    [ -z "$f_story" ] && continue
+    [ -z "$f_state" ] && continue
 
     # Skip release-mode intents
     [ "$f_mode" = "release" ] && continue
@@ -766,8 +810,6 @@ EOF
     esac
 
     # Get merge SHA (preferred) or head SHA
-    f_merge_sha="$(_ml_read_field "$f" merge_sha)" || f_merge_sha=""
-    f_head_sha="$(_ml_read_field "$f" head_sha)" || f_head_sha=""
     local sha="${f_merge_sha:-$f_head_sha}"
     if [ -z "$sha" ]; then continue; fi
 

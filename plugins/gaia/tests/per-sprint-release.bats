@@ -1085,32 +1085,9 @@ SH
 }
 
 # ── AC-EC7: Orphaned tag cherry-pick base ──────────────────────────────────
-
-@test "orphaned_tag_cherry_pick_base_conflict_exits_8" {
-  cd "$PROJECT_DIR"
-
-  # Create an orphaned tag (not reachable from main)
-  git checkout --orphan orphan-branch 2>/dev/null
-  echo "orphan content" > orphan.txt
-  git add orphan.txt
-  git commit -m "chore: orphan commit" 2>/dev/null
-  git tag -a v0.0.1 -m "v0.0.1" 2>/dev/null
-  git checkout main 2>/dev/null
-
-  # Now v0.0.1 is the "latest" tag by version but is on an orphan branch
-  # The script should use git describe which finds the most recent tag
-  # reachable from HEAD. If the orphan tag is truly orphaned, git describe
-  # won't find it. This test verifies the script handles the case where
-  # the base tag's tree diverges from main's tree.
-
-  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
-    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
-  # With an orphaned tag, cherry-pick should either work (using v0.0.0 as base)
-  # or fail with exit 8 if it uses the orphan tag and conflicts arise
-  # The actual behavior depends on git describe finding v0.0.0 (reachable from HEAD)
-  # vs v0.0.1 (not reachable). git describe --match 'v*' from HEAD will find v0.0.0.
-  [ "$status" -eq 0 ] || [ "$status" -eq 8 ]
-}
+# The old test that accepted both exit 0 and exit 8 is replaced by the two
+# deterministic split tests below: reachable_highest_tag_release_succeeds_exit_0
+# and unreachable_orphan_tag_cherry_pick_conflict_exits_8.
 
 # ── AC-EC8: Regenerated workflow no duplicate sprint_id ────────────────────
 
@@ -1348,4 +1325,598 @@ YAML
 
   # The release must exit non-zero because record could not write
   [ "$status" -ne 0 ]
+}
+
+# ── Path-traversal sprint-id rejection ─────────────────────────────────────
+
+@test "path_traversal_sprint_id_rejected_before_file_access" {
+  cd "$PROJECT_DIR"
+  run bash "$SCRIPT_UNDER_TEST" --sprint "../../etc/passwd" \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid sprint id"* ]]
+}
+
+@test "path_traversal_sprint_id_rejected_in_single_sprint_fixture" {
+  cd "$PROJECT_DIR"
+  # Remove concurrent mode so the single-sprint path is tested
+  cat > .gaia/config/project-config.yaml <<'YAML'
+release:
+  strategy: conventional-commits
+  version_files:
+    - VERSION
+YAML
+  rm -f .gaia/state/sprint-status-sprint-900.yaml
+  rm -f .gaia/state/sprint-status-sprint-901.yaml
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint "../../../x" \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid sprint id"* ]]
+}
+
+@test "valid_sprint_ids_accepted" {
+  cd "$PROJECT_DIR"
+  # Pure numeric
+  run bash "$SCRIPT_UNDER_TEST" --sprint "42" \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  # Will fail for other reasons (sprint not found) but NOT for "invalid sprint id"
+  [[ "$output" != *"invalid sprint id"* ]] || return 1
+
+  # sprint- prefixed
+  run bash "$SCRIPT_UNDER_TEST" --sprint "sprint-42" \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [[ "$output" != *"invalid sprint id"* ]] || return 1
+}
+
+@test "digits_only_sprint_id_with_traversal_suffix_rejected" {
+  cd "$PROJECT_DIR"
+  # "sprint-1/.." passes the first case check but must fail the digits-only
+  # second pass because "/" is not a digit.
+  run bash "$SCRIPT_UNDER_TEST" --sprint "sprint-1/.." \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid sprint id"* ]]
+}
+
+@test "bare_digits_sprint_id_accepted" {
+  cd "$PROJECT_DIR"
+  # A bare numeric sprint id (e.g. "900") must pass validation.
+  # It will fail later (sprint state not found) but must NOT fail with
+  # "invalid sprint id".
+  run bash "$SCRIPT_UNDER_TEST" --sprint "900" \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [[ "$output" != *"invalid sprint id"* ]]
+}
+
+@test "sprint_id_validation_runs_before_path_resolution" {
+  cd "$PROJECT_DIR"
+  # Point --project-root at a nonexistent directory. If validation runs
+  # before path resolution, we get "invalid sprint id" (not a path error).
+  run bash "$SCRIPT_UNDER_TEST" --sprint "../../etc/passwd" \
+    --project-root "/nonexistent-psr-test" --config "/nonexistent/config.yaml"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid sprint id"* ]]
+}
+
+# ── Merge-back worktree preserves primary checkout branch ──────────────────
+
+@test "merge_back_uses_worktree_primary_branch_unchanged" {
+  cd "$PROJECT_DIR"
+
+  local branch_before
+  branch_before="$(git branch --show-current)"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Primary checkout must still be on the same branch
+  local branch_after
+  branch_after="$(git branch --show-current)"
+  [ "$branch_before" = "$branch_after" ]
+
+  # The merge_back_pr= output line must contain only the PR number
+  local mb_line
+  mb_line="$(printf '%s\n' "$output" | /usr/bin/grep '^merge_back_pr=' | head -1)"
+  [ -n "$mb_line" ]
+  [[ "$mb_line" == "merge_back_pr=42" ]]
+}
+
+@test "merge_back_worktree_cleaned_up_after_success" {
+  cd "$PROJECT_DIR"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # No psr-mergeback-* worktrees should remain registered
+  local wt_count
+  wt_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-mergeback' || true)"
+  [ "$wt_count" -eq 0 ]
+
+  # No psr-release-* worktrees should remain registered either
+  local rel_count
+  rel_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-release' || true)"
+  [ "$rel_count" -eq 0 ]
+}
+
+@test "gh_pr_create_fails_token_fallback_cleans_worktrees" {
+  cd "$PROJECT_DIR"
+
+  # Install a gh stub that fails on "pr create" during merge-back.
+  # The script's || true on gh pr create sends it to the token fallback
+  # path, so the overall run still exits 0.
+  cat > "$STUBS_DIR/gh" <<'SH'
+#!/bin/sh
+case "$1" in
+  pr)
+    case "$2" in
+      create) exit 1 ;;
+    esac
+    ;;
+  release)
+    case "$2" in
+      create) exit 0 ;;
+    esac
+    ;;
+esac
+exit 0
+SH
+  chmod +x "$STUBS_DIR/gh"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ] || return 1
+
+  # After the run, no psr-mergeback-* worktrees should remain
+  local wt_count
+  wt_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-mergeback' || true)"
+  [ "$wt_count" -eq 0 ]
+
+  # No psr-release-* worktrees should remain either
+  local rel_count
+  rel_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-release' || true)"
+  [ "$rel_count" -eq 0 ]
+}
+
+# ── Signal during merge-back: trap cleans up, rerun succeeds ─────────────
+
+# Helper: send a signal while the script is blocked inside the merge-back
+# step (gh pr create), then assert cleanup and same-version rerun.
+_signal_during_merge_back() {
+  local sig="$1" want_rc="$2"
+  cd "$PROJECT_DIR"
+  local tmpd="${TEST_TMP}/tmpd-$$"; mkdir -p "$tmpd"
+
+  local branch_before
+  branch_before="$(git branch --show-current)"
+
+  # gh stub: on "pr create", find the main release script PID by
+  # walking up from this stub's PPID (the $(…) subshell) to its parent
+  # (the main script), then signal it with the chosen signal.
+  # Sleeps briefly so the signal and cleanup can complete.
+  cat > "$STUBS_DIR/gh" <<SH
+#!/bin/sh
+case "\$1" in
+  pr) case "\$2" in
+    create)
+      # \$PPID is the \$(…) subshell; its parent is the main script.
+      _sp=\$(ps -o ppid= -p \$PPID 2>/dev/null | tr -d ' ')
+      [ -n "\$_sp" ] && kill -${sig} "\$_sp" 2>/dev/null || true
+      sleep 1
+      printf 'https://github.com/test/test/pull/42\n'; exit 0 ;;
+  esac ;;
+  release) case "\$2" in create) exit 0 ;; esac ;;
+esac
+exit 0
+SH
+  chmod +x "$STUBS_DIR/gh"
+
+  # Use run: the stub signals the script from inside the child,
+  # which works for both TERM and INT.
+  run env TMPDIR="$tmpd" bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq "$want_rc" ] || return 1
+
+  # Primary branch must be unchanged
+  [ "$(git branch --show-current)" = "$branch_before" ] || return 1
+
+  # No merge-back or release worktrees remain registered
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-mergeback' || true)" -eq 0 ] || return 1
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-release' || true)" -eq 0 ] || return 1
+
+  # No psr-* temp dirs remain
+  [ "$(ls "$tmpd" 2>/dev/null | /usr/bin/grep -c '^psr-' || true)" -eq 0 ] || return 1
+
+  # ── Same-version rerun after dropping the tag ──
+  local newtag
+  newtag="$(git tag -l 'v*' | /usr/bin/grep -v v0.0.0 | head -1)"
+  if [ -n "$newtag" ]; then
+    git tag -d "$newtag" >/dev/null
+    git push origin ":refs/tags/$newtag" >/dev/null 2>&1 || true
+  fi
+
+  # Restore normal gh stub
+  cat > "$STUBS_DIR/gh" <<'SH'
+#!/bin/sh
+case "$1" in
+  pr) case "$2" in create) printf 'https://github.com/test/test/pull/42\n'; exit 0 ;; esac ;;
+  release) case "$2" in create) exit 0 ;; esac ;;
+esac
+exit 0
+SH
+  chmod +x "$STUBS_DIR/gh"
+
+  run env TMPDIR="$tmpd" bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ] || return 1
+  [ "$(printf '%s\n' "$output" | /usr/bin/grep '^merge_back_pr=')" = "merge_back_pr=42" ] || return 1
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-mergeback' || true)" -eq 0 ] || return 1
+  [ "$(ls "$tmpd" 2>/dev/null | /usr/bin/grep -c '^psr-' || true)" -eq 0 ] || return 1
+}
+
+@test "term_during_merge_back_cleans_up_and_rerun_succeeds" {
+  _signal_during_merge_back TERM 143
+}
+
+@test "int_during_merge_back_cleans_up_and_rerun_succeeds" {
+  _signal_during_merge_back INT 130
+}
+
+# ── Stray file not staged (explicit staging replaces git add -A) ───────────
+
+@test "stray_file_not_staged_in_release_worktree" {
+  cd "$PROJECT_DIR"
+
+  # Use .plugin-version alongside VERSION to exercise a non-VERSION path
+  cat > .gaia/config/project-config.yaml <<'YAML'
+sprint:
+  max_concurrent_active: 2
+release:
+  strategy: conventional-commits
+  version_files:
+    - VERSION
+    - .plugin-version
+YAML
+  echo "0.0.0" > .plugin-version
+  git add .gaia/config/project-config.yaml .plugin-version
+  git commit -m "chore: add .plugin-version" 2>/dev/null
+  git push origin main 2>/dev/null
+
+  # Install a node stub that also bumps .plugin-version AND drops a stray
+  # file into the release worktree during the version-bump step.
+  cat > "$STUBS_DIR/node" <<'SH'
+#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *classify-commits.js) printf 'bump_size=minor\nhas_commits=true\n'; exit 0 ;;
+    *version-bump.js)
+      project_root=""
+      next_is_root=false
+      for a in "$@"; do
+        if $next_is_root; then project_root="$a"; next_is_root=false; fi
+        case "$a" in --project-root) next_is_root=true ;; esac
+      done
+      if [ -n "$project_root" ] && [ -f "$project_root/VERSION" ]; then
+        old="$(cat "$project_root/VERSION" | tr -d '[:space:]')"
+        major="${old%%.*}"
+        rest="${old#*.}"
+        minor="${rest%%.*}"
+        new_minor=$((minor + 1))
+        new="${major}.${new_minor}.0"
+        printf '%s\n' "$new" > "$project_root/VERSION"
+        printf '%s\n' "$new" > "$project_root/.plugin-version"
+        # Drop a stray file that git add -A would stage
+        printf 'stray content\n' > "$project_root/stray.txt"
+        printf '{"old_version":"%s","new_version":"%s","bump_type":"minor","bumped":[{"file":"VERSION"},{"file":".plugin-version"}],"skipped":[]}\n' "$old" "$new"
+      fi
+      exit 0 ;;
+  esac
+done
+exit 0
+SH
+  chmod +x "$STUBS_DIR/node"
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  local new_tag
+  new_tag="$(git tag -l 'v*' | /usr/bin/grep -v 'v0.0.0' | head -1)"
+  [ -n "$new_tag" ]
+
+  # The stray file must NOT be in the tagged tree (explicit staging, not git add -A)
+  run git show "${new_tag}:stray.txt" 2>&1
+  [ "$status" -ne 0 ]
+
+  # .plugin-version must be in the tagged tree with the bumped content
+  local pv_content
+  pv_content="$(git show "${new_tag}:.plugin-version" 2>/dev/null)"
+  [ -n "$pv_content" ]
+  [ "$pv_content" != "0.0.0" ]
+
+  # VERSION must also be present and bumped
+  local v_content
+  v_content="$(git show "${new_tag}:VERSION" 2>/dev/null)"
+  [ -n "$v_content" ]
+  [ "$v_content" != "0.0.0" ]
+
+  # CHANGELOG must be present
+  git show "${new_tag}:CHANGELOG.md" >/dev/null 2>&1
+}
+
+# ── Changelog entry count: exact match, not >= 2 ──────────────────────────
+
+@test "changelog_entry_count_exact_match_rejects_full_log" {
+  cd "$PROJECT_DIR"
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Get changelog from the tag
+  local new_tag
+  new_tag="$(git tag -l 'v*' | grep -v 'v0.0.0' | head -1)"
+  [ -n "$new_tag" ]
+  local changelog_content
+  changelog_content="$(git show "${new_tag}:CHANGELOG.md" 2>/dev/null)"
+
+  # Sprint-900 has exactly 2 stories/commits; assert exact count
+  local entry_count
+  entry_count="$(printf '%s\n' "$changelog_content" | grep -c '^- ')" || entry_count=0
+  [ "$entry_count" -eq 2 ]
+}
+
+# ── Monotonic version guard: integration test (disabled guard fails) ───────
+
+@test "monotonic_guard_integration_disabled_guard_fails_release" {
+  cd "$PROJECT_DIR"
+
+  # A node stub that writes a version EQUAL to the existing tag (v0.0.0),
+  # which the monotonic guard must reject.
+  cat > "$STUBS_DIR/node" <<'SH'
+#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *classify-commits.js) printf 'bump_size=patch\n'; exit 0 ;;
+    *version-bump.js)
+      project_root=""
+      next_is_root=false
+      for a in "$@"; do
+        if $next_is_root; then project_root="$a"; next_is_root=false; fi
+        case "$a" in --project-root) next_is_root=true ;; esac
+      done
+      # Write a version EQUAL to the existing tag (v0.0.0)
+      if [ -n "$project_root" ] && [ -f "$project_root/VERSION" ]; then
+        printf '0.0.0\n' > "$project_root/VERSION"
+      fi
+      exit 0 ;;
+  esac
+done
+exit 0
+SH
+  chmod +x "$STUBS_DIR/node"
+
+  # The monotonic guard rejects 0.0.0 <= v0.0.0; the release fails
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"monotonic version guard"* ]]
+}
+
+# ── Orphan tag: split into reachable and unreachable cases ─────────────────
+
+@test "reachable_highest_tag_release_succeeds_exit_0" {
+  cd "$PROJECT_DIR"
+
+  # v0.0.0 is reachable from HEAD and is the highest tag; normal release
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # A new tag was created
+  local new_tag
+  new_tag="$(git tag -l 'v*' | grep -v 'v0.0.0' | head -1)"
+  [ -n "$new_tag" ]
+}
+
+@test "unreachable_orphan_tag_cherry_pick_conflict_exits_8" {
+  cd "$PROJECT_DIR"
+
+  # Create an orphan tag whose tree has conflicting content.
+  # The orphan branch modifies a file also modified by sprint-900 commits.
+  git checkout --orphan orphan-branch 2>/dev/null
+  git rm -rf . 2>/dev/null || true
+  echo "conflicting content from orphan" > feature-a.txt
+  git add feature-a.txt
+  git commit -m "chore: orphan conflicting commit" 2>/dev/null
+  git tag -a v99.0.0 -m "v99.0.0" 2>/dev/null
+  git checkout main 2>/dev/null
+
+  # v99.0.0 is now the highest version tag (by sort -V) but is on an
+  # orphan branch. The cherry-pick of sprint-900's commits (which also
+  # touch feature-a.txt) onto the orphan tree should conflict.
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 8 ]
+  [[ "$output" == *"conflict"* ]]
+}
+
+# ── Lock-order: ordered event log assertion ────────────────────────────────
+
+@test "lock_order_event_log_pre_release_before_l6" {
+  cd "$PROJECT_DIR"
+
+  # Install a pre-release check stub that records an ordered event
+  local event_log="${TEST_TMP}/lock-event-log.txt"
+  > "$event_log"
+
+  local script_dir="${TEST_TMP}/psr-lock-order"
+  mkdir -p "$script_dir"
+  cp "$SCRIPT_UNDER_TEST" "$script_dir/per-sprint-release.sh"
+
+  cat > "$script_dir/pre-release-sprint-check.sh" <<SH
+#!/bin/sh
+printf 'pre_release_done\n' >> "$event_log"
+exit 0
+SH
+  chmod +x "$script_dir/pre-release-sprint-check.sh"
+
+  # Patch the script: inject an event-log write before the acquire_lock call.
+  # Use awk to avoid sed escaping hell on macOS.
+  awk -v logfile="$event_log" '
+    /acquire_lock "\$l6_path".*--strict/ && !done {
+      printf "  printf '\''l6_acquired\\n'\'' >> \"%s\"\n", logfile
+      done = 1
+    }
+    { print }
+  ' "$script_dir/per-sprint-release.sh" > "$script_dir/per-sprint-release.sh.tmp"
+  mv "$script_dir/per-sprint-release.sh.tmp" "$script_dir/per-sprint-release.sh"
+  chmod +x "$script_dir/per-sprint-release.sh"
+
+  run bash "$script_dir/per-sprint-release.sh" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Assert event order by line position: pre_release_done must come first
+  local pre_line l6_line
+  pre_line="$(/usr/bin/grep -n 'pre_release_done' "$event_log" | head -1 | cut -d: -f1)"
+  l6_line="$(/usr/bin/grep -n 'l6_acquired' "$event_log" | head -1 | cut -d: -f1)"
+  [ -n "$pre_line" ]
+  [ -n "$l6_line" ]
+  [ "$pre_line" -lt "$l6_line" ]
+}
+
+# ── Pre-release tag excluded from base tag selection ───────────────────────
+
+@test "pre_release_tag_excluded_from_base_selection" {
+  cd "$PROJECT_DIR"
+
+  # Create a pre-release tag that sorts above v0.0.0
+  git tag -a v2.0.0-beta.1 -m "v2.0.0-beta.1" 2>/dev/null
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # The base tag should be v0.0.0 (the pre-release v2.0.0-beta.1 is excluded)
+  # Verify by checking that the new tag exists and is not beta-based
+  local new_tag
+  new_tag="$(git tag -l 'v*' | grep -v 'v0.0.0' | grep -v 'beta' | head -1)"
+  [ -n "$new_tag" ]
+}
+
+@test "all_prerelease_tags_falls_back_to_refusal" {
+  cd "$PROJECT_DIR"
+
+  # Remove the stable tag locally and from the remote
+  git tag -d v0.0.0 2>/dev/null
+  git push origin --delete v0.0.0 2>/dev/null || true
+  git tag -a v1.0.0-rc.1 -m "v1.0.0-rc.1" 2>/dev/null
+
+  # Verify only pre-release tags remain
+  local stable_tags
+  stable_tags="$(git tag -l 'v*' | /usr/bin/grep -v -- '-' || true)"
+  [ -z "$stable_tags" ]
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"tag found"* ]]
+}
+
+# ── Two-digit minor tag sorting ────────────────────────────────────────────
+
+@test "two_digit_minor_tag_sorts_correctly_via_real_script" {
+  cd "$PROJECT_DIR"
+
+  # Replace the initial v0.0.0 tag with v1.9.0 and v1.10.0 on the same
+  # initial commit (before the feature commits). The VERSION file at that
+  # commit is "0.0.0", but the node stub reads + bumps it from the release
+  # worktree — the tag tree.  We need the worktree VERSION to read as
+  # "1.10.0" so the bump produces "1.11.0" which passes the monotonic guard.
+  #
+  # Strategy: retag the initial commit as v1.9.0, create a separate commit
+  # that updates VERSION to 1.10.0 on an orphan branch and tag that as
+  # v1.10.0, so the cherry-pick tree starts with VERSION=1.10.0 and the
+  # feature commits apply cleanly.
+  local initial_sha
+  initial_sha="$(git log --reverse --format=%H | head -1)"
+
+  git tag -d v0.0.0 2>/dev/null
+  git push origin --delete v0.0.0 2>/dev/null || true
+  git tag -a v1.9.0 -m "v1.9.0" "$initial_sha" 2>/dev/null
+
+  # Create a side branch from the initial commit with VERSION=1.10.0
+  git checkout "$initial_sha" 2>/dev/null
+  echo "1.10.0" > VERSION
+  git add VERSION
+  git commit -m "chore: set version to 1.10.0" 2>/dev/null
+  git tag -a v1.10.0 -m "v1.10.0" 2>/dev/null
+  git checkout main 2>/dev/null
+  git push origin v1.9.0 v1.10.0 2>/dev/null || true
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # The new tag should be v1.11.0 (minor bump from v1.10.0, the highest tag)
+  local new_tag
+  new_tag="$(git tag -l 'v*' | /usr/bin/grep -v 'v1.9.0' | /usr/bin/grep -v 'v1.10.0' | head -1)"
+  [ -n "$new_tag" ]
+  [[ "$new_tag" == "v1.11.0" ]]
+}
+
+@test "prerelease_tag_side_by_side_with_stable_tag" {
+  cd "$PROJECT_DIR"
+
+  # v2.0.0 is the stable release; v2.0.0-beta.1 sorts above it on macOS
+  # sort -V. The script must pick v2.0.0 (the pre-release filter excludes
+  # the beta), so the next release is v2.1.0.
+  local initial_sha
+  initial_sha="$(git log --reverse --format=%H | head -1)"
+
+  git tag -d v0.0.0 2>/dev/null
+  git push origin --delete v0.0.0 2>/dev/null || true
+
+  # Create a side branch from the initial commit with VERSION=2.0.0
+  git checkout "$initial_sha" 2>/dev/null
+  echo "2.0.0" > VERSION
+  git add VERSION
+  git commit -m "chore: set version to 2.0.0" 2>/dev/null
+  git tag -a v2.0.0 -m "v2.0.0" 2>/dev/null
+  git tag -a v2.0.0-beta.1 -m "v2.0.0-beta.1" 2>/dev/null
+  git checkout main 2>/dev/null
+  git push origin v2.0.0 v2.0.0-beta.1 2>/dev/null || true
+
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # The release must be based on v2.0.0, not v2.0.0-beta.1
+  local new_tag
+  new_tag="$(git tag -l 'v*' | /usr/bin/grep -v 'v2.0.0' | head -1)"
+  [ -n "$new_tag" ]
+  [[ "$new_tag" == "v2.1.0" ]]
+}
+
+# ── Single-pass git log: changelog and release notes are identical ─────────
+
+@test "single_pass_git_log_changelog_and_release_notes_match" {
+  cd "$PROJECT_DIR"
+  run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ]
+
+  # Get the changelog entries from the tag
+  local new_tag
+  new_tag="$(git tag -l 'v*' | grep -v 'v0.0.0' | head -1)"
+  [ -n "$new_tag" ]
+
+  local cl_entries
+  cl_entries="$(git show "${new_tag}:CHANGELOG.md" 2>/dev/null | grep '^- ')"
+
+  # Verify entries match expected commit subjects
+  [[ "$cl_entries" == *"first feature"* ]] || return 1
+  [[ "$cl_entries" == *"second feature"* ]] || return 1
 }
