@@ -612,11 +612,14 @@ _QA_SLOT_HELPER="$(cd "$(dirname "$0")/../lib" && pwd -P)/heavy-reviewer-slots.s
 if [ -f "$_QA_SLOT_HELPER" ]; then
   # shellcheck source=../scripts/lib/heavy-reviewer-slots.sh
   source "$_QA_SLOT_HELPER"
-  heavy_reviewer_acquire
+  # Install release traps BEFORE acquire so a signal in the
+  # acquire-to-trap window cannot leak a slot file on disk.
+  # heavy_reviewer_release is a no-op when nothing is held.
   trap 'heavy_reviewer_release' EXIT
   trap 'heavy_reviewer_release; trap - INT; kill -INT $$' INT
   trap 'heavy_reviewer_release; trap - TERM; kill -TERM $$' TERM
   trap 'heavy_reviewer_release; trap - HUP; kill -HUP $$' HUP
+  heavy_reviewer_acquire
 else
   info "heavy-reviewer-slots.sh not found; proceeding without concurrency cap"
 fi

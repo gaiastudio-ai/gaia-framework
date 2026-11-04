@@ -228,6 +228,38 @@ heavy_reviewer_acquire() {
     return 0
   fi
 
+  # Detect whether any lock primitive is usable before entering the retry
+  # loop. acquire-lock.sh needs either flock (fast path) or ln (fallback).
+  # When neither is available, every acquire_lock call will time out after
+  # its inner bound, and retrying here burns the full wait bound printing
+  # thousands of FATAL lines. Detect this up front and fail open at once.
+  local _hrs_can_lock=1
+  if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
+    # Parallel mode requires flock specifically.
+    if ! command -v flock >/dev/null 2>&1 \
+       || [ "${GAIA_LOCK_FORCE_FALLBACK:-}" = "1" ]; then
+      _hrs_can_lock=0
+    fi
+  else
+    # Sequential mode: flock or ln.
+    if ! command -v flock >/dev/null 2>&1 \
+       && ! command -v ln >/dev/null 2>&1; then
+      _hrs_can_lock=0
+    fi
+    # Forced fallback requires ln.
+    if [ "${GAIA_LOCK_FORCE_FALLBACK:-}" = "1" ] \
+       && ! command -v ln >/dev/null 2>&1; then
+      _hrs_can_lock=0
+    fi
+  fi
+
+  if [ "$_hrs_can_lock" = "0" ]; then
+    printf '%s: warning: no usable lock primitive (flock/ln); proceeding without slot\n' \
+      "$_HRS_SCRIPT_NAME" >&2
+    _HRS_ACQUIRED=0
+    return 0
+  fi
+
   local start_epoch elapsed
   start_epoch="$(date +%s)"
 
@@ -254,8 +286,8 @@ heavy_reviewer_acquire() {
 
     if [ "$live_count" -lt "$limit" ]; then
       _hrs_create_slot
-      release_lock "$_HRS_FD"
       _HRS_ACQUIRED=1
+      release_lock "$_HRS_FD"
       return 0
     fi
 
@@ -323,8 +355,6 @@ heavy_reviewer_run() {
   [ -n "$limit" ] && acquire_args+=(--limit "$limit")
   [ -n "$wait_secs" ] && acquire_args+=(--wait-secs "$wait_secs")
 
-  heavy_reviewer_acquire "${acquire_args[@]+"${acquire_args[@]}"}"
-
   # Run the child in the background and `wait` for it, so that signal
   # traps fire immediately instead of waiting for the foreground child to
   # exit (bash defers trap handlers until a foreground command completes).
@@ -342,6 +372,9 @@ heavy_reviewer_run() {
     _hrs_saved_hup_trap="$(trap -p HUP)"
   fi
 
+  # Install release traps BEFORE acquire so a signal in the
+  # acquire-to-trap window cannot leak a slot file on disk.
+  # heavy_reviewer_release is a no-op when nothing is held.
   trap 'heavy_reviewer_release' EXIT
   trap '
     heavy_reviewer_release
@@ -364,6 +397,8 @@ heavy_reviewer_run() {
     fi
     trap - HUP; kill -HUP $$
   ' HUP
+
+  heavy_reviewer_acquire "${acquire_args[@]+"${acquire_args[@]}"}"
 
   local _hrs_old_monitor
   _hrs_old_monitor=0

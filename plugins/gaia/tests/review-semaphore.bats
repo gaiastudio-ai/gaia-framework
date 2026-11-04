@@ -793,6 +793,50 @@ YAML
   [ "$count" -ge 1 ]
 }
 
+@test "no usable lock primitive proceeds at once with one warning" {
+  # With neither flock nor ln on PATH, the helper should detect the
+  # permanent failure up front and proceed without a slot immediately
+  # rather than retrying until the wait bound.
+  local shim_dir="$BATS_TEST_TMPDIR/no-lock-shim/bin"
+  mkdir -p "$shim_dir"
+  # Provide only the tools heavy-reviewer-slots.sh and acquire-lock.sh need
+  # at runtime, deliberately excluding flock and ln.
+  local t
+  for t in sh bash env perl python3 jq seq awk sed grep cat printf \
+           mktemp rm mkdir dirname basename find tail head sort uniq \
+           wc date tr cut tee stat readlink sleep kill; do
+    local p
+    p="$(command -v "$t" 2>/dev/null)" || continue
+    ln -sf "$p" "$shim_dir/$t"
+  done
+
+  local start_epoch end_epoch elapsed
+  start_epoch="$(date +%s)"
+  run env -u GAIA_PARALLEL_EXECUTION \
+      PATH="$shim_dir" \
+      GAIA_STATE_DIR="$GAIA_STATE_DIR" \
+      GAIA_REVIEW_SEMAPHORE_WAIT_SECS=6 \
+      bash "$SLOT_HELPER" run --limit 4 --wait-secs 6 -- echo CHILD-RAN
+  end_epoch="$(date +%s)"
+  elapsed=$(( end_epoch - start_epoch ))
+
+  [ "$status" -eq 0 ]
+  # The child must still run (fail-open).
+  [[ "$output" == *"CHILD-RAN"* ]] || return 1
+  # Exactly one warning line about no lock primitive.
+  local warn_count
+  warn_count=$(/usr/bin/grep -c 'no usable lock primitive' <<< "$output" 2>/dev/null || echo 0)
+  [ "$warn_count" -eq 1 ] || {
+    echo "expected 1 warning, got $warn_count"
+    return 1
+  }
+  # Must complete in well under the 6s wait bound (immediate).
+  [ "$elapsed" -lt 3 ] || {
+    echo "took ${elapsed}s, expected < 3s"
+    return 1
+  }
+}
+
 # --- stdin passthrough (regression check) ---
 
 @test "heavy_reviewer_run passes stdin through to the child" {
@@ -808,16 +852,16 @@ YAML
 
 @test "TERM to the wrapper process group leaves no orphaned grandchildren" {
   # Launch the wrapper in its own process group, send TERM to the group,
-  # and verify no grandchild survives.
-  local mark="sem-orphan-$$-$RANDOM"
-  local gc_file="$BATS_TEST_TMPDIR/gc-pid"
+  # and verify no grandchild survives. The wrapped command spawns a real
+  # background grandchild (sleep) and records its PID. Killing only the
+  # direct child would leave the grandchild running.
+  local gc_file="$BATS_TEST_TMPDIR/gc-pid-term"
 
-  # Run in a subshell with job control to create a new process group.
   bash -c "
     set -m
     GAIA_STATE_DIR='$GAIA_STATE_DIR' \
       bash '$SLOT_HELPER' run --limit 4 -- \
-        bash -c 'echo \$\$ > \"$gc_file\"; sleep 30' &
+        bash -c 'sleep 30 & echo \$! > \"$gc_file\"; wait' &
     W=\$!
     set +m
     tries=0
@@ -837,11 +881,52 @@ YAML
   gc_pid=$(cat "$gc_file")
 
   if kill -0 "$gc_pid" 2>/dev/null; then
-    echo "FAIL: grandchild survived (pid $gc_pid)"
+    echo "FAIL: grandchild survived TERM (pid $gc_pid)"
     kill "$gc_pid" 2>/dev/null || true
     return 1
   fi
-  # No orphan.
+}
+
+@test "INT to the wrapper process group leaves no orphaned grandchildren" {
+  # Same as the TERM test but with INT (Ctrl-C). Perl resets SIGINT to
+  # SIG_DFL before exec so the wrapper can actually receive and trap INT
+  # (bats backgrounds with SIG_IGN for INT; bash refuses to override it).
+  command -v perl >/dev/null 2>&1 || skip "perl not available"
+  local gc_file="$BATS_TEST_TMPDIR/gc-pid-int"
+  local wrapper_pid_file="$BATS_TEST_TMPDIR/wrapper-pid-int"
+
+  # Use perl to reset SIGINT, then exec the wrapper. The wrapper runs
+  # in a subshell with set -m so it gets its own process group.
+  bash -c "
+    set -m
+    perl -e '\$SIG{INT} = \"DEFAULT\"; exec @ARGV' \
+      env GAIA_STATE_DIR='$GAIA_STATE_DIR' \
+        bash '$SLOT_HELPER' run --limit 4 -- \
+          bash -c 'sleep 300 & echo \$! > \"$gc_file\"; wait' &
+    W=\$!
+    set +m
+    echo \$W > '$wrapper_pid_file'
+    tries=0
+    while [ ! -f '$gc_file' ] && [ \$tries -lt 40 ]; do
+      sleep 0.1; tries=\$((tries + 1))
+    done
+    sleep 0.2
+    kill -INT \$W 2>/dev/null || true
+    wait \$W 2>/dev/null || true
+  " &
+  local outer_pid=$!
+  wait "$outer_pid" 2>/dev/null || true
+  sleep 0.5
+
+  [ -f "$gc_file" ] || { echo "grandchild never started"; return 1; }
+  local gc_pid
+  gc_pid=$(cat "$gc_file")
+
+  if kill -0 "$gc_pid" 2>/dev/null; then
+    echo "FAIL: grandchild survived INT (pid $gc_pid)"
+    kill "$gc_pid" 2>/dev/null || true
+    return 1
+  fi
 }
 
 # --- Behavioural caller wiring: qa-test-runner (AC2) ---
@@ -1004,6 +1089,67 @@ YAML
   [ "$remaining" -eq 0 ]
 }
 
+@test "qa-test-runner INT during a tier exits non-zero and releases slot" {
+  local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
+  [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
+  command -v perl >/dev/null 2>&1 || skip "perl not available"
+
+  local fixture="$BATS_TEST_TMPDIR/qa-int-fixture"
+  mkdir -p "$fixture/.gaia/state" "$fixture/workdir"
+
+  cat > "$fixture/project-config.yaml" <<YAML
+project_root: $fixture
+project_path: $fixture
+memory_path: $fixture/_memory
+checkpoint_path: $fixture/_memory/checkpoints
+installed_path: $fixture
+framework_version: "1.225.0"
+date: "2026-11-04"
+test_execution:
+  tier_1:
+    placement: local
+    command: "bash -c 'echo tier1-started > $fixture/tier1-started; sleep 30'"
+    timeout_seconds: 60
+YAML
+
+  # Perl resets SIGINT to SIG_DFL before exec. This undoes the SIG_IGN
+  # that non-interactive bash sets for background processes, so the
+  # runner's INT trap actually fires on kill -INT.
+  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' \
+    env \
+      GAIA_STATE_DIR="$fixture/.gaia/state" \
+      GAIA_EXECUTION_CONTEXT=local \
+      PROJECT_ROOT="$fixture" \
+      CLAUDE_PROJECT_ROOT="" \
+      CLAUDE_PLUGIN_ROOT="" \
+      PROJECT_PATH="" \
+      bash "$qa_runner" \
+        --story-key "E900-S3" \
+        --workdir "$fixture/workdir" \
+        --config "$fixture/project-config.yaml" &
+  local runner_pid=$!
+
+  local waited=0
+  while [ ! -f "$fixture/tier1-started" ] && [ "$waited" -lt 80 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -f "$fixture/tier1-started" ] || {
+    kill "$runner_pid" 2>/dev/null || true; wait "$runner_pid" 2>/dev/null || true
+    echo "tier1 never started"; return 1
+  }
+
+  kill -INT "$runner_pid" 2>/dev/null || true
+  local rc=0
+  wait "$runner_pid" 2>/dev/null || rc=$?
+
+  [ "$rc" -ne 0 ] || { echo "expected non-zero rc, got $rc"; return 1; }
+
+  local remaining
+  remaining=$(find "$fixture/.gaia/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
 # --- Behavioural caller wiring: phase2-execute (AC2) ---
 # These tests drive the real phase2-execute.sh with a fixture that reaches
 # the slot acquire at Step 4 (ledger + approved plan + empty sources/tests).
@@ -1108,6 +1254,12 @@ YAML
     sleep 0.1
     waited=$((waited + 1))
   done
+  # Assert the slot appeared; if not, the test cannot prove anything.
+  ls "$fixture/state/review-semaphore.d"/slot-* >/dev/null 2>&1 || {
+    kill "$p2_pid" 2>/dev/null || true; wait "$p2_pid" 2>/dev/null || true
+    kill "$watcher_pid" 2>/dev/null || true; wait "$watcher_pid" 2>/dev/null || true
+    echo "FAIL: slot file never appeared"; return 1
+  }
 
   # Send TERM.
   kill -TERM "$p2_pid" 2>/dev/null || true
@@ -1120,6 +1272,60 @@ YAML
   [ "$rc" -ne 0 ]
 
   # Slot must be released via the EXIT/TERM trap.
+  local remaining
+  remaining=$(find "$fixture/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
+@test "phase2-execute INT during execution exits non-zero and releases slot" {
+  local p2="$PLUGIN_DIR/skills/gaia-test-automate/scripts/phase2-execute.sh"
+  [ -f "$p2" ] || skip "phase2-execute.sh not found"
+  command -v bats >/dev/null 2>&1 || skip "bats not on PATH"
+  command -v perl >/dev/null 2>&1 || skip "perl not available"
+
+  local fixture="$BATS_TEST_TMPDIR/p2-int"
+  local test_file="$fixture/gaia-public/plugins/gaia/tests/slow.bats"
+  _p2_make_fixture "$fixture" "$test_file"
+
+  (
+    while [ ! -f "$test_file" ]; do sleep 0.02; done
+    printf '#!/usr/bin/env bats\n# Generated by phase2-execute.sh\n' > "$test_file"
+    printf '@test "slow" { sleep 30; }\n' >> "$test_file"
+  ) &
+  local watcher_pid=$!
+
+  # Perl resets SIGINT to SIG_DFL before exec. This undoes the SIG_IGN
+  # that non-interactive bash sets for background processes, so the
+  # runner's INT trap actually fires on kill -INT.
+  perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV' \
+    env -u CLAUDE_PLUGIN_ROOT GAIA_STATE_DIR="$fixture/state" \
+      bash "$p2" --story E900-S10 --plan "$fixture/plans/p.md" \
+      --ledger "$fixture/ledger" --test-env "$fixture/te.yaml" \
+      --project-root "$fixture" >"$fixture/out" 2>&1 &
+  local p2_pid=$!
+
+  local waited=0
+  while [ "$waited" -lt 80 ]; do
+    if ls "$fixture/state/review-semaphore.d"/slot-* >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  ls "$fixture/state/review-semaphore.d"/slot-* >/dev/null 2>&1 || {
+    kill "$p2_pid" 2>/dev/null || true; wait "$p2_pid" 2>/dev/null || true
+    kill "$watcher_pid" 2>/dev/null || true; wait "$watcher_pid" 2>/dev/null || true
+    echo "FAIL: slot file never appeared"; return 1
+  }
+
+  kill -INT "$p2_pid" 2>/dev/null || true
+  local rc=0
+  wait "$p2_pid" 2>/dev/null || rc=$?
+  kill "$watcher_pid" 2>/dev/null || true
+  wait "$watcher_pid" 2>/dev/null || true
+
+  [ "$rc" -ne 0 ] || { echo "expected non-zero rc, got $rc"; return 1; }
+
   local remaining
   remaining=$(find "$fixture/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
   [ "$remaining" -eq 0 ]
