@@ -1361,12 +1361,12 @@ YAML
   run bash "$SCRIPT_UNDER_TEST" --sprint "42" \
     --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
   # Will fail for other reasons (sprint not found) but NOT for "invalid sprint id"
-  [[ "$output" != *"invalid sprint id"* ]]
+  [[ "$output" != *"invalid sprint id"* ]] || return 1
 
   # sprint- prefixed
   run bash "$SCRIPT_UNDER_TEST" --sprint "sprint-42" \
     --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
-  [[ "$output" != *"invalid sprint id"* ]]
+  [[ "$output" != *"invalid sprint id"* ]] || return 1
 }
 
 @test "digits_only_sprint_id_with_traversal_suffix_rejected" {
@@ -1441,11 +1441,12 @@ YAML
   [ "$rel_count" -eq 0 ]
 }
 
-@test "merge_back_worktree_cleaned_up_on_failed_merge_back_and_rerun_succeeds" {
+@test "gh_pr_create_fails_token_fallback_cleans_worktrees" {
   cd "$PROJECT_DIR"
 
-  # Install a gh stub that fails on "pr create" during merge-back,
-  # simulating a partial failure. "release create" succeeds.
+  # Install a gh stub that fails on "pr create" during merge-back.
+  # The script's || true on gh pr create sends it to the token fallback
+  # path, so the overall run still exits 0.
   cat > "$STUBS_DIR/gh" <<'SH'
 #!/bin/sh
 case "$1" in
@@ -1464,13 +1465,11 @@ exit 0
 SH
   chmod +x "$STUBS_DIR/gh"
 
-  # First run: merge-back PR creation fails, but the release itself completes.
-  # The merge-back function returns 1 but the script still runs cleanup.
   run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
     --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
-  # The run may fail (merge-ledger record may also fail without a PR number)
+  [ "$status" -eq 0 ] || return 1
 
-  # After the failed run, no psr-mergeback-* worktrees should remain
+  # After the run, no psr-mergeback-* worktrees should remain
   local wt_count
   wt_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-mergeback' || true)"
   [ "$wt_count" -eq 0 ]
@@ -1479,6 +1478,90 @@ SH
   local rel_count
   rel_count="$(git worktree list 2>/dev/null | /usr/bin/grep -c 'psr-release' || true)"
   [ "$rel_count" -eq 0 ]
+}
+
+# ── Signal during merge-back: trap cleans up, rerun succeeds ─────────────
+
+# Helper: send a signal while the script is blocked inside the merge-back
+# step (gh pr create), then assert cleanup and same-version rerun.
+_signal_during_merge_back() {
+  local sig="$1" want_rc="$2"
+  cd "$PROJECT_DIR"
+  local tmpd="${TEST_TMP}/tmpd-$$"; mkdir -p "$tmpd"
+
+  local branch_before
+  branch_before="$(git branch --show-current)"
+
+  # gh stub: on "pr create", find the main release script PID by
+  # walking up from this stub's PPID (the $(…) subshell) to its parent
+  # (the main script), then signal it with the chosen signal.
+  # Sleeps briefly so the signal and cleanup can complete.
+  cat > "$STUBS_DIR/gh" <<SH
+#!/bin/sh
+case "\$1" in
+  pr) case "\$2" in
+    create)
+      # \$PPID is the \$(…) subshell; its parent is the main script.
+      _sp=\$(ps -o ppid= -p \$PPID 2>/dev/null | tr -d ' ')
+      [ -n "\$_sp" ] && kill -${sig} "\$_sp" 2>/dev/null || true
+      sleep 1
+      printf 'https://github.com/test/test/pull/42\n'; exit 0 ;;
+  esac ;;
+  release) case "\$2" in create) exit 0 ;; esac ;;
+esac
+exit 0
+SH
+  chmod +x "$STUBS_DIR/gh"
+
+  # Use run: the stub signals the script from inside the child,
+  # which works for both TERM and INT.
+  run env TMPDIR="$tmpd" bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq "$want_rc" ] || return 1
+
+  # Primary branch must be unchanged
+  [ "$(git branch --show-current)" = "$branch_before" ] || return 1
+
+  # No merge-back or release worktrees remain registered
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-mergeback' || true)" -eq 0 ] || return 1
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-release' || true)" -eq 0 ] || return 1
+
+  # No psr-* temp dirs remain
+  [ "$(ls "$tmpd" 2>/dev/null | /usr/bin/grep -c '^psr-' || true)" -eq 0 ] || return 1
+
+  # ── Same-version rerun after dropping the tag ──
+  local newtag
+  newtag="$(git tag -l 'v*' | /usr/bin/grep -v v0.0.0 | head -1)"
+  if [ -n "$newtag" ]; then
+    git tag -d "$newtag" >/dev/null
+    git push origin ":refs/tags/$newtag" >/dev/null 2>&1 || true
+  fi
+
+  # Restore normal gh stub
+  cat > "$STUBS_DIR/gh" <<'SH'
+#!/bin/sh
+case "$1" in
+  pr) case "$2" in create) printf 'https://github.com/test/test/pull/42\n'; exit 0 ;; esac ;;
+  release) case "$2" in create) exit 0 ;; esac ;;
+esac
+exit 0
+SH
+  chmod +x "$STUBS_DIR/gh"
+
+  run env TMPDIR="$tmpd" bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
+    --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
+  [ "$status" -eq 0 ] || return 1
+  [ "$(printf '%s\n' "$output" | /usr/bin/grep '^merge_back_pr=')" = "merge_back_pr=42" ] || return 1
+  [ "$(git worktree list | /usr/bin/grep -c 'psr-mergeback' || true)" -eq 0 ] || return 1
+  [ "$(ls "$tmpd" 2>/dev/null | /usr/bin/grep -c '^psr-' || true)" -eq 0 ] || return 1
+}
+
+@test "term_during_merge_back_cleans_up_and_rerun_succeeds" {
+  _signal_during_merge_back TERM 143
+}
+
+@test "int_during_merge_back_cleans_up_and_rerun_succeeds" {
+  _signal_during_merge_back INT 130
 }
 
 # ── Stray file not staged (explicit staging replaces git add -A) ───────────
@@ -1834,6 +1917,6 @@ SH
   cl_entries="$(git show "${new_tag}:CHANGELOG.md" 2>/dev/null | grep '^- ')"
 
   # Verify entries match expected commit subjects
-  [[ "$cl_entries" == *"first feature"* ]]
-  [[ "$cl_entries" == *"second feature"* ]]
+  [[ "$cl_entries" == *"first feature"* ]] || return 1
+  [[ "$cl_entries" == *"second feature"* ]] || return 1
 }

@@ -2073,11 +2073,11 @@ YAML
   [ "$status" -eq 0 ]
 
   # S1: merge_sha wins over head_sha
-  [[ "$output" == *"bbb0001 E900-S1"* ]]
+  [[ "$output" == *"bbb0001 E900-S1"* ]] || return 1
   # S2: merge_sha provided
-  [[ "$output" == *"bbb0002 E900-S2"* ]]
+  [[ "$output" == *"bbb0002 E900-S2"* ]] || return 1
   # S3: no merge_sha → head_sha fallback
-  [[ "$output" == *"aaa0003 E900-S3"* ]]
+  [[ "$output" == *"aaa0003 E900-S3"* ]] || return 1
 
   # Exactly three output lines (no duplicates, no release intents)
   local out_count
@@ -2165,4 +2165,112 @@ YAML
   run bash "$LEDGER_SH" list --sprint sprint-953 --state-dir "$state_dir"
   [ "$status" -eq 0 ]
   [[ "$output" == *"bbb0006 E900-S6"* ]]
+}
+
+# ── AC8 byte-for-byte equivalence against the old sed reader's output ────
+# Builds intents with the REAL writer plus hand-edited edge shapes from
+# both review reports.  Expected output matches what the old per-field sed
+# reader produced on the same fixture.  Catches: trimmed trailing spaces
+# (a3), delimiter collisions with | (a4), empty-quoted merge_sha (a7),
+# no-space-after-colon, CRLF, duplicate-key-first-malformed, trailing
+# space after closing quote.
+
+@test "list_awk_reader_byte_equivalence_with_edge_shapes" {
+  local state_dir="${BATS_TEST_TMPDIR}/eq-edge"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-960.yaml" <<'YAML'
+sprint_id: "sprint-960"
+status: "closed"
+stories:
+  - "E900-S20"
+  - "E900-S21"
+  - "E900-S22"
+  - "E900-S23"
+  - "E900-S24"
+  - "E900-S25"
+  - "E900-S26"
+  - "E900-S27"
+YAML
+
+  # --- Writer-produced intent (normal) ---
+  bash "$LEDGER_SH" write-gate-pass --pr 301 --head aaa0020 --story E900-S20
+  bash "$LEDGER_SH" write-intent --pr 301 --head aaa0020 --story E900-S20 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state merging
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state merged --merge-sha bbb0020
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state verified
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state smoke_ok
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state finalized
+
+  # --- Hand-edited edge intents ---
+
+  # Unquoted merge_sha with trailing space (kills a3: trim trailing spaces)
+  printf 'story: "E900-S21"\nstate: "merged"\nmode: "story"\nhead_sha: "eee0021"\nmerge_sha: fff0021 \n' \
+    > "$state_dir/merge/intent-eq02-trail.yaml"
+
+  # Empty quoted merge_sha "" (kills a7: empty-quoted not read as empty)
+  cat > "$state_dir/merge/intent-eq03-emptyq.yaml" <<'YAML'
+story: "E900-S22"
+state: "merged"
+mode: "story"
+merge_sha: ""
+head_sha: "eee0022"
+YAML
+
+  # Value containing | in mode (kills a4: naive pipe delimiter)
+  cat > "$state_dir/merge/intent-eq04-pipe.yaml" <<'YAML'
+story: "E900-S23"
+state: "merged"
+mode: "a=b|c"
+head_sha: "eee0023"
+merge_sha: "fff0023"
+YAML
+
+  # No space after colon
+  printf 'story:"E900-S24"\nstate:"merged"\nmode:"story"\nhead_sha:"eee0024"\n' \
+    > "$state_dir/merge/intent-eq05-nospace.yaml"
+
+  # Trailing space after closing quote on state (old reader rejects → not listed)
+  printf 'story: "E900-S25"\nstate: "merged" \nhead_sha: "eee0025"\n' \
+    > "$state_dir/merge/intent-eq06-qtrail.yaml"
+
+  # CRLF line endings (old reader rejects via $-anchor → not listed)
+  printf 'story: "E900-S26"\r\nstate: "merged"\r\nhead_sha: "eee0026"\r\n' \
+    > "$state_dir/merge/intent-eq07-crlf.yaml"
+
+  # Duplicate key: first line malformed (extra chars after quote),
+  # second line valid — first matching line wins
+  printf 'story: "E900-S27"\nstate: "merged"\nmerge_sha: "bad" x\nmerge_sha: "fff0027"\nhead_sha: "eee0027"\n' \
+    > "$state_dir/merge/intent-eq08-dupkey.yaml"
+
+  run bash "$LEDGER_SH" list --sprint sprint-960 --state-dir "$state_dir"
+  [ "$status" -eq 0 ] || return 1
+
+  # Expected output matches the old sed reader byte-for-byte.
+  # Intent files iterate alphabetically: intent-eq02..eq08 before intent-pr301.
+  #   S21: unquoted merge_sha with trailing space preserved ("fff0021 ")
+  #   S22: merge_sha="" → empty → fallback to head_sha
+  #   S23: mode=a=b|c is not "release" → listed
+  #   S24: no-space-after-colon → still parsed
+  #   S25: NOT listed (state regex rejects trailing space after quote)
+  #   S26: NOT listed (CRLF breaks $-anchor)
+  #   S27: first merge_sha line malformed → second valid line wins
+  #   S20: writer-produced, merge_sha wins (intent-pr301 sorts last)
+  local expected
+  expected="$(printf '%s\n' \
+    "fff0021  E900-S21" \
+    "eee0022 E900-S22" \
+    "fff0023 E900-S23" \
+    "eee0024 E900-S24" \
+    "fff0027 E900-S27" \
+    "bbb0020 E900-S20")"
+
+  # Byte-for-byte diff — not a substring check
+  local actual
+  actual="$(printf '%s\n' "$output" | /usr/bin/grep 'E900-S')"
+  [ "$actual" = "$expected" ] || {
+    printf '# EXPECTED:\n%s\n# ACTUAL:\n%s\n' "$expected" "$actual" >&3
+    return 1
+  }
 }

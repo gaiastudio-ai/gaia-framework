@@ -736,48 +736,53 @@ $stories
 EOF
 
   # Collect finalized/merged/verified/smoke_ok/smoke_failed intents.
-  # Single awk pass per intent file extracts all needed fields at once
-  # (story, state, mode, merge_sha, head_sha) instead of one sed call
-  # per field, reducing I/O from O(fields x M) to O(M).
   local found_any=false
   for f in "$ledger_dir"/intent-*.yaml; do
     [ -f "$f" ] || continue
 
     # Single awk pass per intent file — extracts all needed fields at once
     # instead of one sed call per field, reducing I/O from O(fields x M)
-    # to O(M).  Preserves the old per-field sed reader's exact semantics:
-    #   - First occurrence of each key wins (the old sed | head -1).
-    #   - Quoted values: opening/closing quotes stripped, content between
-    #     them returned (empty string for "").
-    #   - Unquoted values: returned as-is including any trailing spaces
-    #     (the old sed captured everything between the optional quotes).
-    #   - Uses \037 (unit separator) as the output field delimiter so
-    #     empty fields are never collapsed by IFS whitespace splitting.
+    # to O(M).  Each key is gated on the old full-line regex
+    # ^key: *"?[^"]*"?$ so malformed lines (CRLF, trailing characters
+    # after the closing quote, embedded quotes) are rejected the same way
+    # the old per-field sed reader rejected them.  First matching line
+    # wins (the old sed | head -1).  One field per output line — values
+    # cannot contain newlines, so no delimiter collision is possible.
     local _ml_awk_out=""
+    # The trailing `printf .` prevents $() from stripping all newlines
+    # when every field is empty (e.g. a CRLF intent where no line matches
+    # the regex).  The sentinel is removed before reading.
     _ml_awk_out="$(awk '
-      function extract(line, key,    v, q1, q2) {
-        # Strip "key: " prefix (with optional spaces after colon)
-        sub("^" key ": *", "", line)
+      function extract(line, key,    v) {
+        if (line !~ ("^" key ": *\"?[^\"]*\"?$")) return "\001"
         v = line
-        # If starts with quote, strip matching quotes (same as old sed)
-        if (substr(v, 1, 1) == "\"") {
-          q1 = index(v, "\"")
-          v = substr(v, q1 + 1)
-          q2 = index(v, "\"")
-          if (q2 > 0) { v = substr(v, 1, q2 - 1) }
-        }
+        sub("^" key ": *", "", v)
+        sub(/^"/, "", v)
+        sub(/"$/, "", v)
         return v
       }
-      /^story: /      && !got_story      { story     = extract($0, "story");     got_story=1 }
-      /^state: /      && !got_state      { state     = extract($0, "state");     got_state=1 }
-      /^mode: /       && !got_mode       { mode      = extract($0, "mode");      got_mode=1 }
-      /^merge_sha: /  && !got_merge_sha  { merge_sha = extract($0, "merge_sha"); got_merge_sha=1 }
-      /^head_sha: /   && !got_head_sha   { head_sha  = extract($0, "head_sha");  got_head_sha=1 }
-      END { printf "%s\037%s\037%s\037%s\037%s\n", story, state, mode, merge_sha, head_sha }
-    ' "$f")" || continue
+      {
+        for (i = 1; i <= 5; i++) {
+          k = K[i]
+          if (!(k in got) && index($0, k ":") == 1) {
+            r = extract($0, k)
+            if (r != "\001") { got[k] = 1; val[k] = r }
+          }
+        }
+      }
+      BEGIN { K[1]="story"; K[2]="state"; K[3]="mode"; K[4]="merge_sha"; K[5]="head_sha" }
+      END { for (i = 1; i <= 5; i++) print val[K[i]] }
+    ' "$f" && printf .)" || continue
+    _ml_awk_out="${_ml_awk_out%.}"
 
     local f_story="" f_state="" f_mode="" f_merge_sha="" f_head_sha=""
-    IFS="$(printf '\037')" read -r f_story f_state f_mode f_merge_sha f_head_sha <<EOF
+    {
+      IFS= read -r f_story
+      IFS= read -r f_state
+      IFS= read -r f_mode
+      IFS= read -r f_merge_sha
+      IFS= read -r f_head_sha
+    } <<EOF
 $_ml_awk_out
 EOF
 
