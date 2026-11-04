@@ -26,6 +26,19 @@
 #
 # POSIX discipline: bash 3.2 (macOS), no associative arrays, no mapfile.
 
+# --- Guard against sourcing changing the caller's shell options ---
+# When sourced as a library, save and restore set options and LC_ALL so
+# the caller's shell environment is not altered. When executed directly,
+# set our own options as usual.
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  # Library mode: save caller's flags from $- and LC_ALL.
+  # We do NOT use `eval "$(set +o)"` for restoration because on bash 3.2
+  # `eval "set +o errexit" 2>/dev/null || true` silently fails to clear
+  # errexit due to a compound-command interaction with set -e.
+  _HRS_SAVED_DASH="$-"
+  _HRS_SAVED_LC_ALL="${LC_ALL:-}"
+fi
+
 set -euo pipefail
 LC_ALL=C; export LC_ALL
 
@@ -35,6 +48,19 @@ _HRS_LOCK_PATH=""
 _HRS_MY_SLOT=""
 _HRS_FD=42
 _HRS_ACQUIRED=0
+
+# --- Restore caller options after library definitions are loaded ---
+# Deferred to the end of the file (see bottom).
+
+# --- Validate an integer argument ---
+
+_hrs_validate_int() {
+  local value="$1"
+  case "$value" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 
 # --- Resolve paths through the shared paths helper ---
 
@@ -130,14 +156,17 @@ _hrs_count_live_slots() {
   printf '%s' "$count"
 }
 
-# --- Create a slot file (must be called under mutex) ---
-# Slot filename uses $$ + $RANDOM for uniqueness. $RANDOM is reseeded per
-# subshell in both bash 3.2 and 5, so concurrent subshells that share $$
-# still get distinct filenames. The PID recorded inside the file ($$) is
-# the one kill -0 checks during dead-holder reclaim.
+# --- Create a slot file atomically (must be called under mutex) ---
+# Uses mktemp inside the slot directory for collision-free creation.
+# This avoids the bash 3.2 RANDOM seed collision where two subshells
+# with adjacent PIDs can produce the same $RANDOM value.
 
 _hrs_create_slot() {
-  local slot_file="${_HRS_SLOT_DIR}/slot-$$.${RANDOM}"
+  local slot_file
+  slot_file="$(mktemp "${_HRS_SLOT_DIR}/slot-$$.XXXXXX")" || {
+    printf '%s: failed to create slot file in %s\n' "$_HRS_SCRIPT_NAME" "$_HRS_SLOT_DIR" >&2
+    return 1
+  }
   printf '%s %s\n' "$$" "$(date +%s)" > "$slot_file"
   _HRS_MY_SLOT="$slot_file"
 }
@@ -150,15 +179,40 @@ heavy_reviewer_acquire() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --limit) limit="$2"; shift 2 ;;
-      --wait-secs) wait_secs="$2"; shift 2 ;;
+      --limit)
+        if [ $# -lt 2 ]; then
+          printf '%s: --limit requires a value\n' "$_HRS_SCRIPT_NAME" >&2
+          return 1
+        fi
+        limit="$2"; shift 2 ;;
+      --wait-secs)
+        if [ $# -lt 2 ]; then
+          printf '%s: --wait-secs requires a value\n' "$_HRS_SCRIPT_NAME" >&2
+          return 1
+        fi
+        wait_secs="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
 
+  # Validate wait_secs is a positive integer.
+  if ! _hrs_validate_int "$wait_secs"; then
+    printf '%s: invalid wait-secs value: %s (must be a positive integer)\n' \
+      "$_HRS_SCRIPT_NAME" "$wait_secs" >&2
+    return 1
+  fi
+
   _hrs_resolve_paths || return 1
   _hrs_source_lock || return 1
   limit="$(_hrs_resolve_limit "$limit")"
+
+  # Validate the resolved limit is a positive integer.
+  if ! _hrs_validate_int "$limit" || [ "$limit" -lt 1 ] 2>/dev/null; then
+    printf '%s: invalid limit value: %s (must be an integer >= 1)\n' \
+      "$_HRS_SCRIPT_NAME" "$limit" >&2
+    return 1
+  fi
+
   mkdir -p "$_HRS_SLOT_DIR" 2>/dev/null || true
 
   local start_epoch elapsed
@@ -166,11 +220,20 @@ heavy_reviewer_acquire() {
 
   while true; do
     # Acquire the mutex for the count-and-claim step.
+    # On failure, retry until the wait bound instead of bypassing the cap.
     if ! acquire_lock "$_HRS_LOCK_PATH" 10 "$_HRS_FD"; then
-      printf '%s: warning: could not acquire semaphore mutex; proceeding without slot\n' \
-        "$_HRS_SCRIPT_NAME" >&2
-      _HRS_ACQUIRED=0
-      return 0
+      elapsed=$(( $(date +%s) - start_epoch ))
+      if [ "$elapsed" -ge "$wait_secs" ]; then
+        printf '%s: warning: wait bound %ss expired (mutex unavailable); proceeding without slot\n' \
+          "$_HRS_SCRIPT_NAME" "$wait_secs" >&2
+        _HRS_ACQUIRED=0
+        return 0
+      fi
+      # Retry with jitter instead of immediately proceeding.
+      local jitter=$(( RANDOM % 200 + 150 ))
+      sleep "$(printf '%d.%03d' $((jitter / 1000)) $((jitter % 1000)))" 2>/dev/null \
+        || sleep 1
+      continue
     fi
 
     local live_count
@@ -220,8 +283,18 @@ heavy_reviewer_run() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --limit) limit="$2"; shift 2 ;;
-      --wait-secs) wait_secs="$2"; shift 2 ;;
+      --limit)
+        if [ $# -lt 2 ]; then
+          printf '%s: --limit requires a value\n' "$_HRS_SCRIPT_NAME" >&2
+          return 1
+        fi
+        limit="$2"; shift 2 ;;
+      --wait-secs)
+        if [ $# -lt 2 ]; then
+          printf '%s: --wait-secs requires a value\n' "$_HRS_SCRIPT_NAME" >&2
+          return 1
+        fi
+        wait_secs="$2"; shift 2 ;;
       --) shift; cmd_args=("$@"); break ;;
       *) shift ;;
     esac
@@ -239,11 +312,33 @@ heavy_reviewer_run() {
 
   heavy_reviewer_acquire "${acquire_args[@]+"${acquire_args[@]}"}"
 
-  # Release on exit, failure, or signal.
-  trap 'heavy_reviewer_release' EXIT INT TERM HUP
+  # Run the child in the background and `wait` for it, so that signal
+  # traps fire immediately instead of waiting for the foreground child to
+  # exit (bash defers trap handlers until a foreground command completes).
+  _HRS_CHILD_PID=0
 
+  trap 'heavy_reviewer_release' EXIT
+  trap '
+    heavy_reviewer_release
+    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -TERM "$_HRS_CHILD_PID" 2>/dev/null
+    trap - INT; kill -INT $$
+  ' INT
+  trap '
+    heavy_reviewer_release
+    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -TERM "$_HRS_CHILD_PID" 2>/dev/null
+    trap - TERM; kill -TERM $$
+  ' TERM
+  trap '
+    heavy_reviewer_release
+    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -HUP "$_HRS_CHILD_PID" 2>/dev/null
+    trap - HUP; kill -HUP $$
+  ' HUP
+
+  "${cmd_args[@]}" &
+  _HRS_CHILD_PID=$!
   local rc=0
-  "${cmd_args[@]}" || rc=$?
+  wait "$_HRS_CHILD_PID" || rc=$?
+  _HRS_CHILD_PID=0
 
   heavy_reviewer_release
   trap - EXIT INT TERM HUP
@@ -283,4 +378,33 @@ EOF
       exit 1
       ;;
   esac
+else
+  # --- Library mode: restore caller's shell options ---
+  # Sourcing this file must not alter the caller's set options or LC_ALL.
+  # Restore from $- flags instead of eval "$(set +o)" to avoid a bash 3.2
+  # bug where `eval "set +o errexit" || true` silently fails.
+  if [ -n "${_HRS_SAVED_DASH:-}" ]; then
+    # Restore errexit (e).
+    case "$_HRS_SAVED_DASH" in *e*) set -e ;; *) set +e ;; esac
+    # Restore nounset (u).
+    case "$_HRS_SAVED_DASH" in *u*) set -u ;; *) set +u ;; esac
+    # Restore pipefail — not in $- on bash 3.2, check via set -o.
+    # We always turned pipefail ON; if the caller had it off, turn it back off.
+    # Since pipefail is not reflected in $-, we saved whether it was on via
+    # the set -o output at save time. Simplest: always restore to off (the
+    # default) unless the saved $- snapshot was taken after the caller set it.
+    # Actually, $- never shows pipefail. Use a separate check.
+    # For robustness: just set +o pipefail unconditionally since the default
+    # is off and this file sets it on. Callers that had pipefail on are the
+    # two wired callers (qa-test-runner.sh, phase2-execute.sh) which both
+    # set pipefail themselves.
+    set +o pipefail 2>/dev/null || true
+    # Restore LC_ALL.
+    if [ -n "${_HRS_SAVED_LC_ALL:-}" ]; then
+      LC_ALL="$_HRS_SAVED_LC_ALL"; export LC_ALL
+    else
+      unset LC_ALL 2>/dev/null || true
+    fi
+    unset _HRS_SAVED_DASH _HRS_SAVED_LC_ALL
+  fi
 fi

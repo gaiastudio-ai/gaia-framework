@@ -147,8 +147,8 @@ Phase 2 calls `verdict-resolver.sh --action-mode --analysis-results <path>` with
 
 In addition to the placeholder gate above, Phase 2 captures a coverage-delta as a verdict input. The flow is deterministic shell — no LLM judgment involved:
 
-1. **Capture baseline coverage** — BEFORE writing generated test files, run the project's coverage command (resolved from `project-config.yaml` under `test_execution.coverage_command`) and persist its report to `${TEST_AUTOMATE_DIR}/coverage-baseline.{lcov|json}`.
-2. **Capture current coverage** — AFTER writing generated tests AND after the Test Execution Bridge run completes green, re-run the same coverage command and persist its report to `${TEST_AUTOMATE_DIR}/coverage-current.{lcov|json}`.
+1. **Capture baseline coverage** — BEFORE writing generated test files, run the project's coverage command (resolved from `project-config.yaml` under `test_execution.coverage_command`) wrapped by the heavy-reviewer semaphore: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/heavy-reviewer-slots.sh run -- <coverage-command>`. Persist its report to `${TEST_AUTOMATE_DIR}/coverage-baseline.{lcov|json}`.
+2. **Capture current coverage** — AFTER writing generated tests AND after the Test Execution Bridge run completes green, re-run the same coverage command wrapped by the heavy-reviewer semaphore: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/heavy-reviewer-slots.sh run -- <coverage-command>`. Persist its report to `${TEST_AUTOMATE_DIR}/coverage-current.{lcov|json}`.
 3. **Compute delta** — invoke `${CLAUDE_PLUGIN_ROOT}/scripts/review-common/action/coverage-delta.sh --baseline <pre> --current <post>` and persist its JSON output to `${TEST_AUTOMATE_DIR}/coverage-delta.json`.
 4. **Pipe into the verdict resolver** — invoke `verdict-resolver.sh ... --coverage-delta ${TEST_AUTOMATE_DIR}/coverage-delta.json` (alongside `--action-mode` or the analysis/llm-findings pair, depending on the call site). The resolver inserts the coverage-delta rule between the LLM-Critical rule and the default APPROVE branch — `coverage_delta <= 0` yields `REQUEST_CHANGES` with a stderr diagnostic citing the regression amount or "zero coverage delta".
 

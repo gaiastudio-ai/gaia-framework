@@ -665,12 +665,19 @@ fi
 # =========================================================================
 
 # Acquire a heavy-reviewer slot before running tests.
-_P2_SLOT_HELPER="${CLAUDE_PLUGIN_ROOT:-}/scripts/lib/heavy-reviewer-slots.sh"
+# Resolve from the script's own computed PLUGIN_ROOT (line 87), not the
+# ambient CLAUDE_PLUGIN_ROOT env var which may be unset.
+_P2_SLOT_HELPER="${PLUGIN_ROOT}/scripts/lib/heavy-reviewer-slots.sh"
+_P2_SLOT_ACQUIRED=0
 if [ -f "$_P2_SLOT_HELPER" ]; then
   # shellcheck source=../../../../scripts/lib/heavy-reviewer-slots.sh
   source "$_P2_SLOT_HELPER"
   heavy_reviewer_acquire
-  trap 'heavy_reviewer_release' EXIT INT TERM HUP
+  _P2_SLOT_ACQUIRED=1
+  trap 'heavy_reviewer_release' EXIT
+  trap 'heavy_reviewer_release; trap - INT; kill -INT $$' INT
+  trap 'heavy_reviewer_release; trap - TERM; kill -TERM $$' TERM
+  trap 'heavy_reviewer_release; trap - HUP; kill -HUP $$' HUP
 else
   info "heavy-reviewer-slots.sh not found; proceeding without concurrency cap"
 fi
@@ -821,7 +828,12 @@ info "Step 5: recording execution results"
 
 # 5.1 — Update plan file: set phase to "executed" and append execution_summary
 TEMP_PLAN="$(mktemp "${PLAN_PATH}.tmp.XXXXXX")"
-trap 'rm -f "$TEMP_PLAN" 2>/dev/null' EXIT
+# Combine temp-plan cleanup with the slot-release trap so neither is lost.
+if [ "$_P2_SLOT_ACQUIRED" = "1" ]; then
+  trap 'rm -f "$TEMP_PLAN" 2>/dev/null; heavy_reviewer_release' EXIT
+else
+  trap 'rm -f "$TEMP_PLAN" 2>/dev/null' EXIT
+fi
 
 awk -v es_at="$EXECUTED_AT" \
     -v es_tests="$TESTS_WRITTEN" \
