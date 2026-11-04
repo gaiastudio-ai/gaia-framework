@@ -256,9 +256,9 @@ YAML
   rm -f "$GAIA_STATE_DIR/review-semaphore.d/slot-${bg_pid}"
 
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'acquired=0'
+  [[ "$output" == *"acquired=0"* ]] || return 1
   # The expiry warning must be logged.
-  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
+  [[ "$output" == *"wait bound"*"expired"* ]] || return 1
 }
 
 @test "heavy_reviewer_run releases slot on child failure" {
@@ -535,9 +535,9 @@ YAML
 
   [ "$status" -eq 0 ]
   # The child should have run (fail-open).
-  echo "$output" | /usr/bin/grep -q 'should-proceed-without-slot'
+  [[ "$output" == *"should-proceed-without-slot"* ]] || return 1
   # The warning about expiry should be logged.
-  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
+  [[ "$output" == *"wait bound"*"expired"* ]] || return 1
 }
 
 @test "default limit 4 is applied when config is absent" {
@@ -564,8 +564,8 @@ YAML
   done
 
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'fifth-proceeded'
-  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
+  [[ "$output" == *"fifth-proceeded"* ]] || return 1
+  [[ "$output" == *"wait bound"*"expired"* ]] || return 1
 }
 
 # --- Lock and slot directory paths (AC2) ---
@@ -659,7 +659,7 @@ YAML
     echo 'OK: caller options preserved (pipefail off)'
   "
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'OK: caller options preserved'
+  [[ "$output" == *"OK: caller options preserved"* ]] || return 1
 }
 
 @test "sourcing the slot helper preserves caller pipefail when on" {
@@ -674,7 +674,7 @@ YAML
     echo 'OK: pipefail preserved as on'
   "
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'OK: pipefail preserved'
+  [[ "$output" == *"OK: pipefail preserved"* ]] || return 1
 }
 
 # --- Caller wiring: qa-test-runner acquires and releases ---
@@ -744,9 +744,9 @@ YAML
 
   [ "$status" -eq 0 ]
   # The child must have run without a wait-bound warning.
-  echo "$output" | /usr/bin/grep -q 'fourth-acquired'
+  [[ "$output" == *"fourth-acquired"* ]] || return 1
   # There must be no expiry warning (it acquired a slot, not failed open).
-  if echo "$output" | /usr/bin/grep -q 'wait bound.*expired'; then
+  if [[ "$output" == *"wait bound"*"expired"* ]]; then
     echo "FAIL: the 4th acquirer should not have waited"
     return 1
   fi
@@ -801,7 +801,7 @@ YAML
     printf 'hello-from-stdin\n' | bash '$SLOT_HELPER' run --limit 4 -- cat
   "
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'hello-from-stdin'
+  [[ "$output" == *"hello-from-stdin"* ]] || return 1
 }
 
 # --- Signal handling kills the child process group (regression) ---
@@ -1146,5 +1146,5 @@ YAML
     echo 'OK: caller traps preserved'
   "
   [ "$status" -eq 0 ]
-  echo "$output" | /usr/bin/grep -q 'OK: caller traps preserved'
+  [[ "$output" == *"OK: caller traps preserved"* ]] || return 1
 }
