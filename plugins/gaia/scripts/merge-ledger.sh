@@ -735,15 +735,31 @@ _ml_cmd_list() {
 $stories
 EOF
 
-  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents
+  # Collect finalized/merged/verified/smoke_ok/smoke_failed intents.
+  # Single awk pass per intent file extracts all needed fields at once
+  # (story, state, mode, merge_sha, head_sha) instead of one sed call
+  # per field, reducing I/O from O(fields x M) to O(M).
   local found_any=false
   for f in "$ledger_dir"/intent-*.yaml; do
     [ -f "$f" ] || continue
 
-    local f_story="" f_state="" f_merge_sha="" f_head_sha="" f_mode=""
-    f_story="$(_ml_read_field "$f" story)" || continue
-    f_state="$(_ml_read_field "$f" state)" || continue
-    f_mode="$(_ml_read_field "$f" mode)" || f_mode=""
+    local _ml_awk_out=""
+    _ml_awk_out="$(awk '
+      /^story: */      { sub(/^story: *"?/, ""); sub(/"? *$/, ""); story=$0 }
+      /^state: */      { sub(/^state: *"?/, ""); sub(/"? *$/, ""); state=$0 }
+      /^mode: */       { sub(/^mode: *"?/, "");  sub(/"? *$/, ""); mode=$0 }
+      /^merge_sha: */  { sub(/^merge_sha: *"?/, ""); sub(/"? *$/, ""); merge_sha=$0 }
+      /^head_sha: */   { sub(/^head_sha: *"?/, ""); sub(/"? *$/, ""); head_sha=$0 }
+      END { printf "%s\t%s\t%s\t%s\t%s\n", story, state, mode, merge_sha, head_sha }
+    ' "$f")" || continue
+
+    local f_story="" f_state="" f_mode="" f_merge_sha="" f_head_sha=""
+    IFS='	' read -r f_story f_state f_mode f_merge_sha f_head_sha <<EOF
+$_ml_awk_out
+EOF
+
+    [ -z "$f_story" ] && continue
+    [ -z "$f_state" ] && continue
 
     # Skip release-mode intents
     [ "$f_mode" = "release" ] && continue
@@ -766,8 +782,6 @@ EOF
     esac
 
     # Get merge SHA (preferred) or head SHA
-    f_merge_sha="$(_ml_read_field "$f" merge_sha)" || f_merge_sha=""
-    f_head_sha="$(_ml_read_field "$f" head_sha)" || f_head_sha=""
     local sha="${f_merge_sha:-$f_head_sha}"
     if [ -z "$sha" ]; then continue; fi
 

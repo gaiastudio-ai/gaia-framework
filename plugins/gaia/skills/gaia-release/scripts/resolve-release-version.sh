@@ -33,7 +33,7 @@ _RRV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_RRV_DIR/../../../scripts/lib/resolve-file-to-stack.sh"
 
 # ---------------------------------------------------------------------------
-# Internal helpers (prefixed with _ to satisfy NFR-052 naming convention)
+# Internal helpers (prefixed with _ per public-function naming convention)
 # ---------------------------------------------------------------------------
 
 _log_err() { printf 'resolve-release-version: %s\n' "$1" >&2; }
@@ -259,7 +259,7 @@ main() {
   esac
 }
 
-# NFR-052: main-guard — sourcing does not run main.
+# Main-guard — sourcing does not run main.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   main "$@"
 fi
