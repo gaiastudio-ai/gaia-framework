@@ -213,7 +213,15 @@ heavy_reviewer_acquire() {
     return 1
   fi
 
-  mkdir -p "$_HRS_SLOT_DIR" 2>/dev/null || true
+  if ! mkdir -p "$_HRS_SLOT_DIR" 2>/dev/null; then
+    # The slot directory cannot be created (e.g., parent path does not exist
+    # or is unwritable). Proceed without a slot rather than entering the
+    # retry loop which would wait the full bound against an unreachable dir.
+    printf '%s: warning: cannot create slot directory %s; proceeding without slot\n' \
+      "$_HRS_SCRIPT_NAME" "$_HRS_SLOT_DIR" >&2
+    _HRS_ACQUIRED=0
+    return 0
+  fi
 
   local start_epoch elapsed
   start_epoch="$(date +%s)"
