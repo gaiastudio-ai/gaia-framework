@@ -2168,12 +2168,12 @@ YAML
 }
 
 # ── AC8 byte-for-byte equivalence against the old sed reader's output ────
-# Builds intents with the REAL writer plus hand-edited edge shapes from
-# both review reports.  Expected output matches what the old per-field sed
-# reader produced on the same fixture.  Catches: trimmed trailing spaces
-# (a3), delimiter collisions with | (a4), empty-quoted merge_sha (a7),
-# no-space-after-colon, CRLF, duplicate-key-first-malformed, trailing
-# space after closing quote.
+# Builds intents with the REAL writer plus hand-edited edge shapes.
+# Expected output matches what the old per-field sed reader produced on
+# the same fixture.  Catches: trailing space on unquoted value is kept,
+# pipe in a value does not split fields, empty quoted value reads as
+# empty, no-space-after-colon, CRLF, duplicate-key-first-malformed,
+# trailing space after closing quote.
 
 @test "list_awk_reader_byte_equivalence_with_edge_shapes" {
   local state_dir="${BATS_TEST_TMPDIR}/eq-edge"
@@ -2205,11 +2205,11 @@ YAML
 
   # --- Hand-edited edge intents ---
 
-  # Unquoted merge_sha with trailing space (kills a3: trim trailing spaces)
+  # Unquoted merge_sha with trailing space — the space must be preserved
   printf 'story: "E900-S21"\nstate: "merged"\nmode: "story"\nhead_sha: "eee0021"\nmerge_sha: fff0021 \n' \
     > "$state_dir/merge/intent-eq02-trail.yaml"
 
-  # Empty quoted merge_sha "" (kills a7: empty-quoted not read as empty)
+  # Empty quoted merge_sha "" — must read as empty so head_sha is used
   cat > "$state_dir/merge/intent-eq03-emptyq.yaml" <<'YAML'
 story: "E900-S22"
 state: "merged"
@@ -2218,7 +2218,7 @@ merge_sha: ""
 head_sha: "eee0022"
 YAML
 
-  # Value containing | in mode (kills a4: naive pipe delimiter)
+  # Value containing | in mode — pipe must not split fields
   cat > "$state_dir/merge/intent-eq04-pipe.yaml" <<'YAML'
 story: "E900-S23"
 state: "merged"
