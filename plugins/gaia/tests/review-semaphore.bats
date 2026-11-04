@@ -12,9 +12,13 @@
 #
 # Component: review-semaphore
 
+load 'test_helper.bash'
+
 # --- setup / teardown ---
 
 setup() {
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
+
   export BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR:-$(mktemp -d)}"
   export GAIA_STATE_DIR="$BATS_TEST_TMPDIR/state"
   mkdir -p "$GAIA_STATE_DIR"
