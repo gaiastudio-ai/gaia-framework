@@ -9,6 +9,10 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  # Isolate the semaphore state so tests never take real slots in the
+  # checkout's .gaia/state directory.
+  export GAIA_STATE_DIR="$TEST_TMP/.gaia/state"
+  mkdir -p "$GAIA_STATE_DIR"
   STORY_KEY="E67-S4"
   WORKDIR="${TEST_TMP}/.gaia/state/review/qa-tests/${STORY_KEY}"
   mkdir -p "$WORKDIR"

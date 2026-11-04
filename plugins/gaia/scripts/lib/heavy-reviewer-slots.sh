@@ -37,6 +37,11 @@ if [ "${BASH_SOURCE[0]}" != "$0" ]; then
   # errexit due to a compound-command interaction with set -e.
   _HRS_SAVED_DASH="$-"
   _HRS_SAVED_LC_ALL="${LC_ALL:-}"
+  # $- does not include pipefail; detect it via set -o output.
+  _HRS_SAVED_PIPEFAIL=0
+  if set -o 2>/dev/null | /usr/bin/grep -q 'pipefail.*on' 2>/dev/null; then
+    _HRS_SAVED_PIPEFAIL=1
+  fi
 fi
 
 set -euo pipefail
@@ -323,33 +328,67 @@ heavy_reviewer_run() {
   # Run the child in the background and `wait` for it, so that signal
   # traps fire immediately instead of waiting for the foreground child to
   # exit (bash defers trap handlers until a foreground command completes).
+  # The child runs in its own process group (set -m) so that on
+  # interruption the entire descendant tree can be signalled, not just
+  # the direct child.
   _HRS_CHILD_PID=0
+
+  # Save and restore the caller's traps when used as a library.
+  local _hrs_saved_exit_trap _hrs_saved_int_trap _hrs_saved_term_trap _hrs_saved_hup_trap
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    _hrs_saved_exit_trap="$(trap -p EXIT)"
+    _hrs_saved_int_trap="$(trap -p INT)"
+    _hrs_saved_term_trap="$(trap -p TERM)"
+    _hrs_saved_hup_trap="$(trap -p HUP)"
+  fi
 
   trap 'heavy_reviewer_release' EXIT
   trap '
     heavy_reviewer_release
-    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -TERM "$_HRS_CHILD_PID" 2>/dev/null
+    if [ "$_HRS_CHILD_PID" -ne 0 ]; then
+      kill -TERM -- "-$_HRS_CHILD_PID" 2>/dev/null || kill -TERM "$_HRS_CHILD_PID" 2>/dev/null || true
+    fi
     trap - INT; kill -INT $$
   ' INT
   trap '
     heavy_reviewer_release
-    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -TERM "$_HRS_CHILD_PID" 2>/dev/null
+    if [ "$_HRS_CHILD_PID" -ne 0 ]; then
+      kill -TERM -- "-$_HRS_CHILD_PID" 2>/dev/null || kill -TERM "$_HRS_CHILD_PID" 2>/dev/null || true
+    fi
     trap - TERM; kill -TERM $$
   ' TERM
   trap '
     heavy_reviewer_release
-    [ "$_HRS_CHILD_PID" -ne 0 ] && kill -HUP "$_HRS_CHILD_PID" 2>/dev/null
+    if [ "$_HRS_CHILD_PID" -ne 0 ]; then
+      kill -HUP -- "-$_HRS_CHILD_PID" 2>/dev/null || kill -HUP "$_HRS_CHILD_PID" 2>/dev/null || true
+    fi
     trap - HUP; kill -HUP $$
   ' HUP
 
-  "${cmd_args[@]}" &
+  local _hrs_old_monitor
+  _hrs_old_monitor=0
+  case "$-" in *m*) _hrs_old_monitor=1 ;; esac
+  set -m 2>/dev/null || true
+  "${cmd_args[@]}" 0<&0 &
   _HRS_CHILD_PID=$!
+  if [ "$_hrs_old_monitor" -eq 0 ]; then
+    set +m 2>/dev/null || true
+  fi
+
   local rc=0
   wait "$_HRS_CHILD_PID" || rc=$?
   _HRS_CHILD_PID=0
 
   heavy_reviewer_release
   trap - EXIT INT TERM HUP
+
+  # Restore the caller's traps when used as a library.
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+    eval "${_hrs_saved_exit_trap:-trap - EXIT}" 2>/dev/null || true
+    eval "${_hrs_saved_int_trap:-trap - INT}" 2>/dev/null || true
+    eval "${_hrs_saved_term_trap:-trap - TERM}" 2>/dev/null || true
+    eval "${_hrs_saved_hup_trap:-trap - HUP}" 2>/dev/null || true
+  fi
 
   return "$rc"
 }
@@ -396,23 +435,18 @@ else
     case "$_HRS_SAVED_DASH" in *e*) set -e ;; *) set +e ;; esac
     # Restore nounset (u).
     case "$_HRS_SAVED_DASH" in *u*) set -u ;; *) set +u ;; esac
-    # Restore pipefail — not in $- on bash 3.2, check via set -o.
-    # We always turned pipefail ON; if the caller had it off, turn it back off.
-    # Since pipefail is not reflected in $-, we saved whether it was on via
-    # the set -o output at save time. Simplest: always restore to off (the
-    # default) unless the saved $- snapshot was taken after the caller set it.
-    # Actually, $- never shows pipefail. Use a separate check.
-    # For robustness: just set +o pipefail unconditionally since the default
-    # is off and this file sets it on. Callers that had pipefail on are the
-    # two wired callers (qa-test-runner.sh, phase2-execute.sh) which both
-    # set pipefail themselves.
-    set +o pipefail 2>/dev/null || true
+    # Restore pipefail from the saved state (not from $- which never shows it).
+    if [ "${_HRS_SAVED_PIPEFAIL:-0}" = "1" ]; then
+      set -o pipefail 2>/dev/null || true
+    else
+      set +o pipefail 2>/dev/null || true
+    fi
     # Restore LC_ALL.
     if [ -n "${_HRS_SAVED_LC_ALL:-}" ]; then
       LC_ALL="$_HRS_SAVED_LC_ALL"; export LC_ALL
     else
       unset LC_ALL 2>/dev/null || true
     fi
-    unset _HRS_SAVED_DASH _HRS_SAVED_LC_ALL
+    unset _HRS_SAVED_DASH _HRS_SAVED_LC_ALL _HRS_SAVED_PIPEFAIL
   fi
 fi

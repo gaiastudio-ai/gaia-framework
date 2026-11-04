@@ -842,4 +842,4 @@
 4	review-telemetry.bats	43
 1	preflight-gate.bats	19
 1	post-ci-smoke.bats	28
-3	review-semaphore.bats	19
+3	review-semaphore.bats	40

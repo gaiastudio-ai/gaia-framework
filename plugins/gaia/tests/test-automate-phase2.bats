@@ -55,6 +55,11 @@ PLUGIN_ROOT_DEFAULT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 setup() {
   common_setup
 
+  # Isolate the semaphore state so tests never take real slots in the
+  # checkout's .gaia/state directory.
+  export GAIA_STATE_DIR="$TEST_TMP/.gaia/state"
+  mkdir -p "$GAIA_STATE_DIR"
+
   PLUGIN_ROOT="${PLUGIN_ROOT:-$PLUGIN_ROOT_DEFAULT}"
   PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "$BATS_TEST_FILENAME")/../../.." && pwd)}"
 

@@ -256,9 +256,9 @@ YAML
   rm -f "$GAIA_STATE_DIR/review-semaphore.d/slot-${bg_pid}"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"acquired=0"* ]]
-  # The expiry warning must be logged (kills M2/M9 — expiry warning deleted).
-  [[ "$output" == *"wait bound"*"expired"* ]]
+  echo "$output" | /usr/bin/grep -q 'acquired=0'
+  # The expiry warning must be logged.
+  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
 }
 
 @test "heavy_reviewer_run releases slot on child failure" {
@@ -298,7 +298,7 @@ YAML
   [[ "$output" == *"hello from child"* ]]
 }
 
-# --- Signal handling (AC2 — release on interruption; kills M2/M7) ---
+# --- Signal handling (AC2 — release on interruption) ---
 
 @test "heavy_reviewer_run terminates on TERM with non-zero exit and releases slot" {
   local sig_log="$BATS_TEST_TMPDIR/sig"
@@ -493,7 +493,7 @@ YAML
   [ "$max_concurrent" -le 2 ]
 }
 
-# --- Configured limit tests (AC1/AC5 — kills M12/M15/M17) ---
+# --- Configured limit tests (AC1/AC5) ---
 
 @test "configured limit is used when no --limit is passed" {
   # Set the config limit to 1, hold one slot with a live process, then
@@ -535,9 +535,9 @@ YAML
 
   [ "$status" -eq 0 ]
   # The child should have run (fail-open).
-  [[ "$output" == *"should-proceed-without-slot"* ]]
+  echo "$output" | /usr/bin/grep -q 'should-proceed-without-slot'
   # The warning about expiry should be logged.
-  [[ "$output" == *"wait bound"*"expired"* ]]
+  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
 }
 
 @test "default limit 4 is applied when config is absent" {
@@ -564,8 +564,8 @@ YAML
   done
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"fifth-proceeded"* ]]
-  [[ "$output" == *"wait bound"*"expired"* ]]
+  echo "$output" | /usr/bin/grep -q 'fifth-proceeded'
+  echo "$output" | /usr/bin/grep -q 'wait bound.*expired'
 }
 
 # --- Lock and slot directory paths (AC2) ---
@@ -576,8 +576,8 @@ YAML
 
   heavy_reviewer_acquire --limit 4
   # Check paths.
-  [[ "$_HRS_SLOT_DIR" == "$GAIA_STATE_DIR/review-semaphore.d" ]]
-  [[ "$_HRS_LOCK_PATH" == "$GAIA_STATE_DIR/review-semaphore.lock" ]]
+  [ "$_HRS_SLOT_DIR" = "$GAIA_STATE_DIR/review-semaphore.d" ]
+  [ "$_HRS_LOCK_PATH" = "$GAIA_STATE_DIR/review-semaphore.lock" ]
   [ -d "$_HRS_SLOT_DIR" ]
 
   heavy_reviewer_release
@@ -629,13 +629,13 @@ YAML
   [[ "$output" == *"invalid wait-secs"* ]]
 }
 
-# --- Sourcing does not change caller shell options (F5/F4) ---
+# --- Sourcing does not change caller shell options ---
 
 @test "sourcing the slot helper does not change caller shell options" {
   # Test that sourcing heavy-reviewer-slots.sh preserves the caller's
-  # set options and LC_ALL. Only the slot helper is tested here (the lock
-  # helper is sourced lazily inside heavy_reviewer_acquire, not at file
-  # source time).
+  # set options, pipefail, and LC_ALL. Only the slot helper is tested
+  # here (the lock helper is sourced lazily inside heavy_reviewer_acquire,
+  # not at file source time).
   run bash -c "
     # Caller starts WITHOUT errexit and WITHOUT pipefail.
     set +e
@@ -656,13 +656,28 @@ YAML
       echo \"FAIL: LC_ALL changed from \$saved_lc to \$current_lc\"
       exit 1
     fi
-    echo 'OK: caller options preserved'
+    echo 'OK: caller options preserved (pipefail off)'
   "
   [ "$status" -eq 0 ]
-  [[ "$output" == *"OK: caller options preserved"* ]]
+  echo "$output" | /usr/bin/grep -q 'OK: caller options preserved'
 }
 
-# --- Caller wiring: qa-test-runner acquires and releases (kills M3/M4/M9) ---
+@test "sourcing the slot helper preserves caller pipefail when on" {
+  # When a caller has pipefail ON before sourcing, it must stay on after.
+  run bash -c "
+    set -euo pipefail
+    source '$SLOT_HELPER'
+    if ! set -o | grep -q 'pipefail.*on'; then
+      echo 'FAIL: pipefail was turned off by source'
+      exit 1
+    fi
+    echo 'OK: pipefail preserved as on'
+  "
+  [ "$status" -eq 0 ]
+  echo "$output" | /usr/bin/grep -q 'OK: pipefail preserved'
+}
+
+# --- Caller wiring: qa-test-runner acquires and releases ---
 
 @test "qa-test-runner acquire line is present and reachable" {
   # Verify that qa-test-runner.sh contains the acquire call.
@@ -675,7 +690,7 @@ YAML
   /usr/bin/grep -q 'kill -TERM' "$qa_runner"
 }
 
-# --- Caller wiring: phase2-execute acquires and releases (kills M5/M10) ---
+# --- Caller wiring: phase2-execute acquires and releases ---
 
 @test "phase2-execute acquire line is present and uses script PLUGIN_ROOT" {
   # Verify that phase2-execute.sh uses the script's own PLUGIN_ROOT, not
@@ -701,4 +716,435 @@ YAML
   local wrapper_count
   wrapper_count=$(/usr/bin/grep -c 'heavy-reviewer-slots.sh run' "$skill_md")
   [ "$wrapper_count" -ge 2 ]
+}
+
+# --- Default limit pinned at exactly 4 (AC1) ---
+
+@test "default limit 4: the 4th of 4 acquires without waiting" {
+  # With 3 live slots held, a 4th acquirer must succeed immediately
+  # (not wait and fail open). This pins the default at exactly 4.
+  mkdir -p "$GAIA_STATE_DIR/review-semaphore.d"
+
+  local pids=()
+  for i in 1 2 3; do
+    sleep 30 &
+    pids+=($!)
+    printf '%s %s\n' "${pids[$((i-1))]}" "$(date +%s)" > "$GAIA_STATE_DIR/review-semaphore.d/slot-${pids[$((i-1))]}.0"
+  done
+
+  # The 4th acquirer with no config and no --limit should succeed (default 4).
+  run env GAIA_STATE_DIR="$GAIA_STATE_DIR" \
+      GAIA_REVIEW_SEMAPHORE_WAIT_SECS=3 \
+      bash "$SLOT_HELPER" run --wait-secs 3 -- echo "fourth-acquired"
+
+  for pid in "${pids[@]}"; do
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+
+  [ "$status" -eq 0 ]
+  # The child must have run without a wait-bound warning.
+  echo "$output" | /usr/bin/grep -q 'fourth-acquired'
+  # There must be no expiry warning (it acquired a slot, not failed open).
+  if echo "$output" | /usr/bin/grep -q 'wait bound.*expired'; then
+    echo "FAIL: the 4th acquirer should not have waited"
+    return 1
+  fi
+}
+
+# --- Mutex-failure retry path (AC3) ---
+
+@test "mutex failure retries instead of proceeding immediately" {
+  # Hold the semaphore lock for 11 seconds (longer than the 10s acquire
+  # timeout), so the first acquire_lock call fails. The helper should
+  # then retry. After the lock is released, the retry succeeds and a
+  # slot is acquired. A bypass mutant would return immediately with no
+  # slot, so the child sees 0 slot files.
+  source "$LOCK_HELPER"
+
+  mkdir -p "$GAIA_STATE_DIR/review-semaphore.d"
+  local lockfile="$GAIA_STATE_DIR/review-semaphore.lock"
+  local slot_marker="$BATS_TEST_TMPDIR/slot-seen"
+
+  # Hold the lock for 11 seconds (one second past the 10s acquire timeout).
+  (
+    source "$LOCK_HELPER"
+    acquire_lock "$lockfile" 5 42 || exit 1
+    sleep 11
+    release_lock 42
+  ) &
+  local holder_pid=$!
+  sleep 0.3  # let the holder grab the lock
+
+  # The child reports how many slot files exist during execution.
+  run env GAIA_STATE_DIR="$GAIA_STATE_DIR" \
+      GAIA_REVIEW_SEMAPHORE_WAIT_SECS=20 \
+      bash "$SLOT_HELPER" run --limit 4 --wait-secs 20 -- \
+        bash -c "count=\$(ls '$GAIA_STATE_DIR/review-semaphore.d'/slot-* 2>/dev/null | wc -l); echo slot-count=\$count > '$slot_marker'"
+
+  wait "$holder_pid" 2>/dev/null || true
+
+  [ "$status" -eq 0 ]
+  [ -f "$slot_marker" ]
+  # With the retry, a slot was acquired (count >= 1). Without it (mutant),
+  # no slot file is created, so count is 0.
+  local count
+  count=$(sed 's/slot-count=//' "$slot_marker" | tr -d ' ')
+  [ "$count" -ge 1 ]
+}
+
+# --- stdin passthrough (regression check) ---
+
+@test "heavy_reviewer_run passes stdin through to the child" {
+  run bash -c "
+    export GAIA_STATE_DIR='$GAIA_STATE_DIR'
+    printf 'hello-from-stdin\n' | bash '$SLOT_HELPER' run --limit 4 -- cat
+  "
+  [ "$status" -eq 0 ]
+  echo "$output" | /usr/bin/grep -q 'hello-from-stdin'
+}
+
+# --- Signal handling kills the child process group (regression) ---
+
+@test "TERM to the wrapper process group leaves no orphaned grandchildren" {
+  # Launch the wrapper in its own process group, send TERM to the group,
+  # and verify no grandchild survives.
+  local mark="sem-orphan-$$-$RANDOM"
+  local gc_file="$BATS_TEST_TMPDIR/gc-pid"
+
+  # Run in a subshell with job control to create a new process group.
+  bash -c "
+    set -m
+    GAIA_STATE_DIR='$GAIA_STATE_DIR' \
+      bash '$SLOT_HELPER' run --limit 4 -- \
+        bash -c 'echo \$\$ > \"$gc_file\"; sleep 30' &
+    W=\$!
+    set +m
+    tries=0
+    while [ ! -f '$gc_file' ] && [ \$tries -lt 40 ]; do
+      sleep 0.1; tries=\$((tries + 1))
+    done
+    sleep 0.2
+    kill -TERM -- -\$W 2>/dev/null || true
+    wait \$W 2>/dev/null || true
+  " &
+  local outer_pid=$!
+  wait "$outer_pid" 2>/dev/null || true
+  sleep 0.5
+
+  [ -f "$gc_file" ] || { echo "grandchild never started"; return 1; }
+  local gc_pid
+  gc_pid=$(cat "$gc_file")
+
+  if kill -0 "$gc_pid" 2>/dev/null; then
+    echo "FAIL: grandchild survived (pid $gc_pid)"
+    kill "$gc_pid" 2>/dev/null || true
+    return 1
+  fi
+  # No orphan.
+}
+
+# --- Behavioural caller wiring: qa-test-runner (AC2) ---
+
+@test "qa-test-runner takes a slot while running and releases on success" {
+  # Run qa-test-runner.sh with a tier command that checks for a slot file
+  # via a marker. The tier command writes to a file so we can verify a
+  # slot existed during execution, even though the runner captures tier output.
+  local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
+  [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
+
+  local fixture="$BATS_TEST_TMPDIR/qa-fixture"
+  mkdir -p "$fixture/.gaia/state" "$fixture/workdir"
+  local slot_marker="$fixture/slot-seen"
+
+  # The tier command: check if a slot file exists and write the result to a marker file.
+  cat > "$fixture/project-config.yaml" <<YAML
+project_root: $fixture
+project_path: $fixture
+memory_path: $fixture/_memory
+checkpoint_path: $fixture/_memory/checkpoints
+installed_path: $fixture
+framework_version: "1.225.0"
+date: "2026-11-04"
+test_execution:
+  tier_1:
+    placement: local
+    command: "bash -c 'ls $fixture/.gaia/state/review-semaphore.d/slot-* >/dev/null 2>&1 && echo HELD > $slot_marker || echo NONE > $slot_marker; true'"
+    timeout_seconds: 30
+YAML
+
+  run env \
+    GAIA_STATE_DIR="$fixture/.gaia/state" \
+    GAIA_EXECUTION_CONTEXT=local \
+    PROJECT_ROOT="$fixture" \
+    CLAUDE_PROJECT_ROOT="" \
+    CLAUDE_PLUGIN_ROOT="" \
+    PROJECT_PATH="" \
+    bash "$qa_runner" \
+      --story-key "E900-S1" \
+      --workdir "$fixture/workdir" \
+      --config "$fixture/project-config.yaml"
+
+  [ "$status" -eq 0 ]
+
+  # A slot must have been held during the tier.
+  [ -f "$slot_marker" ]
+  /usr/bin/grep -q 'HELD' "$slot_marker"
+
+  # After completion, no slot files should remain.
+  local remaining
+  remaining=$(find "$fixture/.gaia/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
+@test "qa-test-runner releases slot even when a tier command fails" {
+  local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
+  [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
+
+  local fixture="$BATS_TEST_TMPDIR/qa-fail-fixture"
+  mkdir -p "$fixture/.gaia/state" "$fixture/workdir"
+
+  cat > "$fixture/project-config.yaml" <<YAML
+project_root: $fixture
+project_path: $fixture
+memory_path: $fixture/_memory
+checkpoint_path: $fixture/_memory/checkpoints
+installed_path: $fixture
+framework_version: "1.225.0"
+date: "2026-11-04"
+test_execution:
+  tier_1:
+    placement: local
+    command: "false"
+    timeout_seconds: 30
+YAML
+
+  run env \
+    GAIA_STATE_DIR="$fixture/.gaia/state" \
+    GAIA_EXECUTION_CONTEXT=local \
+    PROJECT_ROOT="$fixture" \
+    CLAUDE_PROJECT_ROOT="" \
+    CLAUDE_PLUGIN_ROOT="" \
+    PROJECT_PATH="" \
+    bash "$qa_runner" \
+      --story-key "E900-S2" \
+      --workdir "$fixture/workdir" \
+      --config "$fixture/project-config.yaml"
+
+  # The runner records tier failures as evidence (exit 0 is expected).
+  # Slot must be released regardless of tier outcome.
+  local remaining
+  remaining=$(find "$fixture/.gaia/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
+@test "qa-test-runner TERM during a tier exits non-zero and releases slot" {
+  local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
+  [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
+
+  local fixture="$BATS_TEST_TMPDIR/qa-term-fixture"
+  mkdir -p "$fixture/.gaia/state" "$fixture/workdir"
+  local tier2_marker="$fixture/tier2-ran"
+
+  # Tier 1 sleeps for a while (so we can send TERM); tier 2 should never run.
+  cat > "$fixture/project-config.yaml" <<YAML
+project_root: $fixture
+project_path: $fixture
+memory_path: $fixture/_memory
+checkpoint_path: $fixture/_memory/checkpoints
+installed_path: $fixture
+framework_version: "1.225.0"
+date: "2026-11-04"
+test_execution:
+  tier_1:
+    placement: local
+    command: "bash -c 'echo tier1-started > $fixture/tier1-started; sleep 30'"
+    timeout_seconds: 60
+  tier_2:
+    placement: local
+    command: "bash -c 'echo tier2-ran > $tier2_marker'"
+    timeout_seconds: 30
+YAML
+
+  env \
+    GAIA_STATE_DIR="$fixture/.gaia/state" \
+    GAIA_EXECUTION_CONTEXT=local \
+    PROJECT_ROOT="$fixture" \
+    CLAUDE_PROJECT_ROOT="" \
+    CLAUDE_PLUGIN_ROOT="" \
+    PROJECT_PATH="" \
+    bash "$qa_runner" \
+      --story-key "E900-S3" \
+      --workdir "$fixture/workdir" \
+      --config "$fixture/project-config.yaml" &
+  local runner_pid=$!
+
+  # Wait for tier 1 to start.
+  local waited=0
+  while [ ! -f "$fixture/tier1-started" ] && [ "$waited" -lt 40 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -f "$fixture/tier1-started" ]
+
+  # Send TERM to the runner.
+  kill -TERM "$runner_pid" 2>/dev/null || true
+  local rc=0
+  wait "$runner_pid" 2>/dev/null || rc=$?
+
+  # Runner must exit non-zero.
+  [ "$rc" -ne 0 ]
+
+  # Tier 2 must NOT have run.
+  [ ! -f "$tier2_marker" ]
+
+  # Slot must be released.
+  local remaining
+  remaining=$(find "$fixture/.gaia/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
+# --- Behavioural caller wiring: phase2-execute (AC2) ---
+
+@test "phase2-execute releases slot on completion or failure" {
+  # Run phase2-execute.sh with a minimal fixture. The script will fail
+  # (missing ledger, bad plan, etc.), but the slot must be released
+  # through the EXIT trap regardless.
+  local p2="$PLUGIN_DIR/skills/gaia-test-automate/scripts/phase2-execute.sh"
+  [ -f "$p2" ] || skip "phase2-execute.sh not found"
+
+  local fixture="$BATS_TEST_TMPDIR/p2-fixture"
+  mkdir -p "$fixture/.gaia/state/review-semaphore.d"
+  mkdir -p "$fixture/.gaia/state/review/test-automate"
+
+  # A plan file that will fail validation (missing ledger etc.), but the
+  # slot helper runs before the validation steps.
+  local plan_path="$fixture/.gaia/state/review/test-automate/E900-S10-plan.yaml"
+  cat > "$plan_path" <<'YAML'
+---
+plan_id: plan-001
+story_key: E900-S10
+phase: approved
+---
+analyzed_sources: []
+proposed_tests: []
+YAML
+
+  # Run: the script will exit non-zero but the slot must still be released.
+  env \
+    GAIA_STATE_DIR="$fixture/.gaia/state" \
+    PROJECT_ROOT="$fixture" \
+    CLAUDE_PROJECT_ROOT="" \
+    CLAUDE_PLUGIN_ROOT="" \
+    bash "$p2" \
+      --story-key "E900-S10" \
+      --plan "$plan_path" >/dev/null 2>&1 || true
+
+  # The slot must be released through the EXIT trap.
+  local remaining
+  remaining=$(find "$fixture/.gaia/state/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ]
+}
+
+# --- AC5: independence test reads configured value (not explicit --limit) ---
+
+@test "semaphore independence: configured limit used without explicit --limit" {
+  # Set review limit to 2 and dev-slot limit to 8 in config. Run 3
+  # concurrent holders WITHOUT --limit. If the dev-slot limit (8) were
+  # used, all 3 would run at once; with the review limit (2), max
+  # concurrent must be 2.
+  [ -x "$RESOLVE_CONFIG" ] || skip "resolve-config.sh not executable"
+
+  local project_root="$BATS_TEST_TMPDIR/indep-proj"
+  mkdir -p "$project_root/.gaia/config" "$project_root/.gaia/state"
+  cat > "$project_root/.gaia/config/project-config.yaml" <<'YAML'
+project_name: test-project
+stacks:
+  - name: bash-dev
+    path: "."
+parallel_execution:
+  max_parallel_dev_slots: 8
+review:
+  max_concurrent_heavy_reviewers: 2
+YAML
+
+  local state_dir="$project_root/.gaia/state"
+  local log_dir="$BATS_TEST_TMPDIR/indep-log"
+  mkdir -p "$log_dir"
+
+  local ms_cmd
+  if perl -MTime::HiRes -e '1' 2>/dev/null; then
+    ms_cmd='perl -MTime::HiRes -e "printf qq{%.3f\n}, Time::HiRes::time()"'
+  else
+    ms_cmd='date +%s.%N'
+  fi
+
+  local pids=()
+  for i in 1 2 3; do
+    env GAIA_STATE_DIR="$state_dir" \
+        PROJECT_ROOT="$project_root" \
+      bash "$SLOT_HELPER" run --wait-secs 15 -- bash -c "
+        $ms_cmd > '$log_dir/start-$i'
+        sleep 1
+        $ms_cmd > '$log_dir/end-$i'
+      " &
+    pids+=($!)
+  done
+
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+
+  # Verify max concurrent is at most 2.
+  local max_concurrent=0
+  for i in 1 2 3; do
+    [ -f "$log_dir/start-$i" ] && [ -f "$log_dir/end-$i" ] || continue
+    local si
+    si="$(cat "$log_dir/start-$i")"
+    local concurrent=0
+    for j in 1 2 3; do
+      [ -f "$log_dir/start-$j" ] && [ -f "$log_dir/end-$j" ] || continue
+      local sj ej
+      sj="$(cat "$log_dir/start-$j")"
+      ej="$(cat "$log_dir/end-$j")"
+      if awk -v si="$si" -v sj="$sj" -v ej="$ej" \
+          'BEGIN { exit !( sj+0 <= si+0 && si+0 < ej+0 ) }'; then
+        concurrent=$((concurrent + 1))
+      fi
+    done
+    if [ "$concurrent" -gt "$max_concurrent" ]; then
+      max_concurrent="$concurrent"
+    fi
+  done
+
+  echo "max concurrent observed: $max_concurrent (review limit: 2, dev-slot limit: 8)"
+  [ "$max_concurrent" -le 2 ]
+}
+
+# --- Library-mode run preserves caller traps ---
+
+@test "library-mode heavy_reviewer_run does not wipe caller traps" {
+  run bash -c "
+    source '$LOCK_HELPER'
+    source '$SLOT_HELPER'
+    export GAIA_STATE_DIR='$GAIA_STATE_DIR'
+    # Set caller traps.
+    trap 'echo caller-exit-cleanup' EXIT
+    trap 'echo caller-int' INT
+    heavy_reviewer_run --limit 4 -- true
+    # After run returns, caller traps should still be set.
+    exit_trap=\$(trap -p EXIT)
+    int_trap=\$(trap -p INT)
+    if [ -z \"\$exit_trap\" ]; then
+      echo 'FAIL: EXIT trap was wiped'
+      exit 1
+    fi
+    if [ -z \"\$int_trap\" ]; then
+      echo 'FAIL: INT trap was wiped'
+      exit 1
+    fi
+    echo 'OK: caller traps preserved'
+  "
+  [ "$status" -eq 0 ]
+  echo "$output" | /usr/bin/grep -q 'OK: caller traps preserved'
 }

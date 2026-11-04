@@ -17,7 +17,12 @@
 
 load 'test_helper.bash'
 
-setup() { common_setup; }
+setup() {
+  common_setup
+  # Isolate the semaphore state so tests never take real slots.
+  export GAIA_STATE_DIR="$TEST_TMP/.gaia/state"
+  mkdir -p "$GAIA_STATE_DIR"
+}
 teardown() { common_teardown; }
 
 PHASE2_SH="$(cd "$BATS_TEST_DIRNAME/../skills/gaia-test-automate/scripts" && pwd)/phase2-execute.sh"
