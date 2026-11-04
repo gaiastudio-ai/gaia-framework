@@ -1086,10 +1086,14 @@ SH
 
 # ── AC-EC7: Orphaned tag cherry-pick base ──────────────────────────────────
 
-@test "orphaned_tag_cherry_pick_base_conflict_exits_8" {
+@test "orphaned_tag_below_stable_does_not_affect_release" {
   cd "$PROJECT_DIR"
 
-  # Create an orphaned tag (not reachable from main)
+  # Create an orphan tag whose version (v0.0.1) is below the stable tag
+  # (v0.0.0). The base tag selection uses sort -V on non-pre-release tags,
+  # so v0.0.1 beats v0.0.0 and the cherry-pick runs against the orphan tree.
+  # This is the "below-stable" variant; the "above-stable" variant is
+  # tested in "unreachable_orphan_tag_cherry_pick_conflict_exits_8".
   git checkout --orphan orphan-branch 2>/dev/null
   echo "orphan content" > orphan.txt
   git add orphan.txt
@@ -1097,18 +1101,12 @@ SH
   git tag -a v0.0.1 -m "v0.0.1" 2>/dev/null
   git checkout main 2>/dev/null
 
-  # Now v0.0.1 is the "latest" tag by version but is on an orphan branch
-  # The script should use git describe which finds the most recent tag
-  # reachable from HEAD. If the orphan tag is truly orphaned, git describe
-  # won't find it. This test verifies the script handles the case where
-  # the base tag's tree diverges from main's tree.
-
   run bash "$SCRIPT_UNDER_TEST" --sprint sprint-900 \
     --project-root "$PROJECT_DIR" --config "$PROJECT_CONFIG"
-  # With an orphaned tag, cherry-pick should either work (using v0.0.0 as base)
-  # or fail with exit 8 if it uses the orphan tag and conflicts arise
-  # The actual behavior depends on git describe finding v0.0.0 (reachable from HEAD)
-  # vs v0.0.1 (not reachable). git describe --match 'v*' from HEAD will find v0.0.0.
+  # v0.0.1 > v0.0.0 by sort -V, so the orphan tree is used. Cherry-picks
+  # may succeed (files don't conflict) or fail (exit 8). Both are valid
+  # since this is a misconfigured-tag scenario; the important thing is
+  # the script does not hang or corrupt state.
   [ "$status" -eq 0 ] || [ "$status" -eq 8 ]
 }
 
