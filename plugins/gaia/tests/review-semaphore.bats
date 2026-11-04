@@ -358,14 +358,13 @@ YAML
   fi
 
   # Launch $total holders as separate processes via the CLI wrapper.
+  # Use bash (not sh) for the child — dash on Linux lacks local/eval compat.
   local pids=()
   for i in $(seq 1 "$total"); do
-    bash "$SLOT_HELPER" run --limit "$limit" --wait-secs 30 -- sh -c "
-      eval $ms_cmd > '$log_dir/start-$i'
-      # Hold for approximately $hold_ms ms.
-      local ms=$hold_ms
-      sleep \$(printf '%d.%03d' \$((ms / 1000)) \$((ms % 1000)))
-      eval $ms_cmd > '$log_dir/end-$i'
+    bash "$SLOT_HELPER" run --limit "$limit" --wait-secs 30 -- bash -c "
+      $ms_cmd > '$log_dir/start-$i'
+      sleep 1.5
+      $ms_cmd > '$log_dir/end-$i'
     " &
     pids+=($!)
   done
@@ -456,10 +455,10 @@ YAML
 
   local pids=()
   for i in 1 2 3; do
-    bash "$SLOT_HELPER" run --limit 2 --wait-secs 15 -- sh -c "
-      eval $ms_cmd > '$log_dir/start-$i'
+    bash "$SLOT_HELPER" run --limit 2 --wait-secs 15 -- bash -c "
+      $ms_cmd > '$log_dir/start-$i'
       sleep 1
-      eval $ms_cmd > '$log_dir/end-$i'
+      $ms_cmd > '$log_dir/end-$i'
     " &
     pids+=($!)
   done
