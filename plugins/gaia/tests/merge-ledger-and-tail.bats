@@ -2028,3 +2028,249 @@ YAML
   line_count=$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S1')
   [ "$line_count" -eq 1 ]
 }
+
+# ── AC8 equivalence: awk reader matches old per-field reader on edge cases ──
+
+@test "list_awk_reader_equivalence_writer_produced_intents" {
+  # Build intents via the REAL writer, then list and compare against
+  # expected output (the same output the old per-field reader produced).
+  local state_dir="${BATS_TEST_TMPDIR}/eq-state"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-950.yaml" <<'YAML'
+sprint_id: "sprint-950"
+status: "closed"
+stories:
+  - "E900-S1"
+  - "E900-S2"
+  - "E900-S3"
+YAML
+
+  # Three stories via the real writer with different state progressions.
+  # S1: finalized with a different merge_sha (merge wins over head)
+  bash "$LEDGER_SH" write-gate-pass --pr 201 --head aaa0001 --story E900-S1
+  bash "$LEDGER_SH" write-intent --pr 201 --head aaa0001 --story E900-S1 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state merging
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state merged --merge-sha bbb0001
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state verified
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state smoke_ok
+  bash "$LEDGER_SH" advance --pr 201 --head aaa0001 --state finalized
+
+  # S2: merged (no further progression), merge_sha provided
+  bash "$LEDGER_SH" write-gate-pass --pr 202 --head aaa0002 --story E900-S2
+  bash "$LEDGER_SH" write-intent --pr 202 --head aaa0002 --story E900-S2 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 202 --head aaa0002 --state merging
+  bash "$LEDGER_SH" advance --pr 202 --head aaa0002 --state merged --merge-sha bbb0002
+
+  # S3: merged without merge_sha (head_sha used as fallback)
+  bash "$LEDGER_SH" write-gate-pass --pr 203 --head aaa0003 --story E900-S3
+  bash "$LEDGER_SH" write-intent --pr 203 --head aaa0003 --story E900-S3 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 203 --head aaa0003 --state merging
+  bash "$LEDGER_SH" advance --pr 203 --head aaa0003 --state merged
+
+  run bash "$LEDGER_SH" list --sprint sprint-950 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+
+  # S1: merge_sha wins over head_sha
+  [[ "$output" == *"bbb0001 E900-S1"* ]] || return 1
+  # S2: merge_sha provided
+  [[ "$output" == *"bbb0002 E900-S2"* ]] || return 1
+  # S3: no merge_sha → head_sha fallback
+  [[ "$output" == *"aaa0003 E900-S3"* ]] || return 1
+
+  # Exactly three output lines (no duplicates, no release intents)
+  local out_count
+  out_count="$(printf '%s\n' "$output" | /usr/bin/grep -c 'E900-S')"
+  [ "$out_count" -eq 3 ]
+}
+
+@test "list_awk_reader_duplicate_merge_sha_first_wins" {
+  # An idempotent advance --state merged --merge-sha <other> appends a
+  # second merge_sha line. The reader must use the FIRST occurrence.
+  local state_dir="${BATS_TEST_TMPDIR}/eq-dup"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-951.yaml" <<'YAML'
+sprint_id: "sprint-951"
+status: "closed"
+stories:
+  - "E900-S4"
+YAML
+
+  bash "$LEDGER_SH" write-gate-pass --pr 204 --head aaa0004 --story E900-S4
+  bash "$LEDGER_SH" write-intent --pr 204 --head aaa0004 --story E900-S4 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merging
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merged --merge-sha bbb0004
+
+  # Idempotent re-advance with a DIFFERENT merge sha
+  bash "$LEDGER_SH" advance --pr 204 --head aaa0004 --state merged --merge-sha ccc0004
+
+  run bash "$LEDGER_SH" list --sprint sprint-951 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+
+  # First merge_sha wins
+  [[ "$output" == *"bbb0004 E900-S4"* ]]
+}
+
+@test "list_awk_reader_missing_mode_field_still_lists" {
+  # A legacy intent without a mode field should still be listed (mode
+  # defaults to empty, which is not "release").
+  local state_dir="${BATS_TEST_TMPDIR}/eq-nomode"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-952.yaml" <<'YAML'
+sprint_id: "sprint-952"
+status: "closed"
+stories:
+  - "E900-S5"
+YAML
+
+  # Hand-written legacy intent (no mode field)
+  cat > "$state_dir/merge/intent-pr205-legacy.yaml" <<'YAML'
+story: "E900-S5"
+state: "finalized"
+head_sha: "aaa0005"
+merge_sha: "bbb0005"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint sprint-952 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbb0005 E900-S5"* ]]
+}
+
+@test "list_awk_reader_empty_mode_field_not_release" {
+  # An intent with mode: "" should not be treated as release-mode.
+  local state_dir="${BATS_TEST_TMPDIR}/eq-emptymode"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-953.yaml" <<'YAML'
+sprint_id: "sprint-953"
+status: "closed"
+stories:
+  - "E900-S6"
+YAML
+
+  cat > "$state_dir/merge/intent-pr206-emptymode.yaml" <<'YAML'
+story: "E900-S6"
+state: "merged"
+mode: ""
+head_sha: "aaa0006"
+merge_sha: "bbb0006"
+YAML
+
+  run bash "$LEDGER_SH" list --sprint sprint-953 --state-dir "$state_dir"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bbb0006 E900-S6"* ]]
+}
+
+# ── AC8 byte-for-byte equivalence against the old sed reader's output ────
+# Builds intents with the REAL writer plus hand-edited edge shapes.
+# Expected output matches what the old per-field sed reader produced on
+# the same fixture.  Catches: trailing space on unquoted value is kept,
+# pipe in a value does not split fields, empty quoted value reads as
+# empty, no-space-after-colon, CRLF, duplicate-key-first-malformed,
+# trailing space after closing quote.
+
+@test "list_awk_reader_byte_equivalence_with_edge_shapes" {
+  local state_dir="${BATS_TEST_TMPDIR}/eq-edge"
+  mkdir -p "$state_dir/merge"
+  export MERGE_LEDGER_DIR="$state_dir/merge"
+
+  cat > "$state_dir/sprint-status-sprint-960.yaml" <<'YAML'
+sprint_id: "sprint-960"
+status: "closed"
+stories:
+  - "E900-S20"
+  - "E900-S21"
+  - "E900-S22"
+  - "E900-S23"
+  - "E900-S24"
+  - "E900-S25"
+  - "E900-S26"
+  - "E900-S27"
+YAML
+
+  # --- Writer-produced intent (normal) ---
+  bash "$LEDGER_SH" write-gate-pass --pr 301 --head aaa0020 --story E900-S20
+  bash "$LEDGER_SH" write-intent --pr 301 --head aaa0020 --story E900-S20 --target staging --mode story
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state merging
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state merged --merge-sha bbb0020
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state verified
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state smoke_ok
+  bash "$LEDGER_SH" advance --pr 301 --head aaa0020 --state finalized
+
+  # --- Hand-edited edge intents ---
+
+  # Unquoted merge_sha with trailing space — the space must be preserved
+  printf 'story: "E900-S21"\nstate: "merged"\nmode: "story"\nhead_sha: "eee0021"\nmerge_sha: fff0021 \n' \
+    > "$state_dir/merge/intent-eq02-trail.yaml"
+
+  # Empty quoted merge_sha "" — must read as empty so head_sha is used
+  cat > "$state_dir/merge/intent-eq03-emptyq.yaml" <<'YAML'
+story: "E900-S22"
+state: "merged"
+mode: "story"
+merge_sha: ""
+head_sha: "eee0022"
+YAML
+
+  # Value containing | in mode — pipe must not split fields
+  cat > "$state_dir/merge/intent-eq04-pipe.yaml" <<'YAML'
+story: "E900-S23"
+state: "merged"
+mode: "a=b|c"
+head_sha: "eee0023"
+merge_sha: "fff0023"
+YAML
+
+  # No space after colon
+  printf 'story:"E900-S24"\nstate:"merged"\nmode:"story"\nhead_sha:"eee0024"\n' \
+    > "$state_dir/merge/intent-eq05-nospace.yaml"
+
+  # Trailing space after closing quote on state (old reader rejects → not listed)
+  printf 'story: "E900-S25"\nstate: "merged" \nhead_sha: "eee0025"\n' \
+    > "$state_dir/merge/intent-eq06-qtrail.yaml"
+
+  # CRLF line endings (old reader rejects via $-anchor → not listed)
+  printf 'story: "E900-S26"\r\nstate: "merged"\r\nhead_sha: "eee0026"\r\n' \
+    > "$state_dir/merge/intent-eq07-crlf.yaml"
+
+  # Duplicate key: first line malformed (extra chars after quote),
+  # second line valid — first matching line wins
+  printf 'story: "E900-S27"\nstate: "merged"\nmerge_sha: "bad" x\nmerge_sha: "fff0027"\nhead_sha: "eee0027"\n' \
+    > "$state_dir/merge/intent-eq08-dupkey.yaml"
+
+  run bash "$LEDGER_SH" list --sprint sprint-960 --state-dir "$state_dir"
+  [ "$status" -eq 0 ] || return 1
+
+  # Expected output matches the old sed reader byte-for-byte.
+  # Intent files iterate alphabetically: intent-eq02..eq08 before intent-pr301.
+  #   S21: unquoted merge_sha with trailing space preserved ("fff0021 ")
+  #   S22: merge_sha="" → empty → fallback to head_sha
+  #   S23: mode=a=b|c is not "release" → listed
+  #   S24: no-space-after-colon → still parsed
+  #   S25: NOT listed (state regex rejects trailing space after quote)
+  #   S26: NOT listed (CRLF breaks $-anchor)
+  #   S27: first merge_sha line malformed → second valid line wins
+  #   S20: writer-produced, merge_sha wins (intent-pr301 sorts last)
+  local expected
+  expected="$(printf '%s\n' \
+    "fff0021  E900-S21" \
+    "eee0022 E900-S22" \
+    "fff0023 E900-S23" \
+    "eee0024 E900-S24" \
+    "fff0027 E900-S27" \
+    "bbb0020 E900-S20")"
+
+  # Byte-for-byte diff — not a substring check
+  local actual
+  actual="$(printf '%s\n' "$output" | /usr/bin/grep 'E900-S')"
+  [ "$actual" = "$expected" ] || {
+    printf '# EXPECTED:\n%s\n# ACTUAL:\n%s\n' "$expected" "$actual" >&3
+    return 1
+  }
+}
