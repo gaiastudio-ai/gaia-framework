@@ -108,7 +108,7 @@
           <li><span class="step-title">Render readiness table</span> Emits a per-stack table with four possible states per tool: present, missing (with install command), not-applicable, or environment warning.</li>
           <li><span class="step-title">Emit tier verdict</span> Computes the achievable scan tier from the present/missing tool set and reports it.</li>
           <li><span class="step-title">Install (opt-in only)</span> When <code>--install</code> is passed, prompts before each missing tool and runs the registry's install command for the detected OS. Re-probes after installation to confirm. Without <code>--install</code>, emits the install plan as copy-pasteable shell commands.</li>
-          <li><span class="step-title">Review limits</span> Reports the active review-process limits. Reads <code>review.max_fix_cycles</code> from project config and shows the configured value, or the effective default of 2 when the key is absent.</li>
+          <li><span class="step-title">Review limits</span> Reports the active review-process limits. Reads <code>review.max_fix_cycles</code> and <code>review.max_concurrent_heavy_reviewers</code> from project config and shows the configured values, or the effective defaults (2 and 4 respectively) when the keys are absent.</li>
         </ol>
       </section>
 

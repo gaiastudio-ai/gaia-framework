@@ -72,6 +72,11 @@ This warning is shown once per session.
           <li><strong>One more cycle</strong> — grants exactly one further round before escalating again.</li>
         </ul>
         <p>A round that passes stops the counter and never escalates. A crashed gate is recorded as FAILED and counts toward the cap at the decision point.</p>
+        <h3>Heavy-reviewer concurrency limit</h3>
+        <p>Reviewers that spawn test suites, mutation runs, or property-test subprocesses are classified as <strong>heavy</strong>. The number of concurrently running heavy reviewers is capped system-wide by <code>review.max_concurrent_heavy_reviewers</code> in <code>project-config.yaml</code> (default 4 when absent). This limit is independent of <code>parallel_execution.max_parallel_dev_slots</code>.</p>
+        <p>Heavy reviewers: QA Tests, Test Automation. Light reviewers: Code Review, Security Review, Test Review, Performance Review.</p>
+        <p>When the limit is reached, a new heavy reviewer waits with bounded retry and jitter (default 600 seconds, overridable via <code>GAIA_REVIEW_SEMAPHORE_WAIT_SECS</code>). If the wait expires, the reviewer proceeds with a logged warning (fail open). Slots held by dead processes are reclaimed automatically.</p>
+        <p>On upgrade the default of 4 takes effect immediately without any config change.</p>
       </section>
       <section id="example"><h2>Example session</h2><pre><code>> /gaia-review-all E3-S7
 
