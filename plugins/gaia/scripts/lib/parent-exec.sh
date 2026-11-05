@@ -78,6 +78,16 @@ _PE_ALLOWLIST=(
 parent_exec_build_env() {
   local var="" val=""
   for var in "${_PE_ALLOWLIST[@]}"; do
+    # Validate variable name: must match [A-Za-z_][A-Za-z0-9_]*.
+    # Reject names with shell metacharacters to prevent injection.
+    case "$var" in
+      [A-Za-z_]*) ;;
+      *) continue ;;
+    esac
+    case "$var" in
+      *[!A-Za-z0-9_]*) continue ;;
+    esac
+
     # Check against credential denylist (defense in depth)
     local _is_denied=0
     local _dv=""
@@ -89,8 +99,9 @@ parent_exec_build_env() {
     done
     [ "$_is_denied" -eq 1 ] && continue
 
-    # Only forward if set in the current environment
-    eval "val=\"\${${var}:-}\"" 2>/dev/null || val=""
+    # Read the value via printenv (POSIX, no eval).
+    # printenv exits 1 for unset variables; guard under set -e.
+    val="$(printenv "$var" 2>/dev/null)" || val=""
     if [ -n "$val" ]; then
       printf '%s=%s\n' "$var" "$val"
     fi

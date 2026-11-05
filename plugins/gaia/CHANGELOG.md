@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [Unreleased]
+
+### Added
+
+- (review) heavy-reviewer counting semaphore caps concurrent test/mutation/property-test subprocesses system-wide (`review.max_concurrent_heavy_reviewers`, default 4). On upgrade the default takes effect immediately — no config change required.
+
 ## [1.225.0] — 2026-11-01
 
 ### Added

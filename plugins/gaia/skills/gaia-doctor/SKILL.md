@@ -91,13 +91,37 @@ If `--install` was NOT supplied: emit the install plan as copy-pasteable shell (
 
 Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the `--json` flag was passed to the doctor). The script scans the project tree for context-window snapshot files that were created outside the canonical `<root>/.gaia/memory/` location by an older statusline that followed the session's working directory. It reports each stray path with a removal command using the `environment warning` state. It never deletes anything. When `--json` is passed, the output is merged into the document `check-tools.sh` renders as a `stray_snapshots` object carrying a `paths` array of relative paths and a `count`.
 
-### Step 7 — Review gate bypass audit
+### Step 7 — Review limits
+
+Report the active review-process limits. Read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`, and `review.max_concurrent_heavy_reviewers` via `resolve-config.sh --field review.max_concurrent_heavy_reviewers`. When each output is empty, the effective cap is its point-of-use default (2 for fix cycles, 4 for heavy-reviewer slots). Display the configured value or the default when absent:
+
+```
+Review limits:
+  max_fix_cycles:                 7                 (when configured)
+  max_fix_cycles:                 2 (default)       (when absent from config)
+  max_concurrent_heavy_reviewers: 3                 (when configured)
+  max_concurrent_heavy_reviewers: 4 (default)       (when absent from config)
+```
+
+This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.
+
+### Step 8 — Review gate bypass audit
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/lib/check-bypass-records.sh" --project-root <root>
 ```
 
 Scans the sprint audit directory for review gate bypass records and blocked bypass attempts. Reports every recorded bypass use (story, head, non-PASS rows) and warns when the bypass variable is present in the session environment. This is a read-only diagnostic — it never modifies state.
+
+### Step 8 — Configured command listing
+
+Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/project-config.yaml` (if present) and list them. When both keys are absent, skip this step silently.
+
+- For each key, print the array entries numbered (e.g. `  1: make lint`).
+- If the key is present but empty (`[]`), print `(empty — no commands configured)`.
+- If yq is not installed and a key is present, print a warning: `yq not installed — cannot read <key>`.
+
+This is a read-only listing. It never executes the commands.
 
 ## Finalize
 

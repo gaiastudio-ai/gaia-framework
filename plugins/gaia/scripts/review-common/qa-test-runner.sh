@@ -607,6 +607,23 @@ if [ "${#ACTIVE_TIERS[@]}" -eq 0 ]; then
   exit 0
 fi
 
+# --- Heavy-reviewer semaphore: acquire a slot before executing tests ---
+_QA_SLOT_HELPER="$(cd "$(dirname "$0")/../lib" && pwd -P)/heavy-reviewer-slots.sh"
+if [ -f "$_QA_SLOT_HELPER" ]; then
+  # shellcheck source=../scripts/lib/heavy-reviewer-slots.sh
+  source "$_QA_SLOT_HELPER"
+  # Install release traps BEFORE acquire so a signal in the
+  # acquire-to-trap window cannot leak a slot file on disk.
+  # heavy_reviewer_release is a no-op when nothing is held.
+  trap 'heavy_reviewer_release' EXIT
+  trap 'heavy_reviewer_release; trap - INT; kill -INT $$' INT
+  trap 'heavy_reviewer_release; trap - TERM; kill -TERM $$' TERM
+  trap 'heavy_reviewer_release; trap - HUP; kill -HUP $$' HUP
+  heavy_reviewer_acquire
+else
+  info "heavy-reviewer-slots.sh not found; proceeding without concurrency cap"
+fi
+
 # Bridge delegation — single bridge call covers all active tiers.
 if [ "$BRIDGE_ENABLED" = "true" ] && [ -n "$BRIDGE_PATH" ]; then
   if run_bridge "$BRIDGE_PATH"; then

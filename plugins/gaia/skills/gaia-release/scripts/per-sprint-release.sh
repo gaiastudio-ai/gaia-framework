@@ -37,6 +37,13 @@ _PSR_SCRIPT_NAME="per-sprint-release"
 _PSR_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _PSR_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$_PSR_SCRIPT_DIR/../../.." && pwd)}"
 
+# Script-level paths so the EXIT/INT/TERM trap can reach them even after
+# the locals that created them go out of scope.
+_PSR_RELEASE_WORKTREE=""
+_PSR_MERGEBACK_WORKTREE=""
+_PSR_PROJECT_ROOT_FOR_CLEANUP=""
+_PSR_MERGE_BACK_PR=""
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -275,19 +282,43 @@ _psr_create_merge_back_pr() {
 
   local pr_branch="release/v${version}"
 
-  # Create the merge-back branch from main HEAD
-  git -C "$project_root" checkout -b "$pr_branch" main >/dev/null 2>&1 || \
-    git -C "$project_root" branch "$pr_branch" main >/dev/null 2>&1
+  # Use a temporary worktree so the primary checkout's branch is never affected.
+  local mb_worktree=""
+  mb_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-mergeback-XXXXXX")"
+  _PSR_MERGEBACK_WORKTREE="$mb_worktree"
 
-  git -C "$project_root" checkout "$pr_branch" >/dev/null 2>&1
+  # Create (or reuse) the merge-back branch based on main.
+  if git -C "$project_root" rev-parse --verify "$pr_branch" >/dev/null 2>&1; then
+    # Branch already exists (rerun after partial failure)
+    git -C "$project_root" worktree add "$mb_worktree" "$pr_branch" >/dev/null 2>&1 || {
+      rm -rf "$mb_worktree" 2>/dev/null || true
+      _psr_log "WARNING: could not create merge-back worktree on existing branch $pr_branch"
+      return 1
+    }
+  else
+    git -C "$project_root" worktree add -b "$pr_branch" "$mb_worktree" main >/dev/null 2>&1 || {
+      rm -rf "$mb_worktree" 2>/dev/null || true
+      _psr_log "WARNING: could not create merge-back worktree"
+      return 1
+    }
+  fi
+
+  # Ensure we clean up the merge-back worktree on any exit path
+  _psr_mb_cleanup() {
+    if [ -n "${mb_worktree:-}" ] && [ -d "$mb_worktree" ]; then
+      git -C "$project_root" worktree remove --force "$mb_worktree" 2>/dev/null || true
+      rm -rf "$mb_worktree" 2>/dev/null || true
+    fi
+    _PSR_MERGEBACK_WORKTREE=""
+  }
 
   # Copy version files and CHANGELOG from the tagged commit in the release worktree
   local file=""
   for file in $version_files; do
     if git -C "$release_worktree" show "HEAD:${file}" >/dev/null 2>&1; then
-      mkdir -p "$(dirname "${project_root}/${file}")"
-      git -C "$release_worktree" show "HEAD:${file}" > "${project_root}/${file}"
-      git -C "$project_root" add "$file"
+      mkdir -p "$(dirname "${mb_worktree}/${file}")"
+      git -C "$release_worktree" show "HEAD:${file}" > "${mb_worktree}/${file}"
+      git -C "$mb_worktree" add "$file"
     fi
   done
 
@@ -302,20 +333,20 @@ _psr_create_merge_back_pr() {
   fi
   for file in $changelog_files; do
     if git -C "$release_worktree" show "HEAD:${file}" >/dev/null 2>&1; then
-      mkdir -p "$(dirname "${project_root}/${file}")"
-      git -C "$release_worktree" show "HEAD:${file}" > "${project_root}/${file}"
-      git -C "$project_root" add "$file"
+      mkdir -p "$(dirname "${mb_worktree}/${file}")"
+      git -C "$release_worktree" show "HEAD:${file}" > "${mb_worktree}/${file}"
+      git -C "$mb_worktree" add "$file"
     fi
   done
 
   # Commit
-  git -C "$project_root" commit -m "chore(release): bump version to v${version}" >/dev/null 2>&1 || true
+  git -C "$mb_worktree" commit -m "chore(release): bump version to v${version}" >/dev/null 2>&1 || true
 
   # Push the branch
-  git -C "$project_root" push origin "$pr_branch" >/dev/null 2>&1 || true
+  git -C "$mb_worktree" push origin "$pr_branch" >/dev/null 2>&1 || true
 
   local head_sha=""
-  head_sha="$(git -C "$project_root" rev-parse "$pr_branch")"
+  head_sha="$(git -C "$mb_worktree" rev-parse HEAD)"
 
   # Try to create the PR
   local pr_number=""
@@ -335,19 +366,28 @@ _psr_create_merge_back_pr() {
     fi
   fi
 
-  # Record the release intent via the merge ledger (sole writer)
+  # Record the release intent via the merge ledger (sole writer).
+  # Failures must surface — a silent swallow hides broken state.
   local _psr_ml="${_PSR_PLUGIN_ROOT}/scripts/merge-ledger.sh"
   if [ -n "$pr_number" ]; then
-    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+    if ! MERGE_LEDGER_DIR="$_psr_ledger_dir" \
       bash "$_psr_ml" record --mode release \
         --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
-        --pr-number "$pr_number" >/dev/null 2>&1 || true
+        --pr-number "$pr_number" >/dev/null 2>&1; then
+      _psr_mb_cleanup
+      _psr_log "WARNING: merge-ledger record failed for release intent (PR #${pr_number})"
+      return 1
+    fi
     _psr_log "merge-back PR #${pr_number} opened on branch $pr_branch"
   else
-    MERGE_LEDGER_DIR="$_psr_ledger_dir" \
+    if ! MERGE_LEDGER_DIR="$_psr_ledger_dir" \
       bash "$_psr_ml" record --mode release \
         --head-sha "$head_sha" --target "main" --pr-branch "$pr_branch" \
-        >/dev/null 2>&1 || true
+        >/dev/null 2>&1; then
+      _psr_mb_cleanup
+      _psr_log "WARNING: merge-ledger record failed for release intent"
+      return 1
+    fi
     # Token fallback: print the one-click PR URL
     local remote_url=""
     remote_url="$(git -C "$project_root" remote get-url origin 2>/dev/null)" || remote_url=""
@@ -363,10 +403,12 @@ _psr_create_merge_back_pr() {
     _psr_log "token fallback: branch $pr_branch pushed, no PR created"
   fi
 
-  # Restore the original branch
-  git -C "$project_root" checkout - >/dev/null 2>&1 || true
+  # Clean up merge-back worktree (primary checkout's branch was never changed)
+  _psr_mb_cleanup
 
-  printf '%s\n' "${pr_number:-}"
+  # Return the PR number via the script-level variable (not via stdout,
+  # so callers do not need a command-substitution subshell).
+  _PSR_MERGE_BACK_PR="${pr_number:-}"
 }
 
 # ---------------------------------------------------------------------------
@@ -392,12 +434,33 @@ _psr_read_version_files() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+_psr_validate_sprint_id() {
+  local id="$1"
+  # Accept bare numeric (e.g. "42") or sprint-<numeric> (e.g. "sprint-42").
+  # Rejects path-traversal characters, whitespace, and all other shapes.
+  case "$id" in
+    sprint-[0-9]*) ;;
+    [0-9]*)        ;;
+    *)
+      _psr_die "invalid sprint id: $id (expected ^[0-9]+\$ or ^sprint-[0-9]+\$)"
+      ;;
+  esac
+  # Second pass: ensure the remainder after the prefix is strictly digits
+  local digits="${id#sprint-}"
+  case "$digits" in
+    *[!0-9]*) _psr_die "invalid sprint id: $id (expected ^[0-9]+\$ or ^sprint-[0-9]+\$)" ;;
+  esac
+}
+
 _psr_main() {
   _psr_parse_args "$@"
 
   if [ -z "$_psr_sprint_id" ]; then
     _psr_die "--sprint <sprint_id> is required"
   fi
+
+  # Validate sprint id shape before any file access (path-traversal guard)
+  _psr_validate_sprint_id "$_psr_sprint_id"
 
   _psr_resolve_paths
 
@@ -482,12 +545,19 @@ EOF
   local l6_path="${_psr_state_dir}/.release.lock"
   local l6_timeout=120
 
-  # Set up cleanup trap (release L6 if held, remove worktree when created)
+  # Set up cleanup trap (release L6 if held, remove worktrees when created).
+  # Uses script-level _PSR_*_WORKTREE variables so the trap reaches them
+  # even when the locals that created them are out of scope.
   _psr_cleanup() {
     release_lock 9 2>/dev/null || true
-    if [ -n "${release_worktree:-}" ] && [ -d "$release_worktree" ]; then
-      git -C "$_psr_project_root" worktree remove --force "$release_worktree" 2>/dev/null || true
-      rm -rf "$release_worktree" 2>/dev/null || true
+    local _pr="${_PSR_PROJECT_ROOT_FOR_CLEANUP:-}"
+    if [ -n "${_PSR_MERGEBACK_WORKTREE:-}" ] && [ -d "$_PSR_MERGEBACK_WORKTREE" ] && [ -n "$_pr" ]; then
+      git -C "$_pr" worktree remove --force "$_PSR_MERGEBACK_WORKTREE" 2>/dev/null || true
+      rm -rf "$_PSR_MERGEBACK_WORKTREE" 2>/dev/null || true
+    fi
+    if [ -n "${_PSR_RELEASE_WORKTREE:-}" ] && [ -d "$_PSR_RELEASE_WORKTREE" ] && [ -n "$_pr" ]; then
+      git -C "$_pr" worktree remove --force "$_PSR_RELEASE_WORKTREE" 2>/dev/null || true
+      rm -rf "$_PSR_RELEASE_WORKTREE" 2>/dev/null || true
     fi
   }
   trap '_psr_cleanup' EXIT
@@ -505,16 +575,23 @@ EOF
   # Use `git tag -l | sort -V` instead of `git describe` because describe
   # only sees tags reachable from HEAD, and a concurrent release's tag on
   # a cherry-pick branch is not reachable from main.
+  # Filter out pre-release tags (e.g. v2.0.0-beta.1) — they sort above
+  # their final release on both GNU and macOS sort -V and must not be
+  # used as a cherry-pick base.
   local latest_tag=""
-  latest_tag="$(git -C "$_psr_project_root" tag -l 'v*' 2>/dev/null | sort -V | tail -1)"
+  latest_tag="$(git -C "$_psr_project_root" tag -l 'v*' 2>/dev/null \
+    | { grep -v -- '-' || true; } \
+    | sort -V | tail -1)"
 
   if [ -z "$latest_tag" ]; then
-    _psr_die "no v* tag found; cannot create a per-sprint release without a baseline tag"
+    _psr_die "no v* tag found (pre-release tags are excluded); cannot create a per-sprint release without a baseline tag"
   fi
 
   # ── Step 8: Create a detached worktree and cherry-pick ─────────────
   local release_worktree=""
   release_worktree="$(mktemp -d "${TMPDIR:-/tmp}/psr-release-XXXXXX")"
+  _PSR_RELEASE_WORKTREE="$release_worktree"
+  _PSR_PROJECT_ROOT_FOR_CLEANUP="$_psr_project_root"
   # Use a detached worktree from the tag
   git -C "$_psr_project_root" worktree add --detach "$release_worktree" "$latest_tag" 2>/dev/null || {
     # Fallback: clone and checkout the tag
@@ -543,15 +620,22 @@ EOF
     resolve_script="${_PSR_PLUGIN_ROOT}/skills/gaia-release/scripts/resolve-release-version.sh"
   fi
 
-  # Collect cherry-picked commit messages for the classifier
+  # Single-pass: collect %B (bodies for classifier) and %s (subjects for
+  # changelog + release notes) in one git log per SHA, avoiding three
+  # separate per-commit loops.
   local commit_messages=""
+  local _psr_subjects=""   # newline-delimited "sha subject" pairs
   for sha in $sha_array; do
-    local msg=""
-    msg="$(git -C "$release_worktree" log -1 --format='%B' "$sha" 2>/dev/null || \
-           git -C "$_psr_project_root" log -1 --format='%B' "$sha" 2>/dev/null || true)"
-    if [ -n "$msg" ]; then
-      commit_messages="${commit_messages:+${commit_messages}---COMMIT---}${msg}"
+    local _body="" _subj=""
+    _body="$(git -C "$release_worktree" log -1 --format='%B' "$sha" 2>/dev/null || \
+             git -C "$_psr_project_root" log -1 --format='%B' "$sha" 2>/dev/null || true)"
+    _subj="$(git -C "$release_worktree" log -1 --format='%s' "$sha" 2>/dev/null || \
+             git -C "$_psr_project_root" log -1 --format='%s' "$sha" 2>/dev/null || true)"
+    if [ -n "$_body" ]; then
+      commit_messages="${commit_messages:+${commit_messages}---COMMIT---}${_body}"
     fi
+    _psr_subjects="${_psr_subjects:+${_psr_subjects}
+}${sha} ${_subj}"
   done
 
   local version_output=""
@@ -619,18 +703,18 @@ EOF
   fi
 
   # ── Step 11: Sprint-scoped CHANGELOG ───────────────────────────────
-  # Generate CHANGELOG entry from cherry-picked commits
+  # Generate CHANGELOG entry from cherry-picked commits using the
+  # cached subjects collected in the single-pass above (Step 9).
   local changelog="${release_worktree}/CHANGELOG.md"
   local changelog_tmp="${changelog}.tmp"
 
   {
     printf '## v%s\n\n' "$new_version"
-    for sha in $sha_array; do
-      local msg=""
-      msg="$(git -C "$release_worktree" log -1 --format='%s' "$sha" 2>/dev/null || \
-             git -C "$_psr_project_root" log -1 --format='%s' "$sha" 2>/dev/null || true)"
-      if [ -n "$msg" ]; then
-        printf '%s\n' "- ${msg}"
+    printf '%s\n' "$_psr_subjects" | while IFS= read -r _line; do
+      [ -z "$_line" ] && continue
+      local _s_msg="${_line#* }"
+      if [ -n "$_s_msg" ]; then
+        printf '%s\n' "- ${_s_msg}"
       fi
     done
     printf '\n'
@@ -641,7 +725,19 @@ EOF
   mv "$changelog_tmp" "$changelog"
 
   # ── Step 12: Commit the version bump + CHANGELOG ───────────────────
-  git -C "$release_worktree" add -A >/dev/null 2>&1 || true
+  # Stage only known version files and CHANGELOG — never git add -A
+  local _vf=""
+  while IFS= read -r _vf; do
+    [ -z "$_vf" ] && continue
+    if [ -f "${release_worktree}/${_vf}" ]; then
+      git -C "$release_worktree" add "$_vf" 2>/dev/null || true
+    fi
+  done <<EOF
+$version_files
+EOF
+  if [ -f "${release_worktree}/CHANGELOG.md" ]; then
+    git -C "$release_worktree" add CHANGELOG.md 2>/dev/null || true
+  fi
   git -C "$release_worktree" commit -m "chore(release): bump version to v${new_version}" >/dev/null 2>&1 || true
 
   # ── Step 13: Tag the cherry-pick branch tip ────────────────────────
@@ -655,14 +751,13 @@ EOF
 
   # ── Step 15: Create GitHub Release ─────────────────────────────────
   local release_title="v${new_version}"
-  # Build release notes from the CHANGELOG section we just wrote
+  # Build release notes from the cached subjects (single-pass, Step 9).
   local release_notes_file="${release_worktree}/release-notes.tmp"
   {
     printf '## v%s\n\n' "$new_version"
-    for sha in $sha_array; do
-      local _rn_msg=""
-      _rn_msg="$(git -C "$release_worktree" log -1 --format='%s' "$sha" 2>/dev/null || \
-                 git -C "$_psr_project_root" log -1 --format='%s' "$sha" 2>/dev/null || true)"
+    printf '%s\n' "$_psr_subjects" | while IFS= read -r _line; do
+      [ -z "$_line" ] && continue
+      local _rn_msg="${_line#* }"
       if [ -n "$_rn_msg" ]; then
         printf '%s\n' "- ${_rn_msg}"
       fi
@@ -682,14 +777,15 @@ EOF
   release_lock 9 2>/dev/null || true
 
   # ── Step 17: Create merge-back PR ──────────────────────────────────
-  local pr_number=""
-  pr_number="$(_psr_create_merge_back_pr "$_psr_project_root" "$new_version" "$version_files" "$release_worktree")"
+  # Called directly (not in a command substitution) so the EXIT trap
+  # can reach the merge-back worktree if the function is interrupted.
+  _psr_create_merge_back_pr "$_psr_project_root" "$new_version" "$version_files" "$release_worktree"
 
   _psr_log "per-sprint release complete: v${new_version} for sprint $_psr_sprint_id"
   printf 'version=%s\n' "$new_version"
   printf 'tag=v%s\n' "$new_version"
-  if [ -n "$pr_number" ]; then
-    printf 'merge_back_pr=%s\n' "$pr_number"
+  if [ -n "$_PSR_MERGE_BACK_PR" ]; then
+    printf 'merge_back_pr=%s\n' "$_PSR_MERGE_BACK_PR"
   fi
 }
 

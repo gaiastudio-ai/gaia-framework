@@ -107,6 +107,10 @@ This loads the story file, walks all six reviewers in canonical order, writes on
   4. Test Automation (gaia-test-automate) — gate "Test Automation", short-name `test-automate`
   5. Test Review (gaia-test-review) — gate "Test Review", short-name `test-review`
   6. Performance Review (gaia-review-perf) — gate "Performance Review", short-name `review-perf`
+- **Heavy / light classification.** Reviewers that spawn test suites, mutation runs, or property-test subprocesses are **heavy**; the rest are **light**. Heavy reviewers acquire a slot from the system-wide counting semaphore (`scripts/lib/heavy-reviewer-slots.sh`) at the point where they execute external processes; the semaphore caps concurrent heavy reviewers to `review.max_concurrent_heavy_reviewers` (default 4, independent of `parallel_execution.max_parallel_dev_slots`). Classification:
+  - **Heavy:** QA Tests (`qa-test-runner.sh` runs suites), Test Automation (`phase2-execute.sh` runs generated tests and coverage commands).
+  - **Light:** Code Review, Security Review, Test Review, Performance Review (analysis-only, no subprocess execution).
+  This skill routes reviews through the Skill tool and only documents the classification. The slot acquisition happens inside the heavy scripts themselves.
 - **Action-skill exclusion.** `/gaia-test-automate` is an **action skill, not a review skill**. The "Test Automation" judgment in slot #4 above is a review (read test files, judge automation adequacy) and MUST NOT invoke `/gaia-test-automate` itself — generation is action-taking and would mutate the codebase mid-review. `/gaia-test-automate` is **triggered on demand** by:
   - explicit user invocation (`/gaia-test-automate {story_key}`),
   - `/gaia-review-qa` gap findings (uncovered ACs in `qa-test-cases-{story_key}.json`),
@@ -151,6 +155,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--f
 (Use the absolute `${CLAUDE_PLUGIN_ROOT}/scripts/` prefix — this skill's directory contains only `SKILL.md`, no `scripts/` subdirectory. Bare `scripts/review-skip-check.sh` invocations fail with "No such file or directory".)
 
 The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
+
+**Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads exactly `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. A `resolved:*` state means the user already acted — proceed normally. When the user picks a choice, call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice {accept|descope|one-more-cycle}` to clear the escalation state, then execute the choice. This detection runs BEFORE `record-round` so the escalated round is not superseded.
 
 **Substep 2.2b — Round-start sequence.** Before dispatching any gate, record the review round in the findings register. Execute these steps in order:
 
@@ -208,9 +214,26 @@ For each short_name in run:
      self-judge).
 
   4. Write the verdict via review-gate.sh update with --report (and
-     --execution-evidence for test-execution gates).
+     --execution-evidence for test-execution gates). Pass telemetry
+     flags so the per-gate telemetry line records non-null timing:
 
-  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path}` to record the gate's report path and hash in the round.
+     ```bash
+     bash scripts/review-gate.sh update \
+       --story {story_key} --gate "{gate_name}" --verdict {verdict} \
+       --report {report_path} \
+       --started-at {gate_start_epoch_ms} \
+       --token-estimate {token_estimate_from_throughput_telemetry} \
+       --telemetry-round {round_ordinal} \
+       --telemetry-run-id {run_id}
+     ```
+
+     **Value sources:**
+     - `--started-at`: record `$(perl -MTime::HiRes=time -e 'printf "%d", time*1000')` immediately before dispatching the gate skill; the writer computes `ended-at` at write time.
+     - `--token-estimate`: reuse the estimate from `throughput-telemetry.sh` when available; null otherwise.
+     - `--telemetry-round`: the 1-based ordinal of this review round (incremented each invocation of `/gaia-run-all-reviews`).
+     - `--telemetry-run-id`: the run ID minted at the start of Step 2.
+
+  4b. Call `register-write.sh record-round-report --story {key} --run-id {run_id} --gate {register_gate_name} --report {report_path} --verdict {verdict}` to record the gate's report path, hash and verdict in the round. The `{verdict}` is the same value the review step just recorded for this gate (the value given to `review-gate.sh update --verdict`).
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
@@ -329,15 +352,33 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/manual-test-review-dispatch.sh --story {story
 
 > Summary file is written by script, not LLM. The LLM produces optional one-line synopses via `--synopsis-file`; everything else is deterministic.
 
+**Substep 2.4a — Fix-cycle cap check.** After consolidation and before the scope-revision check, run the fix-cycle cap check. This runs BEFORE `complete-round` so that a round with an errored gate counts toward the cap at its decision point.
+
+1. Call `register-write.sh count-rounds --story {key} --current-verdict {PASSED|FAILED}` where the verdict is the composite result of the round just consolidated. The subcommand resolves the configured cap from project config (falling back to the default of 2) and returns `round_count`, `max_fix_cycles`, and `escalate true|false`. The `--current-verdict` flag tells the subcommand the verdict of the current open round at the decision point.
+
+2. When `escalate true`:
+   - Call `register-write.sh record-escalation --story {key} --run-id {run_id} --round-count {N} --max-cycles {M}` to persist the escalation state before asking the user.
+   - Present AskUserQuestion with exactly three choices:
+     - **accept override**: if any critical security finding is unresolved or the security gate has no completed report (UNVERIFIED or FAILED without report), block the accept and show each blocking finding's OWASP category and impact. Otherwise, call `register-write.sh record-accept-override` to record the decision, then call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice accept` to clear the escalation state. Accept does NOT move the story past the review gate — that stays an explicit human step.
+     - **descope to backlog**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice descope`, then run `transition-story-status.sh {key} --to blocked` then `transition-story-status.sh {key} --to backlog` (the two sanctioned transitions for descope).
+     - **one more cycle**: call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice one-more-cycle`, then proceed to a new round. Grants exactly one further round before escalating again.
+
+3. When `escalate false`: proceed to the scope-revision check and `complete-round` as before. A passing round stops the counter and never escalates.
+
+For the security carve-out (blocking accept override):
+- Call `security-report-reader.sh --story {key}` to enumerate critical security findings.
+- Also check the current round's security gate: if its verdict is UNVERIFIED or it was recorded FAILED with no completed security report (a carried-over security gate with a completed report from an earlier round of the same story counts as assessed), block accept.
+- A finding counts as resolved once it has disposition `resolved` or carries a complete sign-off record (all six fields: risk_accepted_by, owasp_category, impact, finding_id, round, timestamp via `register-write.sh sign-off-finding`).
+
 **Substep 2.4b — Scope-revision check and round completion.** After consolidation and before the summary write:
 
 1. **Call `round-info`** again and compare `current_version` vs `accepted_version`. On a mismatch, HALT and ask the user to classify the change:
-   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
+   - For `essential_missing_requirement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind essential_missing_requirement --decision {text} --reassess {gate} ...`. After recording, re-run each reassessed gate under the same run id, record its report via `record-round-report --verdict {verdict}`, then re-run the consolidation steps (gate-status, triage, re-resolve, findings-rows) for the reassessed gates.
    - For `unrelated_enhancement`: call `register-write.sh record-scope-revision --story {key} --run-id {run_id} --kind unrelated_enhancement --decision {text} --followon {story-key}`. Tell the user to revert the out-of-scope AC edit, then re-run `complete-round`.
 
 2. **Call `complete-round`** — this runs after consolidation and before the summary write:
    ```
-   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree}
+   register-write.sh complete-round --story {key} --run-id {run_id} --repo {tree} --verdict {PASSED|FAILED}
    ```
    HALT on any non-zero exit.
 
@@ -378,6 +419,42 @@ After Substeps 2.3–2.4 finish, run the three deterministic helper scripts in f
    ```
 
    The nudge block branches on the composite outcome (ALL PASSED → COMPLETE; N FAILED → BLOCKED with a "Blocking gates" list; N UNVERIFIED → PENDING with a "Pending gates" list).
+
+4. **Write review telemetry** after the composite verdict is known. Build a JSON object mapping each gate name to its verdict, then call the telemetry writer twice: a round-summary for every round, and a story-total when the composite is COMPLETE.
+
+   ```bash
+   # Build the per-gate verdict map (jq --arg per gate).
+   _gates_json="$(jq -nc \
+     --arg g1 "{code_verdict}" --arg g2 "{qa_verdict}" \
+     --arg g3 "{security_verdict}" --arg g4 "{test_auto_verdict}" \
+     --arg g5 "{test_review_verdict}" --arg g6 "{perf_verdict}" \
+     '{"Code Review":$g1,"QA Tests":$g2,"Security Review":$g3,
+       "Test Automation":$g4,"Test Review":$g5,"Performance Review":$g6}')"
+
+   bash scripts/review-telemetry-writer.sh round-summary \
+     --story {story_key} --round {round_ordinal} \
+     --composite-verdict {composite} \
+     --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+     --gates-json "$_gates_json"
+
+   # When the composite is COMPLETE (all six PASSED), append a story-total.
+   if [ "{composite}" = "COMPLETE" ]; then
+     bash scripts/review-telemetry-writer.sh story-total \
+       --story {story_key} --round {round_ordinal} \
+       --composite-verdict COMPLETE \
+       --total-duration-ms {total_ms} --total-tokens {total_tokens} \
+       --gates-json "$_gates_json"
+   fi
+   ```
+
+   The telemetry writer is non-blocking: failures are logged and the review flow continues.
+
+   **Value sources for round-summary / story-total:**
+   - `{round_ordinal}`: the 1-based ordinal of this review round, same value passed to the per-gate telemetry flags.
+   - `{composite}`: the composite verdict string from `review-gate.sh review-gate-check` (COMPLETE / BLOCKED / PENDING).
+   - `{total_ms}`: sum of the per-gate `duration_ms` values recorded in the gate-entry lines for this round. Null when any gate's start time was absent.
+   - `{total_tokens}`: sum of the per-gate `token_estimate` values. Null when no gate supplied a token estimate.
+   - Per-gate verdicts: the six verdicts read from the Review Gate table after all gates finish (PASSED / FAILED / UNVERIFIED).
 
 ### Step 4: Composite Verdict GATING
 

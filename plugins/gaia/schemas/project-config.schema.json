@@ -349,6 +349,26 @@
       },
       "additionalProperties": true
     },
+    "review": {
+      "description": "Review-process configuration. Controls the fix-cycle cap, escalation behaviour, and the heavy-reviewer concurrency limit for the six-gate review loop. Both caps take effect on upgrade: projects without this section get the documented defaults from single point-of-use fallbacks. Managed elsewhere (never auto-hydrated by the config reconciler); the schema carries x-no-auto-hydration as defense-in-depth.",
+      "type": "object",
+      "additionalProperties": true,
+      "x-no-auto-hydration": true,
+      "properties": {
+        "max_fix_cycles": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2,
+          "description": "Maximum number of full six-gate review rounds before escalation. After this many failing rounds the orchestration emits ESCALATE and asks the user to choose: accept override, descope to backlog, or one more cycle. Default 2 when absent (supplied by a single point-of-use fallback)."
+        },
+        "max_concurrent_heavy_reviewers": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4,
+          "description": "Maximum number of concurrently running heavy reviewers (those that spawn test suites, mutation runs, or property-test subprocesses) system-wide. Prevents parallel reviews from overloading the machine. Default 4 when absent (supplied by the slot helper at point of use). Independent of parallel_execution.max_parallel_dev_slots."
+        }
+      }
+    },
     "review_gate": {
       "type": "object",
       "properties": {
@@ -946,6 +966,18 @@
           "description": "Deprecated and ignored. Kept for back-compatibility so existing configs pass schema validation. Will be removed in a future version."
         }
       }
+    },
+    "preflight_commands": {
+      "x-no-auto-hydration": true,
+      "description": "Shell commands executed sequentially before every push in /gaia-dev-story. Each entry runs as a command string in the story working tree. A non-zero exit (including 127 command-not-found) halts the push. Absent or empty = no-op (opt-in). TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline. Timeouts are the user's responsibility (wrap long-running commands with `timeout`).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "post_ci_smoke_commands": {
+      "x-no-auto-hydration": true,
+      "description": "Shell commands executed sequentially after CI completes green and before merge in /gaia-dev-story. A non-zero exit halts the merge. Absent or empty = no-op (opt-in). The smoke runs against the CI-verified commit; branch-drift detection is out of scope. TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline.",
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "allOf": [

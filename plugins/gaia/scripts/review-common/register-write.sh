@@ -15,7 +15,7 @@
 #   record-run     Record a gate-run entry (with monotonic seq)
 #   gate-status    Query gate status for a run (stdout: RAN / UNVERIFIED)
 #   record-round   Record a new review round with gates, commit SHA and req version
-#   record-round-report  Record a gate's report path and hash for a round
+#   record-round-report  Record a gate's report path, hash and verdict for a round
 #   round-info     Read-only: print round status, SHA, versions, per-gate evidence
 #   complete-round Complete a round after all gates pass
 #   assert-round-complete  Guard: exit 0 if latest round complete or legacy
@@ -23,6 +23,10 @@
 #   record-scope-revision  Record a scope change decision on an open round
 #   bind-brief     Bind a correction brief to a round by path and hash
 #   supersede-brief  Replace a bound brief with a rationale
+#   count-rounds   Count non-passing rounds and check against the fix-cycle cap
+#   record-escalation  Record escalation state on a round before asking the user
+#   sign-off-finding   Record a critical-security sign-off on a finding entry
+#   record-accept-override  Record an accept-override decision on a round
 #   --help         Show usage
 #
 # Exit codes: 0 success, 1 caller/validation error, 2 malformed register.
@@ -604,6 +608,12 @@ _rw_file_sha256() {
   _rw_sha256 < "$1"
 }
 
+# _rw_parse_report_verdict — REMOVED.
+# The verdict is now supplied as an explicit --verdict argument on
+# record-round-report.  The caller passes the verdict that the review step
+# recorded for the gate (the same value given to review-gate.sh update).
+# Report text is never read for verdict purposes.
+
 # Validate a round run-id against the canonical pattern.
 _rw_validate_round_id() {
   local id="$1"
@@ -692,7 +702,7 @@ _rw_resolve_story_file() {
 _rw_cmd_add() {
   local key="" defect="" ftype="" severity="" gate="" evidence="" impact=""
   local reproduction="" material=false blocking="" blocking_rationale=""
-  local requirement_or_risk="" dedup_key=""
+  local requirement_or_risk="" dedup_key="" owasp_category=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -704,6 +714,7 @@ _rw_cmd_add() {
       --evidence) [ "$#" -ge 2 ] || _rw_die 1 "--evidence requires a value"; evidence="$2"; shift 2 ;;
       --impact) [ "$#" -ge 2 ] || _rw_die 1 "--impact requires a value"; impact="$2"; shift 2 ;;
       --reproduction) [ "$#" -ge 2 ] || _rw_die 1 "--reproduction requires a value"; reproduction="$2"; shift 2 ;;
+      --owasp-category) [ "$#" -ge 2 ] || _rw_die 1 "--owasp-category requires a value"; owasp_category="$2"; shift 2 ;;
       --material) material=true; shift 1 ;;
       --blocking) blocking="true"; shift 1 ;;
       --blocking-rationale) [ "$#" -ge 2 ] || _rw_die 1 "--blocking-rationale requires a value"; blocking_rationale="$2"; shift 2 ;;
@@ -872,6 +883,13 @@ _rw_new_entry() {
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[0].material" "$material_bool"
   _rw_force_bool "$tmp" ".entries[$idx].blocking" "$blocking_bool"
   _rw_force_bool "$tmp" ".entries[$idx].gate_ratings[0].blocking" "$blocking_bool"
+
+  # Write owasp_category when provided (security findings).
+  if [ -n "$owasp_category" ]; then
+    export _RW_OWASP="$owasp_category"
+    yq -i ".entries[$idx].gate_ratings[0].owasp_category = strenv(_RW_OWASP)" "$tmp"
+    unset _RW_OWASP
+  fi
 
   unset _RW_ID _RW_DEFECT _RW_TYPE _RW_SEVERITY _RW_GATE _RW_EVIDENCE
   unset _RW_IMPACT _RW_REPRODUCTION _RW_MATERIAL _RW_BLOCKING
@@ -1870,7 +1888,7 @@ _rw_cmd_record_round() {
 # ---------------------------------------------------------------------------
 
 _rw_cmd_record_round_report() {
-  local key="" run_id="" gate="" report=""
+  local key="" run_id="" gate="" report="" verdict=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -1878,6 +1896,7 @@ _rw_cmd_record_round_report() {
       --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
       --gate) [ "$#" -ge 2 ] || _rw_die 1 "--gate requires a value"; gate="$2"; shift 2 ;;
       --report) [ "$#" -ge 2 ] || _rw_die 1 "--report requires a value"; report="$2"; shift 2 ;;
+      --verdict) [ "$#" -ge 2 ] || _rw_die 1 "--verdict requires a value"; verdict="$2"; shift 2 ;;
       *) _rw_die 1 "record-round-report: unknown argument: $1" ;;
     esac
   done
@@ -1886,6 +1905,11 @@ _rw_cmd_record_round_report() {
   [ -n "$run_id" ] || _rw_die 1 "record-round-report: --run-id is required"
   [ -n "$gate" ] || _rw_die 1 "record-round-report: --gate is required"
   [ -n "$report" ] || _rw_die 1 "record-round-report: --report is required"
+  [ -n "$verdict" ] || _rw_die 1 "record-round-report: --verdict is required"
+  case "$verdict" in
+    PASSED|FAILED|UNVERIFIED) ;; # valid
+    *) _rw_die 1 "record-round-report: --verdict must be PASSED, FAILED or UNVERIFIED; got: $verdict" ;;
+  esac
 
   _rw_validate_key "$key"
   _rw_validate_round_id "$run_id"
@@ -1943,9 +1967,16 @@ _rw_cmd_record_round_report() {
     _rw_abort_and_die 1 "record-round-report: report already recorded on another round; use a carry with applicability rationale for cross-round reuse"
   fi
 
-  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) | (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH)' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
+  # Store the caller-supplied verdict so count-rounds reads it directly.
+  export _RW_RVERDICT="$verdict"
 
-  unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH
+  yq -i '
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_path = strenv(_RW_RPATH) |
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_sha256 = strenv(_RW_RHASH) |
+    (.rounds[] | select(.run_id == strenv(_RW_RUN_ID)).selected_gates[] | select(.gate == strenv(_RW_GATE))).report_verdict = strenv(_RW_RVERDICT)
+  ' "$tmp" || _rw_die 1 "record-round-report: yq write failed"
+
+  unset _RW_RUN_ID _RW_GATE _RW_RPATH _RW_RHASH _RW_RVERDICT
 
   _rw_commit_register "$tmp" "$reg_path"
 }
@@ -2037,6 +2068,11 @@ _rw_cmd_round_info() {
   printf 'brief_path %s\n' "$brief_path"
   printf 'brief_sha256 %s\n' "$brief_sha"
 
+  # Print escalation state when present (consumed by resumed sprint runs).
+  local esc_state
+  esc_state="$(printf '%s' "$target_round_json" | jq -r '.escalation.state // "none"')" || esc_state="none"
+  printf 'escalation_state %s\n' "$esc_state"
+
   # Compute last_completed_run for each gate.
   local _g
   for _g in $_RW_CANONICAL_GATES; do
@@ -2075,13 +2111,14 @@ _rw_cmd_round_info() {
 # ---------------------------------------------------------------------------
 
 _rw_cmd_complete_round() {
-  local key="" run_id="" repo=""
+  local key="" run_id="" repo="" verdict=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
       --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
       --repo) [ "$#" -ge 2 ] || _rw_die 1 "--repo requires a value"; repo="$2"; shift 2 ;;
+      --verdict) [ "$#" -ge 2 ] || _rw_die 1 "--verdict requires a value"; verdict="$2"; shift 2 ;;
       *) _rw_die 1 "complete-round: unknown argument: $1" ;;
     esac
   done
@@ -2215,8 +2252,13 @@ _rw_cmd_complete_round() {
     _rw_abort_and_die 1 "complete-round: $errors"
   fi
 
-  # Mark complete.
+  # Mark complete and record the composite verdict when provided.
   yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status = "complete"' "$tmp" || _rw_die 1 "complete-round: yq write failed"
+  if [ -n "$verdict" ]; then
+    export _RW_VERDICT="$verdict"
+    yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).composite_verdict = strenv(_RW_VERDICT)' "$tmp" || _rw_die 1 "complete-round: yq verdict write failed"
+    unset _RW_VERDICT
+  fi
   unset _RW_RUN_ID
 
   _rw_commit_register "$tmp" "$reg_path"
@@ -2680,6 +2722,667 @@ _rw_cmd_supersede_brief() {
 }
 
 # ---------------------------------------------------------------------------
+# Subcommand: count-rounds
+# ---------------------------------------------------------------------------
+# Counts completed non-passing rounds under the register lock.
+# Prints: round_count <N>, max_fix_cycles <M>, escalate true|false.
+
+_rw_cmd_count_rounds() {
+  local key="" max_cycles="" current_verdict=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --max) [ "$#" -ge 2 ] || _rw_die 1 "--max requires a value"; max_cycles="$2"; shift 2 ;;
+      --current-verdict) [ "$#" -ge 2 ] || _rw_die 1 "--current-verdict requires a value"; current_verdict="$2"; shift 2 ;;
+      *) _rw_die 1 "count-rounds: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "count-rounds: --story is required"
+
+  # Point-of-use default: when --max is omitted, resolve from project
+  # config, falling back to the hardcoded default of 2. This is the
+  # SINGLE default site — the review orchestration and doctor both use
+  # count-rounds to read the effective cap.
+  if [ -z "$max_cycles" ]; then
+    if [ -x "$SCRIPTS_DIR/resolve-config.sh" ]; then
+      max_cycles="$("$SCRIPTS_DIR/resolve-config.sh" --field review.max_fix_cycles 2>/dev/null)" || max_cycles=""
+    fi
+    if [ -z "$max_cycles" ]; then
+      max_cycles=2
+    fi
+  fi
+  _rw_require_integer "$max_cycles" "max_fix_cycles"
+
+  _rw_validate_key "$key"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  # No register — zero rounds, no escalation.
+  if [ ! -f "$reg_path" ]; then
+    printf 'round_count 0\n'
+    printf 'max_fix_cycles %s\n' "$max_cycles"
+    printf 'escalate false\n'
+    exit 0
+  fi
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  _rw_validate_structure "$reg_path"
+
+  local rounds_len
+  rounds_len="$(yq '.rounds | length // 0' "$reg_path" 2>/dev/null)" || rounds_len="0"
+
+  # Read-only count of non-passing rounds at the decision point.
+  #
+  # complete: non-passing when composite_verdict is not PASSED (fail closed:
+  #   absent verdict counts as non-passing).
+  # superseded: non-passing unless every selected gate has a report, no
+  #   gate_runs entry errored, and every report's Verdict: line is PASSED.
+  #   Counts in every other case (fail closed).
+  # open: the caller passes --current-verdict FAILED|PASSED for the round
+  #   being decided; without it, escalation state and gate evidence are checked.
+  local count=0
+  if [ "$rounds_len" != "0" ] && [ "$rounds_len" != "null" ]; then
+    local idx=0
+    while [ "$idx" -lt "$rounds_len" ]; do
+      local r_status
+      r_status="$(yq ".rounds[$idx].status" "$reg_path" 2>/dev/null)" || r_status=""
+
+      case "$r_status" in
+        complete)
+          local cv
+          cv="$(yq ".rounds[$idx].composite_verdict // \"\"" "$reg_path" 2>/dev/null)" || cv=""
+          if [ "$cv" = "PASSED" ]; then
+            : # passing
+          else
+            count=$((count + 1))
+          fi
+          ;;
+        superseded)
+          # A superseded round was replaced before completing.  It does NOT
+          # count only when every gate (selected AND carried) has a stored
+          # PASSED verdict, no gate_runs entry errored, and at least one
+          # gate exists.  It counts in every other case (fail closed).
+          #
+          # Verdicts are read from the report_verdict field stored at
+          # record-round-report time — never by re-reading the report file
+          # (the canonical report path is overwritten each round).
+          local _sup_count=1
+
+          # --- selected gates: stored verdict check ---
+          local _sup_glen
+          _sup_glen="$(yq ".rounds[$idx].selected_gates | length" "$reg_path" 2>/dev/null)" || _sup_glen="0"
+          if [ "$_sup_glen" != "0" ] && [ "$_sup_glen" != "null" ]; then
+            local _sup_miss_s
+            _sup_miss_s="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || _sup_miss_s="0"
+            if [ "$_sup_miss_s" = "0" ] || [ "$_sup_miss_s" = "null" ]; then
+              export _RW_SUP_RID
+              _RW_SUP_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_SUP_RID=""
+              local _sup_err_s
+              _sup_err_s="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_SUP_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || _sup_err_s="0"
+              unset _RW_SUP_RID
+              if [ "$_sup_err_s" = "0" ] || [ "$_sup_err_s" = "null" ]; then
+                # All selected gates have reports and none errored.
+                # Read the stored report_verdict for each gate.
+                local _sup_all_pass=1
+                local _sup_gi=0
+                while [ "$_sup_gi" -lt "$_sup_glen" ]; do
+                  local _sup_rv
+                  _sup_rv="$(yq ".rounds[$idx].selected_gates[$_sup_gi].report_verdict // \"\"" "$reg_path" 2>/dev/null)" || _sup_rv=""
+                  if [ "$_sup_rv" != "PASSED" ]; then
+                    _sup_all_pass=0; break
+                  fi
+                  _sup_gi=$((_sup_gi + 1))
+                done
+
+                # --- carried gates: resolve through the carry chain ---
+                if [ "$_sup_all_pass" -eq 1 ]; then
+                  local _sup_clen
+                  _sup_clen="$(yq ".rounds[$idx].carried_gates | length" "$reg_path" 2>/dev/null)" || _sup_clen="0"
+                  if [ "$_sup_clen" != "0" ] && [ "$_sup_clen" != "null" ]; then
+                    local _sup_ci=0
+                    while [ "$_sup_ci" -lt "$_sup_clen" ]; do
+                      local _sup_cgate _sup_cfrom
+                      _sup_cgate="$(yq ".rounds[$idx].carried_gates[$_sup_ci].gate" "$reg_path" 2>/dev/null)" || _sup_cgate=""
+                      _sup_cfrom="$(yq ".rounds[$idx].carried_gates[$_sup_ci].from_run" "$reg_path" 2>/dev/null)" || _sup_cfrom=""
+
+                      # Walk the carry chain to find the terminal selected gate.
+                      local _sup_hop_run="$_sup_cfrom" _sup_hop_gate="$_sup_cgate"
+                      local _sup_hops=0 _sup_visited=":" _sup_resolved=false
+                      while [ "$_sup_hops" -lt 10 ]; do
+                        case "$_sup_visited" in
+                          *":$_sup_hop_run:"*) _sup_all_pass=0; _sup_resolved=true; break ;;
+                        esac
+                        _sup_visited="${_sup_visited}${_sup_hop_run}:"
+                        _sup_hops=$((_sup_hops + 1))
+
+                        export _RW_HOP_RUN="$_sup_hop_run" _RW_HOP_GATE="$_sup_hop_gate"
+                        # Check if the gate is a selected gate in the target round.
+                        local _sup_in_sel
+                        _sup_in_sel="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$reg_path" 2>/dev/null)" || _sup_in_sel="0"
+                        if [ "$_sup_in_sel" != "0" ] && [ "$_sup_in_sel" != "null" ]; then
+                          # Terminal: read its stored verdict.
+                          local _sup_hop_rv
+                          _sup_hop_rv="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).selected_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .report_verdict // ""' "$reg_path" 2>/dev/null)" || _sup_hop_rv=""
+                          unset _RW_HOP_RUN _RW_HOP_GATE
+                          if [ "$_sup_hop_rv" != "PASSED" ]; then
+                            _sup_all_pass=0
+                          fi
+                          _sup_resolved=true
+                          break
+                        fi
+                        # Check if it is carried further.
+                        local _sup_in_car
+                        _sup_in_car="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE))] | length' "$reg_path" 2>/dev/null)" || _sup_in_car="0"
+                        if [ "$_sup_in_car" != "0" ] && [ "$_sup_in_car" != "null" ]; then
+                          local _sup_next_hop
+                          _sup_next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_HOP_RUN))).carried_gates[] | select(.gate == strenv(_RW_HOP_GATE)) | .from_run' "$reg_path" 2>/dev/null)" || _sup_next_hop=""
+                          unset _RW_HOP_RUN _RW_HOP_GATE
+                          _sup_hop_run="$_sup_next_hop"
+                          continue
+                        fi
+                        # Gate not found — fail closed.
+                        unset _RW_HOP_RUN _RW_HOP_GATE
+                        _sup_all_pass=0; _sup_resolved=true; break
+                      done
+                      if [ "$_sup_resolved" != "true" ]; then
+                        # Chain too long — fail closed.
+                        _sup_all_pass=0
+                      fi
+                      if [ "$_sup_all_pass" -eq 0 ]; then break; fi
+                      _sup_ci=$((_sup_ci + 1))
+                    done
+                  fi
+                fi
+
+                if [ "$_sup_all_pass" -eq 1 ]; then
+                  _sup_count=0
+                fi
+              fi
+            fi
+          fi
+          count=$((count + _sup_count))
+          ;;
+        open)
+          # The caller passes the composite verdict at the decision point.
+          if [ -n "$current_verdict" ]; then
+            case "$current_verdict" in
+              PASSED|passed) ;; # passing
+              *) count=$((count + 1)) ;;
+            esac
+          else
+            # Fallback: gate evidence + escalation state.
+            # An open round with an escalation marker was non-passing.
+            local esc_st
+            esc_st="$(yq ".rounds[$idx].escalation.state // \"\"" "$reg_path" 2>/dev/null)" || esc_st=""
+            if [ "$esc_st" = "escalated" ]; then
+              count=$((count + 1))
+              idx=$((idx + 1)); continue
+            fi
+            local miss_o
+            miss_o="$(yq "[.rounds[$idx].selected_gates[] | select(.report_path == \"\" or .report_path == null)] | length" "$reg_path" 2>/dev/null)" || miss_o="0"
+            local err_o
+            export _RW_OPEN_RID
+            _RW_OPEN_RID="$(yq ".rounds[$idx].run_id" "$reg_path" 2>/dev/null)" || _RW_OPEN_RID=""
+            err_o="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_OPEN_RID) and .outcome == "errored")] | length' "$reg_path" 2>/dev/null)" || err_o="0"
+            unset _RW_OPEN_RID
+            if [ "$miss_o" != "0" ] && [ "$miss_o" != "null" ]; then
+              count=$((count + 1))
+            elif [ "$err_o" != "0" ] && [ "$err_o" != "null" ]; then
+              count=$((count + 1))
+            else
+              # Halted round: all selected gates have reports, none errored,
+              # but the round was never completed (e.g. scope-revision halt).
+              # Fail closed: count as non-passing.
+              count=$((count + 1))
+            fi
+          fi
+          ;;
+        # Any other status (e.g. unknown): not counted.
+      esac
+      idx=$((idx + 1))
+    done
+  fi
+
+  release_lock 8 2>/dev/null || true
+  _RW_CLEANUP_FD=""
+
+  printf 'round_count %s\n' "$count"
+  printf 'max_fix_cycles %s\n' "$max_cycles"
+
+  # A passing round at the decision point stops the counter and never
+  # escalates, regardless of the historical round count.
+  case "$current_verdict" in
+    PASSED|passed)
+      printf 'escalate false\n'
+      exit 0
+      ;;
+  esac
+
+  if [ "$count" -ge "$max_cycles" ]; then
+    printf 'escalate true\n'
+  else
+    printf 'escalate false\n'
+  fi
+
+  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: record-escalation
+# ---------------------------------------------------------------------------
+# Records escalation state on the current round before the user is asked.
+
+_rw_cmd_record_escalation() {
+  local key="" run_id="" round_count="" max_cycles=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --round-count) [ "$#" -ge 2 ] || _rw_die 1 "--round-count requires a value"; round_count="$2"; shift 2 ;;
+      --max-cycles) [ "$#" -ge 2 ] || _rw_die 1 "--max-cycles requires a value"; max_cycles="$2"; shift 2 ;;
+      *) _rw_die 1 "record-escalation: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "record-escalation: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "record-escalation: --run-id is required"
+  [ -n "$round_count" ] || _rw_die 1 "record-escalation: --round-count is required"
+  [ -n "$max_cycles" ] || _rw_die 1 "record-escalation: --max-cycles is required"
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+  _rw_require_integer "$round_count" "round_count"
+  _rw_require_integer "$max_cycles" "max_cycles"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "record-escalation: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists and is open.
+  export _RW_RUN_ID="$run_id"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-escalation: round not found for run-id: $run_id"
+
+  # Write escalation state.
+  local ts
+  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  export _RW_ESC_STATE="escalated" _RW_ESC_TS="$ts"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state = strenv(_RW_ESC_STATE)" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.round_count = ${round_count}" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.max_cycles = ${max_cycles}" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  yq -i "(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.timestamp = strenv(_RW_ESC_TS)" "$tmp" || _rw_die 1 "record-escalation: yq write failed"
+  unset _RW_ESC_STATE _RW_ESC_TS _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: resolve-escalation
+# ---------------------------------------------------------------------------
+# Resolves the escalation state on the current round after the user picks a
+# choice (accept, descope or one-more-cycle). Sets escalation.state to
+# "resolved:<choice>" so a resumed run does not re-present the choices.
+
+_rw_cmd_resolve_escalation() {
+  local key="" run_id="" choice=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --choice) [ "$#" -ge 2 ] || _rw_die 1 "--choice requires a value"; choice="$2"; shift 2 ;;
+      *) _rw_die 1 "resolve-escalation: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "resolve-escalation: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "resolve-escalation: --run-id is required"
+  [ -n "$choice" ] || _rw_die 1 "resolve-escalation: --choice is required"
+
+  case "$choice" in
+    accept|descope|one-more-cycle) ;;
+    *) _rw_die 1 "resolve-escalation: --choice must be accept, descope or one-more-cycle" ;;
+  esac
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "resolve-escalation: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists and has an escalation marker.
+  export _RW_RUN_ID="$run_id"
+  local esc_state
+  esc_state="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state // ""' "$tmp" 2>/dev/null)" || esc_state=""
+  if [ "$esc_state" != "escalated" ]; then
+    _rw_abort_and_die 1 "resolve-escalation: round $run_id is not in escalated state (state: ${esc_state:-none})"
+  fi
+
+  # Resolve the escalation.
+  export _RW_ESC_RESOLVED="resolved:${choice}"
+  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).escalation.state = strenv(_RW_ESC_RESOLVED)' "$tmp" || _rw_die 1 "resolve-escalation: yq write failed"
+  unset _RW_ESC_RESOLVED _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: sign-off-finding
+# ---------------------------------------------------------------------------
+# Records a critical-security sign-off on a finding entry.
+# All six fields are required; an incomplete record is rejected.
+# Values are passed through strenv() to prevent injection.
+
+_rw_cmd_sign_off_finding() {
+  local key="" finding_id="" risk_accepted_by="" owasp_category="" impact="" round="" timestamp=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --finding-id) [ "$#" -ge 2 ] || _rw_die 1 "--finding-id requires a value"; finding_id="$2"; shift 2 ;;
+      --risk-accepted-by) [ "$#" -ge 2 ] || _rw_die 1 "--risk-accepted-by requires a value"; risk_accepted_by="$2"; shift 2 ;;
+      --owasp-category) [ "$#" -ge 2 ] || _rw_die 1 "--owasp-category requires a value"; owasp_category="$2"; shift 2 ;;
+      --impact) [ "$#" -ge 2 ] || _rw_die 1 "--impact requires a value"; impact="$2"; shift 2 ;;
+      --round) [ "$#" -ge 2 ] || _rw_die 1 "--round requires a value"; round="$2"; shift 2 ;;
+      --timestamp) [ "$#" -ge 2 ] || _rw_die 1 "--timestamp requires a value"; timestamp="$2"; shift 2 ;;
+      *) _rw_die 1 "sign-off-finding: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "sign-off-finding: --story is required"
+  [ -n "$finding_id" ] || _rw_die 1 "sign-off-finding: --finding-id is required"
+  [ -n "$risk_accepted_by" ] || _rw_die 1 "sign-off-finding: --risk-accepted-by is required"
+  [ -n "$owasp_category" ] || _rw_die 1 "sign-off-finding: --owasp-category is required"
+  [ -n "$impact" ] || _rw_die 1 "sign-off-finding: --impact is required"
+  [ -n "$round" ] || _rw_die 1 "sign-off-finding: --round is required"
+  [ -n "$timestamp" ] || _rw_die 1 "sign-off-finding: --timestamp is required"
+
+  _rw_validate_key "$key"
+  _rw_require_integer "$round" "round"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "sign-off-finding: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Find the entry by id.
+  export _RW_FIND_ID="$finding_id"
+  local entry_idx
+  entry_idx="$(yq '[.entries[].id] | to_entries | map(select(.value == strenv(_RW_FIND_ID))) | .[0].key // -1' "$tmp" 2>/dev/null)" || entry_idx="-1"
+  unset _RW_FIND_ID
+
+  if [ "$entry_idx" = "-1" ] || [ "$entry_idx" = "null" ]; then
+    _rw_abort_and_die 1 "sign-off-finding: finding not found: $finding_id"
+  fi
+
+  # Write sign-off record. All values via strenv() to prevent injection.
+  export _RW_SO_ACCEPTED_BY="$risk_accepted_by" \
+         _RW_SO_OWASP="$owasp_category" \
+         _RW_SO_IMPACT="$impact" \
+         _RW_SO_FINDING_ID="$finding_id" \
+         _RW_SO_TIMESTAMP="$timestamp"
+
+  yq -i ".entries[$entry_idx].sign_off.risk_accepted_by = strenv(_RW_SO_ACCEPTED_BY)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.owasp_category = strenv(_RW_SO_OWASP)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.impact = strenv(_RW_SO_IMPACT)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.finding_id = strenv(_RW_SO_FINDING_ID)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.round = ${round}" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+  yq -i ".entries[$entry_idx].sign_off.timestamp = strenv(_RW_SO_TIMESTAMP)" "$tmp" || _rw_die 1 "sign-off-finding: yq write failed"
+
+  unset _RW_SO_ACCEPTED_BY _RW_SO_OWASP _RW_SO_IMPACT _RW_SO_FINDING_ID _RW_SO_TIMESTAMP
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: record-accept-override
+# ---------------------------------------------------------------------------
+# Records an accept-override decision on the current round.
+# Accept does NOT move the story past the review gate.
+
+_rw_cmd_record_accept_override() {
+  local key="" run_id="" decision="" user="" round="" timestamp="" signed_off_findings=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --run-id) [ "$#" -ge 2 ] || _rw_die 1 "--run-id requires a value"; run_id="$2"; shift 2 ;;
+      --decision) [ "$#" -ge 2 ] || _rw_die 1 "--decision requires a value"; decision="$2"; shift 2 ;;
+      --user) [ "$#" -ge 2 ] || _rw_die 1 "--user requires a value"; user="$2"; shift 2 ;;
+      --round) [ "$#" -ge 2 ] || _rw_die 1 "--round requires a value"; round="$2"; shift 2 ;;
+      --timestamp) [ "$#" -ge 2 ] || _rw_die 1 "--timestamp requires a value"; timestamp="$2"; shift 2 ;;
+      --signed-off-findings) [ "$#" -ge 2 ] || _rw_die 1 "--signed-off-findings requires a value"; signed_off_findings="$2"; shift 2 ;;
+      *) _rw_die 1 "record-accept-override: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ] || _rw_die 1 "record-accept-override: --story is required"
+  [ -n "$run_id" ] || _rw_die 1 "record-accept-override: --run-id is required"
+  [ -n "$decision" ] || _rw_die 1 "record-accept-override: --decision is required"
+  [ -n "$user" ] || _rw_die 1 "record-accept-override: --user is required"
+  [ -n "$round" ] || _rw_die 1 "record-accept-override: --round is required"
+  [ -n "$timestamp" ] || _rw_die 1 "record-accept-override: --timestamp is required"
+
+  _rw_validate_key "$key"
+  _rw_validate_round_id "$run_id"
+  _rw_require_integer "$round" "round"
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  [ -f "$reg_path" ] || { release_lock 8; _RW_CLEANUP_FD=""; _rw_die 1 "record-accept-override: no register for: $key"; }
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Verify the round exists.
+  export _RW_RUN_ID="$run_id"
+  local round_status
+  round_status="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).status' "$tmp" 2>/dev/null)" || round_status=""
+  [ -n "$round_status" ] && [ "$round_status" != "null" ] || \
+    _rw_abort_and_die 1 "record-accept-override: round not found for run-id: $run_id"
+
+  # --- Security carve-out: fail closed ---
+  # Block accept while any unresolved critical security finding (disposition
+  # other than "resolved") lacks a complete sign-off, or the current round's
+  # security gate has no completed report.
+  local _ao_crit_count
+  _ao_crit_count="$(yq '[.entries[] | select(.severity == "critical" and .disposition != "resolved" and (.gate_ratings[] | .gate == "security-review"))] | length' "$tmp" 2>/dev/null)" || \
+    _rw_abort_and_die 1 "record-accept-override: cannot read entries (fail closed)"
+
+  if [ "$_ao_crit_count" != "0" ] && [ "$_ao_crit_count" != "null" ]; then
+    # Check each unresolved critical security finding for a complete sign-off.
+    local _ao_unresolved=0 _ao_blocking_ids=""
+    local _ao_idx=0
+    while [ "$_ao_idx" -lt "$_ao_crit_count" ]; do
+      local _ao_fid _ao_disp _ao_so_user _ao_so_owasp _ao_so_impact _ao_so_fid _ao_so_round _ao_so_ts
+      _ao_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].id" "$tmp" 2>/dev/null)" || _ao_fid=""
+      _ao_so_user="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.risk_accepted_by // \"\"" "$tmp" 2>/dev/null)" || _ao_so_user=""
+      _ao_so_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.owasp_category // \"\"" "$tmp" 2>/dev/null)" || _ao_so_owasp=""
+      _ao_so_impact="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.impact // \"\"" "$tmp" 2>/dev/null)" || _ao_so_impact=""
+      _ao_so_fid="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.finding_id // \"\"" "$tmp" 2>/dev/null)" || _ao_so_fid=""
+      _ao_so_round="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.round // \"\"" "$tmp" 2>/dev/null)" || _ao_so_round=""
+      _ao_so_ts="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].sign_off.timestamp // \"\"" "$tmp" 2>/dev/null)" || _ao_so_ts=""
+
+      # All six fields must be non-empty for a complete sign-off.
+      if [ -z "$_ao_so_user" ] || [ "$_ao_so_user" = "null" ] || \
+         [ -z "$_ao_so_owasp" ] || [ "$_ao_so_owasp" = "null" ] || \
+         [ -z "$_ao_so_impact" ] || [ "$_ao_so_impact" = "null" ] || \
+         [ -z "$_ao_so_fid" ] || [ "$_ao_so_fid" = "null" ] || \
+         [ -z "$_ao_so_round" ] || [ "$_ao_so_round" = "null" ] || \
+         [ -z "$_ao_so_ts" ] || [ "$_ao_so_ts" = "null" ]; then
+        _ao_unresolved=$((_ao_unresolved + 1))
+        _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+      else
+        # Also check the reviewer's OWASP category on the gate_rating —
+        # an unknown/empty category means the reviewer didn't classify the
+        # finding, so accept stays blocked.
+        local _ao_gr_owasp
+        _ao_gr_owasp="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].gate_ratings[] | select(.gate == \"security-review\") | .owasp_category // \"\"" "$tmp" 2>/dev/null)" || _ao_gr_owasp=""
+        if [ -z "$_ao_gr_owasp" ] || [ "$_ao_gr_owasp" = "null" ] || [ "$_ao_gr_owasp" = "unknown" ]; then
+          _ao_unresolved=$((_ao_unresolved + 1))
+          _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+        else
+          # Check the reviewer's impact classification on the entry —
+          # a missing/unknown impact means the reviewer didn't classify the
+          # finding's impact, so accept stays blocked (same rule as category).
+          local _ao_entry_impact
+          _ao_entry_impact="$(yq "[.entries[] | select(.severity == \"critical\" and .disposition != \"resolved\" and (.gate_ratings[] | .gate == \"security-review\"))] | .[$_ao_idx].impact // \"\"" "$tmp" 2>/dev/null)" || _ao_entry_impact=""
+          if [ -z "$_ao_entry_impact" ] || [ "$_ao_entry_impact" = "null" ] || [ "$_ao_entry_impact" = "unknown" ]; then
+            _ao_unresolved=$((_ao_unresolved + 1))
+            _ao_blocking_ids="${_ao_blocking_ids}${_ao_fid} "
+          fi
+        fi
+      fi
+      _ao_idx=$((_ao_idx + 1))
+    done
+
+    if [ "$_ao_unresolved" -gt 0 ]; then
+      _rw_abort_and_die 1 "record-accept-override: blocked — ${_ao_unresolved} unresolved critical security finding(s): ${_ao_blocking_ids% }"
+    fi
+  fi
+
+  # Require a completed security assessment for the round (fail closed).
+  # Check selected gates first, then carried gates. Block if neither has
+  # a completed security-review report.
+  local _ao_sec_report=""
+  local _ao_sec_in_selected
+  _ao_sec_in_selected="$(yq '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review")] | length' "$tmp" 2>/dev/null)" || _ao_sec_in_selected="0"
+  if [ "$_ao_sec_in_selected" != "0" ] && [ "$_ao_sec_in_selected" != "null" ]; then
+    # Check the gate_runs outcome — an errored run is not a completed assessment
+    # even if a partial report_path was recorded (crash after writing the file).
+    local _ao_sec_outcome
+    _ao_sec_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_RUN_ID) and .gate == "security-review" and .outcome == "completed")] | length' "$tmp" 2>/dev/null)" || _ao_sec_outcome="0"
+    if [ "$_ao_sec_outcome" != "0" ] && [ "$_ao_sec_outcome" != "null" ]; then
+      _ao_sec_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sec_report=""
+    fi
+  fi
+  if [ -z "$_ao_sec_report" ] || [ "$_ao_sec_report" = "null" ]; then
+    # Check carried gates: follow the carry chain to the source round's
+    # selected_gates for the security-review report.
+    # Follow the full carry chain to the terminal round.
+    local _ao_hop_run
+    _ao_hop_run="$(yq '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_hop_run=""
+    local _ao_found_report=""
+    local _ao_hops=0
+    while [ -n "$_ao_hop_run" ] && [ "$_ao_hop_run" != "null" ] && [ "$_ao_hops" -lt 10 ]; do
+      export _RW_FROM_RUN="$_ao_hop_run"
+      # Check if this round has security-review as a selected gate with a report.
+      local _ao_sel_report
+      _ao_sel_report="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).selected_gates[] | select(.gate == "security-review") | .report_path // ""' "$tmp" 2>/dev/null)" || _ao_sel_report=""
+      if [ -n "$_ao_sel_report" ] && [ "$_ao_sel_report" != "null" ]; then
+        # Also check the gate_runs outcome at the terminal round.
+        local _ao_hop_outcome
+        _ao_hop_outcome="$(yq '[.gate_runs[] | select(.run_id == strenv(_RW_FROM_RUN) and .gate == "security-review" and .outcome == "completed")] | length' "$tmp" 2>/dev/null)" || _ao_hop_outcome="0"
+        if [ "$_ao_hop_outcome" != "0" ] && [ "$_ao_hop_outcome" != "null" ]; then
+          _ao_found_report="$_ao_sel_report"
+        fi
+        unset _RW_FROM_RUN
+        break
+      fi
+      # Follow another hop.
+      local _ao_next_hop
+      _ao_next_hop="$(yq '(.rounds[] | select(.run_id == strenv(_RW_FROM_RUN))).carried_gates[] | select(.gate == "security-review") | .from_run // ""' "$tmp" 2>/dev/null)" || _ao_next_hop=""
+      unset _RW_FROM_RUN
+      _ao_hop_run="$_ao_next_hop"
+      _ao_hops=$((_ao_hops + 1))
+    done
+    if [ -z "$_ao_found_report" ]; then
+      _rw_abort_and_die 1 "record-accept-override: blocked — security gate has no completed report (fail closed)"
+    fi
+  fi
+
+  # Validate --signed-off-findings: each must exist as a critical security
+  # finding with a complete sign-off.
+  local sof_json="[]"
+  if [ -n "$signed_off_findings" ]; then
+    local IFS=','
+    local _sof_id
+    for _sof_id in $signed_off_findings; do
+      # Verify the id exists as a critical security finding.
+      export _RW_CHECK_SOF_ID="$_sof_id"
+      local _sof_exists
+      _sof_exists="$(yq '[.entries[] | select(.id == strenv(_RW_CHECK_SOF_ID) and .severity == "critical" and (.gate_ratings[] | .gate == "security-review"))] | length' "$tmp" 2>/dev/null)" || _sof_exists="0"
+      if [ "$_sof_exists" = "0" ] || [ "$_sof_exists" = "null" ]; then
+        unset _RW_CHECK_SOF_ID
+        _rw_abort_and_die 1 "record-accept-override: signed-off finding $_sof_id is not a critical security finding"
+      fi
+      # Verify it has a complete sign-off.
+      local _sof_so
+      _sof_so="$(yq '[.entries[] | select(.id == strenv(_RW_CHECK_SOF_ID)) | .sign_off | select(.risk_accepted_by != null and .risk_accepted_by != "" and .owasp_category != null and .owasp_category != "" and .impact != null and .impact != "" and .finding_id != null and .finding_id != "" and .round != null and .timestamp != null and .timestamp != "")] | length' "$tmp" 2>/dev/null)" || _sof_so="0"
+      unset _RW_CHECK_SOF_ID
+      if [ "$_sof_so" = "0" ] || [ "$_sof_so" = "null" ]; then
+        _rw_abort_and_die 1 "record-accept-override: signed-off finding $_sof_id does not have a complete sign-off record"
+      fi
+      sof_json="$(printf '%s' "$sof_json" | jq --arg id "$_sof_id" '. + [$id]')" || _rw_abort_and_die 1 "record-accept-override: jq failed building signed-off array"
+    done
+  fi
+
+  # Read the failing gates from the round's selected gates.
+  local failing_json
+  failing_json="$(yq -o=json '[(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).selected_gates[] | select(.report_path == "" or .report_path == null) | .gate]' "$tmp" 2>/dev/null)" || failing_json="[]"
+
+  # Write accept override via a JSON tmp file loaded by yq.
+  local ao_tmp
+  _rw_mktemp "accept-override.json" ao_tmp
+  jq -n \
+    --arg dec "$decision" \
+    --arg usr "$user" \
+    --argjson rnd "$round" \
+    --arg ts "$timestamp" \
+    --argjson sof "$sof_json" \
+    --argjson fg "$failing_json" \
+    '{decision: $dec, user: $usr, round: $rnd, timestamp: $ts, signed_off_findings: $sof, failing_gates: $fg}' \
+    > "$ao_tmp" || _rw_abort_and_die 1 "record-accept-override: jq failed"
+
+  export _RW_AO_TMP="$ao_tmp"
+  yq -i '(.rounds[] | select(.run_id == strenv(_RW_RUN_ID))).accept_override = load(strenv(_RW_AO_TMP))' "$tmp" || _rw_die 1 "record-accept-override: yq write failed"
+  unset _RW_AO_TMP _RW_RUN_ID
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
 
@@ -2690,7 +3393,7 @@ register-write.sh — sole writer for the shared findings register
 Usage:
   register-write.sh add --story <key> --defect <text> --type <type> --severity <sev>
       --gate <gate> [--evidence <text>] [--impact <text>] [--reproduction <text>]
-      [--material] [--blocking --blocking-rationale <text>]
+      [--owasp-category <cat>] [--material] [--blocking --blocking-rationale <text>]
       [--requirement-or-risk <text>] [--dedup-key <key>]
   register-write.sh merge --story <key> --source-id <RF-n> --target-id <RF-n>
   register-write.sh resolve-severity --story <key> --id <RF-n>
@@ -2705,9 +3408,10 @@ Usage:
   register-write.sh record-round --story <key> --run-id <id> --repo <path>
       --gate <name>=<reason> ... [--carry <name>=<run-id>:<rationale> ...]
   register-write.sh record-round-report --story <key> --run-id <id>
-      --gate <name> --report <path>
+      --gate <name> --report <path> --verdict <PASSED|FAILED|UNVERIFIED>
   register-write.sh round-info --story <key> [--run-id <id>]
   register-write.sh complete-round --story <key> --run-id <id> --repo <path>
+      [--verdict <PASSED|FAILED>]
   register-write.sh assert-round-complete --story <key>
   register-write.sh impact-assessment --story <key> --run-id <id>
       --from-run <old-run-id> --repo <path>
@@ -2717,6 +3421,18 @@ Usage:
   register-write.sh bind-brief --story <key> --run-id <id> --brief <path>
   register-write.sh supersede-brief --story <key> --run-id <id>
       --brief <new-path> --rationale <text>
+  register-write.sh count-rounds --story <key> [--max <N>]
+      [--current-verdict <PASSED|FAILED>]
+  register-write.sh record-escalation --story <key> --run-id <id>
+      --round-count <N> --max-cycles <M>
+  register-write.sh resolve-escalation --story <key> --run-id <id>
+      --choice <accept|descope|one-more-cycle>
+  register-write.sh sign-off-finding --story <key> --finding-id <RF-n>
+      --risk-accepted-by <user> --owasp-category <cat> --impact <text>
+      --round <N> --timestamp <iso>
+  register-write.sh record-accept-override --story <key> --run-id <id>
+      --decision <text> --user <name> --round <N> --timestamp <iso>
+      [--signed-off-findings <id1,id2,...>]
   register-write.sh --help
 
 Exit codes: 0 success, 1 caller error, 2 malformed register.
@@ -2748,6 +3464,11 @@ case "${1:-}" in
   record-scope-revision) shift; _rw_cmd_record_scope_revision "$@" ;;
   bind-brief) shift; _rw_cmd_bind_brief "$@" ;;
   supersede-brief) shift; _rw_cmd_supersede_brief "$@" ;;
+  count-rounds) shift; _rw_cmd_count_rounds "$@" ;;
+  record-escalation) shift; _rw_cmd_record_escalation "$@" ;;
+  resolve-escalation) shift; _rw_cmd_resolve_escalation "$@" ;;
+  sign-off-finding) shift; _rw_cmd_sign_off_finding "$@" ;;
+  record-accept-override) shift; _rw_cmd_record_accept_override "$@" ;;
   -h|--help) _rw_usage; exit 0 ;;
   "") _rw_die 1 "missing subcommand; use --help" ;;
   *) _rw_die 1 "unknown subcommand: $1" ;;
