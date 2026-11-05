@@ -140,13 +140,34 @@ _hrs_source_lock() {
 
 _hrs_count_live_slots() {
   local count=0
-  local f pid
+  local f pid name_pid
   for f in "${_HRS_SLOT_DIR}"/slot-*; do
     [ -f "$f" ] || continue
-    read -r pid _ < "$f" 2>/dev/null || continue
+    pid=""
+    read -r pid _ < "$f" 2>/dev/null || pid=""
     if [ -z "$pid" ] || ! [ "$pid" -gt 0 ] 2>/dev/null; then
-      # Invalid slot file — reclaim.
-      rm -f "$f" 2>/dev/null || true
+      # Content PID unreadable (empty or garbage file, e.g. from a
+      # signal that landed between mktemp and the PID write). Fall
+      # back to the PID encoded in the file name (slot-<pid>.XXXXXX).
+      name_pid=""
+      case "$(basename "$f")" in
+        slot-[0-9]*.*)
+          name_pid="${f##*/slot-}"   # e.g. "12345.aBC123"
+          name_pid="${name_pid%%.*}" # e.g. "12345"
+          ;;
+      esac
+      if [ -n "$name_pid" ] && [ "$name_pid" -gt 0 ] 2>/dev/null; then
+        if kill -0 "$name_pid" 2>/dev/null; then
+          # Name-PID is alive — keep the slot (owner may still write it).
+          count=$((count + 1))
+        else
+          # Name-PID is dead — safe to reclaim.
+          rm -f "$f" 2>/dev/null || true
+        fi
+      else
+        # No usable PID at all — reclaim.
+        rm -f "$f" 2>/dev/null || true
+      fi
       continue
     fi
     if kill -0 "$pid" 2>/dev/null; then
@@ -167,13 +188,17 @@ _hrs_count_live_slots() {
 # with adjacent PIDs can produce the same $RANDOM value.
 
 _hrs_create_slot() {
-  local slot_file
-  slot_file="$(mktemp "${_HRS_SLOT_DIR}/slot-$$.XXXXXX")" || {
+  # Assign _HRS_MY_SLOT directly from mktemp so the release trap can
+  # find the file even if a signal fires before this function returns.
+  # A signal during the command substitution runs the trap after the
+  # assignment completes, so the slot is always recorded.
+  _HRS_MY_SLOT="$(mktemp "${_HRS_SLOT_DIR}/slot-$$.XXXXXX")" || {
+    _HRS_MY_SLOT=""
     printf '%s: failed to create slot file in %s\n' "$_HRS_SCRIPT_NAME" "$_HRS_SLOT_DIR" >&2
     return 1
   }
-  printf '%s %s\n' "$$" "$(date +%s)" > "$slot_file"
-  _HRS_MY_SLOT="$slot_file"
+  _HRS_ACQUIRED=1
+  printf '%s %s\n' "$$" "$(date +%s)" > "$_HRS_MY_SLOT"
 }
 
 # --- Public: heavy_reviewer_acquire ---
@@ -286,7 +311,6 @@ heavy_reviewer_acquire() {
 
     if [ "$live_count" -lt "$limit" ]; then
       _hrs_create_slot
-      _HRS_ACQUIRED=1
       release_lock "$_HRS_FD"
       return 0
     fi
@@ -312,7 +336,7 @@ heavy_reviewer_acquire() {
 # --- Public: heavy_reviewer_release ---
 
 heavy_reviewer_release() {
-  if [ "$_HRS_ACQUIRED" = "1" ] && [ -n "$_HRS_MY_SLOT" ]; then
+  if [ -n "$_HRS_MY_SLOT" ]; then
     rm -f "$_HRS_MY_SLOT" 2>/dev/null || true
     _HRS_ACQUIRED=0
     _HRS_MY_SLOT=""

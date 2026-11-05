@@ -231,6 +231,131 @@ YAML
   rm -f "$GAIA_STATE_DIR/review-semaphore.d/slot-${live_pid}.0"
 }
 
+@test "empty slot file named for a dead PID is reclaimed" {
+  source "$LOCK_HELPER"
+  source "$SLOT_HELPER"
+
+  mkdir -p "$GAIA_STATE_DIR/review-semaphore.d"
+  # Get a dead PID: start a no-op background job and wait for it.
+  sleep 0 &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+  # Ensure it is dead.
+  kill -0 "$dead_pid" 2>/dev/null && skip "PID $dead_pid unexpectedly alive"
+  local empty_slot="$GAIA_STATE_DIR/review-semaphore.d/slot-${dead_pid}.XXXXXX"
+  : > "$empty_slot"
+
+  heavy_reviewer_acquire --limit 4
+  heavy_reviewer_release
+
+  # The empty slot must have been reclaimed by the count/reclaim pass.
+  [ ! -f "$empty_slot" ] || {
+    echo "FAIL: empty slot for dead PID was not reclaimed"
+    return 1
+  }
+}
+
+@test "empty slot file named for a live PID is kept" {
+  source "$LOCK_HELPER"
+  source "$SLOT_HELPER"
+
+  mkdir -p "$GAIA_STATE_DIR/review-semaphore.d"
+  # Create an empty slot file named for a live PID (a background sleep).
+  sleep 30 &
+  local live_pid=$!
+  local empty_slot="$GAIA_STATE_DIR/review-semaphore.d/slot-${live_pid}.XXXXXX"
+  : > "$empty_slot"
+
+  heavy_reviewer_acquire --limit 4
+  heavy_reviewer_release
+
+  # The live-PID empty slot must NOT have been reclaimed.
+  [ -f "$empty_slot" ] || {
+    kill "$live_pid" 2>/dev/null || true; wait "$live_pid" 2>/dev/null || true
+    echo "FAIL: empty slot for live PID was incorrectly reclaimed"
+    return 1
+  }
+
+  kill "$live_pid" 2>/dev/null || true
+  wait "$live_pid" 2>/dev/null || true
+  rm -f "$empty_slot"
+}
+
+@test "TERM during slot creation leaves no leaked slot file" {
+  # Deterministic test: override _hrs_create_slot to self-signal right
+  # after mktemp sets _HRS_MY_SLOT but before _HRS_ACQUIRED is set.
+  # The release trap must clean up the file using _HRS_MY_SLOT alone.
+
+  run bash -c "
+    source '$LOCK_HELPER'
+    source '$SLOT_HELPER'
+    export GAIA_STATE_DIR='$GAIA_STATE_DIR'
+
+    # Override _hrs_create_slot to self-signal between the mktemp
+    # assignment and the _HRS_ACQUIRED=1 write.
+    _hrs_create_slot() {
+      _HRS_MY_SLOT=\"\$(mktemp \"\${_HRS_SLOT_DIR}/slot-\$\$.XXXXXX\")\" || {
+        _HRS_MY_SLOT=''
+        return 1
+      }
+      # Signal ourselves BEFORE _HRS_ACQUIRED is set.
+      kill -TERM \$\$ 2>/dev/null
+      _HRS_ACQUIRED=1
+      printf '%s %s\n' \"\$\$\" \"\$(date +%s)\" > \"\$_HRS_MY_SLOT\"
+    }
+
+    heavy_reviewer_run --limit 4 -- echo CHILD-RAN
+  "
+
+  # The wrapper should exit non-zero (TERM).
+  [ "$status" -ne 0 ] || {
+    echo "expected non-zero exit, got $status"
+    return 1
+  }
+
+  # No slot files should remain.
+  local remaining
+  remaining=$(find "$GAIA_STATE_DIR/review-semaphore.d" -name 'slot-*' 2>/dev/null | wc -l)
+  [ "$remaining" -eq 0 ] || {
+    echo "FAIL: $remaining slot files leaked"
+    ls "$GAIA_STATE_DIR/review-semaphore.d"/slot-* 2>/dev/null
+    return 1
+  }
+}
+
+@test "qa-test-runner installs release traps before acquire" {
+  # Pin the trap-before-acquire ordering so the Q-acquire-before-trap
+  # mutant (acquire moved above the traps) is caught.
+  local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
+  [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
+
+  # Extract the relevant lines: the source, traps and acquire must
+  # appear in that order. The trap lines must come before acquire.
+  local trap_line acquire_line
+  trap_line=$(/usr/bin/grep -n "trap 'heavy_reviewer_release' EXIT" "$qa_runner" | head -1 | cut -d: -f1)
+  acquire_line=$(/usr/bin/grep -n 'heavy_reviewer_acquire' "$qa_runner" | head -1 | cut -d: -f1)
+  [ -n "$trap_line" ] || { echo "EXIT trap line not found"; return 1; }
+  [ -n "$acquire_line" ] || { echo "acquire line not found"; return 1; }
+  [ "$trap_line" -lt "$acquire_line" ] || {
+    echo "FAIL: EXIT trap (line $trap_line) must come before acquire (line $acquire_line)"
+    return 1
+  }
+}
+
+@test "heavy_reviewer_run installs release traps before acquire" {
+  # Pin the trap-before-acquire ordering so the H-run-acquire-before-trap
+  # mutant is caught.
+  local exit_trap_line acquire_line
+  exit_trap_line=$(/usr/bin/grep -n "trap 'heavy_reviewer_release' EXIT" "$SLOT_HELPER" | head -1 | cut -d: -f1)
+  acquire_line=$(/usr/bin/grep -n 'heavy_reviewer_acquire' "$SLOT_HELPER" | /usr/bin/grep -v '^[0-9]*:heavy_reviewer_acquire()' | /usr/bin/grep -v '#' | head -1 | cut -d: -f1)
+  [ -n "$exit_trap_line" ] || { echo "EXIT trap line not found in helper"; return 1; }
+  [ -n "$acquire_line" ] || { echo "acquire call line not found in helper"; return 1; }
+  [ "$exit_trap_line" -lt "$acquire_line" ] || {
+    echo "FAIL: EXIT trap (line $exit_trap_line) must come before acquire (line $acquire_line)"
+    return 1
+  }
+}
+
 @test "slot helper proceeds with warning when wait bound expires" {
   source "$LOCK_HELPER"
   source "$SLOT_HELPER"
