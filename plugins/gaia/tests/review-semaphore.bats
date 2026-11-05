@@ -324,8 +324,8 @@ YAML
 }
 
 @test "qa-test-runner installs release traps before acquire" {
-  # Pin the trap-before-acquire ordering so the Q-acquire-before-trap
-  # mutant (acquire moved above the traps) is caught.
+  # Pin the trap-before-acquire ordering so moving the acquire call
+  # above the release traps fails this test.
   local qa_runner="$PLUGIN_DIR/scripts/review-common/qa-test-runner.sh"
   [ -f "$qa_runner" ] || skip "qa-test-runner.sh not found"
 
@@ -343,8 +343,8 @@ YAML
 }
 
 @test "heavy_reviewer_run installs release traps before acquire" {
-  # Pin the trap-before-acquire ordering so the H-run-acquire-before-trap
-  # mutant is caught.
+  # Pin the trap-before-acquire ordering so moving the acquire call
+  # above the release traps in heavy_reviewer_run fails this test.
   local exit_trap_line acquire_line
   exit_trap_line=$(/usr/bin/grep -n "trap 'heavy_reviewer_release' EXIT" "$SLOT_HELPER" | head -1 | cut -d: -f1)
   acquire_line=$(/usr/bin/grep -n 'heavy_reviewer_acquire' "$SLOT_HELPER" | /usr/bin/grep -v '^[0-9]*:heavy_reviewer_acquire()' | /usr/bin/grep -v '#' | head -1 | cut -d: -f1)
@@ -883,8 +883,8 @@ YAML
   # Hold the semaphore lock for 11 seconds (longer than the 10s acquire
   # timeout), so the first acquire_lock call fails. The helper should
   # then retry. After the lock is released, the retry succeeds and a
-  # slot is acquired. A bypass mutant would return immediately with no
-  # slot, so the child sees 0 slot files.
+  # slot is acquired. Without the retry the helper would return
+  # immediately with no slot, so the child sees 0 slot files.
   source "$LOCK_HELPER"
 
   mkdir -p "$GAIA_STATE_DIR/review-semaphore.d"
@@ -911,7 +911,7 @@ YAML
 
   [ "$status" -eq 0 ]
   [ -f "$slot_marker" ]
-  # With the retry, a slot was acquired (count >= 1). Without it (mutant),
+  # With the retry, a slot was acquired (count >= 1). Without the retry
   # no slot file is created, so count is 0.
   local count
   count=$(sed 's/slot-count=//' "$slot_marker" | tr -d ' ')
