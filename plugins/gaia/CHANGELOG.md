@@ -3,11 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
-## [Unreleased]
+## [1.226.0] — 2026-11-05
 
 ### Added
 
-- (review) heavy-reviewer counting semaphore caps concurrent test/mutation/property-test subprocesses system-wide (`review.max_concurrent_heavy_reviewers`, default 4). On upgrade the default takes effect immediately — no config change required.
+- (review) add heavy-reviewer counting semaphore (#2371). It caps concurrent test, mutation and property-test subprocesses system-wide (`review.max_concurrent_heavy_reviewers`, default 4). On upgrade the default takes effect immediately; no config change is required.
+- (review) add fix-cycle cap with escalation and security carve-out (#2358)
+- (dev-story) add preflight gate and post-ci smoke hook (#2362)
+- (review) add per-story review telemetry (#2355)
+
+### Fixed
+
+- (release) harden per-sprint release against path traversal, stray staging, and crash recovery (#2373)
+- (session-binding) harden binding read/write and sprint-close edge cases (#2360)
+- (merge-ledger) add locking, atomic writes, input validation (#2359)
 
 ## [1.225.0] — 2026-11-01
 
