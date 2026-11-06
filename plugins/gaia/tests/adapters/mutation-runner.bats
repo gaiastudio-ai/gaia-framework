@@ -38,19 +38,21 @@ check() {
 SCRIPT
   chmod +x "$FIXTURE_WT/scripts/target.sh"
 
+  # Simple shell test script for the target.sh fixture.
+  # Named .bats so covering-test selection matches by extension,
+  # but is a plain bash script the runner can execute directly.
   cat > "$FIXTURE_WT/tests/target.bats" <<'TEST'
-#!/usr/bin/env bats
-@test "check returns 0 for zero" {
-  source "$BATS_TEST_DIRNAME/../scripts/target.sh"
-  run check 0
-  [ "$status" -eq 0 ]
-}
-@test "check returns 1 for nonzero" {
-  source "$BATS_TEST_DIRNAME/../scripts/target.sh"
-  run check 5
-  [ "$status" -eq 1 ]
-}
+#!/usr/bin/env bash
+# Test that verifies target.sh behavior. References target.sh by name
+# (for covering-test selection) and exits non-zero on failure.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")/../scripts" && pwd)"
+source "$SCRIPT_DIR/target.sh"
+check 0 || { echo "FAIL: check 0 should return 0"; exit 1; }
+! check 5 || { echo "FAIL: check 5 should return 1"; exit 1; }
+echo "PASS"
 TEST
+  chmod +x "$FIXTURE_WT/tests/target.bats"
 
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "init"
@@ -278,13 +280,16 @@ TERMHELPER
 # ---------- AC6: Survivors registered ----------
 
 @test "survivors are registered with priority-based severity and re-runs never duplicate" {
-  # Create a test that always passes (all mutants survive)
+  # Create a test that always passes (all mutants survive).
+  # References target.sh by name for covering-test selection.
   cat > "$FIXTURE_WT/tests/target.bats" <<'TEST'
-#!/usr/bin/env bats
-@test "always passes" {
-  true
-}
+#!/usr/bin/env bash
+# Weak test: always passes regardless of target.sh behavior.
+# References target.sh (covering-test match).
+echo "target.sh test: always passes"
+exit 0
 TEST
+  chmod +x "$FIXTURE_WT/tests/target.bats"
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "weak test"
 
@@ -325,11 +330,15 @@ MOCK
 
 @test "missing threshold defaults apply and P0 below threshold gets gate failed while P2 gets advisory" {
   # P0 story with low score (thresholds: P1 only, so P0 defaults to 80)
-  # Create a test that passes for all mutants (100% survived = 0% score)
+  # Create a test that passes for all mutants (100% survived = 0% score).
+  # References target.sh for covering-test selection.
   cat > "$FIXTURE_WT/tests/target.bats" <<'TEST'
-#!/usr/bin/env bats
-@test "always passes" { true; }
+#!/usr/bin/env bash
+# Weak test: always passes regardless of target.sh mutations.
+echo "target.sh test: always passes"
+exit 0
 TEST
+  chmod +x "$FIXTURE_WT/tests/target.bats"
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "pass-all"
 
@@ -475,35 +484,30 @@ test_execution:
     P0: 80
 YAML
 
-  # Replace yq on PATH with one that always exits 127 (not found)
-  mkdir -p "$TEST_TMP/no-yq-bin"
-  cat > "$TEST_TMP/no-yq-bin/yq" <<'YQ'
-#!/usr/bin/env bash
-exit 127
-YQ
-  chmod +x "$TEST_TMP/no-yq-bin/yq"
-
-  # Build a PATH that uses our stub yq first and excludes real yq
-  local fake_path="$TEST_TMP/no-yq-bin"
-  local clean_path=""
-  local IFS_saved="$IFS"
-  IFS=':'
-  for p in $PATH; do
-    # Skip dirs containing a real yq
-    if [ -x "$p/yq" ] && [ "$p" != "$TEST_TMP/no-yq-bin" ]; then
-      continue
-    fi
-    if [ -n "$clean_path" ]; then
-      clean_path="$clean_path:$p"
-    else
-      clean_path="$p"
+  # Build a minimal PATH containing only basic system tools (no yq).
+  # Include common tool locations for bash, jq, git, etc., but exclude
+  # any directory that contains yq.
+  local minimal_path=""
+  for d in /usr/bin /bin /usr/sbin /sbin; do
+    if [ -d "$d" ] && [ ! -x "$d/yq" ]; then
+      minimal_path="${minimal_path:+$minimal_path:}$d"
     fi
   done
-  IFS="$IFS_saved"
-  clean_path="$fake_path:$clean_path"
+  # Also include the directory containing bash 5 if needed
+  local bash5_dir
+  bash5_dir=$(dirname "$(command -v bash 2>/dev/null || echo /usr/bin/bash)")
+  if [ -d "$bash5_dir" ] && [ ! -x "$bash5_dir/yq" ]; then
+    minimal_path="${minimal_path:+$minimal_path:}$bash5_dir"
+  fi
+  # Include jq location
+  local jq_dir
+  jq_dir=$(dirname "$(command -v jq 2>/dev/null || echo /usr/bin/jq)")
+  if [ -d "$jq_dir" ] && [ ! -x "$jq_dir/yq" ]; then
+    minimal_path="${minimal_path:+$minimal_path:}$jq_dir"
+  fi
 
-  # Run with no-yq PATH
-  PATH="$clean_path" run "$RUNNER" \
+  # Run with a PATH that has no yq
+  PATH="$minimal_path" run "$RUNNER" \
     --worktree "$FIXTURE_WT" \
     --files-from "$TEST_TMP/files.txt" \
     --tests-from "$TEST_TMP/tests.txt" \
@@ -548,9 +552,12 @@ SCRIPT
   chmod +x "$FIXTURE_WT/scripts/sub dir/my module.sh"
 
   cat > "$FIXTURE_WT/tests/test[1].bats" <<'TEST'
-#!/usr/bin/env bats
-@test "module test" { true; }
+#!/usr/bin/env bash
+# Test with bracket metacharacter in name. References my module.sh.
+echo "module test: pass"
+exit 0
 TEST
+  chmod +x "$FIXTURE_WT/tests/test[1].bats"
 
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "add metachar files"

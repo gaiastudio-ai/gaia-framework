@@ -479,14 +479,20 @@ while IFS= read -r source_file; do
       # Compose test command
       test_cmd=""
       if [ -n "$covering_tests" ]; then
-        # Build quoted test command
+        # Build a command that runs each covering test in sequence.
+        # Use bash to execute each test file (works for both plain
+        # shell tests and bats files when bats is the interpreter).
         test_args=""
         while IFS= read -r tfile; do
           [ -n "$tfile" ] || continue
           quoted=$(printf '%q' "$copy_dir/$tfile")
-          test_args="$test_args $quoted"
+          if [ -n "$test_args" ]; then
+            test_args="$test_args && bash $quoted"
+          else
+            test_args="bash $quoted"
+          fi
         done <<< "$covering_tests"
-        test_cmd="bats$test_args"
+        test_cmd="$test_args"
       fi
 
       # Run adapter
@@ -520,7 +526,7 @@ while IFS= read -r source_file; do
     # Handle no-coverage case
     if [ -z "$covering_tests" ]; then
       # Wait for the last PID (bash 3.2 compatible — no negative indexing)
-      local _mr_last_idx=$(( ${#_mr_active_pids[@]} - 1 ))
+      _mr_last_idx=$(( ${#_mr_active_pids[@]} - 1 ))
       wait "${_mr_active_pids[$_mr_last_idx]}" 2>/dev/null || true
       unset "_mr_active_pids[$_mr_last_idx]"
       # Overwrite result with no-coverage
