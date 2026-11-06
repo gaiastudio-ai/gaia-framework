@@ -155,8 +155,8 @@ SURFACE_FILES=("${DEDUPED_FILES[@]}")
 
 # _resolve_script_ref — resolve a .sh reference to a real file.
 # Accepts a bare basename (foo.sh) or a relative path (brain/foo.sh).
-# Searches: scripts/<ref>, scripts/lib/<ref> (basename only), and the
-# skill's own scripts/ dir. Returns 0 and prints the real path if found;
+# Searches: scripts/<ref>, scripts/lib/<ref> (basename only), <surface>/<ref>,
+# and beside the referencing file (optional second argument). Returns 0 and prints the real path if found;
 # returns 1 if not.
 _resolve_script_ref() {
   local ref="$1"
@@ -174,6 +174,20 @@ _resolve_script_ref() {
   if [ -f "$candidate" ]; then
     printf '%s' "$candidate"
     return 0
+  fi
+  # 3. Try as-given under the surface root (a path into another skill).
+  candidate="$SURFACE_ROOT/$ref"
+  if [ -f "$candidate" ]; then
+    printf '%s' "$candidate"
+    return 0
+  fi
+  # 4. Try beside the referencing file (a skill script calling its sibling).
+  if [ -n "${2:-}" ]; then
+    candidate="$(dirname "$2")/$bn"
+    if [ -f "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
   fi
   return 1
 }
@@ -204,7 +218,7 @@ while [ "$changed" -eq 1 ]; do
     while IFS= read -r ref; do
       [ -n "$ref" ] || continue
       # Try to resolve against scripts/ and scripts/lib/.
-      resolved=$(_resolve_script_ref "$ref") || true
+      resolved=$(_resolve_script_ref "$ref" "$f") || true
       if [ -z "$resolved" ]; then
         # Try relative to the referencing file's directory.
         rel_candidate="$(dirname "$f")/$ref"

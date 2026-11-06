@@ -46,6 +46,7 @@ export LC_ALL
 #                       dev_story.tdd_review.phases
 #                       dev_story.tdd_review.qa_auto_in_yolo
 #                       dev_story.tdd_review.qa_timeout_seconds
+#                       dev_story.review_before_merge
 #   - --all:          batch mode. Emits the full flat-key surface
 #                     (artifact paths, sizing_map.{S,M,L,XL},
 #                     dev_story.tdd_review.*, val_integration.*) in a
@@ -186,6 +187,29 @@ parse_yaml_nested_key() {
       if (in_parent) { in_parent=0 }
     }
     $0 ~ "^"P"[[:space:]]*:[[:space:]]*$" { in_parent=1; next }
+    # Flow-style parent on one line: `parent: {child: value, other: value}`.
+    # Only keys of this mapping match; a nested mapping is one opaque value.
+    $0 ~ "^"P"[[:space:]]*:[[:space:]]*[{]" {
+      body=$0
+      sub(/^[^{]*[{]/, "", body)
+      depth=0; tok=""; n=length(body)
+      for (i=1; i<=n+1; i++) {
+        ch=(i<=n) ? substr(body, i, 1) : ","
+        if (ch == "{") depth++
+        if (ch == "}" && depth == 0) ch=","
+        else if (ch == "}") depth--
+        if (ch != "," || depth > 0) { tok=tok ch; continue }
+        key=tok; val=tok; tok=""
+        sub(/[[:space:]]*:.*$/, "", key); sub(/^[[:space:]]+/, "", key); gsub(/["\x27]/, "", key)
+        if (key != C || val !~ /:/) continue
+        sub(/^[^:]*:[[:space:]]*/, "", val); sub(/[[:space:]]+$/, "", val)
+        if (val ~ /^".*"$/) { val=substr(val, 2, length(val)-2) }
+        else if (val ~ /^\x27.*\x27$/) { val=substr(val, 2, length(val)-2) }
+        print val
+        exit
+      }
+      next
+    }
     in_parent && $0 ~ "^[[:space:]]+"C"[[:space:]]*:" {
       line=$0
       sub(/^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*/, "", line)
@@ -743,7 +767,7 @@ fi
 # Only --all + --cache use the cache (single-key callers retain byte-stable
 # legacy behavior). When a fresh cache file matches the source mtimes, dump
 # its body and exit — bypassing parse, merge, env-override, and emit.
-if [ "$EMIT_ALL" -eq 1 ] && [ "$USE_CACHE" -eq 1 ]; then
+if [ "$EMIT_ALL" -eq 1 ] && [ "$USE_CACHE" -eq 1 ] && [ "$FORMAT" = "shell" ]; then
   CACHE_FILE=$(cache_file_path)
   if [ -f "$CACHE_FILE" ]; then
     expected_digest=$(cache_digest)
@@ -889,6 +913,10 @@ v_dev_story_tdd_review_threshold=$(merge_doubly_nested_key dev_story tdd_review 
 v_dev_story_tdd_review_phases=$(merge_doubly_nested_key dev_story tdd_review phases)
 v_dev_story_tdd_review_qa_auto_in_yolo=$(merge_doubly_nested_key dev_story tdd_review qa_auto_in_yolo)
 v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story tdd_review qa_timeout_seconds)
+
+# dev_story.review_before_merge — opt-in pre-push review ordering.
+# No default here — the point-of-use default lives in review-order.sh.
+v_dev_story_review_before_merge=$(merge_nested_key dev_story review_before_merge)
 
 # review.max_fix_cycles — surfaced only when explicitly configured.
 # The point-of-use default of 2 lives in the orchestration layer, not here.
@@ -1506,6 +1534,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_dev_story_tdd_review_qa_auto_in_yolo" ;;
     dev_story.tdd_review.qa_timeout_seconds)
       printf '%s\n' "$v_dev_story_tdd_review_qa_timeout_seconds" ;;
+    dev_story.review_before_merge)
+      printf '%s\n' "$v_dev_story_review_before_merge" ;;
     compliance.regimes)
       printf '%s\n' "$v_compliance_regimes" ;;
     compliance.domain)
@@ -1763,6 +1793,7 @@ emit_all_body() {
   [ -n "$v_ci_platform_pipeline" ]              && emit_pair_shell ci_platform.pipeline             "$v_ci_platform_pipeline"
   [ -n "$v_platforms" ]                         && emit_pair_shell platforms                        "$v_platforms"
   [ -n "$v_project_kind" ]                      && emit_pair_shell project_kind                     "$v_project_kind"
+  [ -n "$v_dev_story_review_before_merge" ]       && emit_pair_shell dev_story.review_before_merge    "$v_dev_story_review_before_merge"
   [ -n "$v_review_max_fix_cycles" ]              && emit_pair_shell review.max_fix_cycles            "$v_review_max_fix_cycles"
   [ -n "$v_review_max_concurrent_heavy_reviewers" ] && emit_pair_shell review.max_concurrent_heavy_reviewers "$v_review_max_concurrent_heavy_reviewers"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller
@@ -1771,7 +1802,7 @@ emit_all_body() {
   return 0
 }
 
-if [ "$EMIT_ALL" -eq 1 ]; then
+if [ "$EMIT_ALL" -eq 1 ] && [ "$FORMAT" = "shell" ]; then
   body=$(emit_all_body)
   printf '%s\n' "$body"
   if [ "$USE_CACHE" -eq 1 ]; then
@@ -1940,6 +1971,9 @@ else
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_device_targets_json" '. + {device_targets: $v}')
     fi
     # Preflight / post-CI smoke command arrays — passed through unchanged.
+    if [ -n "$v_dev_story_review_before_merge" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --arg v "$v_dev_story_review_before_merge" '. + {"dev_story.review_before_merge": $v}')
+    fi
     if [ -n "$v_preflight_commands_json" ]; then
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_preflight_commands_json" '. + {preflight_commands: $v}')
     fi

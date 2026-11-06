@@ -146,6 +146,7 @@ core	design-review.bats
 core	detect-signals-proposal.bats
 core	detect-ux-scope.bats
 core	dev-story-promotion-chain-detect.bats
+core	dev-story-review-before-merge.bats
 core	dev-story-script-wiring.bats
 core	dev-story-stack-dev-delegation.bats
 core	dev-story-tdd-gate-wiring.bats

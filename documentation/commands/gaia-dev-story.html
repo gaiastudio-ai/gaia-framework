@@ -447,6 +447,80 @@ This warning is shown once per session.
             within the grace window.
           </p>
         </div>
+
+        <div class="callout">
+          <p class="callout-title">Pre-push review ordering (opt-in)</p>
+          <p>
+            By default, the six-gate review runs <em>after</em> push, PR, and
+            CI. Set <code>dev_story.review_before_merge: true</code> in
+            <code>.gaia/config/project-config.yaml</code> to move the review
+            <em>before</em> push. In this mode the reviewed commit is the
+            pushed commit:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Default order</th>
+                <th>Pre-push order (<code>review_before_merge: true</code>)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>commit &rarr; push &rarr; PR &rarr; CI &rarr; review &rarr; merge (the merge is refused until the review gate is complete)</td>
+                <td>commit &rarr; preflight &rarr; review &rarr; fix loop &rarr; push &rarr; PR &rarr; CI &rarr; merge &rarr; done</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>Interactive stop and resume.</strong> In non-YOLO mode the
+            run asks before starting the reviews. Choosing "stop" keeps the
+            story in <code>review</code> with everything local; re-running
+            <code>/gaia-dev-story &lt;key&gt;</code> resumes at the review
+            step without re-running the TDD cycle. Re-entry needs the story
+            worktree to still exist and no open PR for its exact branch; it
+            continues in that worktree, and goes straight to the push when
+            every row is bound to <code>HEAD</code> and the review gate is
+            complete or an accept override is recorded. Failed rows go back to
+            the review step. With no story worktree, resume with
+            <code>/gaia-run-all-reviews &lt;key&gt;</code>.
+          </p>
+          <p>
+            <strong>Layout requirement.</strong> With a promotion chain and a
+            git code path, this mode needs worktree mode on, a linked story
+            worktree, and a story file outside that work tree. Any other layout
+            halts before any status change, commit or review, and never falls
+            back to the default order. Enable worktree mode with
+            <code>GAIA_WORKTREE_MODE=1</code> or set the key to
+            <code>false</code>. <code>/gaia-doctor</code> warns about it too.
+          </p>
+          <p>
+            <strong>Moving to done.</strong> The story stays in
+            <code>review</code> through the fix loop, and moves to
+            <code>done</code> as the last action after the merge and its
+            verification succeed. In this mode
+            <code>transition-story-status.sh --to done</code> exits 9 until the
+            PR is verified merged, also when the config cannot be read. With no
+            promotion chain nothing is pushed and the story ends in
+            <code>review</code>. With the key absent or <code>false</code> the
+            tool makes no such check.
+          </p>
+          <p>
+            <strong>Drift halt.</strong> An ancestor check runs before push. If
+            the promotion base advanced while the reviews ran, the run halts
+            before pushing &mdash; rebase or merge the base and re-review.
+          </p>
+          <p>
+            <strong>Reviewed-head check.</strong> Immediately before the push,
+            the run also requires a clean working tree and all six Review Gate
+            rows bound to <code>HEAD</code>. A missing, duplicated or malformed
+            row halts the run rather than passing it. Outside a git work tree
+            both checks are skipped and the reviews still run on the local tree.
+          </p>
+          <p>
+            The key defaults to <code>false</code> (no behaviour change on
+            upgrade). When absent the entire pre-push path is skipped.
+          </p>
+        </div>
       </section>
 
       <!-- 6. Inputs -->
@@ -652,7 +726,8 @@ or run individual reviews.</code></pre>
           </li>
           <li>
             <a href="gaia-check-review-gate.html"><code>/gaia-check-review-gate</code></a>
-            -- once all reviews pass, transitions the story to done.
+            -- reports the composite Review Gate status. It is read-only and
+            does not change the story's status.
           </li>
           <li>
             <a href="gaia-triage-findings.html"><code>/gaia-triage-findings</code></a>

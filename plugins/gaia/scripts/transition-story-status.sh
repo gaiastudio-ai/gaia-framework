@@ -35,6 +35,7 @@
 #   6  lock contention (5s lock-acquisition timeout)
 #   7  invalid state transition
 #   8  rollback after partial failure
+#   9  review -> done refused: a pre-push reviewed story's PR is not verified merged
 #
 # Config (env vars, all optional):
 #   PROJECT_PATH              — defaults to "."
@@ -1450,6 +1451,21 @@ fi
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
+# Pre-push merge guard on review -> done. Decided by the shared helper, exit 9
+# on refusal. It can reach the network, so it runs before the status lock when
+# the story is already in review, keeping concurrent transitions from timing
+# out on that lock; the check under the lock covers a status that moved while
+# waiting. --reconcile-only is a replay, not an edge, and stays exempt.
+_PRE_PUSH_GUARD_RAN=0
+_pre_push_merge_guard() {
+  _PRE_PUSH_GUARD_RAN=1
+  "$SCRIPT_DIR"/../skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$STORY_KEY" || exit 9
+}
+if [ "$RECONCILE_ONLY" != "1" ] && [ "$NEW_STATUS" = "done" ] \
+   && [ "$(read_frontmatter_status "$STORY_FILE" 2>/dev/null || true)" = "review" ]; then
+  _pre_push_merge_guard
+fi
+
 # Single exit handler — every trap installation calls this. Idempotent
 # (per-fd registry cleared on first release), so chaining it into a later
 # trap that also releases is safe.
@@ -1510,6 +1526,11 @@ fi
 # State-machine validation. Reconcile-only is a no-edge replay.
 if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
   exit 7
+fi
+
+if [ "$RECONCILE_ONLY" != "1" ] && [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ] && [ "$_PRE_PUSH_GUARD_RAN" = "0" ]; then
+  _pre_push_merge_guard
 fi
 
 # Composite review-gate enforcement on review → done.

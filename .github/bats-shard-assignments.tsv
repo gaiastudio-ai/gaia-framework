@@ -67,6 +67,7 @@
 1	design-gate-sites.bats	38
 1	design-record-reopen-applicable.bats	10
 1	design-review.bats	74
+1	dev-story-review-before-merge.bats	82
 1	dev-story-step14b-cache-refresh-advisory.bats	5
 1	discovery-board-write.bats	8
 1	discovery-leak-gate.bats	6
