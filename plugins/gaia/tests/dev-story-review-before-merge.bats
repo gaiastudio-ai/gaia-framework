@@ -312,6 +312,8 @@ YAML
   local repo="$TMP/repo"
   git init "$repo" 2>/dev/null
   cd "$repo"
+  git config user.email "test@test.com"
+  git config user.name "Test"
   git remote add origin "$bare"
   echo "initial" > file.txt
   git add file.txt
@@ -354,6 +356,8 @@ YAML
   local repo="$TMP/repo2"
   git init "$repo" 2>/dev/null
   cd "$repo"
+  git config user.email "test@test.com"
+  git config user.name "Test"
   git remote add origin "$bare"
   echo "initial" > file.txt
   git add file.txt
@@ -373,6 +377,8 @@ YAML
   local repo="$TMP/repo3"
   git init "$repo" 2>/dev/null
   cd "$repo"
+  git config user.email "test@test.com"
+  git config user.name "Test"
   echo "x" > x.txt
   git add x.txt
   git commit -m "x" 2>/dev/null
