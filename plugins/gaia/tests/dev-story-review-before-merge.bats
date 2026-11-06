@@ -1000,12 +1000,16 @@ EOF
 
 @test "assert-reviewed-head refuses a symbolic ref in the SHA cell and names the gate" {
   _make_repo "$TMP/repo"
-  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse HEAD)"
-  _set_row "$TMP/story.md" "Security Review" "| Security Review | FAILED | report.md | HEAD |"
-  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Security Review"* ]]
-  [[ "$output" == *"not a commit SHA"* ]]
+  local head cell
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  for cell in "HEAD" "origin/staging" "--all-the-refs"; do
+    _write_bound_story "$TMP/story.md" "$head"
+    _set_row "$TMP/story.md" "Security Review" "| Security Review | FAILED | report.md | $cell |"
+    run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+    [ "$status" -eq 1 ] || { echo "accepted cell: $cell" >&2; false; }
+    [[ "$output" == *"Security Review"* ]]
+    [[ "$output" == *"not a commit SHA"* ]]
+  done
 }
 
 @test "assert-reviewed-head refuses unbound rows: absent, none, dash and an empty cell" {
