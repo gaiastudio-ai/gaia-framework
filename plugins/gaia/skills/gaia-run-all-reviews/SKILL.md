@@ -1,7 +1,7 @@
 ---
 name: gaia-review-all
 description: Run all 6 review workflows sequentially via subagents. Use when "run all reviews" or /gaia-review-all (formerly /gaia-run-all-reviews).
-argument-hint: "[story-key] [--force]"
+argument-hint: "[story-key] [--force] [--bind-head <sha>]"
 allowed-tools: [Read, Grep, Glob, Bash]
 deprecated_aliases: [gaia-run-all-reviews]
 deprecated_since: sprint-37
@@ -96,10 +96,10 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 
 ## Critical Rules
 
-- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force]".
+- A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force] [--bind-head <sha>]".
 - The story file MUST exist under `docs/implementation-artifacts/`. Resolve by searching both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`); prefer the first lexicographic match. If zero matches across both layouts, fail with "story file not found for key {story_key}".
 - The story MUST be in `review` status. If not, fail with "story must be in review status before running reviews".
-- The `--force` flag is the ONLY supported flag. Any other flag (e.g., `--frce`) MUST be rejected with a usage error and a non-zero exit (AC-EC2).
+- `--force` and `--bind-head <sha>` are the ONLY supported flags. `--bind-head` re-runs every PASSED row bound to a commit other than `<sha>`. Any other flag (e.g., `--frce`) MUST be rejected with a usage error and a non-zero exit (AC-EC2).
 - Reviews MUST run in this exact canonical order — never reordered, never parallel:
   1. Code Review (gaia-code-review) — gate "Code Review", short-name `code-review`
   2. QA Tests (gaia-qa-tests) — gate "QA Tests", short-name `qa-tests`

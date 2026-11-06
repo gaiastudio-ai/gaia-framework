@@ -172,24 +172,33 @@ FRESH/REWORK/RESUME verdict inline.
   mode. Do NOT re-derive the mode from `$STATUS` inline; the script is the single
   source of truth.
 
+**Pre-push ordering read.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode`. Any non-zero exit is a HALT with its stderr: the configured value is not a boolean or the config cannot be resolved, and neither is ever read as the default order. When it prints `pre-push`, run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, so an unsupported layout is refused before any TDD time is spent. Exit 1 = HALT naming the layout and both remedies (enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false), with no fallback to the default order. Exit 0 or 3 (non-git workspace) continues. When `mode` prints `default` nothing else in this paragraph runs.
+
 **Pre-push re-entry exception.** Before the `detect-mode.sh` RESUME path, check
 for the pre-push re-entry condition. When all four of these hold:
   (a) `$STATUS` is `review`,
   (b) `review-order.sh mode` prints `pre-push`,
-  (c) the story worktree recorded in the checkpoint still exists on disk and is
-      on this story's branch (`feat/{story_key}-<slug>`),
+  (c) this story's worktree still exists on disk and is on this story's branch
+      (`feat/{story_key}-<slug>`),
   (d) `gh pr list` for that exact branch returns empty (no open PR for the story branch),
 then this story re-enters instead of halting. Read (c) and (d) with:
 
 ```bash
-_wt="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest | jq -r '.key_variables.worktree_path // empty')"
-STORY_BRANCH="$(git -C "$_wt" branch --show-current)"
-_open_pr="$(cd "$_wt" && gh pr list --head "$STORY_BRANCH" --state open --json number --jq '.[0].number')"
+_reentry=yes
+_wt="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh" find-worktree --story-key {story_key})" || _reentry=no
+if [ "$_reentry" = yes ]; then
+  STORY_BRANCH="$(git -C "$_wt" branch --show-current)"
+  _open_pr="$(cd "$_wt" && gh pr list --head "$STORY_BRANCH" --state open --json number --jq '.[0].number')" || _reentry=no
+  [ -z "$_open_pr" ] || _reentry=no
+fi
 ```
 
-`gh pr list --head` matches a whole branch name, so it gets the full name, never
-a prefix. A non-zero `gh` exit is a HALT, never read as "no open PR". An empty
-`_wt`, a missing directory or a branch belonging to another story fails (c).
+`find-worktree` reads the checkpoints written for this `story_key`, newest first,
+and falls back to `git worktree list --porcelain`. An empty recorded path, a
+missing directory or a branch belonging to another story fails (c), and so does
+a checkpoint written for a sibling story. `gh pr list --head` matches a whole
+branch name, so it gets the full name, never a prefix. A non-zero `gh` exit is a
+HALT, never read as "no open PR". `_reentry=no` means (c) or (d) failed.
 
 Before entering either target, rebind the code path to the recorded worktree.
 Step 3a, the only other place that does this, is being skipped:
@@ -205,9 +214,26 @@ The last variable and `PRIMARY_CODE_TREE` are what the Step 13 teardown reads.
 Re-entry sets up no exit handler for that teardown: a stopped or halted pre-push
 run keeps its worktree.
 
-Then pick the target with `review-order.sh assert-reviewed-head --story {story_path}`:
-exit 0 means every Review Gate row is bound to HEAD: re-enter at the push step
-inside Step 10. Any other result: re-enter at Step 9a (skipping Steps 2 through 9).
+Then pick the target. The push step needs every Review Gate row bound to HEAD
+and verdicts that allow it: a COMPLETE composite, or a recorded accept override.
+Rows that are FAILED and bound to HEAD, an unresolved ESCALATE included, go back
+to Step 9a:
+
+```bash
+_target=step-9a
+if "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh" assert-reviewed-head --story {story_path}; then
+  if "${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh" review-gate-check --story {story_key} >/dev/null 2>&1; then
+    _target=push
+  else
+    case "$("${CLAUDE_PLUGIN_ROOT}/scripts/review-common/register-write.sh" round-info --story {story_key} 2>/dev/null | awk '$1 == "escalation_state" { print $2 }')" in
+      resolved:accept) _target=push ;;
+    esac
+  fi
+fi
+```
+
+`_target=push` means re-enter at the push step inside Step 10. `_target=step-9a`
+means re-enter at Step 9a (skipping Steps 2 through 9).
 When the key is absent
 (`review-order.sh mode` prints `default`) and status is `review`, the existing
 Step 1 status halt applies — no re-entry exception. The same halt applies when
@@ -716,9 +742,17 @@ else:
 
 This sub-step is gated on the `dev_story.review_before_merge` config key. Run
 `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode` to
-read the active ordering. When it prints `default`, skip this sub-step entirely
+read the active ordering. Any non-zero exit is a HALT with its stderr, naming the
+key: a bad value or an unresolvable config is never read as the default order.
+When it prints `default`, skip this sub-step entirely
 and fall through to Step 10 (today's default order, unchanged). When it prints
-`pre-push`, execute the following sequence:
+`pre-push`, first run
+`${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --story {story_file}`.
+Exit 1 = HALT before any status change, commit or review, naming the layout and
+both remedies: enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set
+`dev_story.review_before_merge` to false. Never fall back to the default order.
+Any other non-zero exit except 3 (non-git workspace, continue) is also a HALT.
+Then execute the following sequence:
 
 1. **Promotion-chain guard.** Run
    `(cd "${PROJECT_PATH:-.}" && "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/promotion-chain-guard.sh")`.
@@ -729,8 +763,16 @@ and fall through to Step 10 (today's default order, unchanged). When it prints
    both ancestor checks.
 
 2. **Commit.** Build the commit message with `commit-msg.sh` and commit locally
-   in the worktree. Do NOT push yet. In a non-git workspace there is nothing to
-   commit; skip this item.
+   in the worktree. Do NOT push yet. A clean tree skips this item: a resumed run
+   arrives with its commit already made, and `git commit` would fail with nothing
+   to commit. In a non-git workspace there is nothing to commit; skip this item.
+   ```bash
+   if [ -n "$(git -C "${PROJECT_PATH:-.}" status --porcelain)" ]; then
+     _msg="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh" {story_file})"
+     git -C "${PROJECT_PATH:-.}" add -A
+     git -C "${PROJECT_PATH:-.}" commit -qF - <<<"$_msg"
+   fi
+   ```
 
 3. **Preflight gate.** Run the preflight commands (same runner as Step 10):
    ```bash
@@ -754,7 +796,9 @@ and fall through to Step 10 (today's default order, unchanged). When it prints
    non-zero, ask the user (AskUserQuestion) whether to run the six reviews now
    or stop. On stop: the story stays in `review`, nothing is pushed, the
    worktree and branch and local commit are preserved, and the output includes
-   the exact `/gaia-dev-story {story_key}` command to resume. On proceed (or
+   the exact `/gaia-dev-story {story_key}` command to resume. When no story
+   worktree exists (no promotion chain, or a non-git workspace), the command
+   to print is `/gaia-run-all-reviews {story_key}` instead. On proceed (or
    in YOLO mode): continue to the next sub-step.
 
 7. **Ancestor check (pre-review).** When the guard in item 1 returned
@@ -789,12 +833,14 @@ and fall through to Step 10 (today's default order, unchanged). When it prints
    run, HALT on AskUserQuestion with the story in `review`, the worktree
    kept and nothing pushed.
 
-10. **Ancestor check (pre-push).** Re-run `review-order.sh ancestor-check
+10. **Ancestor check (pre-push).** When the guard in item 1 returned
+    `PRESENT:<branch>`, re-run `review-order.sh ancestor-check
     --base "$PR_BASE"` immediately before push. If the base advanced during the
     review, HALT before push even with a COMPLETE composite — the reviewed
     commit would fail the merge-time stale-base guard.
 
-11. **Reviewed-head assertion.** Run
+11. **Reviewed-head assertion.** When the guard in item 1 returned `ABSENT`,
+    skip this item: nothing is pushed and the story ends in `review`. Otherwise run
     `review-order.sh assert-reviewed-head --story {story_file}`. If the
     working tree is dirty or any Review Gate row is bound to a SHA other than
     HEAD, HALT before push naming the mismatch. Exit 3 = skipped (non-git
@@ -811,7 +857,7 @@ preflight, and `--to review` transition in pre-push mode — they already ran).
 
 **Touch-set drift check (concurrent sprints only).** Before staging files for commit, run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"`. Same halt/resume/finding protocol as Step 5b. This catches drift introduced during the TDD cycle that was not caught by the per-phase checks.
 
-**Pre-push mode guard.** When `review-order.sh mode` prints `pre-push`, whether Step 10 is reached from Step 9a or by re-entry at the push step, Step 10 skips the commit (already built in Step 9a), the preflight gate (already ran in Step 9a), and the `--to review` transition at the end (already in `review`). The promotion-chain guard, push, and everything after the push are NOT skipped — they run as usual. The `step 10 git-push wire` marker pair is kept intact.
+**Pre-push mode guard.** A non-zero exit from `review-order.sh mode` is a HALT. When `review-order.sh mode` prints `pre-push`, whether Step 10 is reached from Step 9a or by re-entry at the push step, Step 10 skips the commit (already built in Step 9a), the preflight gate (already ran in Step 9a), and the `--to review` transition at the end (already in `review`). The promotion-chain guard, push, and everything after the push are NOT skipped — they run as usual. The `step 10 git-push wire` marker pair is kept intact.
 
 <!-- step10 script-wiring begin -->
 At the top of the CI section — before any commit / push action — the orchestrator
@@ -999,7 +1045,7 @@ Exit 0 = all smoke commands passed (or none configured) — proceed to merge. Ex
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 14 post-completion-gate {story_key}` to record the step-boundary event.
 
-- After the dev-story subagent returns `status=done`, the orchestrator verifies that the story's feature-branch PR has actually been merged on the target branch before accepting the done transition.
+- After Step 13 exits 0, verify that the story's feature-branch PR has actually been merged on the target branch, before any transition to `done` is accepted.
 - Run `scripts/verify-pr-merged.sh {story_key} {target_branch}` where `{target_branch}` is derived from `ci_cd.promotion_chain[0].branch` in global.yaml. The target may include a remote prefix (e.g. `origin/staging`); the script strips it for the API check and keeps it for fallback.
 - If no promotion chain is configured, pass `--no-chain` instead of a branch name. The script exits 3 (skip) and the gate passes silently for backward compatibility.
 - In worktree mode this step runs against the primary checkout: Step 3a's teardown restores `PROJECT_PATH` there after a successful removal, so this gate and the retry it can trigger both act on a real tree.
@@ -1061,7 +1107,7 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 
 YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO runs MUST NOT auto-fire reviews — the user manually invokes each review from the Review Gate UNVERIFIED rows. Silently auto-firing reviews in non-YOLO would erase user oversight.
 
-**Pre-push skip guard.** When `review-order.sh mode` prints `pre-push` and every Review Gate row is already bound to the PR head (the reviewed worktree HEAD — with squash merges the commit on the base differs), skip Step 16 entirely. The reviews already ran in Step 9a; re-running them here would be redundant. Emit `step16_gate: pre-push=true verdict=skipped (reviews bound to HEAD)` and proceed.
+**Pre-push skip guard.** A non-zero exit from `review-order.sh mode` is a HALT. When `review-order.sh mode` prints `pre-push` and every Review Gate row is already bound to the PR head (the reviewed worktree HEAD — with squash merges the commit on the base differs), skip Step 16 entirely. The reviews already ran in Step 9a; re-running them here would be redundant. Emit `step16_gate: pre-push=true verdict=skipped (reviews bound to HEAD)` and proceed.
 
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode (single source of truth — never re-implement detection inline).
 
@@ -1081,6 +1127,8 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
 
 - **Sequencing invariant (AC4):** Step 14 (post-completion gate) MUST run BEFORE Step 16. Step 16 NEVER precedes Step 14. The skill ordering above enforces this — Step 14's begin marker precedes Step 16's begin marker.
 <!-- step 16 end -->
+
+**Pre-push tail: move to `done`.** In pre-push mode only (`review-order.sh mode` prints `pre-push`), when Step 13 exited 0 and Step 14 exited 0, the last action of the run is `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to done`. Step 15's `--to review` before it is a no-op. The tool's existing gates still apply, and exit 9 means the PR is not verified merged: report the refusal and leave the story in `review`. Step 13 exit 3 (merge deferred) and a project with no promotion chain end in `review` without this transition. In default mode this paragraph does not run.
 
 ### Step timing — sub-step instrumentation scope
 
