@@ -476,12 +476,22 @@ This warning is shown once per session.
             run asks before starting the reviews. Choosing "stop" keeps the
             story in <code>review</code> with everything local; re-running
             <code>/gaia-dev-story &lt;key&gt;</code> resumes at the review
-            step without re-running the TDD cycle.
+            step without re-running the TDD cycle. Re-entry needs the story
+            worktree to still exist and no open PR for its exact branch; it
+            continues in that worktree, and goes straight to the push when
+            every row is already bound to <code>HEAD</code>.
           </p>
           <p>
             <strong>Drift halt.</strong> An ancestor check runs before push. If
             the promotion base advanced while the reviews ran, the run halts
             before pushing &mdash; rebase or merge the base and re-review.
+          </p>
+          <p>
+            <strong>Reviewed-head check.</strong> Immediately before the push,
+            the run also requires a clean working tree and all six Review Gate
+            rows bound to <code>HEAD</code>. A missing, duplicated or malformed
+            row halts the run rather than passing it. Outside a git work tree
+            both checks are skipped and the reviews still run on the local tree.
           </p>
           <p>
             The key defaults to <code>false</code> (no behaviour change on
