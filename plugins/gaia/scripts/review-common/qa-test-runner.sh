@@ -852,7 +852,7 @@ cat > "$EVIDENCE" <<EOF
 EOF
 
 # ---------- Mutation evidence check (read-only, never produces mutants) ----------
-_qa_mutation_check="$SCRIPT_DIR/mutation-evidence-check.sh"
+_qa_mutation_check="$(cd "$(dirname "$0")" && pwd)/mutation-evidence-check.sh"
 if [ -x "$_qa_mutation_check" ]; then
   # Resolve mutation thresholds from config
   _qa_mut_thresholds=""
