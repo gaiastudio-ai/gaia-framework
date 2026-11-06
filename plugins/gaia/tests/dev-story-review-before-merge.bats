@@ -112,6 +112,95 @@ WRAP
   : > "$TMP/git-calls.log"
 }
 
+# ---------- SKILL.md site helpers ----------
+
+_step9a() {
+  sed -n '/<!-- step 9a pre-push review begin -->/,/<!-- step 9a pre-push review end -->/p' "$SKILL_MD"
+}
+
+_step10() {
+  sed -n '/<!-- step 10 git-push wire begin -->/,/<!-- step 10 git-push wire end -->/p' "$SKILL_MD"
+}
+
+_step16() {
+  sed -n '/<!-- step 16 begin -->/,/<!-- step 16 end -->/p' "$SKILL_MD"
+}
+
+# The Step 1 re-entry block: from its bold title up to the next Step 1 bullet.
+_reentry() {
+  awk '/^\*\*Pre-push re-entry exception\.\*\*/ { on = 1 }
+       on && /check-deps\.sh \{story_path\}/ { exit }
+       on' "$SKILL_MD"
+}
+
+# One numbered Step 9a item, joined onto one line so a wrapped sentence matches.
+# $1 is the item's bold title without the closing asterisks.
+_item() {
+  _step9a | awk -v t="**$1" '
+    /^[0-9]+\. \*\*/ { on = (index($0, t) > 0) }
+    /^After Step 9a completes/ { on = 0 }
+    on' | tr '\n' ' ' | tr -s ' '
+}
+
+_flat() {
+  printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '
+}
+
+_has() {
+  grep -qF -- "$2" <<< "$1" || { printf 'missing: %s\nin: %s\n' "$2" "$1" >&2; return 1; }
+}
+
+_lacks() {
+  if grep -qF -- "$2" <<< "$1"; then
+    printf 'unexpected: %s\n' "$2" >&2
+    return 1
+  fi
+}
+
+# Assert each literal first appears on a later line than the one before it.
+_assert_order() {
+  local text="$1" prev=0 n lit
+  shift
+  for lit in "$@"; do
+    n="$(grep -nF -- "$lit" <<< "$text" | sed -n '1s/:.*//p')"
+    [ -n "$n" ] || { printf 'missing: %s\n' "$lit" >&2; return 1; }
+    [ "$n" -gt "$prev" ] || { printf 'out of order: %s (line %s, previous %s)\n' "$lit" "$n" "$prev" >&2; return 1; }
+    prev="$n"
+  done
+}
+
+# Write the Nth bash fence of the re-entry block to a file, so the commands the
+# skill prescribes are the commands the tests run.
+_reentry_fence() {
+  _reentry | awk -v want="$1" '
+    /^```bash$/ { n++; if (n == want) on = 1; next }
+    /^```$/ { on = 0 }
+    on' > "$2"
+  [ -s "$2" ]
+}
+
+# Worktree on a story branch, a stub checkpoint reader that records it, and a
+# stub gh that, like the real one, matches --head only on the exact branch name.
+_reentry_fixture() {
+  _make_repo "$TMP/wt"
+  git -C "$TMP/wt" checkout -qb feat/some-story-some-slug
+  mkdir -p "$TMP/plugin/scripts" "$TMP/bin"
+  cat > "$TMP/plugin/scripts/resume-checkpoint.sh" <<STUB
+#!/bin/sh
+printf '{"key_variables":{"worktree_path":"%s"}}\n' "$TMP/wt"
+STUB
+  chmod +x "$TMP/plugin/scripts/resume-checkpoint.sh"
+  cat > "$TMP/bin/gh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$TMP/gh-calls.log"
+[ "\${GH_STUB_RC:-0}" -eq 0 ] || exit "\$GH_STUB_RC"
+case " \$* " in
+  *" --head feat/some-story-some-slug "*) printf '2380\n' ;;
+esac
+STUB
+  chmod +x "$TMP/bin/gh"
+}
+
 # ---------- Portability: print BASH_VERSION ----------
 # The ATDD mandates printing BASH_VERSION from inside each run.
 # bats itself prints it, but we assert it here too.
@@ -127,20 +216,9 @@ WRAP
 }
 
 @test "schema review_before_merge is inside the dev_story properties block" {
-  # The key must appear between the dev_story opening brace and its closing
-  local in_dev_story=0
-  while IFS= read -r line; do
-    case "$line" in
-      *'"dev_story"'*) in_dev_story=1 ;;
-    esac
-    if [ "$in_dev_story" -eq 1 ]; then
-      if /usr/bin/grep -q '"review_before_merge"'; then <<< "$line"
-        return 0
-      fi
-    fi
-  done < "$SCHEMA"
-  echo "review_before_merge not found inside dev_story block" >&2
-  false
+  jq -e '.properties.dev_story.properties.review_before_merge.type == "boolean"' "$SCHEMA"
+  jq -e 'has("review_before_merge") | not' "$SCHEMA"
+  jq -e '.properties | has("review_before_merge") | not' "$SCHEMA"
 }
 
 @test "YAML descriptor schema dev_story description mentions review_before_merge" {
@@ -249,142 +327,259 @@ YAML
 
 # ---------- AC2: key absent or false keeps Steps 10-16 unchanged ----------
 
-@test "key absent or false leaves Steps 10 through 16 order and commands unchanged" {
-  # Step 10 still has the commit-msg.sh call
-  /usr/bin/grep -q 'commit-msg.sh' "$SKILL_MD"
-  # Step 10 still has git-push.sh
-  /usr/bin/grep -q 'git-push.sh' "$SKILL_MD"
-  # Step 10 has the transition to review
-  /usr/bin/grep -q 'transition-story-status.sh.*--to review' "$SKILL_MD"
-  # Step 16 still has yolo-mode.sh is_yolo
-  /usr/bin/grep -q 'yolo-mode.sh is_yolo' "$SKILL_MD"
-  # The pre-push mode guard in Step 10 explicitly says default path is unchanged
-  /usr/bin/grep -q 'Pre-push mode guard' "$SKILL_MD"
-  # Step 9a is gated on review-order.sh mode printing pre-push
-  /usr/bin/grep -q 'review-order.sh mode.*pre-push' "$SKILL_MD" || /usr/bin/grep -q "prints.*pre-push.*execute" "$SKILL_MD"
-  # When mode prints default, Step 9a is skipped
-  /usr/bin/grep -q 'prints.*default.*skip this sub-step' "$SKILL_MD"
+@test "default Step 10 still builds the commit, runs preflight, pushes and transitions, in that order" {
+  local step10
+  step10="$(_step10)"
+  _assert_order "$step10" \
+    'promotion-chain-guard.sh`.' \
+    '/scripts/commit-msg.sh {story_path}' \
+    'git commit -F -' \
+    'Stage and commit with conventional commit format.' \
+    '--key preflight_commands' \
+    '/scripts/git-push.sh` to push the current branch' \
+    '/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.'
 }
 
-@test "Step 9a skip condition references review-order.sh mode returning default" {
-  # The Step 9a text must say to skip when mode is default
-  local step9a_section
-  step9a_section="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  /usr/bin/grep -q 'default.*skip this sub-step' <<< "$step9a_section"
+@test "the steps after the opt-in sub-step keep their order" {
+  _assert_order "$(cat "$SKILL_MD")" \
+    '### Step 9 -- Definition of Done' \
+    '### Step 9a -- Pre-push review (opt-in)' \
+    '### Step 10 -- Commit and Push' \
+    '### Step 11 -- Create PR' \
+    '### Step 12 -- Wait for CI' \
+    '### Step 13 -- Merge PR' \
+    '### Step 14 -- Post-Completion Gate' \
+    '### Step 15 -- Update Review Gate' \
+    '### Step 16 -- Auto-Reviews (YOLO-only)'
+}
+
+@test "Step 9a is gated on the mode helper and default mode skips the whole sub-step" {
+  local intro
+  intro="$(_flat "$(_step9a | awk '/^1\. \*\*/ { exit } { print }')")"
+  _has "$intro" 'scripts/review-order.sh mode` to read the active ordering.'
+  _has "$intro" 'When it prints `default`, skip this sub-step entirely and fall through to Step 10'
+  _has "$intro" '`pre-push`, execute the following sequence:'
+}
+
+@test "the pre-push checks in Step 10 are limited to pre-push mode" {
+  local bullet
+  bullet="$(_step10 | grep -F -- '**Pre-push guards')"
+  _has "$bullet" '**Pre-push guards (pre-push mode only).**'
+  _has "$bullet" 'In default mode neither runs.'
+}
+
+@test "Step 16 is skipped only in pre-push mode with every row bound to the PR head" {
+  local line
+  line="$(_step16 | grep -F -- '**Pre-push skip guard.**')"
+  _has "$line" 'When `review-order.sh mode` prints `pre-push` and every Review Gate row is already bound to the PR head'
+  _has "$line" 'skip Step 16 entirely'
 }
 
 # ---------- AC3: opt-in pre-push order ----------
 
-@test "opt-in true follows pre-push order from commit through post-merge verification" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Commit before review
-  /usr/bin/grep -q 'commit-msg.sh' <<< "$step9a"
-  # Preflight before review
-  /usr/bin/grep -q 'preflight_commands' <<< "$step9a"
-  # Transition to review
-  /usr/bin/grep -q 'transition-story-status.sh.*--to review' <<< "$step9a"
-  # Init review gate
-  /usr/bin/grep -q 'init-review-gate.sh' <<< "$step9a"
-  # Run reviews
-  /usr/bin/grep -q 'gaia-run-all-reviews' <<< "$step9a"
-  # Ancestor check before push
-  /usr/bin/grep -q 'ancestor-check.*--base' <<< "$step9a"
-  # Assert reviewed head before push
-  /usr/bin/grep -q 'assert-reviewed-head' <<< "$step9a"
+@test "Step 9a runs guard, commit, preflight, transition, seed, prompt, ancestor, review, fix loop, ancestor, assert" {
+  _assert_order "$(_step9a)" \
+    '**Promotion-chain guard.**' \
+    'commit-msg.sh' \
+    '--key preflight_commands' \
+    'transition-story-status.sh {story_key} --to review' \
+    'init-review-gate.sh' \
+    '(AskUserQuestion) whether to run the six reviews' \
+    '**Ancestor check (pre-review).**' \
+    '**Six-gate review.**' \
+    '**Fix loop.**' \
+    '**Ancestor check (pre-push).**' \
+    '**Reviewed-head assertion.**' \
+    'After Step 9a completes'
 }
 
-@test "Step 16 contains a pre-push skip guard that checks review rows bound to HEAD" {
-  local step16
-  step16="$(/usr/bin/sed -n '/step 16 begin/,/step 16 end/p' "$SKILL_MD")"
-  /usr/bin/grep -q 'Pre-push skip guard' <<< "$step16"
-  /usr/bin/grep -q 'review-order.sh mode.*pre-push' <<< "$step16"
-  /usr/bin/grep -q 'bound to.*HEAD\|bound to the PR head' <<< "$step16"
+@test "Step 9a never transitions the story to done" {
+  _lacks "$(_step9a)" '--to done'
+}
+
+@test "the Step 10 guard skips the commit, preflight and transition but never the push" {
+  local line
+  line="$(_step10 | grep -F -- '**Pre-push mode guard.**')"
+  _has "$line" 'Step 10 skips the commit (already built in Step 9a), the preflight gate (already ran in Step 9a), and the `--to review` transition at the end (already in `review`).'
+  _has "$line" 'The promotion-chain guard, push, and everything after the push are NOT skipped'
+  _has "$line" 'by re-entry at the push step'
+}
+
+@test "Step 10 runs the ancestor check, then the reviewed-head check, immediately before the push" {
+  _assert_order "$(_step10)" \
+    '**Pre-push guards (pre-push mode only).**' \
+    '/scripts/git-push.sh` to push the current branch'
+  local bullet
+  bullet="$(_step10 | grep -F -- '**Pre-push guards')"
+  _has "$bullet" 'review-order.sh ancestor-check --base "$PR_BASE"`, then `review-order.sh assert-reviewed-head --story {story_path}`.'
+  _has "$bullet" 'Exit 1 from either = HALT before push'
+}
+
+# ---------- Promotion-chain guard inside Step 9a ----------
+
+@test "Step 9a runs the promotion-chain guard itself and captures the base" {
+  local item
+  item="$(_item 'Promotion-chain guard')"
+  _has "$item" 'scripts/promotion-chain-guard.sh'
+  _has "$item" 'capture the branch as `$PR_BASE`'
+  _has "$item" '`ABSENT` does not halt here'
+  _has "$(_item 'Ancestor check (pre-review)')" 'review-order.sh ancestor-check --base "$PR_BASE"'
+  _has "$(_item 'Ancestor check (pre-push)')" 'review-order.sh ancestor-check --base "$PR_BASE"'
+}
+
+@test "the Step 9a guard resolves against the code path, not the shell's working directory" {
+  _has "$(_item 'Promotion-chain guard')" 'cd "${PROJECT_PATH:-.}"'
+}
+
+@test "a non-git workspace still reviews: no commit to build, no head to bind, assertion skips on exit 3" {
+  _has "$(_item 'Promotion-chain guard')" '[NOTICE] non-git workspace'
+  _has "$(_item 'Commit')" 'In a non-git workspace there is nothing to commit; skip this item.'
+  _has "$(_item 'Preflight gate')" 'In a non-git workspace skip the clean-tree check.'
+  _has "$(_item 'Six-gate review')" 'In a non-git workspace there is no HEAD to bind: omit `--bind-head`.'
+  _has "$(_item 'Reviewed-head assertion')" 'Exit 3 = skipped (non-git workspace, proceed).'
+  _has "$(_item 'Ancestor check (pre-review)')" 'exit 3 = skipped (non-git CWD, proceed)'
 }
 
 # ---------- AC4: interactive stop and resume ----------
 
-@test "non-YOLO run prompts before reviews and stop keeps story in review with resume command" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Non-YOLO asks the user
-  /usr/bin/grep -q 'AskUserQuestion' <<< "$step9a"
-  # Stop keeps story in review
-  /usr/bin/grep -q 'story stays in.*review' <<< "$step9a"
-  # Nothing pushed on stop
-  /usr/bin/grep -q 'nothing is pushed' <<< "$step9a"
-  # Resume command printed
-  /usr/bin/grep -q '/gaia-dev-story.*resume\|resume' <<< "$step9a"
-  # YOLO proceeds without prompt
-  /usr/bin/grep -q 'YOLO\|yolo' <<< "$step9a"
+@test "a non-YOLO run asks before the reviews and a YOLO run does not" {
+  local item
+  item="$(_item 'Interactive gate')"
+  _has "$item" 'When `yolo-mode.sh is_yolo` returns non-zero, ask the user (AskUserQuestion) whether to run the six reviews now or stop.'
+  _has "$item" 'On proceed (or in YOLO mode): continue to the next sub-step.'
+}
+
+@test "stopping keeps the story in review, pushes nothing and prints the resume command" {
+  local item
+  item="$(_item 'Interactive gate')"
+  _has "$item" 'On stop: the story stays in `review`, nothing is pushed, the worktree and branch and local commit are preserved'
+  _has "$item" 'the exact `/gaia-dev-story {story_key}` command to resume'
 }
 
 # ---------- AC5: re-entry for pre-push-reviewed story ----------
 
-@test "re-invoke on review-status story with pre-push key re-enters at Step 9a skipping Steps 2 through 9" {
-  # Step 1 must mention the pre-push re-entry exception
-  local step1
-  step1="$(/usr/bin/sed -n '/### Step 1 --/,/### Step 2 --/p' "$SKILL_MD")"
-  /usr/bin/grep -q 're-entry' <<< "$step1"
-  /usr/bin/grep -q 'review.*pre-push\|pre-push.*review' <<< "$step1"
-  # Re-entry enters at Step 9a
-  /usr/bin/grep -q 'Step 9a' <<< "$step1"
-  # Steps 2-9 are not re-run
-  /usr/bin/grep -q 'Steps 2 through 9\|skipping Steps 2' <<< "$step1"
-  # Re-entry requires worktree present
-  /usr/bin/grep -q 'worktree' <<< "$step1"
-  # Re-entry requires no PR
-  /usr/bin/grep -q 'no.*PR\|no open PR' <<< "$step1"
-  # Re-entry precedes RESUME path
-  /usr/bin/grep -q 'Before.*detect-mode\|before the.*RESUME' <<< "$step1"
+@test "re-entry conditions: status, mode, worktree and no open PR, all before the RESUME path" {
+  local block
+  block="$(_reentry)"
+  _has "$block" 'Before the `detect-mode.sh` RESUME path'
+  _has "$block" '(a) `$STATUS` is `review`,'
+  _has "$block" '(b) `review-order.sh mode` prints `pre-push`,'
+  _has "$block" '(c) the story worktree recorded in the checkpoint still exists on disk'
+  _has "$block" '(d) `gh pr list` for that exact branch returns empty'
 }
 
-@test "re-entry not taken when key is absent and status is review halts at Step 1" {
-  # The critical rules line mentions status halt exception
-  /usr/bin/grep -q 'ready-for-dev.*or.*in-progress.*HALT\|HALT condition' "$SKILL_MD"
-  # The exception requires pre-push mode
-  /usr/bin/grep -q 'pre-push review opt-in\|review_before_merge' "$SKILL_MD"
-  # The common gotchas bullet mentions the exception
-  /usr/bin/grep 'Common gotchas' -A5 "$SKILL_MD" | /usr/bin/grep -q 'pre-push'
+@test "re-entry targets Step 9a, or the push when the assertion passes, and key-absent keeps the halt" {
+  local block
+  block="$(_flat "$(_reentry)")"
+  _has "$block" 'exit 0 means every Review Gate row is bound to HEAD: re-enter at the push step inside Step 10.'
+  _has "$block" 'Any other result: re-enter at Step 9a (skipping Steps 2 through 9).'
+  _has "$block" 'When the key is absent (`review-order.sh mode` prints `default`) and status is `review`, the existing Step 1 status halt applies'
+}
+
+@test "the re-entry PR probe finds an open PR because it asks for the exact branch" {
+  _reentry_fixture
+  _reentry_fence 1 "$TMP/fence1.sh"
+  cat > "$TMP/run.sh" <<RUN
+#!/bin/bash
+set -euo pipefail
+. "$TMP/fence1.sh"
+printf 'wt=%s\nbranch=%s\npr=%s\n' "\$_wt" "\$STORY_BRANCH" "\$_open_pr"
+RUN
+  run env PATH="$TMP/bin:$PATH" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$TMP/run.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"wt=$TMP/wt"* ]]
+  [[ "$output" == *"branch=feat/some-story-some-slug"* ]]
+  [[ "$output" == *"pr=2380"* ]]
+  grep -qF -- "--head feat/some-story-some-slug --state open" "$TMP/gh-calls.log"
+}
+
+@test "a failing gh is never read as no open PR" {
+  _reentry_fixture
+  _reentry_fence 1 "$TMP/fence1.sh"
+  cat > "$TMP/run.sh" <<RUN
+#!/bin/bash
+set -euo pipefail
+. "$TMP/fence1.sh"
+printf 'reached\n'
+RUN
+  run env GH_STUB_RC=1 PATH="$TMP/bin:$PATH" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$TMP/run.sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"reached"* ]]
+  _has "$(_flat "$(_reentry)")" 'A non-zero `gh` exit is a HALT, never read as "no open PR".'
+}
+
+@test "re-entry rebinds PROJECT_PATH so the helpers act on the worktree, and keeps the teardown inputs" {
+  _reentry_fixture
+  _make_repo "$TMP/primary"
+  git -C "$TMP/primary" commit -q --allow-empty -m "different head"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/wt" rev-parse HEAD)"
+  _reentry_fence 2 "$TMP/fence2.sh"
+  cat > "$TMP/run.sh" <<RUN
+#!/bin/bash
+set -euo pipefail
+_wt="$TMP/wt"
+PROJECT_PATH="$TMP/primary"
+export PROJECT_PATH
+. "$TMP/fence2.sh"
+printf 'primary=%s\nworktree=%s\n' "\$PRIMARY_CODE_TREE" "\$STORY_WORKTREE_PATH"
+"$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+RUN
+  run bash "$TMP/run.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"primary=$TMP/primary"* ]]
+  [[ "$output" == *"worktree=$TMP/wt"* ]]
+}
+
+@test "the re-entry rebind comes before the assertion that picks the target" {
+  _assert_order "$(_reentry)" \
+    '_open_pr="$(' \
+    'export PROJECT_PATH' \
+    'review-order.sh assert-reviewed-head --story {story_path}'
+}
+
+@test "re-entry installs no teardown trap, so a stopped run keeps its worktree" {
+  _lacks "$(_reentry)" 'trap '
+}
+
+@test "both status-halt lines name the pre-push re-entry exception" {
+  grep -F -- '- The story file MUST exist and be `status: ready-for-dev`' "$SKILL_MD" \
+    | grep -qF -- 'with the pre-push review opt-in enabled'
+  grep -F -- '- Story status MUST be `ready-for-dev` or `in-progress`.' "$SKILL_MD" \
+    | grep -qF -- 'with the pre-push review opt-in enabled'
 }
 
 # ---------- AC6: fix loop with bind-head ----------
 
-@test "fix loop re-reviews stale rows via bind-head and cap emits ESCALATE" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Mentions bind-head
-  /usr/bin/grep -q 'bind-head' <<< "$step9a"
-  # Mentions ESCALATE
-  /usr/bin/grep -q 'ESCALATE' <<< "$step9a"
-  # Mentions fix-cycle cap
-  /usr/bin/grep -q 'fix-cycle cap\|count-and-decide' <<< "$step9a"
-  # Commits fixes in worktree (may span two lines)
-  /usr/bin/grep -q 'fixes are committed' <<< "$step9a"
-  # Story stays in review
-  /usr/bin/grep -q 'stays in.*review' <<< "$step9a"
+@test "the fix loop dispatches the stack developer and commits while the story stays in review" {
+  local item
+  item="$(_item 'Fix loop')"
+  _has "$item" 'dispatch the resolved `{stack}-dev` developer (the Step 3b contract) with the failed review reports.'
+  _has "$item" 'The fixes are committed in the worktree while the story stays in `review`.'
 }
 
-@test "review-skip-check.sh accepts --bind-head flag" {
-  /usr/bin/grep -q '\-\-bind-head' "$SKIP_CHECK"
+@test "the fix loop re-reviews against the new HEAD and counts rounds through the cap" {
+  local item
+  item="$(_item 'Fix loop')"
+  _has "$item" '`/gaia-run-all-reviews {story_key} --bind-head <new HEAD>`'
+  _has "$item" '`review-skip-check.sh --bind-head <new HEAD>` to put stale PASSED rows into the `run` partition.'
+  _has "$item" 'the fix-cycle cap'"'"'s count-and-decide step in `/gaia-run-all-reviews` — no second counter.'
+  _has "$(_item 'Six-gate review')" '`--bind-head "$(git -C "${PROJECT_PATH:-.}" rev-parse HEAD)"`'
 }
 
 @test "review-skip-check.sh usage mentions --bind-head" {
   run "$SKIP_CHECK" --help
+  [ "$status" -eq 0 ]
   [[ "$output" == *"--bind-head"* ]]
 }
 
 # ---------- AC7: ESCALATE descope and accept override ----------
 
-@test "descope pushes nothing and accept override proceeds to push but merge gate still blocks" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Descope does not push
-  /usr/bin/grep -q 'nothing is pushed\|descope' <<< "$step9a"
-  # Accept override: push proceeds
-  /usr/bin/grep -q 'accept override.*push.*proceed\|push and PR proceed' <<< "$step9a"
-  # Merge gate still blocks
-  /usr/bin/grep -q 'merge.sh.*refuses\|merge.*COMPLETE\|merge is waiting' <<< "$step9a"
+@test "descope pushes nothing and follows the cap's transition route" {
+  _has "$(_item 'Fix loop')" 'On descope: nothing is pushed and the story follows the cap'"'"'s sanctioned transition route.'
+}
+
+@test "accept override pushes but the merge gate still refuses and the run says so" {
+  _has "$(_item 'Fix loop')" 'On accept override: push and PR proceed, but `merge.sh` still refuses the merge unless the composite is COMPLETE or the operator confirms the existing terminal bypass — the run reports that the merge is waiting on the operator.'
 }
 
 # ---------- AC8: ancestor check ----------
@@ -782,10 +977,12 @@ EOF
   local head
   head="$(git -C "$TMP/repo" rev-parse HEAD)"
   _write_bound_story "$TMP/story.md" "$head"
-  _set_row "$TMP/story.md" "Performance Review" "| QA Tests | PASSED | report.md | $head |"
+  awk -v r="| QA Tests | PASSED | report.md | $head |" '/^\| QA Tests/ { print; print r; next } { print }' \
+    "$TMP/story.md" > "$TMP/story.new"
+  mv "$TMP/story.new" "$TMP/story.md"
   run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"QA Tests"* ]] || [[ "$output" == *"Performance Review"* ]]
+  [[ "$output" == *'more than one row for "QA Tests"'* ]]
 }
 
 @test "assert-reviewed-head refuses an extra unknown row" {
@@ -808,6 +1005,7 @@ EOF
   run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Security Review"* ]]
+  [[ "$output" == *"not a commit SHA"* ]]
 }
 
 @test "assert-reviewed-head refuses unbound rows: absent, none, dash and an empty cell" {
@@ -924,59 +1122,47 @@ EOF
 
 # ---------- AC-EC2: preflight dirties tree ----------
 
-@test "preflight that modifies files halts before review because tree differs from committed HEAD" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Must verify clean tree after preflight
-  /usr/bin/grep -q 'git status --porcelain' <<< "$step9a"
-  # Must halt before review on dirty tree
-  /usr/bin/grep -q 'HALT before the review\|HALT.*working tree' <<< "$step9a"
-  # Must tell the developer to commit
-  /usr/bin/grep -q 'commit the change' <<< "$step9a"
+@test "a preflight that modifies files halts before the review and says to commit" {
+  local item
+  item="$(_item 'Preflight gate')"
+  _has "$item" 'On failure, HALT.'
+  _has "$item" 'verify the working tree is still clean (`git status --porcelain` empty in `${PROJECT_PATH:-.}`).'
+  _has "$item" 'HALT before the review — tell the developer the working tree does not match the committed HEAD and to commit the change and re-run.'
 }
 
-# ---------- AC-EC3: base advances during review ----------
+# ---------- AC8, AC9, AC-EC3: halts before push ----------
 
-@test "ancestor check halts before push when base advanced during review even with COMPLETE composite" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Pre-push ancestor check must be in the step
-  /usr/bin/grep -q 'Ancestor check (pre-push)' <<< "$step9a"
-  # Must halt before push
-  /usr/bin/grep -q 'HALT before push' <<< "$step9a"
-  # Must mention even with COMPLETE
-  /usr/bin/grep -q 'COMPLETE composite\|even with a COMPLETE' <<< "$step9a"
+@test "the pre-review ancestor check halts before the review and never rebases on its own" {
+  local item
+  item="$(_item 'Ancestor check (pre-review)')"
+  _has "$item" 'exit 1 = HALT before review, naming the base tip and HEAD and telling the developer to rebase or merge the base and re-review (never rebase automatically)'
 }
 
-# ---------- AC-EC4: push retry after COMPLETE ----------
+@test "the pre-push ancestor check halts even with a COMPLETE composite" {
+  _has "$(_item 'Ancestor check (pre-push)')" 'HALT before push even with a COMPLETE composite'
+}
 
-@test "re-invoke after push failure re-enters at push without re-running reviews when rows bound to HEAD" {
-  local step1
-  step1="$(/usr/bin/sed -n '/### Step 1 --/,/### Step 2 --/p' "$SKILL_MD")"
-  # Re-entry at push step when all rows bound to HEAD
-  /usr/bin/grep -q 'push step\|re-enter at.*push' <<< "$step1"
-  /usr/bin/grep -q 'bound to HEAD\|assert-reviewed-head' <<< "$step1"
+@test "the reviewed-head assertion halts before push naming the mismatch" {
+  local item
+  item="$(_item 'Reviewed-head assertion')"
+  _has "$item" 'review-order.sh assert-reviewed-head --story {story_file}'
+  _has "$item" 'If the working tree is dirty or any Review Gate row is bound to a SHA other than HEAD, HALT before push naming the mismatch.'
 }
 
 # ---------- AC-EC5: no promotion chain or non-git workspace ----------
 
-@test "pre-push review runs without promotion chain and ancestor check and push steps skip with notice" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  # Ancestor check exits 3 for non-git
-  /usr/bin/grep -q 'exit 3.*skipped\|exit 3.*non-git' <<< "$step9a"
-  # Pre-push mode guard in Step 10 mentions existing skip
-  /usr/bin/grep -q 'Steps 10.*skipped\|Steps 10–13.*skipped' "$SKILL_MD"
+@test "without a promotion chain the review still runs and the ancestor checks skip with a notice" {
+  local item
+  item="$(_item 'Promotion-chain guard')"
+  _has "$item" '`ABSENT` does not halt here: the reviews still run on the local tree'
+  _has "$item" 'both ancestor checks are skipped'
+  grep -qF -- 'On `ABSENT` or non-git skip, Steps 10–13 (push, PR, CI, merge) MUST be skipped' "$SKILL_MD"
 }
 
 # ---------- AC-EC6: ESCALATE during YOLO or sprint run ----------
 
-@test "ESCALATE during YOLO or sprint run halts on AskUserQuestion with story in review and worktree kept" {
-  local step9a
-  step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  /usr/bin/grep -q 'YOLO.*sprint.*AskUserQuestion\|AskUserQuestion.*YOLO\|ESCALATE.*YOLO' <<< "$step9a"
-  /usr/bin/grep -q 'story in.*review\|story stays in.*review' <<< "$step9a"
-  /usr/bin/grep -q 'worktree.*kept\|nothing.*pushed\|nothing is pushed' <<< "$step9a"
+@test "ESCALATE during a YOLO or sprint run halts with the story resumable and nothing pushed" {
+  _has "$(_item 'Fix loop')" 'On ESCALATE during a YOLO or autonomous sprint run, HALT on AskUserQuestion with the story in `review`, the worktree kept and nothing pushed.'
 }
 
 # ---------- AC-EC7: merge deferred (exit 3) ----------

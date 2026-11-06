@@ -5540,7 +5540,7 @@ SHIMEOF
 # these tests hold the skip-check to what review-gate.sh actually records.
 _bind_head_fixture() {
   BH_REPO="$TEST_TMP/bh-repo"
-  BH_KEY="E7-S1"
+  BH_KEY="TEST-S1"
   BH_STORY="$TEST_TMP/${BH_KEY}-fixture.md"
   BH_SKIP="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
   BH_GATE="${BATS_TEST_DIRNAME}/../scripts/review-gate.sh"
