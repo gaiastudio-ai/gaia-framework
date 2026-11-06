@@ -24,6 +24,8 @@ setup() {
   FIXTURE_WT="$TEST_TMP/worktree"
   mkdir -p "$FIXTURE_WT/scripts" "$FIXTURE_WT/tests"
   git -C "$FIXTURE_WT" init -q
+  git -C "$FIXTURE_WT" config user.email "test@test.local"
+  git -C "$FIXTURE_WT" config user.name "Test"
   cat > "$FIXTURE_WT/scripts/target.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail

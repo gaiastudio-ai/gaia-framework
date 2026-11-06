@@ -196,6 +196,8 @@ SCRIPT
   cp "$FIXTURE_WT/scripts/sample.sh" "$PARALLEL_WT/scripts/"
   cp "$COPY_DIR/tests/sample.bats" "$PARALLEL_WT/tests/"
   git -C "$PARALLEL_WT" init -q
+  git -C "$PARALLEL_WT" config user.email "test@test.local"
+  git -C "$PARALLEL_WT" config user.name "Test"
   git -C "$PARALLEL_WT" add -A
   git -C "$PARALLEL_WT" commit -q -m "init"
 
