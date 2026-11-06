@@ -5533,3 +5533,20 @@ SHIMEOF
   # Cleanup in teardown-safe block.
   rm -rf "$test_tmpdir"
 }
+
+# ---------- review-skip-check.sh --bind-head partition cases ----------
+
+@test "review-skip-check --bind-head accepts the flag without error" {
+  local skip_script="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
+  [ -x "$skip_script" ] || { echo "review-skip-check.sh not found" >&2; false; }
+  run "$skip_script" --help
+  [[ "$output" == *"--bind-head"* ]]
+}
+
+@test "review-skip-check usage output documents --bind-head" {
+  local skip_script="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
+  run "$skip_script" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--bind-head"* ]]
+  [[ "$output" == *"SHA"* ]] || [[ "$output" == *"sha"* ]]
+}

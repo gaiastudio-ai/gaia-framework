@@ -404,6 +404,10 @@
             "qa_timeout_seconds": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": true
+        },
+        "review_before_merge": {
+          "type": "boolean",
+          "description": "Opt-in pre-push review ordering. When true, the six-gate review runs on the story worktree before anything is pushed, so the reviewed commit is the pushed commit. When false or absent, the default post-push review order applies. Trust boundary: this key controls local workflow ordering only and does not grant any elevated privilege."
         }
       },
       "additionalProperties": true

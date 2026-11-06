@@ -129,7 +129,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 
 ### Step 1: Validate Input
 
-1. Parse the story key from the first positional argument and the optional `--force` flag (Substep 2.1 prep). Reject any other flag with a usage error and exit non-zero (AC-EC2).
+1. Parse the story key from the first positional argument and the optional `--force` and `--bind-head <sha>` flags (Substep 2.1 prep). Reject any other flag with a usage error and exit non-zero (AC-EC2). The `--bind-head` flag is optional; when absent the skip-check is SHA-blind (today's default behaviour).
 2. **Brain-context loader.** With the story key now bound, run the brain-reliance loader for this workflow's entry stage. The loader checks governing-context availability and HALTs only when a cleanly-evaluated MANDATORY node is absent; otherwise it warns and continues (fail-open).
 
 ```bash
@@ -149,12 +149,12 @@ Six substeps. Substeps 2.1–2.2 run once. Substeps 2.3–2.4 partition the cano
 **Substep 2.2 — Skip-check.** Run:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--force]
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-skip-check.sh --story {story_key} [--force] [--bind-head <sha>]
 ```
 
 (Use the absolute `${CLAUDE_PLUGIN_ROOT}/scripts/` prefix — this skill's directory contains only `SKILL.md`, no `scripts/` subdirectory. Bare `scripts/review-skip-check.sh` invocations fail with "No such file or directory".)
 
-The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
+The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--force` was passed by the user, forward it verbatim to the helper — the script owns the bypass semantics (skip becomes `[]`, run becomes the full canonical list). If `--bind-head <sha>` was passed, forward it verbatim — the script moves PASSED rows bound to a different SHA into the `run` partition (stale after a fix commit). Without `--bind-head`, the partition is SHA-blind (today's default behaviour). Parse the JSON; if it lacks either the `skip` or `run` key, HALT with a parse error naming `review-skip-check.sh` (AC-EC3).
 
 **Substep 2.2a — Resume detection.** Before starting a new round, call `register-write.sh round-info --story {key}` and check `escalation_state`. When it reads exactly `escalated`, the story was halted mid-escalation — skip the round-start sequence and re-present the three choices from Substep 2.4a without starting a new round or recounting. A `resolved:*` state means the user already acted — proceed normally. When the user picks a choice, call `register-write.sh resolve-escalation --story {key} --run-id {run_id} --choice {accept|descope|one-more-cycle}` to clear the escalation state, then execute the choice. This detection runs BEFORE `record-round` so the escalated round is not superseded.
 

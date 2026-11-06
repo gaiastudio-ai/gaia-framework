@@ -447,6 +447,47 @@ This warning is shown once per session.
             within the grace window.
           </p>
         </div>
+
+        <div class="callout">
+          <p class="callout-title">Pre-push review ordering (opt-in)</p>
+          <p>
+            By default, the six-gate review runs <em>after</em> push, PR, and
+            CI. Set <code>dev_story.review_before_merge: true</code> in
+            <code>.gaia/config/project-config.yaml</code> to move the review
+            <em>before</em> push. In this mode the reviewed commit is the
+            pushed commit:
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Default order</th>
+                <th>Pre-push order (<code>review_before_merge: true</code>)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>commit &rarr; push &rarr; PR &rarr; CI &rarr; merge &rarr; review</td>
+                <td>commit &rarr; preflight &rarr; review &rarr; fix loop &rarr; push &rarr; PR &rarr; CI &rarr; merge</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>Interactive stop and resume.</strong> In non-YOLO mode the
+            run asks before starting the reviews. Choosing "stop" keeps the
+            story in <code>review</code> with everything local; re-running
+            <code>/gaia-dev-story &lt;key&gt;</code> resumes at the review
+            step without re-running the TDD cycle.
+          </p>
+          <p>
+            <strong>Drift halt.</strong> An ancestor check runs before push. If
+            the promotion base advanced while the reviews ran, the run halts
+            before pushing &mdash; rebase or merge the base and re-review.
+          </p>
+          <p>
+            The key defaults to <code>false</code> (no behaviour change on
+            upgrade). When absent the entire pre-push path is skipped.
+          </p>
+        </div>
       </section>
 
       <!-- 6. Inputs -->

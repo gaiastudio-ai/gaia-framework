@@ -9,8 +9,10 @@
 #
 # Invocation contract:
 #
-#   review-skip-check.sh --story <key>          # partition by current gate state
-#   review-skip-check.sh --story <key> --force  # skip=[], run=<all 6>
+#   review-skip-check.sh --story <key>                     # partition by current gate state
+#   review-skip-check.sh --story <key> --force             # skip=[], run=<all 6>
+#   review-skip-check.sh --story <key> --bind-head <sha>   # re-partition: PASSED rows bound
+#                                                          # to a SHA other than <sha> move to run
 #   review-skip-check.sh --help
 #
 # Output (stdout, exit 0): single-line JSON, e.g.
@@ -112,7 +114,7 @@ _die_malformed() {
 usage() {
   cat <<'USAGE'
 Usage:
-  review-skip-check.sh --story <key> [--force]
+  review-skip-check.sh --story <key> [--force] [--bind-head <sha>]
   review-skip-check.sh --help
 
 Reads the current Review Gate table for <key> via review-gate.sh status and
@@ -121,6 +123,10 @@ emits a JSON partition {"skip":[...],"run":[...]} where:
   - run lists canonical short-names of gates NOT at PASSED (FAILED, UNVERIFIED)
 
 With --force, skip is always [] and run lists all 6 in canonical order.
+
+With --bind-head <sha>, a PASSED row whose reviewed SHA does not match <sha>
+is moved from skip to run (the row is stale after a fix commit). Without
+--bind-head, the partition is SHA-blind (today's default behaviour).
 
 Canonical short-name order:
   code-review, qa-tests, security-review, test-automate, test-review, review-perf
@@ -136,6 +142,7 @@ USAGE
 
 STORY_KEY=""
 FORCE=0
+BIND_HEAD=""
 
 parse_args() {
   while [ $# -gt 0 ]; do
@@ -150,6 +157,13 @@ parse_args() {
       --force)
         FORCE=1
         shift
+        ;;
+      --bind-head)
+        if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+          _die_usage "--bind-head requires a SHA value"
+        fi
+        BIND_HEAD="$2"
+        shift 2
         ;;
       --help|-h)
         usage
@@ -221,6 +235,53 @@ main() {
     _die_malformed "review-gate.sh status returned no .gates object for story $STORY_KEY"
   fi
 
+  # ---- When --bind-head is set, load SHA bindings from the story file ----
+  # The status JSON is SHA-blind; we parse the story file's Review Gate table
+  # directly via the shared review-gate-table library for SHA comparison.
+  # gate_sha_map is a newline-delimited list of gate=sha pairs.
+  local gate_sha_map=""
+  if [ -n "$BIND_HEAD" ]; then
+    # Resolve the story file via resolve-story-file.sh (same resolver
+    # used by dev-story Step 1).
+    local story_file=""
+    local _resolver="${SCRIPT_DIR}/resolve-story-file.sh"
+    if [ -x "$_resolver" ]; then
+      story_file="$("$_resolver" "$STORY_KEY" 2>/dev/null)" || story_file=""
+    fi
+    if [ -n "$story_file" ] && [ -f "$story_file" ]; then
+      # Source the shared parser if not already loaded.
+      local _lib_dir="${SCRIPT_DIR}/lib"
+      if [ -f "$_lib_dir/review-gate-table.sh" ]; then
+        # shellcheck source=lib/review-gate-table.sh
+        . "$_lib_dir/review-gate-table.sh"
+      fi
+      # Read Review Gate table rows from the story file.
+      local _in_gate=0 _line
+      while IFS= read -r _line; do
+        case "$_line" in
+          "## Review Gate"*) _in_gate=1; continue ;;
+          "## "*) [ "$_in_gate" -eq 1 ] && break ;;
+        esac
+        [ "$_in_gate" -eq 0 ] && continue
+        case "$_line" in
+          "| Review"*|"| -"*|"|-"*) continue ;;
+          "| "*) ;;
+          *) continue ;;
+        esac
+        local _parsed
+        _parsed="$(parse_review_gate_row "$_line" 2>/dev/null)" || continue
+        local _rg _rs
+        _rg="$(printf '%s\n' "$_parsed" | grep '^gate=' | head -1)"
+        _rg="${_rg#gate=}"
+        _rs="$(printf '%s\n' "$_parsed" | grep '^reviewed_sha=' | head -1)"
+        _rs="${_rs#reviewed_sha=}"
+        if [ -n "$_rg" ]; then
+          gate_sha_map="${gate_sha_map}${_rg}=${_rs}"$'\n'
+        fi
+      done < "$story_file"
+    fi
+  fi
+
   # ---- Iterate canonical gate order; partition into skip / run ----
   local skip_list=()
   local run_list=()
@@ -240,6 +301,19 @@ main() {
     fi
 
     if [ "$verdict" = "PASSED" ]; then
+      # With --bind-head: move PASSED rows bound to a different SHA to run.
+      if [ -n "$BIND_HEAD" ]; then
+        local row_sha
+        row_sha="$(printf '%s\n' "$gate_sha_map" | grep "^${gate}=" | head -1)"
+        row_sha="${row_sha#*=}"
+        row_sha="${row_sha#"${row_sha%%[![:space:]]*}"}"
+        row_sha="${row_sha%"${row_sha##*[![:space:]]}"}"
+        if [ -n "$row_sha" ] && [ "$row_sha" != "absent" ] && [ "$row_sha" != "$BIND_HEAD" ]; then
+          # SHA mismatch — stale PASSED row, move to run.
+          run_list+=("$short")
+          continue
+        fi
+      fi
       skip_list+=("$short")
     else
       run_list+=("$short")

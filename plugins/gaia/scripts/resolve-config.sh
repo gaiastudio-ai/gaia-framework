@@ -46,6 +46,7 @@ export LC_ALL
 #                       dev_story.tdd_review.phases
 #                       dev_story.tdd_review.qa_auto_in_yolo
 #                       dev_story.tdd_review.qa_timeout_seconds
+#                       dev_story.review_before_merge
 #   - --all:          batch mode. Emits the full flat-key surface
 #                     (artifact paths, sizing_map.{S,M,L,XL},
 #                     dev_story.tdd_review.*, val_integration.*) in a
@@ -890,6 +891,10 @@ v_dev_story_tdd_review_phases=$(merge_doubly_nested_key dev_story tdd_review pha
 v_dev_story_tdd_review_qa_auto_in_yolo=$(merge_doubly_nested_key dev_story tdd_review qa_auto_in_yolo)
 v_dev_story_tdd_review_qa_timeout_seconds=$(merge_doubly_nested_key dev_story tdd_review qa_timeout_seconds)
 
+# dev_story.review_before_merge — opt-in pre-push review ordering.
+# No default here — the point-of-use default lives in review-order.sh.
+v_dev_story_review_before_merge=$(merge_nested_key dev_story review_before_merge)
+
 # review.max_fix_cycles — surfaced only when explicitly configured.
 # The point-of-use default of 2 lives in the orchestration layer, not here.
 v_review_max_fix_cycles=$(merge_nested_key review max_fix_cycles)
@@ -1506,6 +1511,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_dev_story_tdd_review_qa_auto_in_yolo" ;;
     dev_story.tdd_review.qa_timeout_seconds)
       printf '%s\n' "$v_dev_story_tdd_review_qa_timeout_seconds" ;;
+    dev_story.review_before_merge)
+      printf '%s\n' "$v_dev_story_review_before_merge" ;;
     compliance.regimes)
       printf '%s\n' "$v_compliance_regimes" ;;
     compliance.domain)
@@ -1763,6 +1770,7 @@ emit_all_body() {
   [ -n "$v_ci_platform_pipeline" ]              && emit_pair_shell ci_platform.pipeline             "$v_ci_platform_pipeline"
   [ -n "$v_platforms" ]                         && emit_pair_shell platforms                        "$v_platforms"
   [ -n "$v_project_kind" ]                      && emit_pair_shell project_kind                     "$v_project_kind"
+  [ -n "$v_dev_story_review_before_merge" ]       && emit_pair_shell dev_story.review_before_merge    "$v_dev_story_review_before_merge"
   [ -n "$v_review_max_fix_cycles" ]              && emit_pair_shell review.max_fix_cycles            "$v_review_max_fix_cycles"
   [ -n "$v_review_max_concurrent_heavy_reviewers" ] && emit_pair_shell review.max_concurrent_heavy_reviewers "$v_review_max_concurrent_heavy_reviewers"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller

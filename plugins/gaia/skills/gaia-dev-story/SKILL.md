@@ -100,14 +100,14 @@ This loads `.gaia/artifacts/implementation-artifacts/.../<story-key>-*.md`, reso
 
 **Common gotchas.**
 
-- The story file MUST exist and be `status: ready-for-dev` or `in-progress` -- any other status HALTS at Step 1.
+- The story file MUST exist and be `status: ready-for-dev` or `in-progress` -- any other status HALTS at Step 1 (exception: `status: review` with the pre-push review opt-in enabled, the story worktree present and no open PR re-enters at Step 9a instead of halting).
 - The PostToolUse hook checkpoints after every Edit/Write -- do not manually call `checkpoint.sh`.
 - Steps 13-16 (push / PR / CI / merge) are mandatory when `ci_cd.promotion_chain` is set -- never skip them or ask "should I create the PR".
 
 ## Critical Rules
 
 - A story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` before starting. If missing, fail fast with "Story file not found -- run /gaia-create-story first."
-- Story status MUST be `ready-for-dev` or `in-progress`. Any other status is a HALT condition.
+- Story status MUST be `ready-for-dev` or `in-progress`. Any other status is a HALT condition (exception: `status: review` with the pre-push review opt-in enabled, the story worktree present and no open PR re-enters at Step 9a — or at the push step when every Review Gate row is bound to HEAD — instead of halting; this re-entry check runs before the `detect-mode.sh` RESUME path so Steps 2 through 9 are not re-run).
 - Plan authoring (Step 4) and TDD implementation (Steps 5/6/7) MUST be delegated to the stack-matched developer subagent resolved in Step 3b (`{stack}-dev`, via `load-stack-persona.sh --story-file`). The main-turn orchestrator MUST NOT author the plan or write tests/production code inline — it dispatches the developer and runs the gates. The orchestrator's own `Edit`/`Write` are reserved for gate-owned, non-code artifacts (the story file's Findings/Review-Gate tables, checkpoints). This mirrors the `/gaia-quick-dev` developer-delegation model.
 - If no stack-developer persona can be resolved (Step 3b exit 2), HALT — do NOT fall back to an orchestrator-authored implementation.
 - Follow TDD cycle strictly: Red (failing tests) -> Green (minimal implementation) -> Refactor. Each phase is a separate step -- NEVER combine them.
@@ -171,6 +171,19 @@ FRESH/REWORK/RESUME verdict inline.
   Stdout is exactly one of `FRESH | REWORK | RESUME` — capture it as the execution
   mode. Do NOT re-derive the mode from `$STATUS` inline; the script is the single
   source of truth.
+
+**Pre-push re-entry exception.** Before the `detect-mode.sh` RESUME path, check
+for the pre-push re-entry condition. When all four of these hold:
+  (a) `$STATUS` is `review`,
+  (b) `review-order.sh mode` prints `pre-push`,
+  (c) the story worktree recorded in the checkpoint still exists on disk,
+  (d) `gh pr list --head feat/{story_key}- --json number --jq '.[0].number'`
+      returns empty (no open PR for the story branch),
+then re-enter at Step 9a (skipping Steps 2 through 9). If every Review Gate row
+is already bound to HEAD (checked via `review-order.sh assert-reviewed-head`),
+re-enter at the push step inside Step 10 instead. When the key is absent
+(`review-order.sh mode` prints `default`) and status is `review`, the existing
+Step 1 status halt applies — no re-entry exception.
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/check-deps.sh {story_path}`.
   Exit 0 = all `depends_on:` stories are status `done`; exit 1 = at least one dep is
   not done (stderr lists `<KEY>: <STATUS>`); exit 2 = at least one dep file is missing
@@ -670,12 +683,95 @@ else:
 - ACs met / docs updated remain LLM-evaluated since they are intent-level checks, not script-checkable.
 <!-- step 9 dod-check wire end -->
 
+<!-- step 9a pre-push review begin -->
+### Step 9a -- Pre-push review (opt-in)
+
+This sub-step is gated on the `dev_story.review_before_merge` config key. Run
+`${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode` to
+read the active ordering. When it prints `default`, skip this sub-step entirely
+and fall through to Step 10 (today's default order, unchanged). When it prints
+`pre-push`, execute the following sequence:
+
+1. **Commit.** Build the commit message with `commit-msg.sh` and commit locally
+   in the worktree. Do NOT push yet.
+
+2. **Preflight gate.** Run the preflight commands (same runner as Step 10):
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/run-configured-commands.sh" \
+     --key preflight_commands --workdir "${PROJECT_PATH:-.}"
+   ```
+   On failure, HALT. After the preflight succeeds, verify the working tree is
+   still clean (`git status --porcelain` empty in `${PROJECT_PATH:-.}`). If the
+   preflight modified tracked files (for example a formatter adding a trailing
+   newline), HALT before the review — tell the developer the working tree does
+   not match the committed HEAD and to commit the change and re-run.
+
+3. **Transition to review.** Run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review`.
+
+4. **Seed Review Gate.** Run
+   `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/init-review-gate.sh {story_file}`.
+
+5. **Interactive gate (non-YOLO).** When `yolo-mode.sh is_yolo` returns
+   non-zero, ask the user (AskUserQuestion) whether to run the six reviews now
+   or stop. On stop: the story stays in `review`, nothing is pushed, the
+   worktree and branch and local commit are preserved, and the output includes
+   the exact `/gaia-dev-story {story_key}` command to resume. On proceed (or
+   in YOLO mode): continue to the next sub-step.
+
+6. **Ancestor check (pre-review).** When a promotion chain is configured
+   (`promotion-chain-guard.sh` returned `PRESENT:<branch>`), run
+   `review-order.sh ancestor-check --base <branch>`. Exit 0 = ok; exit 1 =
+   HALT before review, naming the base tip and HEAD and telling the developer
+   to rebase or merge the base and re-review (never rebase automatically);
+   exit 3 = skipped (non-git CWD, proceed).
+
+7. **Six-gate review.** Invoke `/gaia-run-all-reviews {story_key}` with
+   `--bind-head $(git -C "${PROJECT_PATH:-.}" rev-parse HEAD)` so that every
+   reviewer's PASSED verdict is bound to the committed HEAD and stale rows
+   from prior fix cycles are re-reviewed.
+
+8. **Fix loop.** On a non-COMPLETE composite (from `review-gate.sh
+   review-gate-check`), dispatch the resolved `{stack}-dev` developer (the
+   Step 3b contract) with the failed review reports. The fixes are committed
+   in the worktree while the story stays in `review`. Re-run reviews via
+   `/gaia-run-all-reviews {story_key} --bind-head <new HEAD>`, which uses
+   `review-skip-check.sh --bind-head <new HEAD>` to put stale PASSED rows
+   into the `run` partition. Round counting and ESCALATE are routed through
+   the fix-cycle cap's count-and-decide step in `/gaia-run-all-reviews` — no
+   second counter.
+
+   On ESCALATE, ask the user to descope or accept override. On descope:
+   nothing is pushed and the story follows the cap's sanctioned transition
+   route. On accept override: push and PR proceed, but `merge.sh` still
+   refuses the merge unless the composite is COMPLETE or the operator
+   confirms the existing terminal bypass — the run reports that the merge is
+   waiting on the operator. On ESCALATE during a YOLO or autonomous sprint
+   run, HALT on AskUserQuestion with the story in `review`, the worktree
+   kept and nothing pushed.
+
+9. **Ancestor check (pre-push).** Re-run `review-order.sh ancestor-check
+   --base <branch>` immediately before push. If the base advanced during the
+   review, HALT before push even with a COMPLETE composite — the reviewed
+   commit would fail the merge-time stale-base guard.
+
+10. **Reviewed-head assertion.** Run
+    `review-order.sh assert-reviewed-head --story {story_file}`. If the
+    working tree is dirty or any Review Gate row is bound to a SHA other than
+    HEAD, HALT before push naming the mismatch.
+
+After Step 9a completes, fall through to Step 10 (which skips its own commit,
+preflight, and `--to review` transition in pre-push mode — they already ran).
+<!-- step 9a pre-push review end -->
+
 <!-- step 10 git-push wire begin -->
 ### Step 10 -- Commit and Push
 
 **Timing.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/emit-step-boundary.sh 10 commit-push {story_key}` to record the step-boundary event.
 
 **Touch-set drift check (concurrent sprints only).** Before staging files for commit, run `${CLAUDE_PLUGIN_ROOT}/scripts/drift-detect.sh --story "$STORY_FILE"`. Same halt/resume/finding protocol as Step 5b. This catches drift introduced during the TDD cycle that was not caught by the per-phase checks.
+
+**Pre-push mode guard.** When `review-order.sh mode` printed `pre-push` at Step 9a, Step 10 skips the commit (already built in Step 9a), the preflight gate (already ran in Step 9a), and the `--to review` transition at the end (already in `review`). The promotion-chain guard, push, and everything after the push are NOT skipped — they run as usual. The `step 10 git-push wire` marker pair is kept intact.
 
 <!-- step10 script-wiring begin -->
 At the top of the CI section — before any commit / push action — the orchestrator
@@ -924,6 +1020,8 @@ Emit a single-line gate log to stderr: `step14b_gate: advisories={count}` where 
 
 YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO runs MUST NOT auto-fire reviews — the user manually invokes each review from the Review Gate UNVERIFIED rows. Silently auto-firing reviews in non-YOLO would erase user oversight.
 
+**Pre-push skip guard.** When `review-order.sh mode` prints `pre-push` and every Review Gate row is already bound to the PR head (the reviewed worktree HEAD — with squash merges the commit on the base differs), skip Step 16 entirely. The reviews already ran in Step 9a; re-running them here would be redundant. Emit `step16_gate: pre-push=true verdict=skipped (reviews bound to HEAD)` and proceed.
+
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/yolo-mode.sh is_yolo` to detect YOLO mode (single source of truth — never re-implement detection inline).
 
 - If `is_yolo` returns non-zero (non-YOLO branch — default):
@@ -945,7 +1043,7 @@ YOLO-gated invocation of the six reviews that populate the Review Gate. Non-YOLO
 
 ### Step timing — sub-step instrumentation scope
 
-The 16 principal `### Step N` boundaries above are instrumented with `step_boundary` lifecycle events for per-step wall-clock derivation. The following 9 lettered sub-steps are explicitly **out of scope for v1** and do not emit timing events: 2a, 2b, 3b, 5a, 6a, 6b, 7a, 7b, 14b. Sub-step instrumentation is a documented follow-up.
+The 16 principal `### Step N` boundaries above are instrumented with `step_boundary` lifecycle events for per-step wall-clock derivation. The following 10 lettered sub-steps are explicitly **out of scope for v1** and do not emit timing events: 2a, 2b, 3b, 5a, 6a, 6b, 7a, 7b, 9a, 14b. Sub-step instrumentation is a documented follow-up.
 
 ## Changelog
 
