@@ -50,7 +50,7 @@ teardown() {
       *'"dev_story"'*) in_dev_story=1 ;;
     esac
     if [ "$in_dev_story" -eq 1 ]; then
-      if echo "$line" | /usr/bin/grep -q '"review_before_merge"'; then
+      if /usr/bin/grep -q '"review_before_merge"'; then <<< "$line"
         return 0
       fi
     fi
@@ -186,7 +186,7 @@ YAML
   # The Step 9a text must say to skip when mode is default
   local step9a_section
   step9a_section="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  echo "$step9a_section" | /usr/bin/grep -q 'default.*skip this sub-step'
+  /usr/bin/grep -q 'default.*skip this sub-step' <<< "$step9a_section"
 }
 
 # ---------- AC3: opt-in pre-push order ----------
@@ -195,27 +195,27 @@ YAML
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Commit before review
-  echo "$step9a" | /usr/bin/grep -q 'commit-msg.sh'
+  /usr/bin/grep -q 'commit-msg.sh' <<< "$step9a"
   # Preflight before review
-  echo "$step9a" | /usr/bin/grep -q 'preflight_commands'
+  /usr/bin/grep -q 'preflight_commands' <<< "$step9a"
   # Transition to review
-  echo "$step9a" | /usr/bin/grep -q 'transition-story-status.sh.*--to review'
+  /usr/bin/grep -q 'transition-story-status.sh.*--to review' <<< "$step9a"
   # Init review gate
-  echo "$step9a" | /usr/bin/grep -q 'init-review-gate.sh'
+  /usr/bin/grep -q 'init-review-gate.sh' <<< "$step9a"
   # Run reviews
-  echo "$step9a" | /usr/bin/grep -q 'gaia-run-all-reviews'
+  /usr/bin/grep -q 'gaia-run-all-reviews' <<< "$step9a"
   # Ancestor check before push
-  echo "$step9a" | /usr/bin/grep -q 'ancestor-check.*--base'
+  /usr/bin/grep -q 'ancestor-check.*--base' <<< "$step9a"
   # Assert reviewed head before push
-  echo "$step9a" | /usr/bin/grep -q 'assert-reviewed-head'
+  /usr/bin/grep -q 'assert-reviewed-head' <<< "$step9a"
 }
 
 @test "Step 16 contains a pre-push skip guard that checks review rows bound to HEAD" {
   local step16
   step16="$(/usr/bin/sed -n '/step 16 begin/,/step 16 end/p' "$SKILL_MD")"
-  echo "$step16" | /usr/bin/grep -q 'Pre-push skip guard'
-  echo "$step16" | /usr/bin/grep -q 'review-order.sh mode.*pre-push'
-  echo "$step16" | /usr/bin/grep -q 'bound to.*HEAD\|bound to the PR head'
+  /usr/bin/grep -q 'Pre-push skip guard' <<< "$step16"
+  /usr/bin/grep -q 'review-order.sh mode.*pre-push' <<< "$step16"
+  /usr/bin/grep -q 'bound to.*HEAD\|bound to the PR head' <<< "$step16"
 }
 
 # ---------- AC4: interactive stop and resume ----------
@@ -224,15 +224,15 @@ YAML
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Non-YOLO asks the user
-  echo "$step9a" | /usr/bin/grep -q 'AskUserQuestion'
+  /usr/bin/grep -q 'AskUserQuestion' <<< "$step9a"
   # Stop keeps story in review
-  echo "$step9a" | /usr/bin/grep -q 'story stays in.*review'
+  /usr/bin/grep -q 'story stays in.*review' <<< "$step9a"
   # Nothing pushed on stop
-  echo "$step9a" | /usr/bin/grep -q 'nothing is pushed'
+  /usr/bin/grep -q 'nothing is pushed' <<< "$step9a"
   # Resume command printed
-  echo "$step9a" | /usr/bin/grep -q '/gaia-dev-story.*resume\|resume'
+  /usr/bin/grep -q '/gaia-dev-story.*resume\|resume' <<< "$step9a"
   # YOLO proceeds without prompt
-  echo "$step9a" | /usr/bin/grep -q 'YOLO\|yolo'
+  /usr/bin/grep -q 'YOLO\|yolo' <<< "$step9a"
 }
 
 # ---------- AC5: re-entry for pre-push-reviewed story ----------
@@ -241,18 +241,18 @@ YAML
   # Step 1 must mention the pre-push re-entry exception
   local step1
   step1="$(/usr/bin/sed -n '/### Step 1 --/,/### Step 2 --/p' "$SKILL_MD")"
-  echo "$step1" | /usr/bin/grep -q 're-entry'
-  echo "$step1" | /usr/bin/grep -q 'review.*pre-push\|pre-push.*review'
+  /usr/bin/grep -q 're-entry' <<< "$step1"
+  /usr/bin/grep -q 'review.*pre-push\|pre-push.*review' <<< "$step1"
   # Re-entry enters at Step 9a
-  echo "$step1" | /usr/bin/grep -q 'Step 9a'
+  /usr/bin/grep -q 'Step 9a' <<< "$step1"
   # Steps 2-9 are not re-run
-  echo "$step1" | /usr/bin/grep -q 'Steps 2 through 9\|skipping Steps 2'
+  /usr/bin/grep -q 'Steps 2 through 9\|skipping Steps 2' <<< "$step1"
   # Re-entry requires worktree present
-  echo "$step1" | /usr/bin/grep -q 'worktree'
+  /usr/bin/grep -q 'worktree' <<< "$step1"
   # Re-entry requires no PR
-  echo "$step1" | /usr/bin/grep -q 'no.*PR\|no open PR'
+  /usr/bin/grep -q 'no.*PR\|no open PR' <<< "$step1"
   # Re-entry precedes RESUME path
-  echo "$step1" | /usr/bin/grep -q 'Before.*detect-mode\|before the.*RESUME'
+  /usr/bin/grep -q 'Before.*detect-mode\|before the.*RESUME' <<< "$step1"
 }
 
 @test "re-entry not taken when key is absent and status is review halts at Step 1" {
@@ -270,15 +270,15 @@ YAML
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Mentions bind-head
-  echo "$step9a" | /usr/bin/grep -q 'bind-head'
+  /usr/bin/grep -q 'bind-head' <<< "$step9a"
   # Mentions ESCALATE
-  echo "$step9a" | /usr/bin/grep -q 'ESCALATE'
+  /usr/bin/grep -q 'ESCALATE' <<< "$step9a"
   # Mentions fix-cycle cap
-  echo "$step9a" | /usr/bin/grep -q 'fix-cycle cap\|count-and-decide'
+  /usr/bin/grep -q 'fix-cycle cap\|count-and-decide' <<< "$step9a"
   # Commits fixes in worktree (may span two lines)
-  echo "$step9a" | /usr/bin/grep -q 'fixes are committed'
+  /usr/bin/grep -q 'fixes are committed' <<< "$step9a"
   # Story stays in review
-  echo "$step9a" | /usr/bin/grep -q 'stays in.*review'
+  /usr/bin/grep -q 'stays in.*review' <<< "$step9a"
 }
 
 @test "review-skip-check.sh accepts --bind-head flag" {
@@ -296,11 +296,11 @@ YAML
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Descope does not push
-  echo "$step9a" | /usr/bin/grep -q 'nothing is pushed\|descope'
+  /usr/bin/grep -q 'nothing is pushed\|descope' <<< "$step9a"
   # Accept override: push proceeds
-  echo "$step9a" | /usr/bin/grep -q 'accept override.*push.*proceed\|push and PR proceed'
+  /usr/bin/grep -q 'accept override.*push.*proceed\|push and PR proceed' <<< "$step9a"
   # Merge gate still blocks
-  echo "$step9a" | /usr/bin/grep -q 'merge.sh.*refuses\|merge.*COMPLETE\|merge is waiting'
+  /usr/bin/grep -q 'merge.sh.*refuses\|merge.*COMPLETE\|merge is waiting' <<< "$step9a"
 }
 
 # ---------- AC8: ancestor check ----------
@@ -548,11 +548,11 @@ EOF
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Review = under review in the worktree
-  echo "$step9a" | /usr/bin/grep -q 'review'
+  /usr/bin/grep -q 'review' <<< "$step9a"
   # Worktree teardown is at Step 13 (existing location)
   local step13
   step13="$(/usr/bin/sed -n '/### Step 13/,/### Step 14/p' "$SKILL_MD")"
-  echo "$step13" | /usr/bin/grep -q 'merge'
+  /usr/bin/grep -q 'merge' <<< "$step13"
   # Done after merge.sh exits 0
   /usr/bin/grep -q 'merge\.sh.*exit\|merge.*succeeded\|Merge succeeded' "$SKILL_MD"
 }
@@ -582,21 +582,21 @@ EOF
   local dev_story_section
   dev_story_section="$(/usr/bin/sed -n '/Pre-push review ordering/,/section id/p' "$DOC_DEV_STORY")"
   for pat in 'FR-[0-9]+' 'ADR-[0-9]+' 'TC-[A-Z]+-[A-Z]+-[0-9]+' 'AF-[0-9]{4}-' 'E[0-9]+-S[0-9]+'; do
-    ! echo "$dev_story_section" | /usr/bin/grep -qE "$pat" \
+    ! /usr/bin/grep -qE "$pat" <<< "$dev_story_section" \
       || { echo "Leaked ID ($pat) in dev-story docs pre-push section" >&2; false; }
   done
   # Config page — check the review_before_merge entry
   local config_entry
   config_entry="$(/usr/bin/grep -A3 'review_before_merge' "$DOC_CONFIG")"
   for pat in 'FR-[0-9]+' 'ADR-[0-9]+' 'E[0-9]+-S[0-9]+'; do
-    ! echo "$config_entry" | /usr/bin/grep -qE "$pat" \
+    ! /usr/bin/grep -qE "$pat" <<< "$config_entry" \
       || { echo "Leaked ID ($pat) in config docs" >&2; false; }
   done
   # Changelog — check the pre-push review section
   local cl_section
   cl_section="$(/usr/bin/sed -n '/Pre-push review ordering/,/### Fix-cycle cap/p' "$CHANGELOG")"
   for pat in 'FR-[0-9]+' 'ADR-[0-9]+' 'TC-[A-Z]+-[A-Z]+-[0-9]+' 'AF-[0-9]{4}-' 'E[0-9]+-S[0-9]+'; do
-    ! echo "$cl_section" | /usr/bin/grep -qE "$pat" \
+    ! /usr/bin/grep -qE "$pat" <<< "$cl_section" \
       || { echo "Leaked ID ($pat) in changelog" >&2; false; }
   done
 }
@@ -618,11 +618,11 @@ EOF
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Must verify clean tree after preflight
-  echo "$step9a" | /usr/bin/grep -q 'git status --porcelain'
+  /usr/bin/grep -q 'git status --porcelain' <<< "$step9a"
   # Must halt before review on dirty tree
-  echo "$step9a" | /usr/bin/grep -q 'HALT before the review\|HALT.*working tree'
+  /usr/bin/grep -q 'HALT before the review\|HALT.*working tree' <<< "$step9a"
   # Must tell the developer to commit
-  echo "$step9a" | /usr/bin/grep -q 'commit the change'
+  /usr/bin/grep -q 'commit the change' <<< "$step9a"
 }
 
 # ---------- AC-EC3: base advances during review ----------
@@ -631,11 +631,11 @@ EOF
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Pre-push ancestor check must be in the step
-  echo "$step9a" | /usr/bin/grep -q 'Ancestor check (pre-push)'
+  /usr/bin/grep -q 'Ancestor check (pre-push)' <<< "$step9a"
   # Must halt before push
-  echo "$step9a" | /usr/bin/grep -q 'HALT before push'
+  /usr/bin/grep -q 'HALT before push' <<< "$step9a"
   # Must mention even with COMPLETE
-  echo "$step9a" | /usr/bin/grep -q 'COMPLETE composite\|even with a COMPLETE'
+  /usr/bin/grep -q 'COMPLETE composite\|even with a COMPLETE' <<< "$step9a"
 }
 
 # ---------- AC-EC4: push retry after COMPLETE ----------
@@ -644,8 +644,8 @@ EOF
   local step1
   step1="$(/usr/bin/sed -n '/### Step 1 --/,/### Step 2 --/p' "$SKILL_MD")"
   # Re-entry at push step when all rows bound to HEAD
-  echo "$step1" | /usr/bin/grep -q 'push step\|re-enter at.*push'
-  echo "$step1" | /usr/bin/grep -q 'bound to HEAD\|assert-reviewed-head'
+  /usr/bin/grep -q 'push step\|re-enter at.*push' <<< "$step1"
+  /usr/bin/grep -q 'bound to HEAD\|assert-reviewed-head' <<< "$step1"
 }
 
 # ---------- AC-EC5: no promotion chain or non-git workspace ----------
@@ -654,7 +654,7 @@ EOF
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
   # Ancestor check exits 3 for non-git
-  echo "$step9a" | /usr/bin/grep -q 'exit 3.*skipped\|exit 3.*non-git'
+  /usr/bin/grep -q 'exit 3.*skipped\|exit 3.*non-git' <<< "$step9a"
   # Pre-push mode guard in Step 10 mentions existing skip
   /usr/bin/grep -q 'Steps 10.*skipped\|Steps 10–13.*skipped' "$SKILL_MD"
 }
@@ -664,9 +664,9 @@ EOF
 @test "ESCALATE during YOLO or sprint run halts on AskUserQuestion with story in review and worktree kept" {
   local step9a
   step9a="$(/usr/bin/sed -n '/step 9a pre-push review begin/,/step 9a pre-push review end/p' "$SKILL_MD")"
-  echo "$step9a" | /usr/bin/grep -q 'YOLO.*sprint.*AskUserQuestion\|AskUserQuestion.*YOLO\|ESCALATE.*YOLO'
-  echo "$step9a" | /usr/bin/grep -q 'story in.*review\|story stays in.*review'
-  echo "$step9a" | /usr/bin/grep -q 'worktree.*kept\|nothing.*pushed\|nothing is pushed'
+  /usr/bin/grep -q 'YOLO.*sprint.*AskUserQuestion\|AskUserQuestion.*YOLO\|ESCALATE.*YOLO' <<< "$step9a"
+  /usr/bin/grep -q 'story in.*review\|story stays in.*review' <<< "$step9a"
+  /usr/bin/grep -q 'worktree.*kept\|nothing.*pushed\|nothing is pushed' <<< "$step9a"
 }
 
 # ---------- AC-EC7: merge deferred (exit 3) ----------
@@ -675,8 +675,8 @@ EOF
   # Step 13 already documents exit 3 — verify the semantics
   local step13
   step13="$(/usr/bin/sed -n '/### Step 13/,/### Step 14/p' "$SKILL_MD")"
-  echo "$step13" | /usr/bin/grep -q 'Exit 3.*deferred\|exit 3.*Merge deferred'
-  echo "$step13" | /usr/bin/grep -q 'stays in.*review'
+  /usr/bin/grep -q 'Exit 3.*deferred\|exit 3.*Merge deferred' <<< "$step13"
+  /usr/bin/grep -q 'stays in.*review' <<< "$step13"
 }
 
 # ---------- run-all-reviews: --bind-head passthrough ----------
@@ -695,5 +695,5 @@ EOF
   /usr/bin/grep -q '10 lettered sub-steps' "$SKILL_MD"
   local scope_line
   scope_line="$(/usr/bin/grep 'out of scope for v1' "$SKILL_MD")"
-  echo "$scope_line" | /usr/bin/grep -qF "9a"
+  /usr/bin/grep -qF "9a" <<< "$scope_line"
 }
