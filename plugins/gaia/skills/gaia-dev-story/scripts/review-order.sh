@@ -5,10 +5,15 @@
 #   mode                                 Print the active review ordering mode.
 #   ancestor-check --base <branch>       Verify the promotion base is an ancestor of HEAD.
 #   assert-reviewed-head --story <file>  Assert clean tree and all review rows bound to HEAD.
+#   check-layout --story <file>          Refuse a layout that cannot keep the tree clean.
+#   check-layout --worktree-mode-only    Only the worktree-mode half, for use before a worktree exists.
+#   find-worktree --story-key <key>      Print this story's worktree path.
+#   merge-guard --story-key <key>        Allow or refuse review -> done for a pre-push story.
 #
 # Exit codes:
 #   0 — ok
-#   1 — refused (drift, mismatch, malformed Review Gate table, bad value, fetch failure)
+#   1 — refused (drift, mismatch, malformed Review Gate table, bad value, fetch failure,
+#       unresolvable config, unsupported layout, no worktree, PR not verified merged)
 #   2 — usage error
 #   3 — skipped (code path outside any git work tree)
 
@@ -47,7 +52,7 @@ _die() {
 
 _die_usage() {
   printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2
-  printf 'Usage: %s {mode|ancestor-check|assert-reviewed-head} [options]\n' "$SCRIPT_NAME" >&2
+  printf 'Usage: %s {mode|ancestor-check|assert-reviewed-head|check-layout|find-worktree|merge-guard} [options]\n' "$SCRIPT_NAME" >&2
   exit 2
 }
 
@@ -64,14 +69,83 @@ _require_git_work_tree() {
   fi
 }
 
+# Print the team-shared config file the resolver would use, or nothing. The
+# resolver walks up from its working directory only inside the git work tree
+# when outside HOME, so a repo inside a non-git project root is walked here,
+# from the code path, the same bounded way the promotion-chain guard does.
+_discover_shared_config() {
+  local root dir depth=0
+  if [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
+    printf '%s\n' "$GAIA_SHARED_CONFIG"
+    return 0
+  fi
+  for root in "${PROJECT_ROOT:-}" "${CLAUDE_PROJECT_ROOT:-}"; do
+    [ -n "$root" ] || continue
+    if [ -f "$root/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$root/.gaia/config/project-config.yaml"
+      return 0
+    elif [ -f "$root/config/project-config.yaml" ]; then
+      printf '%s\n' "$root/config/project-config.yaml"
+      return 0
+    fi
+  done
+  [ -z "${GAIA_NO_PROJECT_WALKUP:-}" ] || return 0
+  dir="$(cd "${PROJECT_PATH:-.}" 2>/dev/null && pwd -P)" || return 0
+  while [ "$depth" -lt 8 ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$dir/.gaia/config/project-config.yaml"
+      return 0
+    elif [ -f "$dir/config/project-config.yaml" ]; then
+      printf '%s\n' "$dir/config/project-config.yaml"
+      return 0
+    fi
+    [ "$dir" != "/" ] || return 0
+    dir="$(dirname "$dir")"
+    depth=$((depth + 1))
+  done
+}
+
+# Run the resolver against the discovered project. Without an explicit root the
+# discovered one is passed down, which also finds the machine-local overlay.
+_resolve() {
+  local cfg anchor
+  cfg="$(_discover_shared_config)"
+  case "$cfg" in
+    ""|"${GAIA_SHARED_CONFIG:-///}"|"${PROJECT_ROOT:-///}"/*|"${CLAUDE_PROJECT_ROOT:-///}"/*)
+      "$PLUGIN_ROOT/scripts/resolve-config.sh" "$@"
+      return
+      ;;
+  esac
+  anchor="$(dirname "$(dirname "$cfg")")"
+  anchor="${anchor%/.gaia}"
+  CLAUDE_PROJECT_ROOT="$anchor" "$PLUGIN_ROOT/scripts/resolve-config.sh" "$@"
+}
+
 # ---------- Subcommand: mode ----------
 # Reads dev_story.review_before_merge from project config.
-# Prints "pre-push" for true, "default" for false or empty.
-# Exits non-zero for any other value.
+# Prints "pre-push" for true, "default" for false or empty, and also "default"
+# when no config file exists anywhere, since then the key is absent.
+# Exits non-zero for any other value and when the config cannot be resolved: a
+# broken config must never read as the default order.
 
 cmd_mode() {
-  local val
-  val="$("$PLUGIN_ROOT/scripts/resolve-config.sh" --field dev_story.review_before_merge 2>/dev/null)" || true
+  local val err_file err rc=0
+  err_file="$(mktemp)" || _die "cannot create a temporary file"
+  val="$(_resolve --field dev_story.review_before_merge 2>"$err_file")" || rc=$?
+  err="$(cat "$err_file")"
+  rm -f "$err_file"
+
+  if [ "$rc" -ne 0 ]; then
+    case "$err" in
+      *"no config path"*) val="" ;;
+      *"config file not found"*)
+        if [ -n "${GAIA_SHARED_CONFIG:-}" ]; then
+          _die "cannot resolve dev_story.review_before_merge: $err"
+        fi
+        val="" ;;
+      *) _die "cannot resolve dev_story.review_before_merge: $err" ;;
+    esac
+  fi
 
   # Trim whitespace.
   val="${val#"${val%%[![:space:]]*}"}"
@@ -114,14 +188,17 @@ cmd_ancestor_check() {
   local git_dir="${PROJECT_PATH:-.}"
   _require_git_work_tree "$git_dir"
 
-  # Fetch the base branch. Fetch failure fails closed (exit 1).
-  if ! git -C "$git_dir" fetch --end-of-options origin "$base" 2>/dev/null; then
+  # Fetch the base into its tracking ref with an explicit refspec, so a narrowed
+  # remote.origin.fetch cannot leave that ref stale. Fetch failure fails closed.
+  local tracking_ref="refs/remotes/origin/$base"
+  if ! git -C "$git_dir" fetch --end-of-options origin "+refs/heads/$base:$tracking_ref" 2>/dev/null; then
     printf '%s: fetch failed for origin/%s — halting (fail closed)\n' "$SCRIPT_NAME" "$base" >&2
     exit 1
   fi
 
+  # The full ref name: a local branch or tag called origin/<base> must not shadow it.
   local base_tip head_sha
-  base_tip="$(git -C "$git_dir" rev-parse "origin/$base" 2>/dev/null)" || {
+  base_tip="$(git -C "$git_dir" rev-parse --verify --quiet "$tracking_ref^{commit}")" || {
     printf '%s: cannot resolve origin/%s\n' "$SCRIPT_NAME" "$base" >&2
     exit 1
   }
@@ -207,6 +284,228 @@ cmd_assert_reviewed_head() {
   exit 0
 }
 
+# ---------- Subcommand: check-layout ----------
+# Pre-push review needs a story worktree whose tree the review artifacts do not
+# dirty. Refuses worktree mode off, a code path that is not a linked worktree,
+# and a story file inside the code work tree. A non-git code path skips (exit 3)
+# and a project with no promotion chain passes, since neither ever pushes.
+
+_layout_refusal() {
+  printf '%s: review_before_merge cannot run in this layout: %s\n' "$SCRIPT_NAME" "$1" >&2
+  printf '%s: enable worktree mode with GAIA_WORKTREE_MODE=1, or set dev_story.review_before_merge to false\n' "$SCRIPT_NAME" >&2
+  exit 1
+}
+
+# Print the absolute physical path of a file, following symlinks.
+_real_file_path() {
+  local path="$1" dir link
+  while [ -L "$path" ]; do
+    link="$(readlink "$path")"
+    case "$link" in
+      /*) path="$link" ;;
+      *) path="$(dirname "$path")/$link" ;;
+    esac
+  done
+  dir="$(cd "$(dirname "$path")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$dir" "$(basename "$path")"
+}
+
+# Prints the promotion chain's first branch, nothing when there is none or the
+# code path is not a git work tree. Non-zero when the guard itself failed.
+_promotion_base() {
+  local code_path="$1" cfg out rc=0
+  cfg="$(_discover_shared_config)"
+  out="$(cd "$code_path" && PROJECT_CONFIG="${cfg:-${PROJECT_CONFIG:-}}" \
+    "$SCRIPT_DIR/promotion-chain-guard.sh" 2>&1)" || rc=$?
+  case "$rc" in
+    0)
+      # No PRESENT line on a clean exit is the guard's non-git skip.
+      printf '%s\n' "$out" | sed -n 's/^PRESENT://p'
+      ;;
+    1)
+      case "$out" in
+        *"ABSENT:"*) ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd_check_layout() {
+  local story_file="" mode_only=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --story)
+        [ $# -ge 2 ] || _die_usage "check-layout: --story requires a file path"
+        story_file="$2"; shift 2 ;;
+      --worktree-mode-only) mode_only=1; shift ;;
+      *) _die_usage "check-layout: unknown flag: $1" ;;
+    esac
+  done
+  if [ "$mode_only" -eq 0 ] && [ -z "$story_file" ]; then
+    _die_usage "check-layout: --story <file> or --worktree-mode-only is required"
+  fi
+
+  local git_dir="${PROJECT_PATH:-.}" base
+  _require_git_work_tree "$git_dir"
+  base="$(_promotion_base "$git_dir")" || _die "cannot read the promotion chain from $git_dir"
+  [ -n "$base" ] || exit 0
+
+  [ "${GAIA_WORKTREE_MODE:-0}" = "1" ] || _layout_refusal "worktree mode is off"
+  [ "$mode_only" -eq 0 ] || exit 0
+
+  [ -f "$story_file" ] || _die "story file not found: $story_file"
+
+  local dirs abs_git abs_common toplevel story_real rest
+  dirs="$(cd "$git_dir" && git rev-parse --git-dir --git-common-dir --show-toplevel)" \
+    || _die "cannot read the git layout of $git_dir"
+  abs_git="$(cd "$git_dir" && cd "${dirs%%$'\n'*}" && pwd -P)" || _die "cannot resolve the git directory of $git_dir"
+  rest="${dirs#*$'\n'}"
+  abs_common="$(cd "$git_dir" && cd "${rest%%$'\n'*}" && pwd -P)" || _die "cannot resolve the common git directory of $git_dir"
+  toplevel="$(cd "${rest#*$'\n'}" && pwd -P)" || _die "cannot resolve the work tree of $git_dir"
+
+  [ "$abs_git" != "$abs_common" ] || _layout_refusal "the code path $toplevel is not a linked worktree"
+
+  story_real="$(_real_file_path "$story_file")" || _die "cannot resolve story file: $story_file"
+  case "$story_real" in
+    "$toplevel"/*) _layout_refusal "the story file $story_real is inside the code work tree $toplevel" ;;
+  esac
+  exit 0
+}
+
+# ---------- Subcommand: find-worktree ----------
+# Prints this story's worktree: the newest checkpoint for this story_key whose
+# worktree still exists on the story's branch, else a linked worktree on that
+# branch. Exit 1 when there is none, naming the key.
+
+_validate_story_key() {
+  case "$1" in
+    ""|-*|*[!A-Za-z0-9-]*) _die "invalid story key: $1" ;;
+  esac
+}
+
+_on_story_branch() {
+  local dir="$1" key="$2" branch
+  [ -n "$dir" ] && [ -d "$dir" ] || return 1
+  branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || return 1
+  case "$branch" in
+    "feat/$key-"*) return 0 ;;
+  esac
+  return 1
+}
+
+_worktree_from_checkpoints() {
+  local key="$1" root files file path
+  root="${CHECKPOINT_ROOT:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/memory/checkpoints}"
+  [ -d "$root/gaia-dev-story" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  files="$(find "$root/gaia-dev-story" -maxdepth 1 -name '*-step-*.json' -exec grep -lF -- "$key" {} + 2>/dev/null | sort -r)" || true
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    path="$(CHECKPOINT_ROOT="$root" "$PLUGIN_ROOT/scripts/resume-checkpoint.sh" read --path "$file" 2>/dev/null \
+      | jq -r --arg k "$key" 'select(.key_variables.story_key == $k) | .key_variables.worktree_path // empty' 2>/dev/null)" || continue
+    if _on_story_branch "$path" "$key"; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done <<EOF
+$files
+EOF
+  return 1
+}
+
+_worktree_from_git() {
+  local key="$1" line path="" first=1
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*)
+        path=""
+        # The first record is the main checkout, never a story worktree.
+        [ "$first" -eq 1 ] || path="${line#worktree }"
+        first=0
+        ;;
+      "branch refs/heads/feat/$key-"*)
+        if [ -n "$path" ] && _on_story_branch "$path" "$key"; then
+          printf '%s\n' "$path"
+          return 0
+        fi
+        ;;
+    esac
+  done <<EOF
+$(git -C "${PROJECT_PATH:-.}" worktree list --porcelain 2>/dev/null)
+EOF
+  return 1
+}
+
+cmd_find_worktree() {
+  local key=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --story-key)
+        [ $# -ge 2 ] || _die_usage "find-worktree: --story-key requires a value"
+        key="$2"; shift 2 ;;
+      *) _die_usage "find-worktree: unknown flag: $1" ;;
+    esac
+  done
+  [ -n "$key" ] || _die_usage "find-worktree: --story-key <key> is required"
+  _validate_story_key "$key"
+  _worktree_from_checkpoints "$key" || _worktree_from_git "$key" \
+    || _die "no worktree on a feat/$key- branch for story $key"
+}
+
+# ---------- Subcommand: merge-guard ----------
+# Decides review -> done for a pre-push story; every caller that can make that
+# move shares this one decision. Default mode ends right after the mode read,
+# with no verifier or network call. Anything that cannot be determined refuses.
+
+_merge_refusal() {
+  printf '%s: review -> done refused for %s: %s\n' "$SCRIPT_NAME" "$1" "$2" >&2
+  exit 1
+}
+
+cmd_merge_guard() {
+  local key=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --story-key)
+        [ $# -ge 2 ] || _die_usage "merge-guard: --story-key requires a value"
+        key="$2"; shift 2 ;;
+      *) _die_usage "merge-guard: unknown flag: $1" ;;
+    esac
+  done
+  [ -n "$key" ] || _die_usage "merge-guard: --story-key <key> is required"
+  _validate_story_key "$key"
+
+  [ "${GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE:-0}" != "1" ] || exit 0
+
+  local mode
+  mode="$(cmd_mode)" || _merge_refusal "$key" "the review ordering could not be read from project config"
+  [ "$mode" = "pre-push" ] || exit 0
+
+  # The code path comes from config: a transition may run from a non-git root.
+  local pairs code_path root
+  pairs="$(_resolve 2>/dev/null)" || _merge_refusal "$key" "the code path could not be read from project config"
+  code_path="$(printf '%s\n' "$pairs" | sed -n "s/^project_path='\\(.*\\)'\$/\\1/p")"
+  root="$(printf '%s\n' "$pairs" | sed -n "s/^project_root='\\(.*\\)'\$/\\1/p")"
+  [ -n "$code_path" ] || _merge_refusal "$key" "project config names no code path"
+  case "$code_path" in
+    /*) ;;
+    *) code_path="$root/$code_path" ;;
+  esac
+  [ -d "$code_path" ] || _merge_refusal "$key" "the code path does not exist: $code_path"
+
+  local base target rc=0
+  base="$(_promotion_base "$code_path")" || _merge_refusal "$key" "the promotion chain could not be read"
+  target="${base:---no-chain}"
+  PROJECT_PATH="$code_path" "$SCRIPT_DIR/verify-pr-merged.sh" "$key" "$target" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0|3) exit 0 ;;
+    2) _merge_refusal "$key" "its PR is not verified merged; finish push and merge with /gaia-dev-story $key" ;;
+    *) _merge_refusal "$key" "the merge could not be verified (exit $rc); finish push and merge with /gaia-dev-story $key" ;;
+  esac
+}
+
 # ---------- Dispatch ----------
 
 [ $# -ge 1 ] || _die_usage "subcommand required"
@@ -216,8 +515,11 @@ case "$subcmd" in
   mode)                 cmd_mode "$@" ;;
   ancestor-check)       cmd_ancestor_check "$@" ;;
   assert-reviewed-head) cmd_assert_reviewed_head "$@" ;;
+  check-layout)         cmd_check_layout "$@" ;;
+  find-worktree)        cmd_find_worktree "$@" ;;
+  merge-guard)          cmd_merge_guard "$@" ;;
   --help|-h)
-    printf 'Usage: %s {mode|ancestor-check|assert-reviewed-head} [options]\n' "$SCRIPT_NAME"
+    printf 'Usage: %s {mode|ancestor-check|assert-reviewed-head|check-layout|find-worktree|merge-guard} [options]\n' "$SCRIPT_NAME"
     exit 0 ;;
   *) _die_usage "unknown subcommand: $subcmd" ;;
 esac

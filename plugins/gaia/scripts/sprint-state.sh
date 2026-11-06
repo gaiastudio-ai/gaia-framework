@@ -1408,6 +1408,7 @@ do_transition_locked() {
 
   # Review Gate enforcement for -> done.
   if [ "$to_state" = "done" ]; then
+    [ "$_PRE_PUSH_GUARD_RAN" = "1" ] || _pre_push_merge_guard "$story_key"
     check_review_gate_all_passed "$story_key"
 
     # DoD completeness gate. Prior behavior allowed `review -> done` when the
@@ -1518,6 +1519,22 @@ do_transition_locked() {
   printf '%s: %s transitioned %s -> %s\n' "$SCRIPT_NAME" "$story_key" "$from_state" "$to_state"
 }
 
+# Pre-push merge guard on review -> done, the same decision the transition tool
+# makes, exit 9 on refusal. This script also ships beside the helper, hence the
+# plugin root derivation. The check runs before the lock since it can reach the network; do_transition_locked
+# repeats it only when the status moved to review while waiting for that lock.
+_PRE_PUSH_GUARD_RAN=0
+_pre_push_merge_guard() {
+  local story_key="$1" plugin
+  _PRE_PUSH_GUARD_RAN=1
+  plugin="$(cd "$(dirname "$0")" && pwd)"
+  case "$plugin" in
+    */skills/gaia-dev-story/scripts) plugin="${plugin%/skills/gaia-dev-story/scripts}" ;;
+    *) plugin="${plugin%/scripts}" ;;
+  esac
+  "$plugin"/skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$story_key" || exit 9
+}
+
 cmd_transition() {
   local story_key="$1" to_state="$2"
 
@@ -1528,6 +1545,11 @@ cmd_transition() {
   # offending value and the allowed enum so the caller can correct the
   # invocation without reading source.
   assert_canonical_state "$to_state" "transition --to"
+
+  if [ "$to_state" = "done" ] && \
+     [ "$(locate_story_file "$story_key" 2>/dev/null && read_story_status "$STORY_FILE" 2>/dev/null)" = "review" ]; then
+    _pre_push_merge_guard "$story_key"
+  fi
 
   (
     if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
