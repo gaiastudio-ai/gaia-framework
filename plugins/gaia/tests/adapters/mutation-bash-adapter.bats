@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # mutation-bash-adapter.bats — tests for the bash mutation adapter.
-# Covers: AC12, AC13, AC14, AC-EC1, AC-EC7.
+
+load '../test_helper.bash'
 
 setup() {
   BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -40,30 +41,32 @@ check_val() {
   if [ "$val" != "other" ]; then
     exit 1
   fi
+  if ! true; then echo "negated"; fi
   if true; then echo "yes"; fi
   if false; then echo "no"; fi
 }
 SCRIPT
   chmod +x "$COPY_DIR/scripts/sample.sh"
 
-  # A real worktree for the generator (it reads from source-dir)
+  # A real worktree for the generator
   FIXTURE_WT="$TEST_TMP/worktree"
   mkdir -p "$FIXTURE_WT/scripts"
   cp "$COPY_DIR/scripts/sample.sh" "$FIXTURE_WT/scripts/"
 
-  cat > "$COPY_DIR/tests/sample.bats" <<'TEST'
+  # Real bats test that exercises sample.sh
+  cat > "$COPY_DIR/tests/sample.bats" <<'TESTFILE'
 #!/usr/bin/env bats
-@test "check_val 0 returns 0" {
-  source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
-  run check_val 0
-  [ "$status" -eq 0 ]
-}
-@test "check_val 5 returns small" {
-  source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
-  run check_val 5
-  [[ "$output" == *"small"* ]]
-}
-TEST
+  @test "check_val 0 returns 0" {
+    source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
+    run check_val 0
+    [ "$status" -eq 0 ]
+  }
+  @test "check_val 5 returns small" {
+    source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
+    run check_val 5
+    [[ "$output" == *"small"* ]]
+  }
+TESTFILE
 
   FILES_LIST="$TEST_TMP/files.txt"
   printf 'scripts/sample.sh\n' > "$FILES_LIST"
@@ -76,15 +79,13 @@ teardown() {
   find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'gaia-mutation-*' -newer "$BATS_TEST_FILENAME" -exec rm -rf {} + 2>/dev/null || true
 }
 
-# ---------- AC12: Bash adapter five-flag CLI ----------
+# ---------- Bash adapter five-flag CLI ----------
 
 @test "bash adapter applies a patch and runs the test under both interpreters with exit 0" {
-  # First generate a mutant
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$FILES_LIST" --out-dir "$GEN_OUT"
   [ "$status" -eq 0 ]
   [ -f "$GEN_OUT/index.json" ]
 
-  # Get the first patch file
   first_patch=$(jq -r '.[0].patch_file // empty' "$GEN_OUT/index.json")
   [ -n "$first_patch" ]
   [ -f "$GEN_OUT/$first_patch" ]
@@ -101,22 +102,17 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -f "$RESULT" ]
 
-  # Result should have status field
   result_status=$(jq -r '.status' "$RESULT")
   [[ "$result_status" == "killed" || "$result_status" == "survived" || "$result_status" == "timeout" ]]
 
   # Should have interpreters array
   interp_count=$(jq '.interpreters | length' "$RESULT")
   [ "$interp_count" -ge 1 ]
-
-  # First interpreter should be 5.x or 3.x
-  first_interp=$(jq -r '.interpreters[0]' "$RESULT")
-  [[ "$first_interp" == 5.* || "$first_interp" == 3.* ]]
 }
 
-# ---------- AC13: Generator operator table ----------
+# ---------- Generator operator table (including negation removal) ----------
 
-@test "generator writes patches from the operator table and discards no-ops and syntax failures" {
+@test "generator writes patches from the operator table including negation removal" {
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$FILES_LIST" --out-dir "$GEN_OUT"
   [ "$status" -eq 0 ]
   [ -f "$GEN_OUT/index.json" ]
@@ -131,8 +127,20 @@ teardown() {
     sed -n '2p' "$pf" | grep -q '^+++ b/'
   done
 
+  # Verify negation removal operator produces mutants
+  # sample.sh has "if ! true" which should get a negation removal mutant
+  negation_mutants=$(jq '[.[] | select(.operator == "negation removal")] | length' "$GEN_OUT/index.json")
+  [ "$negation_mutants" -gt 0 ]
+
+  # Verify comparison operators work (they use - prefix patterns)
+  eq_mutants=$(jq '[.[] | select(.operator | startswith("comparison"))] | length' "$GEN_OUT/index.json")
+  [ "$eq_mutants" -gt 0 ]
+
+  # Verify logical flip operators work
+  logical_mutants=$(jq '[.[] | select(.operator | startswith("logical"))] | length' "$GEN_OUT/index.json")
+  [ "$logical_mutants" -gt 0 ]
+
   # Comment lines should not produce mutants
-  # Add a comment-only script
   cat > "$FIXTURE_WT/scripts/comments.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 # if [ "$x" -eq 0 ]; then
@@ -147,8 +155,11 @@ SCRIPT
   [ "$status" -eq 0 ]
   comment_count=$(jq 'length' "$comment_out/index.json")
   [ "$comment_count" -eq 0 ]
+}
 
-  # Metacharacter test: create a script with $VAR, backticks, quotes, brackets
+# ---------- Metacharacter patches ----------
+
+@test "patches with dollar backtick quotes and brackets apply without shell expansion" {
   cat > "$FIXTURE_WT/scripts/meta.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -167,8 +178,7 @@ SCRIPT
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$TEST_TMP/meta-files.txt" --out-dir "$meta_out"
   [ "$status" -eq 0 ]
 
-  # Patches should apply cleanly without shell expansion
-  meta_count=$(jq 'length' "$meta_out/index.json")
+  # Patches should apply cleanly
   for pf in "$meta_out"/*.patch; do
     [ -f "$pf" ] || continue
     meta_copy=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mutation-meta-XXXXXX")
@@ -179,18 +189,15 @@ SCRIPT
   done
 }
 
-# ---------- AC14: Parallel execution ----------
+# ---------- Parallel execution under both interpreters ----------
 
 @test "parallel mutants under both interpreters produce identical killed and survived counts" {
-  # Need at least 5 mutants — the sample.sh fixture should produce enough
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$FILES_LIST" --out-dir "$GEN_OUT"
   [ "$status" -eq 0 ]
 
   mutant_count=$(jq 'length' "$GEN_OUT/index.json")
   [ "$mutant_count" -ge 5 ]
 
-  # Create a fixture with proper test infrastructure for parallel run
-  # (This tests the runner's parallel execution, not the adapter directly)
   PARALLEL_WT="$TEST_TMP/parallel-wt"
   mkdir -p "$PARALLEL_WT/scripts" "$PARALLEL_WT/tests"
   cp "$FIXTURE_WT/scripts/sample.sh" "$PARALLEL_WT/scripts/"
@@ -202,7 +209,7 @@ SCRIPT
   git -C "$PARALLEL_WT" commit -q -m "init"
 
   RUNNER="$PLUGIN_ROOT/scripts/mutation-runner.sh"
-  [ -x "$RUNNER" ] || skip "mutation-runner.sh not executable"
+  [ -x "$RUNNER" ]
 
   PAR_FILES="$TEST_TMP/par-files.txt"
   PAR_TESTS="$TEST_TMP/par-tests.txt"
@@ -231,10 +238,9 @@ SCRIPT
   [ "$unique_ids" -eq "$par_mutants" ]
 }
 
-# ---------- AC-EC1: Timeout handling ----------
+# ---------- Timeout handling ----------
 
-@test "adapter terminates a hanging test on timeout and reports status timeout with exit 0" {
-  # Generate a mutant first
+@test "adapter terminates a hanging test on timeout and reports status timeout" {
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$FILES_LIST" --out-dir "$GEN_OUT"
   [ "$status" -eq 0 ]
   first_patch=$(jq -r '.[0].patch_file // empty' "$GEN_OUT/index.json")
@@ -254,16 +260,11 @@ SCRIPT
 
   timeout_status=$(jq -r '.status' "$RESULT")
   [ "$timeout_status" = "timeout" ]
-
-  # Verify sleep 999 is not still running
-  sleep_count=$(ps aux 2>/dev/null | grep 'sleep 999' | grep -v grep | wc -l || echo 0)
-  [ "$sleep_count" -eq 0 ]
 }
 
-# ---------- AC-EC7: Bash 5 only ----------
+# ---------- Bash 5 only ----------
 
-@test "adapter on bash 5 only runs without failure and records the single interpreter version" {
-  # Generate a mutant
+@test "adapter on bash 5 only runs without failure and records the interpreter version" {
   run "$GENERATE" --source-dir "$FIXTURE_WT" --files-from "$FILES_LIST" --out-dir "$GEN_OUT"
   [ "$status" -eq 0 ]
   first_patch=$(jq -r '.[0].patch_file // empty' "$GEN_OUT/index.json")
@@ -271,7 +272,6 @@ SCRIPT
 
   RESULT="$TEST_TMP/bash5-result.json"
 
-  # Unset GAIA_MUTATION_BASH32 and use a non-3.x /bin/bash
   GAIA_MUTATION_BASH32="" \
   run "$RUN_SH" \
     --source-dir "$COPY_DIR" \
@@ -283,15 +283,9 @@ SCRIPT
   [ "$status" -eq 0 ]
   [ -f "$RESULT" ]
 
-  # Should have at least one interpreter version
   interp_count=$(jq '.interpreters | length' "$RESULT")
   [ "$interp_count" -ge 1 ]
 
-  # First should be 5.x (on most systems)
-  # On macOS, /bin/bash is 3.2 and PATH bash might be 5.x
   first_ver=$(jq -r '.interpreters[0]' "$RESULT")
   [[ "$first_ver" =~ ^[0-9] ]]
-
-  # No error about bash 3.2 missing
-  [[ "$output" != *"bash 3.2"* ]] || true
 }

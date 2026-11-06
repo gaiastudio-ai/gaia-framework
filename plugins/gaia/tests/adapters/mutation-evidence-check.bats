@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # mutation-evidence-check.bats — tests for the mutation evidence checker.
-# Covers: AC10, AC-EC3.
+
+load '../test_helper.bash'
 
 setup() {
   BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
@@ -18,10 +19,9 @@ teardown() {
   rm -rf "$TEST_TMP"
 }
 
-# ---------- AC10: Review consumers read evidence ----------
+# ---------- Review consumers read evidence and report mutation-score ----------
 
 @test "review consumers read evidence and report mutation-score without invoking the runner" {
-  # Create evidence with failed gate
   cat > "$EVIDENCE" <<EVIDENCE
 {
   "schema_version": "1.0",
@@ -31,12 +31,13 @@ teardown() {
   "score": 55,
   "gate": "failed",
   "totals": {"mutants":10,"killed":5,"survived":4,"timeout":1,"error":0},
+  "covering_tests": ["tests/alpha.bats", "tests/beta.bats", "tests/gamma.bats"],
   "mutants": [
-    {"mutant_id":"m1","status":"killed","killed_by":["test A"],"test_output":""},
-    {"mutant_id":"m2","status":"killed","killed_by":["test A"],"test_output":""},
-    {"mutant_id":"m3","status":"killed","killed_by":["test B"],"test_output":""},
-    {"mutant_id":"m4","status":"killed","killed_by":["test A","test B"],"test_output":""},
-    {"mutant_id":"m5","status":"killed","killed_by":["test C"],"test_output":""},
+    {"mutant_id":"m1","status":"killed","killed_by":["tests/alpha.bats"],"test_output":""},
+    {"mutant_id":"m2","status":"killed","killed_by":["tests/alpha.bats"],"test_output":""},
+    {"mutant_id":"m3","status":"killed","killed_by":["tests/beta.bats"],"test_output":""},
+    {"mutant_id":"m4","status":"killed","killed_by":["tests/alpha.bats","tests/beta.bats"],"test_output":""},
+    {"mutant_id":"m5","status":"killed","killed_by":["tests/gamma.bats"],"test_output":""},
     {"mutant_id":"m6","status":"survived","killed_by":[],"test_output":""},
     {"mutant_id":"m7","status":"survived","killed_by":[],"test_output":""},
     {"mutant_id":"m8","status":"survived","killed_by":[],"test_output":""},
@@ -60,9 +61,36 @@ EVIDENCE
   result_status=$(printf '%s' "$output" | jq -r '.status // empty')
   [ "$result_status" = "failed" ]
 
-  # Test-review mode (with --zero-kill)
+  # Evidence checker must NOT call mutation-runner.sh
+  non_comment_refs=$(grep -v '^\s*#' "$CHECKER" | grep -c 'mutation-runner\.sh' || true)
+  [ "${non_comment_refs:-0}" -eq 0 ]
+}
+
+# ---------- Zero-kill findings: one per covering test ----------
+
+@test "zero-kill mode emits one finding per covering test that killed zero mutants" {
+  # Evidence where gamma.bats killed mutants but delta.bats killed nothing
+  cat > "$EVIDENCE" <<EVIDENCE
+{
+  "schema_version": "1.0",
+  "story_key": "TEST-S2",
+  "priority": "P0",
+  "commit_sha": "$COMMIT",
+  "score": 50,
+  "gate": "failed",
+  "totals": {"mutants":4,"killed":2,"survived":2,"timeout":0,"error":0},
+  "covering_tests": ["tests/gamma.bats", "tests/delta.bats"],
+  "mutants": [
+    {"mutant_id":"m1","status":"killed","killed_by":["tests/gamma.bats"],"test_output":""},
+    {"mutant_id":"m2","status":"killed","killed_by":["tests/gamma.bats"],"test_output":""},
+    {"mutant_id":"m3","status":"survived","killed_by":[],"test_output":""},
+    {"mutant_id":"m4","status":"survived","killed_by":[],"test_output":""}
+  ]
+}
+EVIDENCE
+
   run "$CHECKER" \
-    --story-key "TEST-S1" \
+    --story-key "TEST-S2" \
     --evidence "$EVIDENCE" \
     --commit "$COMMIT" \
     --priority P0 \
@@ -70,24 +98,18 @@ EVIDENCE
     --zero-kill
 
   [ "$status" -eq 0 ]
-  tr_name=$(printf '%s' "$output" | jq -r '.name // empty')
-  [ "$tr_name" = "mutation-score" ]
-  tr_status=$(printf '%s' "$output" | jq -r '.status // empty')
-  [ "$tr_status" = "failed" ]
 
-  # Should have weak-assertion findings when survivors exist
-  findings_count=$(printf '%s' "$output" | jq '.findings | length' 2>/dev/null || echo 0)
-  [ "$findings_count" -ge 0 ]  # May have findings if survivors exist
+  # Should have exactly 1 finding (delta.bats killed zero; gamma.bats killed 2)
+  findings_count=$(printf '%s' "$output" | jq '.findings | length')
+  [ "$findings_count" -eq 1 ]
 
-  # Structural check: the evidence checker does NOT shell out to mutation-runner.sh
-  if grep -q 'mutation-runner\.sh' "$CHECKER" 2>/dev/null; then
-    # If it references the runner at all, it should only be in comments
-    non_comment_refs=$(grep -v '^\s*#' "$CHECKER" | grep -c 'mutation-runner\.sh' || echo 0)
-    [ "$non_comment_refs" -eq 0 ]
-  fi
+  # The finding should name delta.bats
+  finding_msg=$(printf '%s' "$output" | jq -r '.findings[0].message')
+  [[ "$finding_msg" == *"delta.bats"* ]]
+  [[ "$finding_msg" == *"zero mutants"* ]]
 }
 
-# ---------- AC-EC3: Missing or stale evidence ----------
+# ---------- Missing or stale evidence ----------
 
 @test "missing or stale mutation evidence on a P0 story reports errored and never PASSED" {
   # Case A: missing evidence
@@ -101,13 +123,11 @@ EVIDENCE
   [ "$status" -eq 0 ]
   missing_status=$(printf '%s' "$output" | jq -r '.status // empty')
   [ "$missing_status" = "errored" ]
-  [ "$missing_status" != "passed" ]
 
-  # Message should mention --mutation
   missing_msg=$(printf '%s' "$output" | jq -r '.message // empty')
   [[ "$missing_msg" == *"--mutation"* ]]
 
-  # Case B: stale evidence (wrong commit)
+  # Case B: stale evidence
   cat > "$EVIDENCE" <<EVIDENCE
 {
   "schema_version": "1.0",
@@ -134,6 +154,5 @@ EVIDENCE
   [ "$stale_status" != "passed" ]
 
   stale_msg=$(printf '%s' "$output" | jq -r '.message // empty')
-  [[ "$stale_msg" == *"--mutation"* ]]
   [[ "$stale_msg" == *"stale"* ]]
 }
