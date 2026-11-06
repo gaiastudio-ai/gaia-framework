@@ -137,16 +137,13 @@ esac
 # thresholds key absent nothing is added, so existing projects see no change.
 MUT_CHECK="$SCRIPT_DIR/mutation-evidence-check.sh"
 MUT_OUT=""
-_tr_err_check() {
-  jq -n --arg m "$1" '{"name":"mutation-score","status":"errored","error_reason":$m,"message":$m,"findings":[]}'
-}
 if [ -x "$MUT_CHECK" ]; then
   # shellcheck source=../lib/mutation-config.sh
   . "$SCRIPT_DIR/../lib/mutation-config.sh"
   _tr_config="$(mutation_config_path)"
   if ! _tr_mut_thresholds="$(mutation_read_thresholds "$_tr_config" 2>&1)"; then
     printf '%s: %s\n' "$SCRIPT_NAME" "$_tr_mut_thresholds" >&2
-    MUT_OUT="$(_tr_err_check "$_tr_mut_thresholds")"
+    MUT_OUT="$("$MUT_CHECK" --story-key "$STORY_KEY" --config-error "$_tr_mut_thresholds")"
   elif [ -n "$_tr_mut_thresholds" ]; then
     _tr_code_tree="${PROJECT_PATH:-$(pwd)}"
     _tr_mut_commit="$(git -C "$_tr_code_tree" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -161,7 +158,7 @@ if [ -x "$MUT_CHECK" ]; then
       --commit "$_tr_mut_commit" \
       --priority "$_tr_mut_priority" \
       --thresholds "$_tr_mut_thresholds" \
-      --zero-kill)" || MUT_OUT="$(_tr_err_check "mutation-evidence-check.sh failed")"
+      --zero-kill)" || MUT_OUT='{"name":"mutation-score","status":"errored","error_reason":"mutation-evidence-check.sh failed","findings":[]}'
   fi
 fi
 

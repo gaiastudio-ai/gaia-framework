@@ -430,6 +430,21 @@ test_execution: {}'
   [ "$output" = "REQUEST_CHANGES" ]
 }
 
+@test "unreadable thresholds give the test review driver an errored check naming yq, so the verdict is BLOCKED" {
+  _mk_project P1
+  mkdir -p "$T/badbin"
+  printf '#!/bin/sh\necho "broken yq" >&2\nexit 3\n' > "$T/badbin/yq"
+  chmod +x "$T/badbin/yq"
+  run bash -c "cd '$PROJ' && PATH='$T/badbin':\"\$PATH\" '$SCRIPTS/review-common/phase3a-test-review.sh' --story-key E9-S1 --stack bash-dev tests/calc.bats 2>/dev/null"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" > "$T/a.json"
+  [ "$(jq -r '.checks[]|select(.name=="mutation-score")|.status' "$T/a.json")" = "errored" ]
+  [[ "$(jq -r '.checks[]|select(.name=="mutation-score")|.message' "$T/a.json")" == *yq* ]]
+  printf '{"findings":[]}' > "$T/llm.json"
+  run _verdict --analysis-results "$T/a.json" --llm-findings "$T/llm.json"
+  [ "$output" = "BLOCKED" ]
+}
+
 # ---------- telemetry ----------
 
 @test "gate updates feed mutation_score from the evidence file to the telemetry line" {

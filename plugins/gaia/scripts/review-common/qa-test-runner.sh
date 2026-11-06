@@ -559,7 +559,7 @@ attach_mutation_check() {
   . "$lib_dir/mutation-config.sh"
   if ! thresholds="$(mutation_read_thresholds "$CONFIG" 2>&1)"; then
     err "$thresholds"
-    out="$(jq -n --arg m "$thresholds" '{"name":"mutation-score","status":"errored","error_reason":$m,"message":$m,"findings":[]}')"
+    out="$("$check" --story-key "$STORY_KEY" --config-error "$thresholds")"
   else
     [ -n "$thresholds" ] || return 0
     story="$STORY_FILE"

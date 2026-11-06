@@ -18,6 +18,7 @@
 #   --priority <P>       Story priority (P0..P3)
 #   --thresholds <json>  Threshold object (from config resolver)
 #   --zero-kill          Also emit findings for covering tests that killed 0 mutants
+#   --config-error <msg> Thresholds could not be read: emit an errored check
 #   --help               Show usage
 #
 # Output (stdout): a checks[] fragment (JSON object) named "mutation-score",
@@ -50,6 +51,7 @@ _mec_commit=""
 _mec_priority=""
 _mec_thresholds=""
 _mec_zero_kill=0
+_mec_config_error=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -59,12 +61,20 @@ while [ $# -gt 0 ]; do
     --priority)   shift; _mec_priority="${1:-}"; shift ;;
     --thresholds) shift; _mec_thresholds="${1:-}"; shift ;;
     --zero-kill)  _mec_zero_kill=1; shift ;;
+    --config-error) shift; _mec_config_error="${1:-}"; shift ;;
     --help|-h)    printf 'Usage: mutation-evidence-check.sh --story-key <key> --evidence <json> --commit <sha> [opts...]\n'; exit 0 ;;
     *)            _mec_die 1 "unknown argument: $1" ;;
   esac
 done
 
 [ -n "$_mec_story_key" ] || _mec_die 1 "--story-key is required"
+
+if [ -n "$_mec_config_error" ]; then
+  jq -n --arg m "$_mec_config_error" \
+    '{"name":"mutation-score","status":"errored","error_reason":$m,"message":$m,"findings":[]}'
+  exit 0
+fi
+
 [ -n "$_mec_commit" ]    || _mec_die 1 "--commit is required"
 
 _mec_skip() {
