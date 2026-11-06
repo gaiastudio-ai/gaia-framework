@@ -484,35 +484,20 @@ test_execution:
     P0: 80
 YAML
 
-  # Create a shim directory where yq does not exist but all other tools do.
-  # The trick: put a directory WITHOUT yq first on PATH, then include the
-  # rest of PATH but with yq shadowed by a non-executable file.
-  mkdir -p "$TEST_TMP/no-yq-shim"
+  # Approach: create a wrapper script that hides yq by placing a
+  # non-functional shim FIRST on PATH (shadows the real yq, but
+  # command -v still succeeds). The shim outputs nothing and exits 1,
+  # so the runner sees yq on PATH but gets a failure when calling it.
+  mkdir -p "$TEST_TMP/broken-yq-bin"
+  cat > "$TEST_TMP/broken-yq-bin/yq" <<'YQ'
+#!/bin/sh
+# Broken yq shim for testing: outputs nothing, exits 1.
+exit 1
+YQ
+  chmod +x "$TEST_TMP/broken-yq-bin/yq"
 
-  # Create a helper script that runs the runner with yq hidden.
-  # We use env -u to clear any cached command lookups, and we hide yq
-  # by creating a broken shim that command -v finds but that errors.
-  # Actually, the simplest approach: use a wrapper that undefines yq
-  # as a function before running the runner.
-  cat > "$TEST_TMP/run-no-yq.sh" <<SCRIPT
-#!/usr/bin/env bash
-set -euo pipefail
-# Override yq so command -v fails
-yq() { return 127; }
-unset -f yq 2>/dev/null || true
-# Remove yq from PATH by filtering
-new_path=""
-IFS=: read -ra dirs <<< "\$PATH"
-for d in "\${dirs[@]}"; do
-  if [ -x "\$d/yq" ]; then continue; fi
-  new_path="\${new_path:+\$new_path:}\$d"
-done
-export PATH="\$new_path"
-exec "\$@"
-SCRIPT
-  chmod +x "$TEST_TMP/run-no-yq.sh"
-
-  run "$TEST_TMP/run-no-yq.sh" "$RUNNER" \
+  # Put the broken shim first on PATH so it shadows the real yq
+  PATH="$TEST_TMP/broken-yq-bin:$PATH" run "$RUNNER" \
     --worktree "$FIXTURE_WT" \
     --files-from "$TEST_TMP/files.txt" \
     --tests-from "$TEST_TMP/tests.txt" \
