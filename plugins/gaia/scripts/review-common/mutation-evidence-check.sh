@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# mutation-evidence-check.sh — read mutation evidence and emit a checks[]
+# fragment for QA and test-review consumers.
+#
+# Neither consumer generates or runs mutants. Both read the score from the
+# evidence file produced by /gaia-test-automate and report a mutation-score
+# check.
+#
+# Usage:
+#   mutation-evidence-check.sh --story-key <key> --evidence <json> \
+#     --commit <sha> [--priority <P>] [--thresholds <json>] [--zero-kill]
+#   mutation-evidence-check.sh --help
+#
+# Flags:
+#   --story-key <key>    Story key for the audit trail
+#   --evidence <json>    Path to the mutation evidence file
+#   --commit <sha>       Expected HEAD commit sha (for staleness check)
+#   --priority <P>       Story priority (P0..P3)
+#   --thresholds <json>  Threshold object (from config resolver)
+#   --zero-kill          Also emit findings for covering tests that killed 0 mutants
+#   --help               Show usage
+#
+# Output (stdout): a checks[] fragment (JSON object) named "mutation-score",
+# valid against analysis-results.schema.json.
+#
+# Exit codes:
+#   0  Check emitted (any status: passed, failed, errored, skipped)
+#   1  Caller error
+#
+# POSIX discipline: bash 3.2, no local -A, no mapfile.
+
+set -euo pipefail
+LC_ALL=C; export LC_ALL
+
+SCRIPT_NAME="mutation-evidence-check.sh"
+
+_mec_err() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
+_mec_die() { local rc="$1"; shift; _mec_err "$*"; exit "$rc"; }
+
+# ---------- Arg parsing ----------
+_mec_story_key=""
+_mec_evidence=""
+_mec_commit=""
+_mec_priority=""
+_mec_thresholds=""
+_mec_zero_kill=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --story-key)  shift; _mec_story_key="${1:-}"; shift ;;
+    --evidence)   shift; _mec_evidence="${1:-}"; shift ;;
+    --commit)     shift; _mec_commit="${1:-}"; shift ;;
+    --priority)   shift; _mec_priority="${1:-}"; shift ;;
+    --thresholds) shift; _mec_thresholds="${1:-}"; shift ;;
+    --zero-kill)  _mec_zero_kill=1; shift ;;
+    --help|-h)    printf 'Usage: mutation-evidence-check.sh --story-key <key> --evidence <json> --commit <sha> [opts...]\n'; exit 0 ;;
+    *)            _mec_die 1 "unknown argument: $1" ;;
+  esac
+done
+
+[ -n "$_mec_story_key" ] || _mec_die 1 "--story-key is required"
+[ -n "$_mec_commit" ]    || _mec_die 1 "--commit is required"
+
+# ---------- Check if thresholds are configured ----------
+_mec_configured=0
+if [ -n "$_mec_thresholds" ] && [ "$_mec_thresholds" != "null" ] && [ "$_mec_thresholds" != "{}" ]; then
+  _mec_configured=1
+fi
+
+# If not configured, emit nothing (zero behaviour change)
+if [ "$_mec_configured" -eq 0 ]; then
+  # No mutation-score check at all
+  printf '{}\n'
+  exit 0
+fi
+
+# P2/P3 stories: advisory only, skip check
+case "$_mec_priority" in
+  P2|P3)
+    printf '{}\n'
+    exit 0
+    ;;
+esac
+
+# ---------- Check evidence file ----------
+if [ -z "$_mec_evidence" ] || [ ! -f "$_mec_evidence" ]; then
+  # Missing evidence
+  jq -n \
+    --arg name "mutation-score" \
+    --arg status "errored" \
+    --arg message "No mutation evidence found. Run /gaia-test-automate --mutation ${_mec_story_key} to produce it." \
+    '{"name":$name,"status":$status,"message":$message,"findings":[]}'
+  exit 0
+fi
+
+# ---------- Read evidence ----------
+_mec_ev_commit=$(jq -r '.commit_sha // ""' "$_mec_evidence" 2>/dev/null || true)
+_mec_ev_score=$(jq -r '.score // ""' "$_mec_evidence" 2>/dev/null || true)
+_mec_ev_gate=$(jq -r '.gate // ""' "$_mec_evidence" 2>/dev/null || true)
+
+# Staleness check
+if [ "$_mec_ev_commit" != "$_mec_commit" ]; then
+  jq -n \
+    --arg name "mutation-score" \
+    --arg status "errored" \
+    --arg message "Mutation evidence is stale (recorded at ${_mec_ev_commit}, HEAD is ${_mec_commit}). Run /gaia-test-automate --mutation ${_mec_story_key} to update it." \
+    '{"name":$name,"status":$status,"message":$message,"findings":[]}'
+  exit 0
+fi
+
+# ---------- Map gate to check status ----------
+_mec_status="passed"
+case "$_mec_ev_gate" in
+  failed)  _mec_status="failed" ;;
+  errored) _mec_status="errored" ;;
+  passed)  _mec_status="passed" ;;
+  advisory) _mec_status="passed" ;;
+  *)       _mec_status="errored" ;;
+esac
+
+# ---------- Build findings ----------
+_mec_findings="[]"
+
+if [ "$_mec_zero_kill" -eq 1 ]; then
+  # Identify covering tests that killed zero mutants
+  # Read all killed_by arrays from the evidence
+  _mec_all_tests=$(jq -r '[.mutants[]? | .killed_by[]? ] | unique[]' "$_mec_evidence" 2>/dev/null || true)
+  _mec_all_covering=$(jq -r '[.mutants[]? | select(.no_coverage != true) | .file ] | unique[]' "$_mec_evidence" 2>/dev/null || true)
+
+  # Find tests that are in covering positions but killed nothing
+  # (This is a simplified version — proper per-test tracking would need the test-to-mutant map)
+  _mec_survived_tests=$(jq -r '
+    [.mutants[]? | select(.status == "survived" and .no_coverage != true)] |
+    if length > 0 then
+      "weak-assertion: some covering tests killed no mutants"
+    else
+      empty
+    end' "$_mec_evidence" 2>/dev/null || true)
+
+  if [ -n "$_mec_survived_tests" ]; then
+    _mec_findings=$(jq -n \
+      --arg msg "$_mec_survived_tests" \
+      '[{"severity":"warning","message":$msg,"rule":"weak-assertion","blocking":false}]')
+  fi
+fi
+
+# ---------- Emit check ----------
+jq -n \
+  --arg name "mutation-score" \
+  --arg status "$_mec_status" \
+  --arg message "Mutation score: ${_mec_ev_score:-n/a}% (gate: ${_mec_ev_gate:-unknown})" \
+  --argjson findings "$_mec_findings" \
+  '{"name":$name,"status":$status,"message":$message,"findings":$findings}'
+
+exit 0

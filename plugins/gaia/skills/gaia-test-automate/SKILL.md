@@ -15,6 +15,7 @@ orchestration_class: light-procedural
 | `--status`        | `scripts/subcmd-status.sh`                            | Read-only. Emits coverage map + summary line + Custom scenarios block.       |
 | `--add-scenario`  | `scripts/subcmd-add-scenario.sh`                      | Allocates next `CS-NNN`; writes story TC list + `custom/test-scenarios/index.yaml`. |
 | `--scaffold`      | `scripts/subcmd-scaffold.sh`                          | Generates placeholder skeletons. Review Gate is **NEVER** flipped to PASSED. |
+| `--mutation`      | `scripts/subcmd-mutation.sh`                          | Runs the mutation runner for a story. Writes mutation evidence. Wrapped in the heavy-reviewer slot semaphore. |
 | _default (no flag)_ | Phase 1..7 (existing flow below)                    | Plan-then-execute test generation.                                           |
 
 ### `--status` sub-command

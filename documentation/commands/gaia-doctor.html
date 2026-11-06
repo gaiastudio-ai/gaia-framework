@@ -109,6 +109,7 @@
           <li><span class="step-title">Emit tier verdict</span> Computes the achievable scan tier from the present/missing tool set and reports it.</li>
           <li><span class="step-title">Install (opt-in only)</span> When <code>--install</code> is passed, prompts before each missing tool and runs the registry's install command for the detected OS. Re-probes after installation to confirm. Without <code>--install</code>, emits the install plan as copy-pasteable shell commands.</li>
           <li><span class="step-title">Review limits</span> Reports the active review-process limits. Reads <code>review.max_fix_cycles</code> and <code>review.max_concurrent_heavy_reviewers</code> from project config and shows the configured values, or the effective defaults (2 and 4 respectively) when the keys are absent.</li>
+          <li><span class="step-title">Mutation testing</span> Reports the configured mutation-testing score thresholds (or that mutation testing is off when <code>test_execution.mutation_thresholds</code> is absent), whether each installed mutation adapter's tool is available, and a warning when leftover <code>gaia-mutation-</code> temp directories exist.</li>
         </ol>
       </section>
 

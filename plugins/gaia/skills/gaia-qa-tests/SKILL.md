@@ -207,6 +207,23 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
 
 The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
 
+### Phase 3A.2 — Mutation-score check
+
+After test execution, when mutation-testing thresholds are configured in the project config (`test_execution.mutation_thresholds`), the QA skill reads the mutation evidence produced by `/gaia-test-automate --mutation`. It consumes the score but never produces mutants or invokes the mutation runner.
+
+**Driver script:**
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/review-common/mutation-evidence-check.sh \
+  --story-key {story_key} \
+  --evidence {test-artifacts}/test-results/{story_key}-mutation.json \
+  --commit $(git rev-parse HEAD) \
+  --priority {priority} \
+  --thresholds {thresholds_json}
+```
+
+The checker emits a `mutation-score` check fragment appended to the Phase 3A `analysis-results.json`. When evidence is missing or stale, the check status is `errored` with an actionable message directing the developer to run `/gaia-test-automate --mutation`. When thresholds are absent, no mutation-score check is emitted (zero behaviour change).
+
 **Story-scoped execution.** When `--story-file` is provided and the context is `local`, the runner parses the story's File List section, discovers adjacent test files (by stem-matching against `tests/` directories), and executes only those tests instead of the full-suite tier command. This prevents false-BLOCKED verdicts on large-suite projects where the full suite exceeds the tier timeout but the story's own tests pass. CI and promotion contexts (`ci_pre_merge`, `ci_post_merge`, `deployment`, `post_deploy`) always run the full-suite tier command regardless of `--story-file`. When the File List is absent or yields no matching tests, the runner falls back to the full-suite tier command with an INFO diagnostic.
 
 **Tier resolution.** The runner reads `test_execution.tier_{1,2,3}.placement` from `project-config.yaml` and matches each tier's placement against `GAIA_EXECUTION_CONTEXT` (`local | ci_pre_merge | ci_post_merge | deployment | post_deploy`). Only tiers whose placement matches the active context run; the rest are skipped.

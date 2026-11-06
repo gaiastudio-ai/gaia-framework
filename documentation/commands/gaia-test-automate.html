@@ -59,6 +59,9 @@
         <p>Allocates the next custom scenario ID (CS-NNN), writes the scenario to the story's custom scenarios table and the project index.</p>
         <h3>--scaffold sub-command</h3>
         <p>Generates placeholder test skeletons for uncovered ACs. Does not update the Review Gate to PASSED -- scaffolds are incomplete by definition.</p>
+        <h3>--mutation sub-command</h3>
+        <p>Runs the mutation runner for a story to produce mutation evidence. This is the sole producer of mutation evidence; review consumers (QA, test-review) read the score but never invoke the runner. The run is wrapped in the heavy-reviewer slot semaphore. Evidence is written next to the story's execution evidence. When <code>test_execution.mutation_thresholds</code> is absent from the project config, this sub-command exits immediately with no side effects.</p>
+        <p><strong>Thresholds configuration.</strong> Add <code>test_execution.mutation_thresholds</code> to your project config with per-priority integer thresholds (0-100). Missing priorities default at the point of use (P0: 80, P1: 60, P2: 0, P3: 0). When the key is absent, mutation testing is off and no behaviour changes on upgrade.</p>
       </section>
 
       <section id="inputs"><h2>Inputs</h2>
@@ -67,6 +70,7 @@
           <tr><td><code>--status</code></td><td>Argument (optional)</td><td>Display current coverage map without modifying files.</td><td><code>/gaia-test-automate E3-S7 --status</code></td></tr>
           <tr><td><code>--add-scenario</code></td><td>Argument (optional)</td><td>Add a custom scenario to the story's test index.</td><td><code>/gaia-test-automate E3-S7 --add-scenario</code></td></tr>
           <tr><td><code>--scaffold</code></td><td>Argument (optional)</td><td>Generate placeholder test skeletons only.</td><td><code>/gaia-test-automate E3-S7 --scaffold</code></td></tr>
+          <tr><td><code>--mutation</code></td><td>Argument (optional)</td><td>Run mutation analysis and write mutation evidence.</td><td><code>/gaia-test-automate E3-S7 --mutation</code></td></tr>
         </tbody></table>
       </section>
 
