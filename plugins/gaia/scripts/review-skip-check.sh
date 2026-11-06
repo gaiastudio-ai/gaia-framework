@@ -11,8 +11,8 @@
 #
 #   review-skip-check.sh --story <key>                     # partition by current gate state
 #   review-skip-check.sh --story <key> --force             # skip=[], run=<all 6>
-#   review-skip-check.sh --story <key> --bind-head <sha>   # re-partition: PASSED rows bound
-#                                                          # to a SHA other than <sha> move to run
+#   review-skip-check.sh --story <key> --bind-head <sha>   # re-partition: PASSED rows not
+#                                                          # bound to <sha> move to run
 #   review-skip-check.sh --help
 #
 # Output (stdout, exit 0): single-line JSON, e.g.
@@ -124,8 +124,9 @@ emits a JSON partition {"skip":[...],"run":[...]} where:
 
 With --force, skip is always [] and run lists all 6 in canonical order.
 
-With --bind-head <sha>, a PASSED row whose reviewed SHA does not match <sha>
-is moved from skip to run (the row is stale after a fix commit). Without
+With --bind-head <sha>, a PASSED row whose reviewed SHA is not <sha> is moved
+from skip to run: the row is stale after a fix commit, or carries no binding
+at all (absent or empty SHA, or the story file cannot be read). Without
 --bind-head, the partition is SHA-blind (today's default behaviour).
 
 Canonical short-name order:
@@ -279,6 +280,9 @@ main() {
           gate_sha_map="${gate_sha_map}${_rg}=${_rs}"$'\n'
         fi
       done < "$story_file"
+    else
+      printf '%s: cannot resolve the story file for %s; no row can be shown bound to %s, so every PASSED row will re-run\n' \
+        "$SCRIPT_NAME" "$STORY_KEY" "$BIND_HEAD" >&2
     fi
   fi
 
@@ -303,13 +307,13 @@ main() {
     if [ "$verdict" = "PASSED" ]; then
       # With --bind-head: move PASSED rows bound to a different SHA to run.
       if [ -n "$BIND_HEAD" ]; then
+        # Only a row shown to be bound to <sha> may stay in skip: an absent,
+        # empty or unreadable binding is re-reviewed like a stale one.
         local row_sha
-        row_sha="$(printf '%s\n' "$gate_sha_map" | grep "^${gate}=" | head -1)"
-        row_sha="${row_sha#*=}"
+        row_sha="$(printf '%s\n' "$gate_sha_map" | awk -F= -v g="$gate" '$1 == g && !seen { print $2; seen = 1 }')"
         row_sha="${row_sha#"${row_sha%%[![:space:]]*}"}"
         row_sha="${row_sha%"${row_sha##*[![:space:]]}"}"
-        if [ -n "$row_sha" ] && [ "$row_sha" != "absent" ] && [ "$row_sha" != "$BIND_HEAD" ]; then
-          # SHA mismatch — stale PASSED row, move to run.
+        if [ "$row_sha" != "$BIND_HEAD" ]; then
           run_list+=("$short")
           continue
         fi

@@ -5536,17 +5536,142 @@ SHIMEOF
 
 # ---------- review-skip-check.sh --bind-head partition cases ----------
 
-@test "review-skip-check --bind-head accepts the flag without error" {
-  local skip_script="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
-  [ -x "$skip_script" ] || { echo "review-skip-check.sh not found" >&2; false; }
-  run "$skip_script" --help
-  [[ "$output" == *"--bind-head"* ]]
+# A real repo with a story whose table is written by the real gate writer, so
+# these tests hold the skip-check to what review-gate.sh actually records.
+_bind_head_fixture() {
+  BH_REPO="$TEST_TMP/bh-repo"
+  BH_KEY="E7-S1"
+  BH_STORY="$TEST_TMP/${BH_KEY}-fixture.md"
+  BH_SKIP="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
+  BH_GATE="${BATS_TEST_DIRNAME}/../scripts/review-gate.sh"
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
+  git init -q "$BH_REPO"
+  git -C "$BH_REPO" config user.email "test@test.com"
+  git -C "$BH_REPO" config user.name "Test"
+  git -C "$BH_REPO" commit -q --allow-empty -m "reviewed"
+  BH_OLD="$(git -C "$BH_REPO" rev-parse HEAD)"
+  cat > "$BH_STORY" <<STORY
+---
+template: 'story'
+key: "${BH_KEY}"
+status: review
+---
+# Story
+
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | — |
+| QA Tests | UNVERIFIED | — | — |
+| Security Review | UNVERIFIED | — | — |
+| Test Automation | UNVERIFIED | — | — |
+| Test Review | UNVERIFIED | — | — |
+| Performance Review | UNVERIFIED | — | — |
+
+## Findings
+STORY
+  export PROJECT_PATH="$BH_REPO"
 }
 
-@test "review-skip-check usage output documents --bind-head" {
-  local skip_script="${BATS_TEST_DIRNAME}/../scripts/review-skip-check.sh"
-  run "$skip_script" --help
+# Record a verdict at the repo's current HEAD through the real writer.
+_bh_record() {
+  "$BH_GATE" update --story "$BH_KEY" --gate "$1" --verdict "$2" >/dev/null
+}
+
+_bh_record_all_passed() {
+  local gate
+  for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+    _bh_record "$gate" PASSED
+  done
+}
+
+_bh_new_commit() {
+  git -C "$BH_REPO" commit -q --allow-empty -m "fix"
+  BH_NEW="$(git -C "$BH_REPO" rev-parse HEAD)"
+}
+
+# Overwrite one row in place, for shapes the writer itself never produces.
+_bh_set_row() {
+  awk -v g="| $1 |" -v r="$2" 'index($0, g) == 1 { print r; next } { print }' "$BH_STORY" > "$BH_STORY.new"
+  mv "$BH_STORY.new" "$BH_STORY"
+}
+
+@test "review-skip-check --bind-head keeps PASSED rows bound to that commit in skip" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--bind-head"* ]]
-  [[ "$output" == *"SHA"* ]] || [[ "$output" == *"sha"* ]]
+  [ "$output" = '{"skip":["code-review","qa-tests","security-review","test-automate","test-review","review-perf"],"run":[]}' ]
+}
+
+@test "review-skip-check --bind-head moves PASSED rows bound to an older commit into run" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  _bh_new_commit
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_NEW"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"skip":[],"run":["code-review","qa-tests","security-review","test-automate","test-review","review-perf"]}' ]
+}
+
+@test "review-skip-check --bind-head with one FAILED row and five stale PASSED rows runs all six" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  _bh_record "Security Review" FAILED
+  _bh_new_commit
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_NEW"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"skip":[],"run":["code-review","qa-tests","security-review","test-automate","test-review","review-perf"]}' ]
+}
+
+@test "review-skip-check --bind-head moves only the stale rows when bindings are mixed" {
+  _bind_head_fixture
+  _bh_record "Code Review" PASSED
+  _bh_record "Test Review" PASSED
+  _bh_new_commit
+  _bh_record "QA Tests" PASSED
+  _bh_record "Security Review" FAILED
+  _bh_record "Test Automation" PASSED
+  _bh_record "Performance Review" PASSED
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_NEW"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"skip":["qa-tests","test-automate","review-perf"],"run":["code-review","security-review","test-review"]}' ]
+}
+
+@test "review-skip-check without --bind-head stays blind to the commit a row is bound to" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  _bh_record "Security Review" FAILED
+  _bh_new_commit
+  run "$BH_SKIP" --story "$BH_KEY"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"skip":["code-review","qa-tests","test-automate","test-review","review-perf"],"run":["security-review"]}' ]
+}
+
+@test "review-skip-check --bind-head runs PASSED rows with an absent, empty, dash or none SHA" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  _bh_set_row "Code Review" "| Code Review | PASSED | r.md |"
+  _bh_set_row "QA Tests" "| QA Tests | PASSED | r.md | |"
+  _bh_set_row "Security Review" "| Security Review | PASSED | r.md | absent |"
+  _bh_set_row "Test Automation" "| Test Automation | PASSED | r.md | — |"
+  _bh_set_row "Test Review" "| Test Review | PASSED | r.md | none |"
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD"
+  [ "$status" -eq 0 ]
+  [ "$output" = '{"skip":["review-perf"],"run":["code-review","qa-tests","security-review","test-automate","test-review"]}' ]
+}
+
+@test "review-skip-check --bind-head runs every PASSED row with a warning when the story file cannot be resolved" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  # The gate reader finds the story under the code path's legacy docs tree; the
+  # story resolver looks relative to the working directory and does not.
+  mkdir -p "$BH_REPO/docs/implementation-artifacts" "$TEST_TMP/elsewhere"
+  cp "$BH_STORY" "$BH_REPO/docs/implementation-artifacts/${BH_KEY}-fixture.md"
+  local out rc=0
+  out="$(cd "$TEST_TMP/elsewhere" && env -u IMPLEMENTATION_ARTIFACTS -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT \
+    PROJECT_PATH="$BH_REPO" "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD" 2>"$TEST_TMP/bh.err")" || rc=$?
+  [ "$rc" -eq 0 ] || { echo "rc=$rc stderr=$(cat "$TEST_TMP/bh.err")" >&2; false; }
+  [ "$out" = '{"skip":[],"run":["code-review","qa-tests","security-review","test-automate","test-review","review-perf"]}' ]
+  grep -qF -- "cannot resolve" "$TEST_TMP/bh.err"
 }
