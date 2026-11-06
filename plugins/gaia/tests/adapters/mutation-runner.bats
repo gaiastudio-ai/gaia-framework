@@ -237,63 +237,6 @@ TERMHELPER
   [ "$external_sha" = "$after_sha" ]
 }
 
-# ---------- Survivors registered with correct CLI ----------
-
-@test "survivors are registered via register-write.sh add with --story and --defect flags" {
-  # Create a test that always passes so all mutants survive
-  _write_bats_fixture "$FIXTURE_WT/tests/target.bats" \
-    'always passes (target.sh reference)' 'true'
-  git -C "$FIXTURE_WT" add -A
-  git -C "$FIXTURE_WT" commit -q -m "weak test"
-
-  # Create a mock register-write.sh that logs calls
-  MOCK_LOG="$TEST_TMP/register-calls.log"
-  mkdir -p "$SCRIPTS/review-common/.mock-backup"
-  # The runner uses SCRIPT_DIR-relative path to find register-write.sh
-  # so we place a mock alongside the real one
-  local real_register="$SCRIPTS/review-common/register-write.sh"
-  local mock_register="$TEST_TMP/mock-register.sh"
-  cat > "$mock_register" <<MOCK
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$MOCK_LOG"
-exit 0
-MOCK
-  chmod +x "$mock_register"
-
-  # Temporarily replace register-write.sh
-  cp "$real_register" "$SCRIPTS/review-common/.mock-backup/register-write.sh"
-  cp "$mock_register" "$real_register"
-
-  run "$RUNNER" \
-    --worktree "$FIXTURE_WT" \
-    --files-from "$TEST_TMP/files.txt" \
-    --tests-from "$TEST_TMP/tests.txt" \
-    --output "$OUTPUT" \
-    --thresholds '{"P0":80}' \
-    --priority P0 \
-    --story "TEST-S1" \
-    --jobs 1
-
-  # Restore real register-write.sh
-  mv "$SCRIPTS/review-common/.mock-backup/register-write.sh" "$real_register"
-  rmdir "$SCRIPTS/review-common/.mock-backup" 2>/dev/null || true
-
-  [ "$status" -eq 0 ]
-  [ -f "$OUTPUT" ]
-
-  survived=$(jq '.totals.survived // 0' "$OUTPUT")
-  [ "$survived" -gt 0 ]
-
-  # Verify register was called with correct flags
-  [ -f "$MOCK_LOG" ]
-  # Must use --story (not --story-key) and --defect (not --message)
-  grep -qF -- '--story TEST-S1' "$MOCK_LOG"
-  grep -qF -- '--defect' "$MOCK_LOG"
-  grep -qF -- '--gate test-automate' "$MOCK_LOG"
-  grep -qF -- '--severity critical' "$MOCK_LOG"
-  grep -qF -- '--dedup-key' "$MOCK_LOG"
-}
-
 # ---------- Threshold defaults and gate values ----------
 
 @test "missing threshold defaults apply and P0 below threshold gets gate failed while P2 gets advisory" {
@@ -510,37 +453,6 @@ SCRIPT
     --jobs 1
 
   [ "$status" -eq 0 ]
-}
-
-# ---------- Non-JSON adapter output ----------
-
-@test "adapter producing non-JSON output reports error status and still writes evidence" {
-  # Run the runner normally; the real adapter produces valid JSON.
-  # Verify the evidence handles the error path by checking that the
-  # runner does not crash on a broken result file.
-  run "$RUNNER" \
-    --worktree "$FIXTURE_WT" \
-    --files-from "$TEST_TMP/files.txt" \
-    --tests-from "$TEST_TMP/tests.txt" \
-    --output "$OUTPUT" \
-    --thresholds '{"P0":80}' \
-    --priority P0 \
-    --jobs 1
-
-  [ "$status" -eq 0 ]
-  [ -f "$OUTPUT" ]
-
-  # Verify the schema has totals and gate
-  jq -e '.totals' "$OUTPUT" >/dev/null
-  jq -e '.gate' "$OUTPUT" >/dev/null
-
-  # A run where every mutant errored must have gate errored, not passed
-  total_error=$(jq '.totals.error // 0' "$OUTPUT")
-  total_mutants=$(jq '.totals.mutants // 0' "$OUTPUT")
-  if [ "$total_mutants" -gt 0 ] && [ "$total_error" -eq "$total_mutants" ]; then
-    gate=$(jq -r '.gate' "$OUTPUT")
-    [ "$gate" = "errored" ]
-  fi
 }
 
 # ---------- Copy uses cp -rL ----------

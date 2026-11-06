@@ -61,6 +61,7 @@
         <p>Generates placeholder test skeletons for uncovered ACs. Does not update the Review Gate to PASSED -- scaffolds are incomplete by definition.</p>
         <h3>--mutation sub-command</h3>
         <p>Runs the mutation runner for a story to produce mutation evidence. This is the sole producer of mutation evidence; review consumers (QA, test-review) read the score but never invoke the runner. The run is wrapped in the heavy-reviewer slot semaphore. Evidence is written next to the story's execution evidence. When <code>test_execution.mutation_thresholds</code> is absent from the project config, this sub-command exits immediately with no side effects.</p>
+        <p><strong>When it runs.</strong> With thresholds configured, the same run also starts automatically after a green execution. It first checks the covering tests pass on unmutated code; if they do not, it refuses to score. A run that cannot produce a score records <code>blocking_failure: runner_unavailable</code> and the verdict is BLOCKED. Run it before a review round: without evidence for the current commit, QA and test review report the check as errored on P0 and P1 stories.</p>
         <p><strong>Thresholds configuration.</strong> Add <code>test_execution.mutation_thresholds</code> to your project config with per-priority integer thresholds (0-100). Missing priorities default at the point of use (P0: 80, P1: 60, P2: 0, P3: 0). When the key is absent, mutation testing is off and no behaviour changes on upgrade.</p>
       </section>
 

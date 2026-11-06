@@ -1071,23 +1071,16 @@ v_test_execution_tier_2_placement=$(merge_doubly_nested_key test_execution tier_
 v_test_execution_tier_3_placement=$(merge_doubly_nested_key test_execution tier_3 placement)
 
 # test_execution.mutation_thresholds — opt-in mutation-testing score
-# thresholds. Read as a JSON-encoded value (present-or-absent preserved;
-# {} counts as present). Loud failure when the key is present and yq is
-# missing.
+# thresholds, carried as one JSON value ({} counts as present). A key that is
+# present but cannot be read fails loudly instead of reading as "off".
 v_test_execution_mutation_thresholds=""
 if [ -n "${SHARED_PATH:-}" ] && [ -f "$SHARED_PATH" ]; then
-  if command -v yq >/dev/null 2>&1; then
-    _mt_raw=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$SHARED_PATH" 2>/dev/null || true)
-    if [ -n "$_mt_raw" ] && [ "$_mt_raw" != "null" ]; then
-      v_test_execution_mutation_thresholds="$_mt_raw"
-    fi
-  else
-    # Check whether the key is present (grep-based, no yq)
-    if grep -q 'mutation_thresholds' "$SHARED_PATH" 2>/dev/null; then
-      printf 'resolve-config.sh: error: yq is required to read test_execution.mutation_thresholds but is not installed\n' >&2
-      exit 1
-    fi
-  fi
+  # shellcheck source=lib/mutation-config.sh
+  . "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)/lib/mutation-config.sh"
+  v_test_execution_mutation_thresholds="$(mutation_read_thresholds "$SHARED_PATH")" || {
+    printf 'resolve-config.sh: could not read test_execution.mutation_thresholds (see the yq message above)\n' >&2
+    exit 1
+  }
 fi
 
 # severity.{Critical,High,Medium,Low,Info}

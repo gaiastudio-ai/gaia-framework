@@ -1654,6 +1654,18 @@ main() {
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")
               fi
+              # QA and test review read the score from the story's mutation
+              # evidence unless the caller passed one.
+              if [ -z "$telemetry_mutation_score" ]; then
+                case "$gate_name" in
+                  "QA Tests"|"Test Review")
+                    _tel_ev="${GAIA_TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}/test-results/${story_key}-mutation.json"
+                    if [ -f "$_tel_ev" ]; then
+                      telemetry_mutation_score="$(jq -r '.score // empty' "$_tel_ev" 2>/dev/null || true)"
+                    fi
+                    ;;
+                esac
+              fi
               if [ -n "$telemetry_mutation_score" ]; then
                 _tel_args+=(--mutation-score "$telemetry_mutation_score")
               fi

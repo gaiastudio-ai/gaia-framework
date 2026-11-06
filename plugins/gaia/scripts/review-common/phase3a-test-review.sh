@@ -133,40 +133,35 @@ case "${GAIA_TEST_TAGGING_STRICT:-}" in
 esac
 
 # ---------- Mutation evidence check (--zero-kill for test-review) ----------
+# Reads the score only; this skill never generates or runs mutants. With the
+# thresholds key absent nothing is added, so existing projects see no change.
 MUT_CHECK="$SCRIPT_DIR/mutation-evidence-check.sh"
 MUT_OUT=""
+_tr_err_check() {
+  jq -n --arg m "$1" '{"name":"mutation-score","status":"errored","error_reason":$m,"message":$m,"findings":[]}'
+}
 if [ -x "$MUT_CHECK" ]; then
-  _tr_config="${PROJECT_PATH:-$(pwd)}/.gaia/config/project-config.yaml"
-  [ -f "$_tr_config" ] || _tr_config="${CLAUDE_PROJECT_ROOT:-.}/.gaia/config/project-config.yaml"
-  _tr_mut_thresholds=""
-  if command -v yq >/dev/null 2>&1 && [ -f "$_tr_config" ]; then
-    _tr_mut_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_tr_config" 2>/dev/null || true)
-    [ "$_tr_mut_thresholds" = "null" ] && _tr_mut_thresholds=""
-  fi
-
-  if [ -n "$_tr_mut_thresholds" ]; then
-    _tr_test_artifacts="${PROJECT_PATH:-$(pwd)}/.gaia/artifacts/test-artifacts"
-    _tr_mut_evidence="$_tr_test_artifacts/test-results/${STORY_KEY}-mutation.json"
-    _tr_mut_commit=$(cd "${PROJECT_PATH:-$(pwd)}" && git rev-parse HEAD 2>/dev/null || echo "unknown")
-
+  # shellcheck source=../lib/mutation-config.sh
+  . "$SCRIPT_DIR/../lib/mutation-config.sh"
+  _tr_config="$(mutation_config_path)"
+  if ! _tr_mut_thresholds="$(mutation_read_thresholds "$_tr_config" 2>&1)"; then
+    printf '%s: %s\n' "$SCRIPT_NAME" "$_tr_mut_thresholds" >&2
+    MUT_OUT="$(_tr_err_check "$_tr_mut_thresholds")"
+  elif [ -n "$_tr_mut_thresholds" ]; then
+    _tr_code_tree="${PROJECT_PATH:-$(pwd)}"
+    _tr_mut_commit="$(git -C "$_tr_code_tree" rev-parse HEAD 2>/dev/null || echo unknown)"
+    _tr_story_file="$("$SCRIPT_DIR/../resolve-story-file.sh" "$STORY_KEY" 2>/dev/null || true)"
     _tr_mut_priority=""
-    _tr_resolve_story="$SCRIPT_DIR/../resolve-story-file.sh"
-    if [ -x "$_tr_resolve_story" ]; then
-      _tr_story_file=$("$_tr_resolve_story" "$STORY_KEY" 2>/dev/null || true)
-      if [ -n "$_tr_story_file" ] && [ -f "$_tr_story_file" ]; then
-        _tr_mut_priority=$(sed -n 's/^priority: *"\{0,1\}\(P[0-3]\)"\{0,1\} *$/\1/p' "$_tr_story_file" | head -1)
-      fi
+    if [ -n "$_tr_story_file" ] && [ -f "$_tr_story_file" ]; then
+      _tr_mut_priority="$(mutation_story_priority "$_tr_story_file")"
     fi
-    [ -z "$_tr_mut_priority" ] && _tr_mut_priority="P2"
-
-    MUT_OUT=$("$MUT_CHECK" \
+    MUT_OUT="$("$MUT_CHECK" \
       --story-key "$STORY_KEY" \
-      --evidence "$_tr_mut_evidence" \
+      --evidence "$(mutation_evidence_path "$STORY_KEY")" \
       --commit "$_tr_mut_commit" \
       --priority "$_tr_mut_priority" \
       --thresholds "$_tr_mut_thresholds" \
-      --zero-kill 2>/dev/null || true)
-    [ "$MUT_OUT" = "{}" ] && MUT_OUT=""
+      --zero-kill)" || MUT_OUT="$(_tr_err_check "mutation-evidence-check.sh failed")"
   fi
 fi
 

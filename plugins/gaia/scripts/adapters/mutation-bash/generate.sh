@@ -87,9 +87,7 @@ while IFS= read -r rel_path; do
   src_file="$_gen_source_dir/$rel_path"
   [ -f "$src_file" ] || continue
 
-  # Count lines
-  line_count=$(wc -l < "$src_file")
-  [ "$line_count" -gt 0 ] || continue
+  [ -s "$src_file" ] || continue
 
   line_num=0
   while IFS= read -r line || [ -n "$line" ]; do
@@ -151,11 +149,20 @@ while IFS= read -r rel_path; do
       patch_name="mutant-${_gen_mutant_count}.patch"
       patch_file="$_gen_out_dir/$patch_name"
 
-      diff -u "$src_file" "$tmp_mutated" \
-        | sed "1s|--- .*|--- a/$rel_path|;2s|+++ .*|+++ b/$rel_path|" \
-        > "$patch_file" || true  # diff exits 1 when files differ
+      # Headers are printed, not substituted with sed: a path may hold `&`, `|`
+      # or a space. The tab ends the name, which is what lets patch accept a
+      # file name with a space in it.
+      tmp_diff=$(mktemp "${TMPDIR:-/tmp}/gaia-gen-diff-XXXXXX")
+      diff_rc=0
+      diff -u "$src_file" "$tmp_mutated" > "$tmp_diff" || diff_rc=$?
+      if [ "$diff_rc" -eq 1 ]; then
+        {
+          printf -- '--- a/%s\t\n+++ b/%s\t\n' "$rel_path" "$rel_path"
+          tail -n +3 "$tmp_diff"
+        } > "$patch_file"
+      fi
 
-      rm -f "$tmp_mutated"
+      rm -f "$tmp_mutated" "$tmp_diff"
 
       # Verify the patch file is non-empty
       if [ ! -s "$patch_file" ]; then

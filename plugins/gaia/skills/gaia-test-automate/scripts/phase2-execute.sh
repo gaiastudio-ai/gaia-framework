@@ -824,6 +824,61 @@ fi
 info "Step 4: evidence file written to $EVIDENCE_PATH (bridge_status=$BRIDGE_STATUS)"
 
 # =========================================================================
+# STEP 4a — Mutation run (opt-in through test_execution.mutation_thresholds)
+# =========================================================================
+# Runs only after a green execution, and independently of where the story file
+# lives. This skill is the only producer of mutation evidence. An error here is
+# recorded as blocking_failure: runner_unavailable in the execution evidence and
+# in the plan, which is what the action-mode verdict call reads.
+BLOCKING_FAILURE=""
+_p2_exec_green=0
+if [ "$BRIDGE_STATUS" = "success" ] && [ "$TESTS_FAILED" -eq 0 ] \
+   && { [ "$TESTS_RUN" -gt 0 ] || [ "$TESTS_WRITTEN" -eq 0 ]; }; then
+  _p2_exec_green=1
+fi
+if [ "$_p2_exec_green" -eq 1 ] && [ "$SCAFFOLD_MODE" -eq 0 ] && [ "$PLACEHOLDER_FOUND" -eq 0 ]; then
+  # shellcheck source=../../../scripts/lib/mutation-config.sh
+  . "$PLUGIN_ROOT/scripts/lib/mutation-config.sh"
+  _p2_mut_config=""
+  for _p2_candidate in "$PROJECT_ROOT/.gaia/config/project-config.yaml" "$PROJECT_ROOT/config/project-config.yaml"; do
+    if [ -f "$_p2_candidate" ]; then
+      _p2_mut_config="$_p2_candidate"
+      break
+    fi
+  done
+  _p2_mut_thresholds=""
+  _p2_mut_read_ok=1
+  if [ -n "$_p2_mut_config" ]; then
+    _p2_mut_thresholds="$(mutation_read_thresholds "$_p2_mut_config")" || _p2_mut_read_ok=0
+  fi
+  if [ "$_p2_mut_read_ok" -eq 0 ]; then
+    BLOCKING_FAILURE="runner_unavailable"
+  elif [ -n "$_p2_mut_thresholds" ]; then
+    info "Step 4a: running mutation analysis (thresholds configured)"
+    # The tests are done, and the mutation run takes its own slot. Holding this
+    # one as well could wait forever on a limit of one.
+    if [ "$_P2_SLOT_ACQUIRED" = "1" ]; then
+      heavy_reviewer_release
+      _P2_SLOT_ACQUIRED=0
+    fi
+    if ! "$SCRIPT_DIR/subcmd-mutation.sh" "$STORY_KEY" \
+        --config "$_p2_mut_config" \
+        --project-root "$PROJECT_ROOT" \
+        --evidence-dir "$EVIDENCE_DIR"; then
+      BLOCKING_FAILURE="runner_unavailable"
+    fi
+  fi
+fi
+if [ -n "$BLOCKING_FAILURE" ]; then
+  log "mutation runner failed; recording blocking_failure: $BLOCKING_FAILURE"
+  info "blocking_failure: $BLOCKING_FAILURE"
+  _p2_ev_tmp="$EVIDENCE_PATH.tmp.$$"
+  jq --arg b "$BLOCKING_FAILURE" '. + {blocking_failure: $b} | if has("PASSED") then .PASSED = false else . end' \
+    "$EVIDENCE_PATH" > "$_p2_ev_tmp"
+  mv "$_p2_ev_tmp" "$EVIDENCE_PATH"
+fi
+
+# =========================================================================
 # STEP 5 — Record & update: plan phase=executed, story Review Gate
 # =========================================================================
 
@@ -844,7 +899,8 @@ awk -v es_at="$EXECUTED_AT" \
     -v es_passed="$TESTS_PASSED" \
     -v es_failed="$TESTS_FAILED" \
     -v es_bridge="$BRIDGE_STATUS" \
-    -v es_evidence="$EVIDENCE_PATH" '
+    -v es_evidence="$EVIDENCE_PATH" \
+    -v es_blocking="$BLOCKING_FAILURE" '
   /^phase:/ {
     print "phase: executed"
     next
@@ -859,6 +915,7 @@ awk -v es_at="$EXECUTED_AT" \
     print "  tests_failed: " es_failed
     print "  bridge_status: " es_bridge
     print "  evidence_file: " es_evidence
+    if (es_blocking != "") print "  blocking_failure: " es_blocking
   }
   { print }
 ' "$PLAN_PATH" > "$TEMP_PLAN"
@@ -894,29 +951,9 @@ if [ -n "$STORY_ARTIFACT" ]; then
     RG_VERDICT="PASSED"
   fi
 
-  # ---- Mutation run (after green execution, before verdict overrides) ----
-  # When mutation thresholds are configured and execution was green, run the
-  # mutation runner. A runner error keeps the verdict from PASSED and is
-  # exposed as blocking_failure: runner_unavailable.
-  if [ "$RG_VERDICT" = "PASSED" ]; then
-    _p2_mut_runner="${SCRIPT_DIR}/../../../scripts/mutation-runner.sh"
-    _p2_mut_subcmd="${SCRIPT_DIR}/subcmd-mutation.sh"
-    _p2_hrs="${SCRIPT_DIR}/../../../scripts/lib/heavy-reviewer-slots.sh"
-    _p2_mut_config="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
-    _p2_mut_thresholds=""
-
-    if [ -f "$_p2_mut_config" ] && command -v yq >/dev/null 2>&1; then
-      _p2_mut_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_p2_mut_config" 2>/dev/null || true)
-      [ "$_p2_mut_thresholds" = "null" ] && _p2_mut_thresholds=""
-    fi
-
-    if [ -n "$_p2_mut_thresholds" ] && [ -x "$_p2_mut_subcmd" ]; then
-      info "Step 5a: running mutation analysis (thresholds configured)"
-      if ! "$_p2_mut_subcmd" "$STORY_KEY" --config "$_p2_mut_config"; then
-        log "mutation runner failed — marking runner_unavailable"
-        RG_VERDICT="FAILED"
-      fi
-    fi
+  # A mutation runner error keeps the local verdict from PASSED.
+  if [ "$RG_VERDICT" = "PASSED" ] && [ -n "$BLOCKING_FAILURE" ]; then
+    RG_VERDICT="FAILED"
   fi
 
   # Placeholder-detector hit overrides any local PASSED — the

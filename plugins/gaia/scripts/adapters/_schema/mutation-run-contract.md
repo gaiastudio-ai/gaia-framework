@@ -39,7 +39,9 @@ For `tool-native` format adapters: one JSON batch descriptor per mutant group pl
 ### Exit Code
 
 - `0` — generation completed (zero mutants is valid).
-- Non-zero — generation failed; the runner reports affected files as unmutated.
+- Non-zero, or no valid `index.json` — generation failed; the runner adds one `error` record for that file.
+
+`mutant_id` only has to be unique within the adapter's output for one file. The runner prefixes it with a hash of the file path, so ids in the evidence are unique across files and stable across runs.
 
 ## 2. run.sh — Single-Mutant Execution
 
@@ -51,8 +53,8 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 | Flag | Required | Meaning |
 |---|---|---|
 | `--source-dir <dir>` | yes | Throwaway copy of the source tree. The adapter applies the patch here. Must be inside a `gaia-mutation-` temp root. |
-| `--patch-file <patch>` | yes | Path to the unified-diff patch file. |
-| `--test-command <cmd>` | yes | Shell command to execute (the covering tests). |
+| `--patch-file <patch>` | yes | Path to the unified-diff patch file. A zero-byte file means "no mutation": run the tests as they are. The runner uses it for the baseline. |
+| `--test-command <cmd>` | yes | Shell command to execute (the covering tests), with `--source-dir` as its working directory and as `PROJECT_PATH`. |
 | `--output <json>` | yes | Path to write the JSON result record. |
 | `--timeout <seconds>` | yes | Wall-clock budget. On expiry, the test process group is terminated and the mutant is reported as `timeout`. |
 
@@ -75,12 +77,13 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `mutant_id` | string | no | Set by the runner if absent. |
-| `status` | enum | yes | `killed` (test failed), `survived` (test passed), `timeout` (test exceeded deadline), `error` (adapter failure). |
+| `status` | enum | yes | `killed` (a test genuinely failed), `survived` (tests passed), `timeout` (tests exceeded the deadline), `error` (the tests could not run, for example exit 126, exit 127 or death by signal, or the adapter failed). Only a real test failure may be reported as `killed`. |
 | `test_output` | string | yes | Truncated tail of test stdout+stderr. Capped at 4 KB. |
 | `file` | string | no | Relative path of the mutated file. |
 | `line` | integer | no | 1-based line number of the mutation. |
 | `operator` | string | no | Human-readable description of the mutation operator. |
 | `killed_by` | array of strings | no | Test names that detected the mutant. |
+| `tests` | array of strings | no | Names of every test the command reported. The runner reads them from the baseline record to know which covering tests exist; it is not kept in the evidence. |
 | `no_coverage` | boolean | no | True when no covering test references the mutated file. Set by the runner, not the adapter. |
 | `interpreters` | array of strings | no | Version strings of interpreters used. |
 
@@ -89,13 +92,17 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 - `0` — the adapter completed execution cleanly, regardless of the mutant outcome (killed, survived, timeout). Exit 0 is the **only** valid clean-run exit.
 - Non-zero — adapter execution failed. The runner records the mutant as `error`.
 
+### Baseline
+
+Before any mutant runs, the runner calls `run.sh` with a zero-byte patch for each distinct set of covering tests. Any status other than `survived` refuses the run: the evidence has `gate: errored`, `score: null`, `refused: baseline_red` or `baseline_error`, and a `baseline` object with the output, because every mutant would otherwise look killed. Tool-native adapters are not called this way; their tools do their own green check.
+
 ## 3. test_output Truncation
 
 `test_output` is capped to a tail of 4 KB. It never includes environment variables or secrets. It is stored alongside the story's other evidence under test-artifacts.
 
 ## 4. tool-native Format
 
-For tools whose mutants cannot be expressed as source patches (e.g., JVM bytecode mutation tools), the mutant file is a JSON batch descriptor and `run.sh` outputs a JSON array of records. The runner accepts both `patch` and `tool-native` shapes based on the adapter manifest's `mutant-format` field.
+For tools whose mutants cannot be expressed as source patches (e.g., JVM bytecode mutation tools), the mutant file is a JSON batch descriptor (named by `batch_file` in `index.json`) and `run.sh` outputs a JSON array of records. Each array element becomes its own record in the evidence and its own entry in the totals. The runner accepts both `patch` and `tool-native` shapes based on the adapter manifest's `mutant-format` field.
 
 ## 5. Interpreter Shim
 

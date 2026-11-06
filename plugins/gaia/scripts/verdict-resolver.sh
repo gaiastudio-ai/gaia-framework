@@ -87,6 +87,8 @@ Options:
                              by review-common/qa-test-runner.sh. When present,
                              required-tier timeouts yield BLOCKED and
                              required-tier non-zero exits yield REQUEST_CHANGES,
+                             a mutation_check with status errored yields BLOCKED
+                             and one with status failed yields REQUEST_CHANGES,
                              alongside the existing errored / failed-blocking
                              gates. Omitting this flag preserves prior behavior.
   --help                     Show this help and exit 0
@@ -395,6 +397,13 @@ if jq -e '[.checks[]? | select(.status == "errored")] | length > 0' "$ANALYSIS" 
 fi
 fi  # end of [ -n "$ANALYSIS" ] conditional (rule 1)
 
+# --- 1a. execution-evidence: mutation-score check errored -> BLOCKED ---
+if [ "$EE_OK" = "1" ] \
+   && [ "$(jq -r '.mutation_check.status // ""' "$EXECUTION_EVIDENCE" 2>/dev/null)" = "errored" ]; then
+  printf '%s: mutation-score check errored -> BLOCKED\n' "$SCRIPT_NAME" >&2
+  emit "BLOCKED"
+fi
+
 # --- 1b. execution-evidence: required-tier timeout -> BLOCKED ---
 # Runs even without --analysis-results (register-only skills with execution
 # evidence must still honour the timed-out-suite rule).
@@ -412,6 +421,13 @@ if [ "$EE_OK" = "1" ]; then
       emit "BLOCKED"
     fi
   fi
+fi
+
+# --- 2a0. execution-evidence: mutation-score check failed -> REQUEST_CHANGES ---
+if [ "$EE_OK" = "1" ] \
+   && [ "$(jq -r '.mutation_check.status // ""' "$EXECUTION_EVIDENCE" 2>/dev/null)" = "failed" ]; then
+  printf '%s: mutation-score check failed -> REQUEST_CHANGES\n' "$SCRIPT_NAME" >&2
+  emit "REQUEST_CHANGES"
 fi
 
 # --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES ---

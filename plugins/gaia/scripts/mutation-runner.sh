@@ -13,6 +13,10 @@
 #   mutation-runner.sh --doctor [--config <yaml>]
 #   mutation-runner.sh --help
 #
+# A run first proves the covering tests are green on an unmutated copy. A red
+# baseline, or tests that cannot run at all, refuses to score: the evidence has
+# gate errored and no score, because every mutant would look killed otherwise.
+#
 # Flags:
 #   --story <key>       Resolve story file, read priority and File List
 #   --worktree <dir>    Path to the story worktree (or project root)
@@ -43,6 +47,8 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null
 
 # shellcheck source=lib/mutation-isolation.sh
 . "$SCRIPT_DIR/lib/mutation-isolation.sh"
+# shellcheck source=lib/mutation-config.sh
+. "$SCRIPT_DIR/lib/mutation-config.sh"
 
 # ---------- Logging ----------
 _mr_err() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
@@ -111,23 +117,16 @@ if [ "$_mr_doctor" -eq 1 ]; then
   if [ -n "$_mr_thresholds" ]; then
     printf 'Thresholds: %s\n' "$_mr_thresholds"
   elif [ -n "$_mr_config" ] && [ -f "$_mr_config" ]; then
-    if ! command -v yq >/dev/null 2>&1; then
-      printf 'Thresholds: unknown (yq not installed)\n'
+    if ! doctor_thresholds="$(mutation_read_thresholds "$_mr_config" 2>&1)"; then
+      printf 'Thresholds: unknown (%s)\n' "$doctor_thresholds"
+    elif [ -z "$doctor_thresholds" ]; then
+      printf 'Mutation testing is off (no mutation_thresholds configured)\n'
     else
-      local_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_mr_config" 2>/dev/null || true)
-      if [ -z "$local_thresholds" ] || [ "$local_thresholds" = "null" ]; then
-        printf 'Mutation testing is off (no mutation_thresholds configured)\n'
-      else
-        printf 'Thresholds: %s\n' "$local_thresholds"
-        # Show defaults
-        _p0=$(printf '%s' "$local_thresholds" | jq -r '.P0 // empty' 2>/dev/null || true)
-        _p1=$(printf '%s' "$local_thresholds" | jq -r '.P1 // empty' 2>/dev/null || true)
-        _p2=$(printf '%s' "$local_thresholds" | jq -r '.P2 // empty' 2>/dev/null || true)
-        _p3=$(printf '%s' "$local_thresholds" | jq -r '.P3 // empty' 2>/dev/null || true)
-        printf 'Effective: P0=%s P1=%s P2=%s P3=%s\n' \
-          "${_p0:-$_MR_DEFAULT_P0}" "${_p1:-$_MR_DEFAULT_P1}" \
-          "${_p2:-$_MR_DEFAULT_P2}" "${_p3:-$_MR_DEFAULT_P3}"
-      fi
+      printf 'Thresholds: %s\n' "$doctor_thresholds"
+      printf 'Effective: %s\n' "$(printf '%s' "$doctor_thresholds" | jq -r \
+        --argjson p0 "$_MR_DEFAULT_P0" --argjson p1 "$_MR_DEFAULT_P1" \
+        --argjson p2 "$_MR_DEFAULT_P2" --argjson p3 "$_MR_DEFAULT_P3" \
+        '"P0=\(.P0 // $p0) P1=\(.P1 // $p1) P2=\(.P2 // $p2) P3=\(.P3 // $p3)"')"
     fi
   else
     printf 'Mutation testing is off (no mutation_thresholds configured)\n'
@@ -172,57 +171,59 @@ fi
 # Resolve worktree to absolute path
 _mr_worktree=$(cd "$_mr_worktree" && pwd -P)
 
+# ---------- Run root ----------
+# Everything the run creates lives under one directory, so interrupted workers
+# leave nothing behind however far they got.
+mutation_register_cleanup
+mutation_init_run_root "$_mr_worktree" || exit 3
+_mr_root="$_MI_RUN_ROOT"
+mkdir -p "$_mr_root/results" "$_mr_root/patches" "$_mr_root/cover" "$_mr_root/tmp" "$_mr_root/records"
+
+# A File List path may be written from a parent of this worktree. Drop leading
+# components until it names a file here; print nothing when it never does.
+_mr_locate_in_worktree() {
+  local candidate="$1"
+  while :; do
+    if [ -f "$_mr_worktree/$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    case "$candidate" in
+      */*) candidate="${candidate#*/}" ;;
+      *)   return 0 ;;
+    esac
+  done
+}
+
 # ---------- Resolve story metadata ----------
 if [ -n "$_mr_story" ]; then
-  # Use resolve-story-file.sh if available
+  _mr_story_file=""
   if [ -x "$SCRIPT_DIR/resolve-story-file.sh" ]; then
     _mr_story_file=$("$SCRIPT_DIR/resolve-story-file.sh" "$_mr_story" 2>/dev/null || true)
   fi
-  if [ -z "${_mr_story_file:-}" ]; then
-    # Fallback: search for story file
-    _mr_story_file=$(find "$_mr_worktree" -path "*/${_mr_story}-*/story.md" -o -path "*/${_mr_story}*/story.md" 2>/dev/null | head -1 || true)
-  fi
-  if [ -n "${_mr_story_file:-}" ] && [ -f "$_mr_story_file" ]; then
-    # Read priority from frontmatter
+  if [ -n "$_mr_story_file" ] && [ -f "$_mr_story_file" ]; then
     if [ -z "$_mr_priority" ]; then
-      _mr_priority=$(sed -n 's/^priority: *"\{0,1\}\(P[0-3]\)"\{0,1\} *$/\1/p' "$_mr_story_file" | head -1)
+      _mr_priority=$(mutation_story_priority "$_mr_story_file")
+      [ -n "$_mr_priority" ] || _mr_die 1 "story $_mr_story has no priority in its frontmatter"
     fi
-    # Read File List section for source and test files
     if [ -z "$_mr_files_from" ] && [ -z "$_mr_tests_from" ]; then
-      _mr_auto_files=$(mktemp "${TMPDIR:-/tmp}/gaia-mr-files-XXXXXX")
-      _mr_auto_tests=$(mktemp "${TMPDIR:-/tmp}/gaia-mr-tests-XXXXXX")
-      _mr_in_filelist=0
-      while IFS= read -r line; do
-        if printf '%s' "$line" | grep -q '^## File List'; then
-          _mr_in_filelist=1
-          continue
-        fi
-        if [ "$_mr_in_filelist" -eq 1 ] && printf '%s' "$line" | grep -q '^## '; then
-          break
-        fi
-        if [ "$_mr_in_filelist" -eq 1 ]; then
-          # Extract path from markdown table or list
-          fpath=$(printf '%s' "$line" | sed -n 's/.*`\([^`]*\)`.*/\1/p')
-          if [ -n "$fpath" ]; then
-            if printf '%s' "$fpath" | grep -qE '\.(bats|test\.|spec\.)'; then
-              printf '%s\n' "$fpath" >> "$_mr_auto_tests"
-            else
-              printf '%s\n' "$fpath" >> "$_mr_auto_files"
-            fi
-          fi
-        fi
-      done < "$_mr_story_file"
-      if [ -s "$_mr_auto_files" ]; then
-        _mr_files_from="$_mr_auto_files"
-      else
-        rm -f "$_mr_auto_files"
-      fi
-      if [ -s "$_mr_auto_tests" ]; then
-        _mr_tests_from="$_mr_auto_tests"
-      else
-        rm -f "$_mr_auto_tests"
-      fi
+      _mr_auto_files="$_mr_root/files.txt"
+      _mr_auto_tests="$_mr_root/tests.txt"
+      : > "$_mr_auto_files"
+      : > "$_mr_auto_tests"
+      while IFS= read -r _mr_entry; do
+        _mr_found=$(_mr_locate_in_worktree "$_mr_entry")
+        [ -n "$_mr_found" ] || continue
+        case "$_mr_found" in
+          *.bats|*.test.*|*.spec.*|*_test.*|test_*|*/test_*) printf '%s\n' "$_mr_found" >> "$_mr_auto_tests" ;;
+          *) printf '%s\n' "$_mr_found" >> "$_mr_auto_files" ;;
+        esac
+      done < <(mutation_story_file_list "$_mr_story_file")
+      [ -s "$_mr_auto_files" ] && _mr_files_from="$_mr_auto_files"
+      [ -s "$_mr_auto_tests" ] && _mr_tests_from="$_mr_auto_tests"
     fi
+  elif [ -z "$_mr_priority" ] || [ -z "$_mr_files_from" ]; then
+    _mr_die 1 "story file not found for $_mr_story"
   fi
 fi
 
@@ -234,7 +235,6 @@ fi
 if [ -z "$_mr_patch_dir" ]; then
   _mr_patch_dir="$(dirname "$_mr_output")/$(basename "$_mr_output" .json)-mutants"
 fi
-mkdir -p "$_mr_patch_dir"
 
 # Resolve jobs
 if [ -z "$_mr_jobs" ]; then
@@ -249,8 +249,12 @@ if [ -z "$_mr_jobs" ]; then
   fi
   _mr_jobs=$(( _mr_nproc < 4 ? _mr_nproc : 4 ))
 fi
+case "$_mr_jobs" in
+  ''|*[!0-9]*|0) _mr_die 1 "--jobs must be a positive whole number" ;;
+esac
 
 # ---------- Resolve thresholds ----------
+# Absent means not configured; an empty object means configured with defaults.
 _mr_thresholds_configured=0
 _mr_th_p0=""
 _mr_th_p1=""
@@ -258,45 +262,17 @@ _mr_th_p2=""
 _mr_th_p3=""
 
 _mr_resolve_thresholds() {
-  if [ -n "$_mr_thresholds" ]; then
-    _mr_thresholds_configured=1
-    _mr_th_p0=$(printf '%s' "$_mr_thresholds" | jq -r '.P0 // empty' 2>/dev/null || true)
-    _mr_th_p1=$(printf '%s' "$_mr_thresholds" | jq -r '.P1 // empty' 2>/dev/null || true)
-    _mr_th_p2=$(printf '%s' "$_mr_thresholds" | jq -r '.P2 // empty' 2>/dev/null || true)
-    _mr_th_p3=$(printf '%s' "$_mr_thresholds" | jq -r '.P3 // empty' 2>/dev/null || true)
-  elif [ -n "$_mr_config" ] && [ -f "$_mr_config" ]; then
-    # Check if mutation_thresholds key is present in the config file
-    local _mt_key_present=0
-    if grep -q 'mutation_thresholds' "$_mr_config" 2>/dev/null; then
-      _mt_key_present=1
-    fi
-
-    if ! command -v yq >/dev/null 2>&1; then
-      if [ "$_mt_key_present" -eq 1 ]; then
-        _mr_die 1 "yq is required to read mutation_thresholds from project config but is not installed"
-      fi
-      # Key not present and yq missing: mutation testing is off — no error
-    else
-      local raw
-      raw=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_mr_config" 2>/dev/null) || {
-        if [ "$_mt_key_present" -eq 1 ]; then
-          _mr_die 1 "yq failed to read mutation_thresholds — is yq installed and functional?"
-        fi
-        raw=""
-      }
-      if [ -n "$raw" ] && [ "$raw" != "null" ]; then
-        _mr_thresholds_configured=1
-        _mr_thresholds="$raw"
-        _mr_th_p0=$(printf '%s' "$raw" | jq -r '.P0 // empty' 2>/dev/null || true)
-        _mr_th_p1=$(printf '%s' "$raw" | jq -r '.P1 // empty' 2>/dev/null || true)
-        _mr_th_p2=$(printf '%s' "$raw" | jq -r '.P2 // empty' 2>/dev/null || true)
-        _mr_th_p3=$(printf '%s' "$raw" | jq -r '.P3 // empty' 2>/dev/null || true)
-      elif [ "$_mt_key_present" -eq 1 ]; then
-        # Key is present but yq returned empty — yq may be broken
-        _mr_die 1 "yq could not read mutation_thresholds from the config — verify yq is functional"
-      fi
-    fi
+  if [ -z "$_mr_thresholds" ] && [ -n "$_mr_config" ]; then
+    _mr_thresholds="$(mutation_read_thresholds "$_mr_config")" || _mr_die 1 "could not read mutation thresholds (yq)"
   fi
+  [ -n "$_mr_thresholds" ] || return 0
+  printf '%s' "$_mr_thresholds" | jq -e 'type == "object"' >/dev/null 2>&1 \
+    || _mr_die 1 "mutation thresholds are not a JSON object: $_mr_thresholds"
+  _mr_thresholds_configured=1
+  _mr_th_p0=$(printf '%s' "$_mr_thresholds" | jq -r '.P0 // empty')
+  _mr_th_p1=$(printf '%s' "$_mr_thresholds" | jq -r '.P1 // empty')
+  _mr_th_p2=$(printf '%s' "$_mr_thresholds" | jq -r '.P2 // empty')
+  _mr_th_p3=$(printf '%s' "$_mr_thresholds" | jq -r '.P3 // empty')
 }
 _mr_resolve_thresholds
 
@@ -305,13 +281,14 @@ _mr_resolve_thresholds
 _mr_find_adapter() {
   local file="$1"
   local ext="${file##*.}"
+  local adapter_dir
 
   for adapter_dir in "$SCRIPT_DIR"/adapters/mutation-*/; do
     [ -d "$adapter_dir" ] || continue
     local manifest="$adapter_dir/mutation-adapter.json"
     [ -f "$manifest" ] || continue
     if jq -e --arg ext ".$ext" '.["file-extensions"] | map(. == $ext) | any' "$manifest" >/dev/null 2>&1; then
-      printf '%s\n' "$adapter_dir"
+      printf '%s\n' "${adapter_dir%/}"
       return 0
     fi
   done
@@ -319,361 +296,419 @@ _mr_find_adapter() {
 }
 
 # ---------- Covering-test selection ----------
-# For a given source file, find tests that reference it.
+# A test covers a source file when it names that file: the basename as a whole
+# token, so foo.sh is not matched by myfoo.sh or foo.sh.bak, and a stem alone
+# never counts. When the name carries a literal parent directory it must be the
+# source's own; a variable, `.` or `..` in front of it says nothing either way.
+# awk reads the name through ENVIRON and matches with index(), so any character
+# in a path stays literal.
+_mr_test_references() {
+  local test_file="$1" source_file="$2" parent
+  parent="$(basename "$(dirname "$source_file")")"
+  _MR_NAME="$(basename "$source_file")" _MR_PARENT="$parent" awk '
+    function wordy(c) { return c ~ /[A-Za-z0-9_-]/ }
+    BEGIN { name = ENVIRON["_MR_NAME"]; parent = ENVIRON["_MR_PARENT"]; n = length(name) }
+    {
+      line = $0
+      offset = 0
+      while ((at = index(substr(line, offset + 1), name)) > 0) {
+        start = offset + at
+        before = start > 1 ? substr(line, start - 1, 1) : ""
+        after = substr(line, start + n, 1)
+        after2 = substr(line, start + n + 1, 1)
+        offset = start
+        if (before != "" && (wordy(before) || before == ".")) continue
+        if (wordy(after) || (after == "." && wordy(after2))) continue
+        if (before == "/") {
+          dir_end = start - 2
+          dir_start = dir_end
+          while (dir_start >= 1 && substr(line, dir_start, 1) ~ /[A-Za-z0-9_.-]/) dir_start--
+          dir = substr(line, dir_start + 1, dir_end - dir_start)
+          sigil = dir_start >= 1 ? substr(line, dir_start, 1) : ""
+          if (dir != "" && dir != "." && dir != ".." && dir != parent && sigil != "$") continue
+        }
+        found = 1
+        exit
+      }
+    }
+    END { exit !found }
+  ' "$test_file"
+}
+
 _mr_find_covering_tests() {
   local source_file="$1"
   local tests_file="$2"
-  local source_basename
-  source_basename=$(basename "$source_file")
-  # Strip extension for matching
-  local source_stem="${source_basename%.*}"
-
-  local covering=()
+  local test_path
   while IFS= read -r test_path; do
     [ -n "$test_path" ] || continue
-    local full_test="$_mr_worktree/$test_path"
-    [ -f "$full_test" ] || continue
-    # Check if the test file references the source file (by basename or stem)
-    if grep -qF "$source_basename" "$full_test" 2>/dev/null || \
-       grep -qF "$source_stem" "$full_test" 2>/dev/null; then
-      covering+=("$test_path")
+    [ -f "$_mr_worktree/$test_path" ] || continue
+    if _mr_test_references "$_mr_worktree/$test_path" "$source_file"; then
+      printf '%s\n' "$test_path"
     fi
   done < "$tests_file"
-
-  if [ ${#covering[@]} -eq 0 ]; then
-    return 1
-  fi
-
-  printf '%s\n' "${covering[@]}"
-  return 0
 }
 
-# ---------- Register cleanup ----------
-mutation_register_cleanup
+# Runs every covering file even after one fails, so killed_by is complete and
+# a test in a later file is not reported as killing nothing. bats files share
+# one invocation; the highest exit code wins, so a command that could not run
+# (126, 127, 128+) is never masked by another file's plain failure. Every path
+# is quoted with printf %q.
+_mr_compose_test_command() {
+  local copy="$1" list="$2" tfile quoted bats_args="" others=""
+  while IFS= read -r tfile; do
+    [ -n "$tfile" ] || continue
+    quoted=$(printf '%q' "$copy/$tfile")
+    case "$tfile" in
+      *.bats) bats_args="$bats_args $quoted" ;;
+      *) others="$others bash $quoted || { c=\$?; [ \$c -gt \$rc ] && rc=\$c; };" ;;
+    esac
+  done < "$list"
+  local cmd='rc=0;'
+  [ -z "$bats_args" ] || cmd="$cmd bats --tap$bats_args || rc=\$?;"
+  # shellcheck disable=SC2016 # $rc belongs to the composed command
+  printf '%s%s exit $rc' "$cmd" "$others"
+}
+
+# Runs one adapter call. Scratch files of the adapter and of the tests it starts
+# stay inside the run root.
+_mr_call_adapter() {
+  local run_script="$1" copy="$2" patch="$3" cmd="$4" out="$5" limit="$6"
+  TMPDIR="$_mr_root/tmp" "$run_script" \
+    --source-dir "$copy" \
+    --patch-file "$patch" \
+    --test-command "$cmd" \
+    --output "$out" \
+    --timeout "$limit"
+}
+
+_mr_error_record() {
+  jq -n --arg mid "$1" --arg f "$2" --arg msg "$3" \
+    '{"mutant_id":$mid,"file":$f,"status":"error","test_output":$msg}'
+}
 
 # ---------- Pre-run manifest ----------
+_mr_rel_to_worktree() {
+  local parent base
+  parent="$(cd "$(dirname "$1")" && pwd -P)"
+  base="$(basename "$1")"
+  case "$parent/$base" in
+    "$_mr_worktree"/*) printf '%s' "${parent#"$_mr_worktree"/}/$base" ;;
+    "$_mr_worktree/$base") printf '%s' "$base" ;;
+  esac
+}
+
+# The run's own evidence and patches may live in the worktree. They are the
+# run's output, not a change to the code under test.
+mkdir -p "$(dirname "$_mr_output")" "$_mr_patch_dir"
+_mr_rel_output="$(_mr_rel_to_worktree "$_mr_output")"
+_mr_rel_patches="$(_mr_rel_to_worktree "$_mr_patch_dir")"
+_MI_MANIFEST_EXCLUDES="$_mr_rel_output
+$_mr_rel_patches"
+
 _mr_info "computing pre-run worktree manifest"
-_mr_manifest_before=$(mktemp "${TMPDIR:-/tmp}/gaia-mr-manifest-XXXXXX")
+_mr_manifest_before="$_mr_root/manifest-before"
 mutation_compute_manifest "$_mr_worktree" "$_mr_manifest_before"
 
 # ---------- Generate mutants ----------
 _mr_info "discovering adapters and generating mutants"
 
-_mr_all_records=()
-_mr_index_files=()
-_mr_mutant_count=0
-_mr_killed=0
-_mr_survived=0
-_mr_timeout=0
-_mr_error=0
 _mr_truncated="false"
 _mr_unmutated_files=()
 _mr_covering_tests=()
+_mr_gen_copy=""
 
-# Temporary results directory
-_mr_results_dir=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mr-results-XXXXXX")
-_MI_COPIES+=("$_mr_results_dir")
+# One entry per source file that has an adapter (bash 3.2: parallel arrays).
+_mr_src_file=()
+_mr_src_run=()
+_mr_src_cover=()
+_mr_src_timeout=()
+_mr_src_format=()
+# One entry per mutant to execute.
+_mr_plan_id=()
+_mr_plan_src=()
+_mr_plan_patch=()
+_mr_plan_line=()
+_mr_plan_operator=()
+_mr_extra_records=0
 
 while IFS= read -r source_file; do
   [ -n "$source_file" ] || continue
 
-  # Find adapter
-  adapter_dir=$(_mr_find_adapter "$source_file" 2>/dev/null || true)
-  if [ -z "$adapter_dir" ]; then
+  adapter_dir=$(_mr_find_adapter "$source_file" || true)
+  if [ -z "$adapter_dir" ] || [ ! -x "$adapter_dir/generate.sh" ] || [ ! -x "$adapter_dir/run.sh" ]; then
     _mr_unmutated_files+=("$source_file")
     continue
   fi
 
-  # Generate mutants
-  generate_script="$adapter_dir/generate.sh"
-  [ -x "$generate_script" ] || { _mr_unmutated_files+=("$source_file"); continue; }
+  [ -n "$_mr_gen_copy" ] || _mr_gen_copy=$(mutation_create_copy "$_mr_worktree") \
+    || _mr_die 3 "could not create a throwaway copy for mutant generation"
 
-  gen_out=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mutation-gen-XXXXXX")
-  _MI_COPIES+=("$gen_out")
+  # Ids are unique across files and stable across runs, which is what lets the
+  # findings register recognise a mutant it has already seen.
+  _mr_file_hash=$(mutation_short_hash "$source_file")
+  gen_out="$_mr_root/gen-$_mr_file_hash"
+  mkdir -p "$gen_out"
+  printf '%s\n' "$source_file" > "$gen_out.files"
 
-  # Create a single-file list for the generator
-  gen_files=$(mktemp "${TMPDIR:-/tmp}/gaia-mr-genfiles-XXXXXX")
-  printf '%s\n' "$source_file" > "$gen_files"
-
-  "$generate_script" --source-dir "$_mr_worktree" --files-from "$gen_files" --out-dir "$gen_out" 2>/dev/null || {
+  if ! _mr_gen_err=$(TMPDIR="$_mr_root/tmp" "$adapter_dir/generate.sh" --source-dir "$_mr_gen_copy" --files-from "$gen_out.files" --out-dir "$gen_out" 2>&1) \
+     || ! jq -e 'type == "array"' "$gen_out/index.json" >/dev/null 2>&1; then
     _mr_info "generator failed for $source_file (adapter: $(basename "$adapter_dir"))"
-    rm -f "$gen_files"
+    _mr_extra_records=$((_mr_extra_records + 1))
+    _mr_error_record "mutant-$_mr_file_hash-generator" "$source_file" "generator failed: $_mr_gen_err" \
+      > "$_mr_root/records/generator-$_mr_file_hash.json"
     continue
-  }
-  rm -f "$gen_files"
-
-  # Read generated mutants (patch files or index.json)
-  mutant_files=()
-  if [ -f "$gen_out/index.json" ]; then
-    _mr_index_files+=("$gen_out/index.json")
-    # Read mutant list from index — supports both patch and tool-native formats
-    _gen_format="patch"
-    if [ -f "$adapter_dir/mutation-adapter.json" ]; then
-      _gen_format=$(jq -r '.["mutant-format"] // "patch"' "$adapter_dir/mutation-adapter.json" 2>/dev/null || echo "patch")
-    fi
-    if [ "$_gen_format" = "tool-native" ]; then
-      # Tool-native: batch descriptors, not .patch files
-      while IFS= read -r mfile; do
-        [ -n "$mfile" ] && mutant_files+=("$gen_out/$mfile")
-      done < <(jq -r '.[].batch_file // .[].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
-    else
-      while IFS= read -r mfile; do
-        [ -n "$mfile" ] && mutant_files+=("$gen_out/$mfile")
-      done < <(jq -r '.[].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
-    fi
   fi
-  # Also pick up loose .patch files
-  while IFS= read -r pfile; do
-    [ -n "$pfile" ] || continue
-    # Skip if already in list
-    local_skip=0
-    for existing in "${mutant_files[@]+"${mutant_files[@]}"}"; do
-      [ "$existing" = "$pfile" ] && { local_skip=1; break; }
-    done
-    [ "$local_skip" -eq 0 ] && mutant_files+=("$pfile")
-  done < <(find "$gen_out" -name '*.patch' -type f 2>/dev/null | LC_ALL=C sort)
 
-  # Copy patches to patch-dir
-  for pf in "${mutant_files[@]+"${mutant_files[@]}"}"; do
-    cp "$pf" "$_mr_patch_dir/" 2>/dev/null || true
-  done
-
-  # Find covering tests
+  cover_list="$_mr_root/cover/$_mr_file_hash"
+  : > "$cover_list"
   if [ -n "${_mr_tests_from:-}" ] && [ -f "$_mr_tests_from" ]; then
-    covering_tests=$(_mr_find_covering_tests "$source_file" "$_mr_tests_from" || true)
-  else
-    covering_tests=""
+    _mr_find_covering_tests "$source_file" "$_mr_tests_from" > "$cover_list"
   fi
+  while IFS= read -r _ct; do
+    [ -n "$_ct" ] || continue
+    _ct_found=0
+    for _existing_ct in "${_mr_covering_tests[@]+"${_mr_covering_tests[@]}"}"; do
+      [ "$_existing_ct" = "$_ct" ] && { _ct_found=1; break; }
+    done
+    [ "$_ct_found" -eq 0 ] && _mr_covering_tests+=("$_ct")
+  done < "$cover_list"
 
-  # Collect covering tests for evidence
-  if [ -n "$covering_tests" ]; then
-    while IFS= read -r _ct; do
-      [ -n "$_ct" ] || continue
-      # Deduplicate
-      _ct_found=0
-      for _existing_ct in "${_mr_covering_tests[@]+"${_mr_covering_tests[@]}"}"; do
-        [ "$_existing_ct" = "$_ct" ] && { _ct_found=1; break; }
-      done
-      [ "$_ct_found" -eq 0 ] && _mr_covering_tests+=("$_ct")
-    done <<< "$covering_tests"
-  fi
+  _mr_src_idx=${#_mr_src_file[@]}
+  _mr_src_file+=("$source_file")
+  _mr_src_run+=("$adapter_dir/run.sh")
+  _mr_src_cover+=("$cover_list")
+  _mr_src_timeout+=("$(jq -r '.["default-timeout-seconds"] // 30' "$adapter_dir/mutation-adapter.json")")
+  _mr_src_format+=("$(jq -r '.["mutant-format"] // "patch"' "$adapter_dir/mutation-adapter.json")")
 
-  # Run each mutant
-  run_script="$adapter_dir/run.sh"
-  [ -x "$run_script" ] || { _mr_info "run.sh not executable in $(basename "$adapter_dir")"; continue; }
-
-  manifest_file="$adapter_dir/mutation-adapter.json"
-  default_timeout=30
-  if [ -f "$manifest_file" ]; then
-    default_timeout=$(jq -r '.["default-timeout-seconds"] // 30' "$manifest_file" 2>/dev/null || echo 30)
-  fi
-
-  # Process mutants (with parallelism)
-  _mr_active_pids=()
-  for patch_file in "${mutant_files[@]+"${mutant_files[@]}"}"; do
-    [ -f "$patch_file" ] || continue
-
-    # Check mutant cap
-    if [ "$_mr_mutant_count" -ge "$_MR_MAX_MUTANTS" ]; then
+  while IFS=$'\t' read -r _m_id _m_file _m_line _m_op; do
+    [ -n "$_m_id" ] || continue
+    if [ "${#_mr_plan_id[@]}" -ge "$_MR_MAX_MUTANTS" ]; then
       _mr_truncated="true"
       break
     fi
+    _mr_mid="mutant-$_mr_file_hash-${_m_id#mutant-}"
+    _mr_kept="$_mr_root/patches/$_mr_mid.${_m_file##*.}"
+    cp "$gen_out/$_m_file" "$_mr_kept"
+    _mr_plan_id+=("$_mr_mid")
+    _mr_plan_src+=("$_mr_src_idx")
+    _mr_plan_patch+=("$_mr_kept")
+    _mr_plan_line+=("$_m_line")
+    _mr_plan_operator+=("$_m_op")
+  done < <(jq -r '.[] | [.mutant_id, (.patch_file // .batch_file), ((.line // 0) | tostring), (.operator // "")] | @tsv' "$gen_out/index.json")
+done < "$_mr_files_from"
 
-    _mr_mutant_count=$((_mr_mutant_count + 1))
-    mutant_id="mutant-${_mr_mutant_count}"
+if [ -n "$_mr_gen_copy" ]; then
+  rm -rf "$_mr_gen_copy"
+fi
 
-    # Wait if at job limit
-    while [ ${#_mr_active_pids[@]} -ge "$_mr_jobs" ]; do
-      # Wait for the oldest pid
-      local_oldest="${_mr_active_pids[0]}"
-      wait "$local_oldest" 2>/dev/null || true
+# ---------- Baseline ----------
+# Each distinct set of covering tests must be green on an unmutated copy first;
+# a zero-byte patch asks the adapter for exactly that. Tool-native tools run
+# their own green check as part of the batch.
+_mr_refused=""
+_mr_baseline_status=""
+_mr_baseline_output=""
+_mr_empty_patch="$_mr_root/empty.patch"
+: > "$_mr_empty_patch"
+_mr_test_names="$_mr_root/test-names"
+: > "$_mr_test_names"
+_mr_seen_cover=()
+
+if [ "${#_mr_plan_id[@]}" -gt 0 ]; then
+  _mr_info "checking the covering tests are green on unmutated code"
+  for _b_idx in "${!_mr_src_file[@]}"; do
+    [ "${_mr_src_format[$_b_idx]}" = "patch" ] || continue
+    _b_cover="${_mr_src_cover[$_b_idx]}"
+    [ -s "$_b_cover" ] || continue
+    _b_key="${_mr_src_run[$_b_idx]}|$(cat "$_b_cover")"
+    _b_dup=0
+    for _b_seen in "${_mr_seen_cover[@]+"${_mr_seen_cover[@]}"}"; do
+      [ "$_b_seen" = "$_b_key" ] && { _b_dup=1; break; }
+    done
+    [ "$_b_dup" -eq 0 ] || continue
+    _mr_seen_cover+=("$_b_key")
+
+    _b_copy=$(mutation_create_copy "$_mr_worktree") || _mr_die 3 "could not create a throwaway copy for the baseline"
+    _b_out="$_mr_root/baseline-$_b_idx.json"
+    _b_rc=0
+    _mr_call_adapter "${_mr_src_run[$_b_idx]}" "$_b_copy" "$_mr_empty_patch" \
+      "$(_mr_compose_test_command "$_b_copy" "$_b_cover")" "$_b_out" "${_mr_src_timeout[$_b_idx]}" 2>/dev/null || _b_rc=$?
+    rm -rf "$_b_copy"
+    _mr_baseline_status="error"
+    if [ "$_b_rc" -eq 0 ] && jq -e 'type == "object"' "$_b_out" >/dev/null 2>&1; then
+      _mr_baseline_status=$(jq -r '.status // "error"' "$_b_out")
+      jq -r '.tests[]?' "$_b_out" >> "$_mr_test_names"
+    fi
+    case "$_mr_baseline_status" in
+      survived) ;;
+      killed|timeout)
+        _mr_refused="baseline_red"
+        _mr_baseline_output=$(jq -r '.test_output // ""' "$_b_out")
+        break
+        ;;
+      *)
+        _mr_refused="baseline_error"
+        _mr_baseline_output=$(jq -r '.test_output // "adapter failed"' "$_b_out" 2>/dev/null || echo "adapter failed")
+        break
+        ;;
+    esac
+  done
+fi
+
+# ---------- Run mutants ----------
+# Each mutant gets its own copy and its own background worker, bounded by the
+# job limit with oldest-first wait (no `wait -n`: bash 3.2).
+_mr_active_pids=()
+
+_mr_run_mutant() {
+  local idx="$1" mid="${_mr_plan_id[$1]}" src="${_mr_plan_src[$1]}" result copy rc=0 cmd errfile
+  result="$_mr_root/results/$mid.json"
+  copy=$(mutation_create_copy "$_mr_worktree") || {
+    _mr_error_record "$mid" "${_mr_src_file[$src]}" "containment error" > "$result"
+    return 0
+  }
+  cmd=$(_mr_compose_test_command "$copy" "${_mr_src_cover[$src]}")
+  errfile="$result.stderr"
+  _mr_call_adapter "${_mr_src_run[$src]}" "$copy" "${_mr_plan_patch[$idx]}" "$cmd" "$result" \
+    "${_mr_src_timeout[$src]}" 2>"$errfile" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter exited $rc: $(tail -c 2048 "$errfile")" > "$result"
+  fi
+  rm -rf "$copy"
+}
+
+if [ -z "$_mr_refused" ]; then
+  for _r_idx in "${!_mr_plan_id[@]}"; do
+    _r_src="${_mr_plan_src[$_r_idx]}"
+    if [ ! -s "${_mr_src_cover[$_r_src]}" ]; then
+      # No covering test: nothing to run, and never a full-suite fallback.
+      jq -n --arg mid "${_mr_plan_id[$_r_idx]}" --arg f "${_mr_src_file[$_r_src]}" \
+        '{"mutant_id":$mid,"file":$f,"status":"survived","no_coverage":true,"test_output":""}' \
+        > "$_mr_root/results/${_mr_plan_id[$_r_idx]}.json"
+      continue
+    fi
+    while [ "${#_mr_active_pids[@]}" -ge "$_mr_jobs" ]; do
+      wait "${_mr_active_pids[0]}" 2>/dev/null || true
       _mr_active_pids=("${_mr_active_pids[@]:1}")
     done
-
-    # Result file for this mutant
-    result_file="$_mr_results_dir/${mutant_id}.json"
-
-    # Run in background
-    (
-      # Create throwaway copy
-      copy_dir=$(mutation_create_copy "$_mr_worktree") || {
-        # Containment error — record as error
-        jq -n --arg mid "$mutant_id" --arg f "$source_file" \
-          '{"mutant_id":$mid,"file":$f,"status":"error","test_output":"containment error"}' > "$result_file"
-        exit 0
-      }
-
-      # Compose test command
-      test_cmd=""
-      if [ -n "$covering_tests" ]; then
-        # Build a command that runs each covering test in sequence.
-        # .bats files are run with bats; other files with bash.
-        test_args=""
-        while IFS= read -r tfile; do
-          [ -n "$tfile" ] || continue
-          quoted=$(printf '%q' "$copy_dir/$tfile")
-          # Select the right interpreter for the file type
-          case "$tfile" in
-            *.bats) local_interp="bats" ;;
-            *)      local_interp="bash" ;;
-          esac
-          if [ -n "$test_args" ]; then
-            test_args="$test_args && $local_interp $quoted"
-          else
-            test_args="$local_interp $quoted"
-          fi
-        done <<< "$covering_tests"
-        test_cmd="$test_args"
-      fi
-
-      # Run adapter
-      "$run_script" \
-        --source-dir "$copy_dir" \
-        --patch-file "$patch_file" \
-        --test-command "${test_cmd:-true}" \
-        --output "$result_file" \
-        --timeout "$default_timeout" 2>/dev/null || {
-          # Adapter error
-          if [ ! -f "$result_file" ]; then
-            jq -n --arg mid "$mutant_id" --arg f "$source_file" \
-              '{"mutant_id":$mid,"file":$f,"status":"error","test_output":"adapter crashed"}' > "$result_file"
-          fi
-        }
-
-      # Ensure mutant_id is set in result
-      if [ -f "$result_file" ]; then
-        local_content=$(cat "$result_file")
-        local_has_id=$(printf '%s' "$local_content" | jq -r '.mutant_id // empty' 2>/dev/null || true)
-        if [ -z "$local_has_id" ]; then
-          printf '%s' "$local_content" | jq --arg mid "$mutant_id" '. + {"mutant_id":$mid}' > "${result_file}.tmp" && mv "${result_file}.tmp" "$result_file"
-        fi
-      fi
-
-      # Cleanup copy
-      rm -rf "$copy_dir"
-    ) &
+    _mr_run_mutant "$_r_idx" &
     _mr_active_pids+=($!)
-
-    # Handle no-coverage case
-    if [ -z "$covering_tests" ]; then
-      # Wait for the last PID (bash 3.2 compatible — no negative indexing)
-      _mr_last_idx=$(( ${#_mr_active_pids[@]} - 1 ))
-      wait "${_mr_active_pids[$_mr_last_idx]}" 2>/dev/null || true
-      unset "_mr_active_pids[$_mr_last_idx]"
-      # Overwrite result with no-coverage
-      jq -n --arg mid "$mutant_id" --arg f "$source_file" \
-        '{"mutant_id":$mid,"file":$f,"status":"survived","no_coverage":true,"test_output":""}' > "$_mr_results_dir/${mutant_id}.json"
-    fi
   done
-
-  # Wait for remaining pids
   for pid in "${_mr_active_pids[@]+"${_mr_active_pids[@]}"}"; do
     wait "$pid" 2>/dev/null || true
   done
-done < "$_mr_files_from"
+fi
 
 # ---------- Post-run manifest ----------
 _mr_info "verifying post-run worktree integrity"
 if ! mutation_verify_manifest "$_mr_worktree" "$_mr_manifest_before"; then
-  rm -f "$_mr_manifest_before"
+  rm -f "$_mr_output"
   _mr_die 2 "worktree_mutated"
 fi
-rm -f "$_mr_manifest_before"
 
 # ---------- Aggregate results ----------
 _mr_info "aggregating results"
 
-# Merge adapter index.json metadata (operator, correct line) into each result.
-# Also validate result files; non-JSON becomes an error record.
-for rfile in "$_mr_results_dir"/mutant-*.json; do
-  [ -f "$rfile" ] || continue
-  # Validate JSON; replace non-JSON with an error record
-  if ! jq -e '.' "$rfile" >/dev/null 2>&1; then
-    _mr_local_mid=$(basename "$rfile" .json)
-    jq -n --arg mid "$_mr_local_mid" \
-      '{"mutant_id":$mid,"status":"error","test_output":"adapter produced non-JSON output"}' > "$rfile"
+# Turns one adapter result (a record, or an array from a tool-native adapter)
+# into an array of complete records. What the runner planned wins over what a
+# patch hunk header suggests; an array's records keep their own details.
+_mr_normalise_result() {
+  local idx="$1" mid="${_mr_plan_id[$1]}" src="${_mr_plan_src[$1]}" result out
+  result="$_mr_root/results/$mid.json"
+  out="$_mr_root/records/$(printf '%06d' "$idx").json"
+  if [ ! -s "$result" ]; then
+    _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter wrote no result" > "$result"
+  elif ! jq -e . "$result" >/dev/null 2>&1; then
+    _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter produced non-JSON output" > "$result"
   fi
-  # Merge index.json fields (operator, line, file) for this mutant
-  _mr_mid=$(jq -r '.mutant_id // ""' "$rfile" 2>/dev/null || true)
-  if [ -n "$_mr_mid" ]; then
-    for idx_file in "${_mr_index_files[@]+"${_mr_index_files[@]}"}"; do
-      [ -f "$idx_file" ] || continue
-      _mr_idx_entry=$(jq --arg mid "$_mr_mid" '.[] | select(.mutant_id == $mid)' "$idx_file" 2>/dev/null || true)
-      if [ -n "$_mr_idx_entry" ]; then
-        # Overlay operator and correct line from the index
-        _mr_idx_op=$(printf '%s' "$_mr_idx_entry" | jq -r '.operator // empty' 2>/dev/null || true)
-        _mr_idx_line=$(printf '%s' "$_mr_idx_entry" | jq -r '.line // empty' 2>/dev/null || true)
-        _mr_idx_file=$(printf '%s' "$_mr_idx_entry" | jq -r '.file // empty' 2>/dev/null || true)
-        _mr_merge_args=()
-        [ -n "$_mr_idx_op" ] && _mr_merge_args+=(--arg operator "$_mr_idx_op")
-        [ -n "$_mr_idx_line" ] && _mr_merge_args+=(--argjson line "$_mr_idx_line")
-        [ -n "$_mr_idx_file" ] && _mr_merge_args+=(--arg file "$_mr_idx_file")
-        if [ ${#_mr_merge_args[@]} -gt 0 ]; then
-          _mr_merged=$(jq "${_mr_merge_args[@]}" \
-            '. + (if $ARGS.named.operator then {operator: $ARGS.named.operator} else {} end)
-               + (if $ARGS.named.line then {line: $ARGS.named.line} else {} end)
-               + (if $ARGS.named.file then {file: $ARGS.named.file} else {} end)' "$rfile" 2>/dev/null || cat "$rfile")
-          printf '%s\n' "$_mr_merged" > "$rfile"
-        fi
-        break
-      fi
-    done
-  fi
+  jq --arg mid "$mid" --arg file "${_mr_src_file[$src]}" \
+     --argjson line "${_mr_plan_line[$idx]:-0}" --arg operator "${_mr_plan_operator[$idx]}" '
+    def known: . as $s | ["killed","survived","timeout","error"] | index($s) != null;
+    def checked:
+      if type != "object" then {status:"error",test_output:"adapter record is not an object"}
+      elif ((.status // "") | known) then .
+      else {status:"error",test_output:("adapter reported unknown status: " + ((.status // "none") | tostring))}
+      end;
+    if type == "array" then
+      to_entries | map(
+        .key as $i | (.value | checked)
+        | .mutant_id = ($mid + "-" + ((.mutant_id // $i) | tostring))
+        | .file = (.file // $file)
+        | .line = (.line // $line)
+        | .operator = (.operator // $operator)
+        | .test_output = (.test_output // "")
+      )
+    else
+      [ checked
+        | .mutant_id = $mid
+        | .file = $file
+        | .line = $line
+        | .operator = $operator
+        | .test_output = (.test_output // "")
+      ]
+    end
+    | map(if .tests then del(.tests) else . end)
+  ' "$result" > "$out"
+}
+
+for _n_idx in "${!_mr_plan_id[@]}"; do
+  [ -z "$_mr_refused" ] || break
+  _mr_normalise_result "$_n_idx"
+done
+# Generator failures were written as single records; give them the array shape.
+for _g_rec in "$_mr_root"/records/generator-*.json; do
+  [ -f "$_g_rec" ] || continue
+  jq '[.]' "$_g_rec" > "$_g_rec.tmp" && mv "$_g_rec.tmp" "$_g_rec"
 done
 
-# Count outcomes
-for rfile in "$_mr_results_dir"/mutant-*.json; do
-  [ -f "$rfile" ] || continue
-  status=$(jq -r '.status // "error"' "$rfile" 2>/dev/null || echo "error")
-  case "$status" in
-    killed)   _mr_killed=$((_mr_killed + 1)) ;;
-    survived) _mr_survived=$((_mr_survived + 1)) ;;
-    timeout)  _mr_timeout=$((_mr_timeout + 1)) ;;
-    error)    _mr_error=$((_mr_error + 1)) ;;
-  esac
-done
+_mr_mutants_file="$_mr_root/mutants.json"
+# Glob order (LC_ALL=C over zero-padded names) is the plan order.
+for _a_rec in "$_mr_root"/records/*.json; do
+  if [ -f "$_a_rec" ]; then cat "$_a_rec"; fi
+done | jq -s 'add // []' > "$_mr_mutants_file"
+
+_mr_count() { jq -r --arg s "$1" '[.[] | select(.status == $s)] | length' "$_mr_mutants_file"; }
+_mr_mutant_count=$(jq -r 'length' "$_mr_mutants_file")
+_mr_killed=$(_mr_count killed)
+_mr_survived=$(_mr_count survived)
+_mr_timeout=$(_mr_count timeout)
+_mr_error=$(_mr_count error)
 
 # Compute score: (killed + timeout) / (killed + timeout + survived)
 # Errors excluded. No-coverage mutants count as survived.
 _mr_denom=$((_mr_killed + _mr_timeout + _mr_survived))
-if [ "$_mr_denom" -gt 0 ]; then
+_mr_score=""
+if [ "$_mr_denom" -gt 0 ] && [ -z "$_mr_refused" ]; then
   _mr_score=$(( (_mr_killed + _mr_timeout) * 100 / _mr_denom ))
-else
-  _mr_score=""
 fi
 
 # ---------- Compute gate ----------
 _mr_gate="not_configured"
 
-if [ "$_mr_thresholds_configured" -eq 1 ]; then
-  if [ "$_mr_mutant_count" -eq 0 ] || { [ "$_mr_mutant_count" -gt 0 ] && [ "$_mr_denom" -eq 0 ]; }; then
+if [ -n "$_mr_refused" ]; then
+  # A run that could not measure anything never reads as a pass, configured or not.
+  _mr_gate="errored"
+elif [ "$_mr_thresholds_configured" -eq 1 ]; then
+  if [ -z "$_mr_score" ]; then
     # All mutants errored or no mutants generated
     _mr_gate="errored"
   else
     case "$_mr_priority" in
-      P0)
-        _mr_threshold="${_mr_th_p0:-$_MR_DEFAULT_P0}"
+      P0|P1)
+        if [ "$_mr_priority" = "P0" ]; then
+          _mr_threshold="${_mr_th_p0:-$_MR_DEFAULT_P0}"
+        else
+          _mr_threshold="${_mr_th_p1:-$_MR_DEFAULT_P1}"
+        fi
         if [ "$_mr_score" -lt "$_mr_threshold" ]; then
           _mr_gate="failed"
         else
           _mr_gate="passed"
         fi
         ;;
-      P1)
-        _mr_threshold="${_mr_th_p1:-$_MR_DEFAULT_P1}"
-        if [ "$_mr_score" -lt "$_mr_threshold" ]; then
-          _mr_gate="failed"
-        else
-          _mr_gate="passed"
-        fi
-        ;;
-      P2)
+      *)
         _mr_gate="advisory"
-        _mr_info "P2 story: mutation score ${_mr_score}% (advisory, no gate)"
-        ;;
-      P3)
-        _mr_gate="advisory"
-        _mr_info "P3 story: mutation score ${_mr_score}% (advisory, no gate)"
+        _mr_info "$_mr_priority story: mutation score ${_mr_score}% (advisory, no gate)"
         ;;
     esac
   fi
@@ -686,13 +721,6 @@ if (cd "$_mr_worktree" && git rev-parse HEAD >/dev/null 2>&1); then
 fi
 
 _mr_generated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-
-# Build mutants array
-_mr_mutants_json="[]"
-for rfile in "$_mr_results_dir"/mutant-*.json; do
-  [ -f "$rfile" ] || continue
-  _mr_mutants_json=$(printf '%s' "$_mr_mutants_json" | jq --slurpfile rec "$rfile" '. + $rec')
-done
 
 # Build thresholds applied
 _mr_th_applied="null"
@@ -723,6 +751,11 @@ if [ -n "$_mr_score" ]; then
   _mr_score_json="$_mr_score"
 fi
 
+_mr_baseline_json="null"
+if [ -n "$_mr_refused" ]; then
+  _mr_baseline_json=$(jq -n --arg s "$_mr_baseline_status" --arg o "$_mr_baseline_output" '{status:$s,test_output:$o}')
+fi
+
 # Write evidence
 jq -n \
   --arg schema_version "1.0" \
@@ -740,10 +773,13 @@ jq -n \
     '{"mutants":$mutants,"killed":$killed,"survived":$survived,"timeout":$timeout,"error":$error}')" \
   --argjson score "$_mr_score_json" \
   --arg gate "$_mr_gate" \
+  --arg refused "$_mr_refused" \
+  --argjson baseline "$_mr_baseline_json" \
   --argjson truncated "$_mr_truncated" \
-  --argjson mutants "$_mr_mutants_json" \
+  --slurpfile mutants "$_mr_mutants_file" \
   --argjson unmutated_files "$_mr_unmutated_json" \
   --argjson covering_tests "$_mr_covering_json" \
+  --argjson test_names "$(jq -R -s 'split("\n") | map(select(length > 0)) | unique' "$_mr_test_names")" \
   '{
     schema_version: $schema_version,
     story_key: $story_key,
@@ -755,46 +791,38 @@ jq -n \
     score: $score,
     gate: $gate,
     truncated: $truncated,
-    mutants: $mutants,
+    mutants: $mutants[0],
     unmutated_files: $unmutated_files,
-    covering_tests: $covering_tests
-  }' > "$_mr_output"
+    covering_tests: $covering_tests,
+    covering_test_names: $test_names
+  }
+  + (if $refused == "" then {} else {refused: $refused, baseline: $baseline} end)' > "$_mr_output"
+
+# Patches are published only now: during the run they were scratch files.
+find "$_mr_patch_dir" -maxdepth 1 -type f -name 'mutant-*' -exec rm -f {} + 2>/dev/null || true
+find "$_mr_root/patches" -type f -exec cp {} "$_mr_patch_dir/" \;
 
 _mr_info "evidence written to $_mr_output (gate: $_mr_gate, score: ${_mr_score:-n/a}%)"
 
 # ---------- Register survivors ----------
-if [ "$_mr_survived" -gt 0 ] && command -v "$SCRIPT_DIR/review-common/register-write.sh" >/dev/null 2>&1; then
+# Only a story has a register. A write that fails fails the run: a survivor that
+# reached nobody must not look like a completed run.
+_mr_register_failed=0
+if [ -n "$_mr_story" ] && [ "$_mr_survived" -gt 0 ]; then
   _mr_register="$SCRIPT_DIR/review-common/register-write.sh"
-  for rfile in "$_mr_results_dir"/mutant-*.json; do
-    [ -f "$rfile" ] || continue
-    local_status=$(jq -r '.status // ""' "$rfile" 2>/dev/null || true)
-    [ "$local_status" = "survived" ] || continue
-
-    local_mid=$(jq -r '.mutant_id // ""' "$rfile" 2>/dev/null || true)
-    [ -n "$local_mid" ] || continue
-
-    # Severity based on priority
-    local_severity="medium"
-    if [ "$_mr_priority" = "P0" ]; then
-      local_severity="critical"
-    fi
-
-    # Register via register-write.sh add with dedup key.
-    # Use the real CLI flags: --story, --defect, --gate, --type, --severity.
+  _mr_severity="medium"
+  [ "$_mr_priority" != "P0" ] || _mr_severity="critical"
+  while IFS=$'\t' read -r _s_id _s_file _s_line _s_op; do
     "$_mr_register" add \
-      --story "${_mr_story:-unknown}" \
-      --defect "Surviving mutant: $local_mid" \
+      --story "$_mr_story" \
+      --defect "Surviving mutant $_s_id: $_s_file line $_s_line ($_s_op) was not caught by any covering test" \
       --type "test-debt" \
-      --severity "$local_severity" \
+      --severity "$_mr_severity" \
       --gate "test-automate" \
-      --dedup-key "mutant:${local_mid}" \
-      || _mr_info "register-write.sh failed for $local_mid"
-  done
+      --dedup-key "mutant:$_s_id" >/dev/null \
+      || { _mr_err "could not record survivor $_s_id in the findings register"; _mr_register_failed=1; }
+  done < <(jq -r '.[] | select(.status == "survived") | [.mutant_id, .file, (.line | tostring), (.operator // "")] | @tsv' "$_mr_mutants_file")
 fi
 
-# Exit based on gate
-case "$_mr_gate" in
-  failed)  exit 0 ;;   # Evidence written; gate failed but run completed
-  errored) exit 0 ;;   # Evidence written; errors recorded
-  *)       exit 0 ;;   # passed, advisory, not_configured
-esac
+[ "$_mr_register_failed" -eq 0 ] || exit 1
+exit 0

@@ -132,6 +132,36 @@ _list_adapters() {
   done < <(_list_adapters)
 }
 
+# ---------- Contract: baseline call and outcome honesty ----------
+
+@test "every mutation adapter runs a zero-byte patch unmutated, inside the copy, and tells failure from cannot-run" {
+  local checked=0
+  while IFS= read -r adapter_dir; do
+    [ -n "$adapter_dir" ] || continue
+    [ "$(jq -r '.["mutant-format"]' "$adapter_dir/mutation-adapter.json")" = "patch" ] || continue
+    local copy_dir result="$TEST_TMP/outcome.json" empty="$TEST_TMP/empty.patch"
+    copy_dir=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mutation-contract-XXXXXX")
+    : > "$empty"
+
+    run "$adapter_dir/run.sh" --source-dir "$copy_dir" --patch-file "$empty" --test-command 'pwd -P > here.txt' --output "$result" --timeout 10
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .status "$result")" = "survived" ]
+    [ "$(cat "$copy_dir/here.txt")" = "$(cd "$copy_dir" && pwd -P)" ]
+
+    run "$adapter_dir/run.sh" --source-dir "$copy_dir" --patch-file "$empty" --test-command 'exit 1' --output "$result" --timeout 10
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .status "$result")" = "killed" ]
+
+    run "$adapter_dir/run.sh" --source-dir "$copy_dir" --patch-file "$empty" --test-command 'exit 127' --output "$result" --timeout 10
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .status "$result")" = "error" ]
+
+    rm -rf "$copy_dir"
+    checked=$((checked + 1))
+  done < <(_list_adapters)
+  [ "$checked" -gt 0 ]
+}
+
 # ---------- Contract: timeout handling ----------
 
 @test "every mutation adapter reports timeout status when test exceeds deadline" {

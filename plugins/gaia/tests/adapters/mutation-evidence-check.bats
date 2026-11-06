@@ -79,10 +79,11 @@ EVIDENCE
   "score": 50,
   "gate": "failed",
   "totals": {"mutants":4,"killed":2,"survived":2,"timeout":0,"error":0},
-  "covering_tests": ["tests/gamma.bats", "tests/delta.bats"],
+  "covering_tests": ["tests/both.bats"],
+  "covering_test_names": ["gamma catches it", "delta asserts nothing"],
   "mutants": [
-    {"mutant_id":"m1","status":"killed","killed_by":["tests/gamma.bats"],"test_output":""},
-    {"mutant_id":"m2","status":"killed","killed_by":["tests/gamma.bats"],"test_output":""},
+    {"mutant_id":"m1","status":"killed","killed_by":["gamma catches it"],"test_output":""},
+    {"mutant_id":"m2","status":"killed","killed_by":["gamma catches it"],"test_output":""},
     {"mutant_id":"m3","status":"survived","killed_by":[],"test_output":""},
     {"mutant_id":"m4","status":"survived","killed_by":[],"test_output":""}
   ]
@@ -99,14 +100,15 @@ EVIDENCE
 
   [ "$status" -eq 0 ]
 
-  # Should have exactly 1 finding (delta.bats killed zero; gamma.bats killed 2)
-  findings_count=$(printf '%s' "$output" | jq '.findings | length')
+  # One weak-assertion finding: the delta test killed nothing, gamma killed two.
+  findings_count=$(printf '%s' "$output" | jq '[.findings[] | select(.rule == "weak-assertion")] | length')
   [ "$findings_count" -eq 1 ]
-
-  # The finding should name delta.bats
-  finding_msg=$(printf '%s' "$output" | jq -r '.findings[0].message')
-  [[ "$finding_msg" == *"delta.bats"* ]]
+  finding_msg=$(printf '%s' "$output" | jq -r '.findings[] | select(.rule == "weak-assertion") | .message')
+  [[ "$finding_msg" == *"delta asserts nothing"* ]]
   [[ "$finding_msg" == *"zero mutants"* ]]
+
+  # The failed score is itself a blocking finding.
+  [ "$(printf '%s' "$output" | jq '[.findings[] | select(.blocking == true)] | length')" -eq 1 ]
 }
 
 # ---------- Missing or stale evidence ----------

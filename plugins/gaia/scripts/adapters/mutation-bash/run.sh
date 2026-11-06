@@ -9,7 +9,16 @@
 #   run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd> \
 #          --output <json> --timeout <seconds>
 #
-# The source-dir MUST be inside a gaia-mutation- temp root.
+# The source-dir MUST be inside a gaia-mutation- temp root. The test command
+# runs with that directory as its working directory and as PROJECT_PATH, so it
+# never touches the real worktree. A zero-byte patch file means "no mutation":
+# the runner uses it to prove the covering tests are green before scoring.
+#
+# Outcome of a test command, by exit code:
+#   0                     survived
+#   1..125                killed (the tests failed)
+#   142 (bound exceeded)  timeout
+#   126, 127, 128+signal  error (the tests could not run, so nothing was proved)
 #
 # Interpreters:
 #   - Bash 5: from PATH or $GAIA_MUTATION_BASH5
@@ -68,12 +77,23 @@ done
 [ -f "$_run_patch_file" ]   || _run_die 1 "--patch-file not found"
 [ -n "$_run_test_command" ] || _run_die 1 "--test-command is required"
 [ -n "$_run_output" ]       || _run_die 1 "--output is required"
+case "$_run_timeout" in
+  ''|*[!0-9]*) _run_die 1 "--timeout must be a whole number of seconds" ;;
+esac
+
+# Absolute before the test command changes directory.
+_run_absolute() {
+  case "$1" in
+    /*) printf '%s' "$1" ;;
+    *)  printf '%s/%s' "$(pwd -P)" "$1" ;;
+  esac
+}
+_run_patch_file=$(_run_absolute "$_run_patch_file")
+_run_output=$(_run_absolute "$_run_output")
 
 # Containment: source-dir must be inside a gaia-mutation- temp root
 _run_source_real=$(cd "$_run_source_dir" && pwd -P)
-_run_source_base=$(basename "$_run_source_real")
-_run_source_parent=$(dirname "$_run_source_real")
-_run_parent_base=$(basename "$_run_source_parent")
+_run_source_dir="$_run_source_real"
 
 _run_in_mutation_root=0
 # Walk up to check if we're in a gaia-mutation- directory
@@ -124,24 +144,49 @@ if [ -z "$_run_bash5" ] && [ -z "$_run_bash32" ]; then
 fi
 
 # ---------- Apply patch ----------
-if ! patch -p1 -d "$_run_source_dir" < "$_run_patch_file" >/dev/null 2>&1; then
-  # Patch failed to apply
-  jq -n \
-    --arg status "error" \
-    --arg test_output "patch failed to apply" \
-    '{"status":$status,"test_output":$test_output}' > "$_run_output"
-  exit 0
-fi
+_run_mutant_file=""
+_run_mutant_line=0
+if [ -s "$_run_patch_file" ]; then
+  # -f and -N keep patch from prompting; stdin is closed for the same reason.
+  if ! _run_patch_err=$(patch -p1 -f -N -d "$_run_source_dir" -i "$_run_patch_file" </dev/null 2>&1); then
+    jq -n --arg test_output "patch failed to apply: $_run_patch_err" \
+      '{"status":"error","test_output":$test_output}' > "$_run_output"
+    exit 0
+  fi
 
-# ---------- Extract mutant metadata from patch ----------
-_run_mutant_file=$(sed -n 's|^--- a/||p' "$_run_patch_file" | head -1)
-_run_mutant_line=$(sed -n 's/^@@ -\([0-9]*\).*/\1/p' "$_run_patch_file" | head -1)
+  # ---------- Extract mutant metadata from patch ----------
+  _run_mutant_file=$(awk '/^--- a\// { sub(/^--- a\//, ""); sub(/\t.*$/, ""); print; exit }' "$_run_patch_file")
+  _run_mutant_line=$(awk '/^@@ -/ { sub(/^@@ -/, ""); sub(/[^0-9].*$/, ""); print; exit }' "$_run_patch_file")
+fi
 
 # ---------- Run tests ----------
 _run_status="survived"
 _run_test_output=""
 _run_killed_by=()
+_run_tests_seen=()
 _run_interpreter_versions=()
+
+# Removes a TAP directive (" # skip why", " # in 12ms") from a test name.
+_run_tap_name() {
+  printf '%s' "$1" | sed -E 's/^(not ok|ok) [0-9]+ //; s/ # ([Ss][Kk][Ii][Pp]|[Tt][Oo][Dd][Oo]|in [0-9]+ms).*$//'
+}
+
+_run_collect_tap() {
+  local tapline name
+  while IFS= read -r tapline; do
+    case "$tapline" in
+      'not ok '*)
+        name=$(_run_tap_name "$tapline")
+        _run_killed_by+=("$name")
+        _run_tests_seen+=("$name")
+        ;;
+      'ok '*)
+        name=$(_run_tap_name "$tapline")
+        _run_tests_seen+=("$name")
+        ;;
+    esac
+  done <<< "$1"
+}
 
 _run_exec_test() {
   local interpreter="$1"
@@ -157,11 +202,22 @@ _run_exec_test() {
   local test_exit=0
   local test_out=""
 
-  if [ "$_run_has_bound_exec" -eq 1 ]; then
-    test_out=$(PATH="$shim_dir:$PATH" bound_exec "$_run_timeout" -- bash -c "$_run_test_command" 2>&1) || test_exit=$?
-  else
-    test_out=$(PATH="$shim_dir:$PATH" timeout "$_run_timeout" bash -c "$_run_test_command" 2>&1) || test_exit=$?
-  fi
+  # The subshell scopes the directory and the environment to the test command:
+  # it must see the copy as its project, and git must not be pointed anywhere.
+  test_out=$(
+    cd "$_run_source_dir" || exit 126
+    PATH="$shim_dir:$PATH"
+    PROJECT_PATH="$_run_source_dir"
+    PROJECT_ROOT="$_run_source_dir"
+    CLAUDE_PROJECT_ROOT="$_run_source_dir"
+    export PATH PROJECT_PATH PROJECT_ROOT CLAUDE_PROJECT_ROOT
+    unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+    if [ "$_run_has_bound_exec" -eq 1 ]; then
+      bound_exec "$_run_timeout" -- bash -c "$_run_test_command" 2>&1
+    else
+      timeout "$_run_timeout" bash -c "$_run_test_command" 2>&1
+    fi
+  ) || test_exit=$?
 
   # Truncate output to last 4KB
   if [ ${#test_out} -gt 4096 ]; then
@@ -170,26 +226,20 @@ $(printf '%s' "$test_out" | tail -c 4096)"
   fi
 
   _run_test_output="${_run_test_output}${test_out}"
+  _run_collect_tap "$test_out"
 
-  if [ "$test_exit" -eq 142 ]; then
-    _run_status="timeout"
-    return 0
-  fi
-
-  if [ "$test_exit" -ne 0 ]; then
-    _run_status="killed"
-    # Parse killed_by from bats TAP output
-    while IFS= read -r tapline; do
-      case "$tapline" in
-        'not ok'*)
-          test_name=$(printf '%s' "$tapline" | sed 's/^not ok [0-9]* //')
-          _run_killed_by+=("$test_name")
-          ;;
-      esac
-    done <<< "$test_out"
-    return 0
-  fi
-
+  case "$test_exit" in
+    0)       ;;
+    142|124) _run_status="timeout" ;;
+    126|127) _run_status="error" ;;
+    *)
+      if [ "$test_exit" -gt 128 ]; then
+        _run_status="error"
+      else
+        _run_status="killed"
+      fi
+      ;;
+  esac
   return 0
 }
 
@@ -210,6 +260,12 @@ for kb in "${_run_killed_by[@]+"${_run_killed_by[@]}"}"; do
   _run_kb_json=$(printf '%s' "$_run_kb_json" | jq --arg t "$kb" '. + [$t]')
 done
 
+# Build the list of every test seen, de-duplicated across interpreters
+_run_tests_json="[]"
+for ts in "${_run_tests_seen[@]+"${_run_tests_seen[@]}"}"; do
+  _run_tests_json=$(printf '%s' "$_run_tests_json" | jq --arg t "$ts" 'if index($t) then . else . + [$t] end')
+done
+
 # Build interpreters array
 _run_interp_json="[]"
 for iv in "${_run_interpreter_versions[@]+"${_run_interpreter_versions[@]}"}"; do
@@ -222,13 +278,15 @@ jq -n \
   --arg file "${_run_mutant_file:-}" \
   --argjson line "${_run_mutant_line:-0}" \
   --argjson killed_by "$_run_kb_json" \
+  --argjson tests "$_run_tests_json" \
   --argjson interpreters "$_run_interp_json" \
   '{
     "status": $status,
     "test_output": $test_output,
     "file": $file,
     "line": $line,
-    "killed_by": $killed_by,
+    "killed_by": ($killed_by | unique),
+    "tests": $tests,
     "interpreters": $interpreters
   }' > "$_run_output"
 

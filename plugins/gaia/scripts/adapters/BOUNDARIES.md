@@ -165,6 +165,6 @@ The separate manifest (`mutation-adapter.json` validated against `_schema/mutati
 
 The execution contract (`_schema/mutation-run-contract.md`) defines two entry points:
 - `generate.sh --source-dir --files-from --out-dir` — produces one patch file per mutant
-- `run.sh --source-dir --patch-file --test-command --output --timeout` — executes one mutant
+- `run.sh --source-dir --patch-file --test-command --output --timeout` — executes one mutant, or with a zero-byte patch proves the covering tests are green before scoring
 
 Both are dispatched by the mutation runner, never by review consumers directly.

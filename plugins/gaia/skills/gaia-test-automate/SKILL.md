@@ -144,6 +144,10 @@ Phase 2 calls `verdict-resolver.sh --action-mode --analysis-results <path>` with
 - **REQUEST_CHANGES** ⇐ placeholders detected OR tests mock the system under test OR generated tests break the existing suite.
 - **BLOCKED** ⇐ `blocking_failure` ∈ `{plan_tamper, target_outside_allowlist, runner_unavailable, plan_drift, malformed_output}` OR plan missing OR execution did not succeed.
 
+### Mutation run
+
+When `test_execution.mutation_thresholds` is configured, `phase2-execute.sh` runs the mutation runner after a green execution (wrapped in `scripts/lib/heavy-reviewer-slots.sh run --`) and writes `{story_key}-mutation.json` next to `{story_key}-execution.json`. The same run is available on demand through `/gaia-test-automate --mutation {story_key}`. A run that cannot produce a score (runner failure, unreadable thresholds, a red baseline, every mutant errored) records `blocking_failure: runner_unavailable` at the top level of the execution evidence and in the plan's `execution_summary`, and prints it on stdout. Pass the execution evidence to the action-mode verdict call so it resolves to BLOCKED. A measured score below the threshold is not a failure of this skill: QA and test review gate on it.
+
 ### Coverage-delta gate
 
 In addition to the placeholder gate above, Phase 2 captures a coverage-delta as a verdict input. The flow is deterministic shell — no LLM judgment involved:

@@ -23,6 +23,12 @@
 # Output (stdout): a checks[] fragment (JSON object) named "mutation-score",
 # valid against analysis-results.schema.json.
 #
+# A check with status failed always carries a blocking finding, so the verdict
+# resolver blocks on it even when the only other findings are advisory
+# weak-assertion ones. A check skipped for a P2 or P3 story, or for a project
+# without thresholds, says why in skip_reason. A story whose priority could not
+# be resolved is gated like P0/P1: an unknown priority never loosens the check.
+#
 # Exit codes:
 #   0  Check emitted (any status: passed, failed, errored, skipped)
 #   1  Caller error
@@ -61,24 +67,22 @@ done
 [ -n "$_mec_story_key" ] || _mec_die 1 "--story-key is required"
 [ -n "$_mec_commit" ]    || _mec_die 1 "--commit is required"
 
-# ---------- Check if thresholds are configured ----------
-_mec_configured=0
-if [ -n "$_mec_thresholds" ] && [ "$_mec_thresholds" != "null" ] && [ "$_mec_thresholds" != "{}" ]; then
-  _mec_configured=1
-fi
-
-# If not configured, emit nothing (zero behaviour change)
-if [ "$_mec_configured" -eq 0 ]; then
-  # No mutation-score check at all
-  printf '{}\n'
+_mec_skip() {
+  jq -n --arg reason "$1" \
+    '{"name":"mutation-score","status":"skipped","skip_reason":$reason,"message":$reason,"findings":[]}'
   exit 0
-fi
+}
+
+# ---------- Check if thresholds are configured ----------
+# An empty object is configured: missing priorities take their defaults.
+case "$_mec_thresholds" in
+  ''|null) _mec_skip "mutation_thresholds is not configured" ;;
+esac
 
 # P2/P3 stories: advisory only, skip check
 case "$_mec_priority" in
   P2|P3)
-    printf '{}\n'
-    exit 0
+    _mec_skip "$_mec_priority stories are advisory for mutation testing"
     ;;
 esac
 
@@ -122,10 +126,14 @@ esac
 _mec_findings="[]"
 
 if [ "$_mec_zero_kill" -eq 1 ]; then
-  # Identify covering tests that killed zero mutants.
-  # A covering test is one listed in the evidence's covering_tests array.
-  # A test that never appears in any mutant's killed_by is a zero-kill test.
-  _mec_covering=$(jq -r '.covering_tests[]?' "$_mec_evidence" 2>/dev/null || true)
+  # Identify covering tests that killed zero mutants. killed_by holds test
+  # names, so the comparison is against the names reported by the covering test
+  # files, not the files themselves. Without a scored mutant there is nothing to
+  # measure a test against, so nothing is reported.
+  _mec_covering=""
+  if [ "$(jq -r '[.mutants[]? | select(.status == "killed" or .status == "survived" or .status == "timeout")] | length' "$_mec_evidence" 2>/dev/null || echo 0)" -gt 0 ]; then
+    _mec_covering=$(jq -r '.covering_test_names[]?' "$_mec_evidence" 2>/dev/null || true)
+  fi
   _mec_killers=$(jq -r '[.mutants[]? | .killed_by[]?] | unique[]' "$_mec_evidence" 2>/dev/null || true)
 
   _mec_finding_list="[]"
@@ -150,6 +158,12 @@ if [ "$_mec_zero_kill" -eq 1 ]; then
   fi
 
   _mec_findings="$_mec_finding_list"
+fi
+
+# ---------- A failed score blocks, whatever else was found ----------
+if [ "$_mec_status" = "failed" ]; then
+  _mec_findings=$(printf '%s' "$_mec_findings" | jq --arg score "${_mec_ev_score:-n/a}" \
+    '[{"severity":"critical","message":("mutation score " + $score + "% is below the threshold"),"rule":"mutation-score","blocking":true}] + .')
 fi
 
 # ---------- Emit check ----------
