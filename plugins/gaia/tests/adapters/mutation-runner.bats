@@ -484,30 +484,35 @@ test_execution:
     P0: 80
 YAML
 
-  # Build a minimal PATH containing only basic system tools (no yq).
-  # Include common tool locations for bash, jq, git, etc., but exclude
-  # any directory that contains yq.
-  local minimal_path=""
-  for d in /usr/bin /bin /usr/sbin /sbin; do
-    if [ -d "$d" ] && [ ! -x "$d/yq" ]; then
-      minimal_path="${minimal_path:+$minimal_path:}$d"
-    fi
-  done
-  # Also include the directory containing bash 5 if needed
-  local bash5_dir
-  bash5_dir=$(dirname "$(command -v bash 2>/dev/null || echo /usr/bin/bash)")
-  if [ -d "$bash5_dir" ] && [ ! -x "$bash5_dir/yq" ]; then
-    minimal_path="${minimal_path:+$minimal_path:}$bash5_dir"
-  fi
-  # Include jq location
-  local jq_dir
-  jq_dir=$(dirname "$(command -v jq 2>/dev/null || echo /usr/bin/jq)")
-  if [ -d "$jq_dir" ] && [ ! -x "$jq_dir/yq" ]; then
-    minimal_path="${minimal_path:+$minimal_path:}$jq_dir"
-  fi
+  # Create a shim directory where yq does not exist but all other tools do.
+  # The trick: put a directory WITHOUT yq first on PATH, then include the
+  # rest of PATH but with yq shadowed by a non-executable file.
+  mkdir -p "$TEST_TMP/no-yq-shim"
 
-  # Run with a PATH that has no yq
-  PATH="$minimal_path" run "$RUNNER" \
+  # Create a helper script that runs the runner with yq hidden.
+  # We use env -u to clear any cached command lookups, and we hide yq
+  # by creating a broken shim that command -v finds but that errors.
+  # Actually, the simplest approach: use a wrapper that undefines yq
+  # as a function before running the runner.
+  cat > "$TEST_TMP/run-no-yq.sh" <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+# Override yq so command -v fails
+yq() { return 127; }
+unset -f yq 2>/dev/null || true
+# Remove yq from PATH by filtering
+new_path=""
+IFS=: read -ra dirs <<< "\$PATH"
+for d in "\${dirs[@]}"; do
+  if [ -x "\$d/yq" ]; then continue; fi
+  new_path="\${new_path:+\$new_path:}\$d"
+done
+export PATH="\$new_path"
+exec "\$@"
+SCRIPT
+  chmod +x "$TEST_TMP/run-no-yq.sh"
+
+  run "$TEST_TMP/run-no-yq.sh" "$RUNNER" \
     --worktree "$FIXTURE_WT" \
     --files-from "$TEST_TMP/files.txt" \
     --tests-from "$TEST_TMP/tests.txt" \
