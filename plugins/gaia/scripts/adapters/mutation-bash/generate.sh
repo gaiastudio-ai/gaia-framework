@@ -50,30 +50,32 @@ done
 mkdir -p "$_gen_out_dir"
 
 # ---------- Operator table ----------
-# Each entry: pattern replacement description
-# Patterns are literal sed patterns with metacharacters escaped.
+# Each entry: pattern~replacement~description (tilde-delimited because
+# patterns include | and - characters that collide with other delimiters).
 _GEN_OPERATORS=(
   # Comparison flips
-  '-eq|-ne|comparison flip eq/ne'
-  '-ne|-eq|comparison flip ne/eq'
-  '-lt|-ge|comparison flip lt/ge'
-  '-ge|-lt|comparison flip ge/lt'
-  '-gt|-le|comparison flip gt/le'
-  '-le|-gt|comparison flip le/gt'
+  '-eq~-ne~comparison flip eq/ne'
+  '-ne~-eq~comparison flip ne/eq'
+  '-lt~-ge~comparison flip lt/ge'
+  '-ge~-lt~comparison flip ge/lt'
+  '-gt~-le~comparison flip gt/le'
+  '-le~-gt~comparison flip le/gt'
   # String comparison flips
-  '==|!=|string comparison flip eq/ne'
-  '!=|==|string comparison flip ne/eq'
+  '==~!=~string comparison flip eq/ne'
+  '!=~==~string comparison flip ne/eq'
   # Logical flips
-  '&&|\\|\\||logical flip and/or'
-  '\\|\\||\\&\\&|logical flip or/and'
+  '&&~||~logical flip and/or'
+  '||~&&~logical flip or/and'
   # Exit/return flips
-  'exit 0|exit 1|exit code flip 0/1'
-  'exit 1|exit 0|exit code flip 1/0'
-  'return 0|return 1|return code flip 0/1'
-  'return 1|return 0|return code flip 1/0'
+  'exit 0~exit 1~exit code flip 0/1'
+  'exit 1~exit 0~exit code flip 1/0'
+  'return 0~return 1~return code flip 0/1'
+  'return 1~return 0~return code flip 1/0'
   # Boolean flips
-  'true|false|boolean flip true/false'
-  'false|true|boolean flip false/true'
+  'true~false~boolean flip true/false'
+  'false~true~boolean flip false/true'
+  # Negation removal
+  '! ~~negation removal'
 )
 
 _gen_mutant_count=0
@@ -102,13 +104,11 @@ while IFS= read -r rel_path; do
 
     # Try each operator
     for op_entry in "${_GEN_OPERATORS[@]}"; do
-      IFS='|' read -r pattern replacement desc <<< "$op_entry"
+      IFS='~' read -r pattern replacement desc <<< "$op_entry"
 
-      # Unescape for literal grep check
-      literal_pattern=$(printf '%s' "$pattern" | sed 's/\\//g')
-
-      # Check if pattern appears in this line (literal match)
-      if ! printf '%s' "$line" | grep -qF "$literal_pattern"; then
+      # Check if pattern appears in this line (literal match).
+      # Use -- to prevent patterns like -ne from being read as options.
+      if ! printf '%s' "$line" | grep -qF -- "$pattern"; then
         continue
       fi
 
@@ -116,13 +116,17 @@ while IFS= read -r rel_path; do
       tmp_mutated=$(mktemp "${TMPDIR:-/tmp}/gaia-gen-mut-XXXXXX")
       tmp_sed_out=$(mktemp "${TMPDIR:-/tmp}/gaia-gen-sed-XXXXXX")
 
-      # Apply sed substitution on the specific line via pipe
-      case "$literal_pattern" in
+      # Apply sed substitution on the specific line via pipe.
+      # Logical operators need special escaping for sed.
+      case "$pattern" in
         '&&')
           sed "${line_num}s/&&/||/" "$src_file" > "$tmp_sed_out"
           ;;
         '||')
           sed "${line_num}s/||/\\&\\&/" "$src_file" > "$tmp_sed_out"
+          ;;
+        '! ')
+          sed "${line_num}s/! //" "$src_file" > "$tmp_sed_out"
           ;;
         *)
           sed "${line_num}s/${pattern}/${replacement}/" "$src_file" > "$tmp_sed_out"

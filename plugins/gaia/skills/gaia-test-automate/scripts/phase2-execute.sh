@@ -894,6 +894,31 @@ if [ -n "$STORY_ARTIFACT" ]; then
     RG_VERDICT="PASSED"
   fi
 
+  # ---- Mutation run (after green execution, before verdict overrides) ----
+  # When mutation thresholds are configured and execution was green, run the
+  # mutation runner. A runner error keeps the verdict from PASSED and is
+  # exposed as blocking_failure: runner_unavailable.
+  if [ "$RG_VERDICT" = "PASSED" ]; then
+    _p2_mut_runner="${SCRIPT_DIR}/../../../scripts/mutation-runner.sh"
+    _p2_mut_subcmd="${SCRIPT_DIR}/subcmd-mutation.sh"
+    _p2_hrs="${SCRIPT_DIR}/../../../scripts/lib/heavy-reviewer-slots.sh"
+    _p2_mut_config="${PROJECT_ROOT}/.gaia/config/project-config.yaml"
+    _p2_mut_thresholds=""
+
+    if [ -f "$_p2_mut_config" ] && command -v yq >/dev/null 2>&1; then
+      _p2_mut_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_p2_mut_config" 2>/dev/null || true)
+      [ "$_p2_mut_thresholds" = "null" ] && _p2_mut_thresholds=""
+    fi
+
+    if [ -n "$_p2_mut_thresholds" ] && [ -x "$_p2_mut_subcmd" ]; then
+      info "Step 5a: running mutation analysis (thresholds configured)"
+      if ! "$_p2_mut_subcmd" "$STORY_KEY" --config "$_p2_mut_config"; then
+        log "mutation runner failed — marking runner_unavailable"
+        RG_VERDICT="FAILED"
+      fi
+    fi
+  fi
+
   # Placeholder-detector hit overrides any local PASSED — the
   # Review Gate Test Automation row MUST NOT flip to PASSED when the
   # detector flagged generated tests. Verdict is FAILED in that case.

@@ -157,14 +157,12 @@ mutation_create_copy() {
       ;;
   esac
 
-  # Copy contents, excluding .git, dereferencing symlinks
-  # Use tar to exclude .git reliably across platforms
-  (cd "$worktree" && tar cf - --exclude='.git' --exclude='./.git' .) | (cd "$copy_dir" && tar xf -)
+  # Copy contents, dereferencing symlinks so mutations stay inside the copy.
+  # cp -rL dereferences symlinks; .git is removed afterwards.
+  cp -rL "$worktree"/. "$copy_dir/"
 
-  # Verify no .git leaked into the copy
-  if [ -e "$copy_dir/.git" ]; then
-    rm -rf "$copy_dir/.git"
-  fi
+  # Remove .git so test commands cannot reach the real repository
+  rm -rf "$copy_dir/.git"
 
   # Register for cleanup
   _MI_COPIES+=("$copy_dir")
@@ -184,10 +182,14 @@ mutation_cleanup() {
   _MI_COPIES=()
 }
 
-# mutation_register_cleanup — install a trap on EXIT/INT/TERM.
+# mutation_register_cleanup — install traps on EXIT, INT and TERM.
+# EXIT runs cleanup on normal exit. INT and TERM exit with the conventional
+# signal-exit codes (128 + signal number) so callers see a non-zero status.
 mutation_register_cleanup() {
   if [ "$_MI_TRAP_SET" -eq 0 ]; then
-    trap 'mutation_cleanup' EXIT INT TERM
+    trap 'mutation_cleanup' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     _MI_TRAP_SET=1
   fi
 }

@@ -80,7 +80,17 @@ fi
 # ---------- Check thresholds ----------
 _sm_thresholds=""
 if [ -n "$_sm_config" ] && [ -f "$_sm_config" ]; then
-  if command -v yq >/dev/null 2>&1; then
+  # Check if the key is present in the config
+  _sm_has_key=0
+  if grep -q 'mutation_thresholds' "$_sm_config" 2>/dev/null; then
+    _sm_has_key=1
+  fi
+
+  if ! command -v yq >/dev/null 2>&1; then
+    if [ "$_sm_has_key" -eq 1 ]; then
+      _sm_die 1 "yq is required to read mutation_thresholds from project config but is not installed"
+    fi
+  else
     _sm_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_sm_config" 2>/dev/null || true)
     if [ "$_sm_thresholds" = "null" ] || [ -z "$_sm_thresholds" ]; then
       _sm_thresholds=""

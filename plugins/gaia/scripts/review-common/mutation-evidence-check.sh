@@ -122,26 +122,34 @@ esac
 _mec_findings="[]"
 
 if [ "$_mec_zero_kill" -eq 1 ]; then
-  # Identify covering tests that killed zero mutants
-  # Read all killed_by arrays from the evidence
-  _mec_all_tests=$(jq -r '[.mutants[]? | .killed_by[]? ] | unique[]' "$_mec_evidence" 2>/dev/null || true)
-  _mec_all_covering=$(jq -r '[.mutants[]? | select(.no_coverage != true) | .file ] | unique[]' "$_mec_evidence" 2>/dev/null || true)
+  # Identify covering tests that killed zero mutants.
+  # A covering test is one listed in the evidence's covering_tests array.
+  # A test that never appears in any mutant's killed_by is a zero-kill test.
+  _mec_covering=$(jq -r '.covering_tests[]?' "$_mec_evidence" 2>/dev/null || true)
+  _mec_killers=$(jq -r '[.mutants[]? | .killed_by[]?] | unique[]' "$_mec_evidence" 2>/dev/null || true)
 
-  # Find tests that are in covering positions but killed nothing
-  # (This is a simplified version — proper per-test tracking would need the test-to-mutant map)
-  _mec_survived_tests=$(jq -r '
-    [.mutants[]? | select(.status == "survived" and .no_coverage != true)] |
-    if length > 0 then
-      "weak-assertion: some covering tests killed no mutants"
-    else
-      empty
-    end' "$_mec_evidence" 2>/dev/null || true)
-
-  if [ -n "$_mec_survived_tests" ]; then
-    _mec_findings=$(jq -n \
-      --arg msg "$_mec_survived_tests" \
-      '[{"severity":"warning","message":$msg,"rule":"weak-assertion","blocking":false}]')
+  _mec_finding_list="[]"
+  if [ -n "$_mec_covering" ]; then
+    while IFS= read -r _ctest; do
+      [ -n "$_ctest" ] || continue
+      # Check if this test appears in any killed_by
+      _ctest_is_killer=0
+      if [ -n "$_mec_killers" ]; then
+        while IFS= read -r _ktest; do
+          if [ "$_ctest" = "$_ktest" ]; then
+            _ctest_is_killer=1
+            break
+          fi
+        done <<< "$_mec_killers"
+      fi
+      if [ "$_ctest_is_killer" -eq 0 ]; then
+        _mec_finding_list=$(printf '%s' "$_mec_finding_list" | jq --arg t "$_ctest" \
+          '. + [{"severity":"warning","message":("weak-assertion: " + $t + " killed zero mutants"),"rule":"weak-assertion","blocking":false}]')
+      fi
+    done <<< "$_mec_covering"
   fi
+
+  _mec_findings="$_mec_finding_list"
 fi
 
 # ---------- Emit check ----------

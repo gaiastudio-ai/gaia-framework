@@ -1280,6 +1280,7 @@ main() {
   local sprint_scoped=""
   local telemetry_started_at="" telemetry_token_estimate=""
   local telemetry_round="" telemetry_run_id=""
+  local telemetry_mutation_score=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1357,6 +1358,10 @@ main() {
       --telemetry-run-id)
         [ $# -ge 2 ] || die "--telemetry-run-id requires a value"
         telemetry_run_id="$2"; shift 2
+        ;;
+      --mutation-score)
+        [ $# -ge 2 ] || die "--mutation-score requires a value"
+        telemetry_mutation_score="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1648,6 +1653,9 @@ main() {
               fi
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")
+              fi
+              if [ -n "$telemetry_mutation_score" ]; then
+                _tel_args+=(--mutation-score "$telemetry_mutation_score")
               fi
               _tw_gate_entry "${_tel_args[@]}" || true
             fi

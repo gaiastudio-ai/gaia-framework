@@ -851,4 +851,42 @@ cat > "$EVIDENCE" <<EOF
 }
 EOF
 
+# ---------- Mutation evidence check (read-only, never produces mutants) ----------
+_qa_mutation_check="$SCRIPT_DIR/mutation-evidence-check.sh"
+if [ -x "$_qa_mutation_check" ]; then
+  # Resolve mutation thresholds from config
+  _qa_mut_thresholds=""
+  if command -v yq >/dev/null 2>&1 && [ -f "$CONFIG" ]; then
+    _qa_mut_thresholds=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$CONFIG" 2>/dev/null || true)
+    [ "$_qa_mut_thresholds" = "null" ] && _qa_mut_thresholds=""
+  fi
+
+  if [ -n "$_qa_mut_thresholds" ]; then
+    # Resolve story priority
+    _qa_mut_priority=""
+    if [ -n "${STORY_FILE:-}" ] && [ -f "${STORY_FILE:-}" ]; then
+      _qa_mut_priority=$(sed -n 's/^priority: *"\{0,1\}\(P[0-3]\)"\{0,1\} *$/\1/p' "$STORY_FILE" | head -1)
+    fi
+    [ -z "$_qa_mut_priority" ] && _qa_mut_priority="P2"
+
+    # Resolve mutation evidence path
+    _qa_mut_evidence="$WORKDIR/${STORY_KEY}-mutation.json"
+
+    # Resolve HEAD commit
+    _qa_mut_commit=$(cd "${PROJECT_PATH:-$(pwd)}" && git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+    # Run the check (QA mode: no --zero-kill)
+    _qa_mut_out=$("$_qa_mutation_check" \
+      --story-key "$STORY_KEY" \
+      --evidence "$_qa_mut_evidence" \
+      --commit "$_qa_mut_commit" \
+      --priority "$_qa_mut_priority" \
+      --thresholds "$_qa_mut_thresholds" 2>/dev/null || true)
+
+    if [ -n "$_qa_mut_out" ] && [ "$_qa_mut_out" != "{}" ]; then
+      info "mutation-score check: $(printf '%s' "$_qa_mut_out" | jq -r '.status // "unknown"' 2>/dev/null || echo "emitted")"
+    fi
+  fi
+fi
+
 exit 0

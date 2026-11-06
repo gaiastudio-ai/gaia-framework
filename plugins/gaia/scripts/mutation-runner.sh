@@ -360,6 +360,7 @@ mutation_compute_manifest "$_mr_worktree" "$_mr_manifest_before"
 _mr_info "discovering adapters and generating mutants"
 
 _mr_all_records=()
+_mr_index_files=()
 _mr_mutant_count=0
 _mr_killed=0
 _mr_survived=0
@@ -367,6 +368,7 @@ _mr_timeout=0
 _mr_error=0
 _mr_truncated="false"
 _mr_unmutated_files=()
+_mr_covering_tests=()
 
 # Temporary results directory
 _mr_results_dir=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mr-results-XXXXXX")
@@ -403,10 +405,22 @@ while IFS= read -r source_file; do
   # Read generated mutants (patch files or index.json)
   mutant_files=()
   if [ -f "$gen_out/index.json" ]; then
-    # Read mutant list from index
-    while IFS= read -r mfile; do
-      [ -n "$mfile" ] && mutant_files+=("$gen_out/$mfile")
-    done < <(jq -r '.[].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
+    _mr_index_files+=("$gen_out/index.json")
+    # Read mutant list from index — supports both patch and tool-native formats
+    _gen_format="patch"
+    if [ -f "$adapter_dir/mutation-adapter.json" ]; then
+      _gen_format=$(jq -r '.["mutant-format"] // "patch"' "$adapter_dir/mutation-adapter.json" 2>/dev/null || echo "patch")
+    fi
+    if [ "$_gen_format" = "tool-native" ]; then
+      # Tool-native: batch descriptors, not .patch files
+      while IFS= read -r mfile; do
+        [ -n "$mfile" ] && mutant_files+=("$gen_out/$mfile")
+      done < <(jq -r '.[].batch_file // .[].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
+    else
+      while IFS= read -r mfile; do
+        [ -n "$mfile" ] && mutant_files+=("$gen_out/$mfile")
+      done < <(jq -r '.[].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
+    fi
   fi
   # Also pick up loose .patch files
   while IFS= read -r pfile; do
@@ -429,6 +443,19 @@ while IFS= read -r source_file; do
     covering_tests=$(_mr_find_covering_tests "$source_file" "$_mr_tests_from" || true)
   else
     covering_tests=""
+  fi
+
+  # Collect covering tests for evidence
+  if [ -n "$covering_tests" ]; then
+    while IFS= read -r _ct; do
+      [ -n "$_ct" ] || continue
+      # Deduplicate
+      _ct_found=0
+      for _existing_ct in "${_mr_covering_tests[@]+"${_mr_covering_tests[@]}"}"; do
+        [ "$_existing_ct" = "$_ct" ] && { _ct_found=1; break; }
+      done
+      [ "$_ct_found" -eq 0 ] && _mr_covering_tests+=("$_ct")
+    done <<< "$covering_tests"
   fi
 
   # Run each mutant
@@ -480,16 +507,20 @@ while IFS= read -r source_file; do
       test_cmd=""
       if [ -n "$covering_tests" ]; then
         # Build a command that runs each covering test in sequence.
-        # Use bash to execute each test file (works for both plain
-        # shell tests and bats files when bats is the interpreter).
+        # .bats files are run with bats; other files with bash.
         test_args=""
         while IFS= read -r tfile; do
           [ -n "$tfile" ] || continue
           quoted=$(printf '%q' "$copy_dir/$tfile")
+          # Select the right interpreter for the file type
+          case "$tfile" in
+            *.bats) local_interp="bats" ;;
+            *)      local_interp="bash" ;;
+          esac
           if [ -n "$test_args" ]; then
-            test_args="$test_args && bash $quoted"
+            test_args="$test_args && $local_interp $quoted"
           else
-            test_args="bash $quoted"
+            test_args="$local_interp $quoted"
           fi
         done <<< "$covering_tests"
         test_cmd="$test_args"
@@ -551,6 +582,44 @@ rm -f "$_mr_manifest_before"
 
 # ---------- Aggregate results ----------
 _mr_info "aggregating results"
+
+# Merge adapter index.json metadata (operator, correct line) into each result.
+# Also validate result files; non-JSON becomes an error record.
+for rfile in "$_mr_results_dir"/mutant-*.json; do
+  [ -f "$rfile" ] || continue
+  # Validate JSON; replace non-JSON with an error record
+  if ! jq -e '.' "$rfile" >/dev/null 2>&1; then
+    _mr_local_mid=$(basename "$rfile" .json)
+    jq -n --arg mid "$_mr_local_mid" \
+      '{"mutant_id":$mid,"status":"error","test_output":"adapter produced non-JSON output"}' > "$rfile"
+  fi
+  # Merge index.json fields (operator, line, file) for this mutant
+  _mr_mid=$(jq -r '.mutant_id // ""' "$rfile" 2>/dev/null || true)
+  if [ -n "$_mr_mid" ]; then
+    for idx_file in "${_mr_index_files[@]+"${_mr_index_files[@]}"}"; do
+      [ -f "$idx_file" ] || continue
+      _mr_idx_entry=$(jq --arg mid "$_mr_mid" '.[] | select(.mutant_id == $mid)' "$idx_file" 2>/dev/null || true)
+      if [ -n "$_mr_idx_entry" ]; then
+        # Overlay operator and correct line from the index
+        _mr_idx_op=$(printf '%s' "$_mr_idx_entry" | jq -r '.operator // empty' 2>/dev/null || true)
+        _mr_idx_line=$(printf '%s' "$_mr_idx_entry" | jq -r '.line // empty' 2>/dev/null || true)
+        _mr_idx_file=$(printf '%s' "$_mr_idx_entry" | jq -r '.file // empty' 2>/dev/null || true)
+        _mr_merge_args=()
+        [ -n "$_mr_idx_op" ] && _mr_merge_args+=(--arg operator "$_mr_idx_op")
+        [ -n "$_mr_idx_line" ] && _mr_merge_args+=(--argjson line "$_mr_idx_line")
+        [ -n "$_mr_idx_file" ] && _mr_merge_args+=(--arg file "$_mr_idx_file")
+        if [ ${#_mr_merge_args[@]} -gt 0 ]; then
+          _mr_merged=$(jq "${_mr_merge_args[@]}" \
+            '. + (if $ARGS.named.operator then {operator: $ARGS.named.operator} else {} end)
+               + (if $ARGS.named.line then {line: $ARGS.named.line} else {} end)
+               + (if $ARGS.named.file then {file: $ARGS.named.file} else {} end)' "$rfile" 2>/dev/null || cat "$rfile")
+          printf '%s\n' "$_mr_merged" > "$rfile"
+        fi
+        break
+      fi
+    done
+  fi
+done
 
 # Count outcomes
 for rfile in "$_mr_results_dir"/mutant-*.json; do
@@ -642,6 +711,12 @@ for uf in "${_mr_unmutated_files[@]+"${_mr_unmutated_files[@]}"}"; do
   _mr_unmutated_json=$(printf '%s' "$_mr_unmutated_json" | jq --arg f "$uf" '. + [$f]')
 done
 
+# Build covering tests array (for zero-kill analysis)
+_mr_covering_json="[]"
+for ct in "${_mr_covering_tests[@]+"${_mr_covering_tests[@]}"}"; do
+  _mr_covering_json=$(printf '%s' "$_mr_covering_json" | jq --arg t "$ct" '. + [$t]')
+done
+
 # Score as JSON value
 _mr_score_json="null"
 if [ -n "$_mr_score" ]; then
@@ -668,6 +743,7 @@ jq -n \
   --argjson truncated "$_mr_truncated" \
   --argjson mutants "$_mr_mutants_json" \
   --argjson unmutated_files "$_mr_unmutated_json" \
+  --argjson covering_tests "$_mr_covering_json" \
   '{
     schema_version: $schema_version,
     story_key: $story_key,
@@ -680,7 +756,8 @@ jq -n \
     gate: $gate,
     truncated: $truncated,
     mutants: $mutants,
-    unmutated_files: $unmutated_files
+    unmutated_files: $unmutated_files,
+    covering_tests: $covering_tests
   }' > "$_mr_output"
 
 _mr_info "evidence written to $_mr_output (gate: $_mr_gate, score: ${_mr_score:-n/a}%)"
@@ -702,15 +779,16 @@ if [ "$_mr_survived" -gt 0 ] && command -v "$SCRIPT_DIR/review-common/register-w
       local_severity="critical"
     fi
 
-    # Register via register-write.sh add with dedup key
+    # Register via register-write.sh add with dedup key.
+    # Use the real CLI flags: --story, --defect, --gate, --type, --severity.
     "$_mr_register" add \
-      --gate "test-automate" \
+      --story "${_mr_story:-unknown}" \
+      --defect "Surviving mutant: $local_mid" \
       --type "test-debt" \
       --severity "$local_severity" \
+      --gate "test-automate" \
       --dedup-key "mutant:${local_mid}" \
-      --message "Surviving mutant: $local_mid" \
-      --story-key "${_mr_story:-unknown}" \
-      2>/dev/null || _mr_info "register-write.sh failed for $local_mid"
+      || _mr_info "register-write.sh failed for $local_mid"
   done
 fi
 
