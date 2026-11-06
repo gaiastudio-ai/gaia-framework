@@ -519,10 +519,10 @@ while IFS= read -r source_file; do
 
     # Handle no-coverage case
     if [ -z "$covering_tests" ]; then
-      # Wait for this one specifically — it'll be fast (no real test)
-      wait "${_mr_active_pids[-1]}" 2>/dev/null || true
-      # Remove last element (bash 3.2 compatible)
-      unset '_mr_active_pids[-1]'
+      # Wait for the last PID (bash 3.2 compatible — no negative indexing)
+      local _mr_last_idx=$(( ${#_mr_active_pids[@]} - 1 ))
+      wait "${_mr_active_pids[$_mr_last_idx]}" 2>/dev/null || true
+      unset "_mr_active_pids[$_mr_last_idx]"
       # Overwrite result with no-coverage
       jq -n --arg mid "$mutant_id" --arg f "$source_file" \
         '{"mutant_id":$mid,"file":$f,"status":"survived","no_coverage":true,"test_output":""}' > "$_mr_results_dir/${mutant_id}.json"
