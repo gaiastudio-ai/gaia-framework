@@ -31,6 +31,87 @@ teardown() {
   rm -rf "$TMP" 2>/dev/null || true
 }
 
+# ---------- Fixture helpers ----------
+
+# Create a git repo with one commit; print nothing. Identity is set locally so
+# the host's git config never leaks in.
+_make_repo() {
+  git init -q "$1"
+  git -C "$1" config user.email "test@test.com"
+  git -C "$1" config user.name "Test"
+  printf 'initial\n' > "$1/file.txt"
+  git -C "$1" add file.txt
+  git -C "$1" commit -qm "initial"
+}
+
+# Write a Review Gate story outside the repo with all six rows bound to $2.
+_write_bound_story() {
+  local story="$1" sha="$2"
+  {
+    printf '## Review Gate\n\n'
+    printf '| Review | Status | Report | Reviewed SHA |\n'
+    printf '|--------|--------|--------|--------------|\n'
+    local gate
+    for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+      printf '| %s | PASSED | report.md | %s |\n' "$gate" "$sha"
+    done
+    printf '\n## Findings\n'
+  } > "$story"
+}
+
+# Rewrite one gate's row in a story written by _write_bound_story.
+_set_row() {
+  local story="$1" gate="$2" row="$3" tmp
+  tmp="${story}.tmp"
+  awk -v g="| ${gate} |" -v r="$row" 'index($0, g) == 1 { print r; next } { print }' "$story" > "$tmp"
+  mv "$tmp" "$story"
+}
+
+_delete_row() {
+  local story="$1" gate="$2" tmp
+  tmp="${story}.tmp"
+  awk -v g="| ${gate} |" 'index($0, g) != 1' "$story" > "$tmp"
+  mv "$tmp" "$story"
+}
+
+# Bare origin plus a clone tracking origin/staging, printed paths are fixed:
+# $TMP/origin.git and $TMP/clone.
+_make_origin_and_clone() {
+  git init -q --bare "$TMP/origin.git"
+  _make_repo "$TMP/clone"
+  git -C "$TMP/clone" remote add origin "$TMP/origin.git"
+  git -C "$TMP/clone" push -q origin HEAD:refs/heads/staging
+  git -C "$TMP/clone" fetch -q origin
+}
+
+# Advance staging on the remote from a second clone, leaving $TMP/clone's
+# tracking ref stale. Prints the new remote tip.
+_advance_remote_staging() {
+  git clone -q --branch staging "$TMP/origin.git" "$TMP/other" 2>/dev/null
+  git -C "$TMP/other" config user.email "test@test.com"
+  git -C "$TMP/other" config user.name "Test"
+  printf 'advanced\n' > "$TMP/other/advanced.txt"
+  git -C "$TMP/other" add advanced.txt
+  git -C "$TMP/other" commit -qm "advance staging"
+  git -C "$TMP/other" push -q origin HEAD:refs/heads/staging
+  git -C "$TMP/other" rev-parse HEAD
+}
+
+# Put a recording git wrapper first on PATH; each call's arguments land in
+# $TMP/git-calls.log and the real git still runs.
+_record_git_calls() {
+  local real_git
+  real_git="$(command -v git)"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/git" <<WRAP
+#!/bin/sh
+printf '%s\n' "\$*" >> "$TMP/git-calls.log"
+exec "$real_git" "\$@"
+WRAP
+  chmod +x "$TMP/bin/git"
+  : > "$TMP/git-calls.log"
+}
+
 # ---------- Portability: print BASH_VERSION ----------
 # The ATDD mandates printing BASH_VERSION from inside each run.
 # bats itself prints it, but we assert it here too.
@@ -543,6 +624,232 @@ EOF
   run env PROJECT_PATH="$repo" "$REVIEW_ORDER" assert-reviewed-head --story "$repo/docs/story-external.md"
   [ "$status" -eq 1 ]
   [[ "$output" == *"QA Tests"* ]] || [[ "$output" == *"bound to"* ]]
+}
+
+# ---------- ancestor-check: the fetch and the base value ----------
+
+@test "ancestor-check fetches: a base advanced on the remote is seen through a stale tracking ref" {
+  _make_origin_and_clone
+  local stale_tip new_tip head
+  stale_tip="$(git -C "$TMP/clone" rev-parse origin/staging)"
+  head="$(git -C "$TMP/clone" rev-parse HEAD)"
+  [ "$stale_tip" = "$head" ]
+
+  new_tip="$(_advance_remote_staging)"
+  # Before the check the tracking ref still says everything is fine.
+  [ "$(git -C "$TMP/clone" rev-parse origin/staging)" = "$stale_tip" ]
+
+  run env PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$new_tip"* ]]
+  [[ "$output" == *"$head"* ]]
+  [ "$(git -C "$TMP/clone" rev-parse HEAD)" = "$head" ]
+}
+
+@test "ancestor-check fails closed when the fetch fails even though a stale ref would pass" {
+  _make_origin_and_clone
+  git -C "$TMP/clone" merge-base --is-ancestor origin/staging HEAD
+  git -C "$TMP/clone" remote set-url origin "$TMP/does-not-exist.git"
+
+  run env PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"fetch failed"* ]]
+}
+
+@test "ancestor-check runs git fetch with end-of-options before the remote and branch" {
+  _make_origin_and_clone
+  _record_git_calls
+  run env PATH="$TMP/bin:$PATH" PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 0 ]
+  grep -qF -- "fetch --end-of-options origin staging" "$TMP/git-calls.log"
+}
+
+@test "ancestor-check refuses an option-shaped base without running it or fetching" {
+  _make_origin_and_clone
+  _record_git_calls
+  run env PATH="$TMP/bin:$PATH" PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" \
+    ancestor-check --base "--upload-pack=touch $TMP/pwned;git-upload-pack"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"invalid base branch"* ]]
+  [ ! -e "$TMP/pwned" ]
+  ! grep -q 'fetch' "$TMP/git-calls.log"
+}
+
+@test "ancestor-check refuses base values that are not valid branch names" {
+  _make_origin_and_clone
+  local bad
+  for bad in "-x" "a..b" "with space" "a:b" 'x@{-1}'; do
+    run env PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base "$bad"
+    [ "$status" -eq 1 ] || { echo "accepted: $bad" >&2; false; }
+    [[ "$output" == *"invalid base branch"* ]] || { echo "wrong message for: $bad: $output" >&2; false; }
+  done
+}
+
+@test "ancestor-check accepts a slashed branch name" {
+  _make_origin_and_clone
+  git -C "$TMP/clone" push -q origin HEAD:refs/heads/release/1.2
+  run env PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base release/1.2
+  [ "$status" -eq 0 ]
+}
+
+# ---------- assert-reviewed-head: no git work tree ----------
+
+@test "assert-reviewed-head exits 3 with the skip notice outside a git work tree" {
+  mkdir -p "$TMP/nongit"
+  _write_bound_story "$TMP/story.md" "abc1234"
+  run env PROJECT_PATH="$TMP/nongit" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"skipped (non-git CWD)"* ]]
+  [[ "$output" != *"fatal"* ]]
+}
+
+@test "assert-reviewed-head exits 3 for a bare repository, which has no work tree" {
+  git init -q --bare "$TMP/bare.git"
+  _write_bound_story "$TMP/story.md" "abc1234"
+  run env PROJECT_PATH="$TMP/bare.git" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 3 ]
+}
+
+@test "review-order refuses a code path that does not exist instead of skipping" {
+  _write_bound_story "$TMP/story.md" "abc1234"
+  run env PROJECT_PATH="$TMP/missing" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  run env PROJECT_PATH="$TMP/missing" "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+}
+
+@test "assert-reviewed-head refuses a repo with no commit, naming HEAD" {
+  git init -q "$TMP/empty"
+  _write_bound_story "$TMP/story.md" "abc1234"
+  run env PROJECT_PATH="$TMP/empty" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"HEAD"* ]]
+}
+
+# ---------- assert-reviewed-head: malformed tables fail closed ----------
+
+@test "assert-reviewed-head passes on six rows bound to the full HEAD" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse HEAD)"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert-reviewed-head passes on six rows bound to a short form of HEAD" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse --short=10 HEAD)"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert-reviewed-head refuses a story with no Review Gate section" {
+  _make_repo "$TMP/repo"
+  printf '# Story\n\n## Findings\n' > "$TMP/story.md"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Review Gate"* ]]
+}
+
+@test "assert-reviewed-head refuses a Review Gate table with no rows" {
+  _make_repo "$TMP/repo"
+  printf '## Review Gate\n\n| Review | Status | Report | Reviewed SHA |\n|---|---|---|---|\n\n## Findings\n' > "$TMP/story.md"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Review Gate"* ]]
+}
+
+@test "assert-reviewed-head refuses a table missing a gate row and names the gate" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse HEAD)"
+  _delete_row "$TMP/story.md" "Performance Review"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Performance Review"* ]]
+}
+
+@test "assert-reviewed-head refuses an unparseable row" {
+  _make_repo "$TMP/repo"
+  local head
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  _write_bound_story "$TMP/story.md" "$head"
+  _set_row "$TMP/story.md" "QA Tests" "| QA Tests | PASSED | report.md | $head | extra |"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+}
+
+@test "assert-reviewed-head refuses a duplicated gate row even when both are bound to HEAD" {
+  _make_repo "$TMP/repo"
+  local head
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  _write_bound_story "$TMP/story.md" "$head"
+  _set_row "$TMP/story.md" "Performance Review" "| QA Tests | PASSED | report.md | $head |"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"QA Tests"* ]] || [[ "$output" == *"Performance Review"* ]]
+}
+
+@test "assert-reviewed-head refuses an extra unknown row" {
+  _make_repo "$TMP/repo"
+  local head
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  _write_bound_story "$TMP/story.md" "$head"
+  awk -v r="| Extra Gate | PASSED | report.md | $head |" '/^\| Performance Review/ { print; print r; next } { print }' \
+    "$TMP/story.md" > "$TMP/story.new"
+  mv "$TMP/story.new" "$TMP/story.md"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Extra Gate"* ]] || [[ "$output" == *"six"* ]]
+}
+
+@test "assert-reviewed-head refuses a symbolic ref in the SHA cell and names the gate" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse HEAD)"
+  _set_row "$TMP/story.md" "Security Review" "| Security Review | FAILED | report.md | HEAD |"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Security Review"* ]]
+}
+
+@test "assert-reviewed-head refuses unbound rows: absent, none, dash and an empty cell" {
+  _make_repo "$TMP/repo"
+  local head cell
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  for cell in "absent" "none" "—" ""; do
+    _write_bound_story "$TMP/story.md" "$head"
+    _set_row "$TMP/story.md" "Test Review" "| Test Review | PASSED | report.md | $cell |"
+    run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+    [ "$status" -eq 1 ] || { echo "accepted cell: '$cell'" >&2; false; }
+    [[ "$output" == *"Test Review"* ]]
+  done
+}
+
+@test "assert-reviewed-head refuses a three-column row, which has no binding" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse HEAD)"
+  _set_row "$TMP/story.md" "Code Review" "| Code Review | PASSED | report.md |"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Code Review"* ]]
+}
+
+@test "assert-reviewed-head refuses a hex prefix too short to identify a commit" {
+  _make_repo "$TMP/repo"
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/repo" rev-parse --short=4 HEAD)"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+}
+
+@test "assert-reviewed-head names the gate and both commits on a mismatch" {
+  _make_repo "$TMP/repo"
+  local head
+  head="$(git -C "$TMP/repo" rev-parse HEAD)"
+  _write_bound_story "$TMP/story.md" "$head"
+  _set_row "$TMP/story.md" "QA Tests" "| QA Tests | PASSED | report.md | aaaaaaa |"
+  run env PROJECT_PATH="$TMP/repo" "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"QA Tests"* ]]
+  [[ "$output" == *"aaaaaaa"* ]]
+  [[ "$output" == *"$(git -C "$TMP/repo" rev-parse --short HEAD)"* ]]
 }
 
 # ---------- AC10: status semantics ----------

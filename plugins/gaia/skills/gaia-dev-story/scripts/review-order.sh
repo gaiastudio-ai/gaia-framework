@@ -8,9 +8,9 @@
 #
 # Exit codes:
 #   0 — ok
-#   1 — refused (drift, mismatch, bad value, fetch failure)
+#   1 — refused (drift, mismatch, malformed Review Gate table, bad value, fetch failure)
 #   2 — usage error
-#   3 — skipped (non-git CWD, via the shared guard)
+#   3 — skipped (code path outside any git work tree)
 
 set -euo pipefail
 LC_ALL=C
@@ -19,6 +19,16 @@ export LC_ALL
 SCRIPT_NAME="review-order.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# The six rows a complete Review Gate table must hold, exactly once each.
+CANONICAL_GATES=(
+  "Code Review"
+  "QA Tests"
+  "Security Review"
+  "Test Automation"
+  "Test Review"
+  "Performance Review"
+)
 
 # ---------- Source shared libraries ----------
 
@@ -39,6 +49,19 @@ _die_usage() {
   printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2
   printf 'Usage: %s {mode|ancestor-check|assert-reviewed-head} [options]\n' "$SCRIPT_NAME" >&2
   exit 2
+}
+
+# Exit 3 when the code path is outside any git work tree (a bare repository has
+# no work tree either). A path that does not exist is a broken setup, not a
+# non-git workspace, so it is refused rather than skipped.
+_require_git_work_tree() {
+  local git_dir="$1" inside
+  [ -d "$git_dir" ] || _die "code path is not a directory: $git_dir"
+  inside="$(git -C "$git_dir" rev-parse --is-inside-work-tree 2>/dev/null)" || inside=""
+  if [ "$inside" != "true" ]; then
+    printf '%s: skipped (non-git CWD)\n' "$SCRIPT_NAME" >&2
+    exit 3
+  fi
 }
 
 # ---------- Subcommand: mode ----------
@@ -81,16 +104,18 @@ cmd_ancestor_check() {
   done
   [ -n "$base" ] || _die_usage "ancestor-check: --base <branch> is required"
 
-  local git_dir="${PROJECT_PATH:-.}"
+  # The value reaches git as an argument, so an option-shaped or malformed name
+  # must never get that far.
+  case "$base" in
+    -*) _die "invalid base branch name: $base" ;;
+  esac
+  git check-ref-format "refs/heads/$base" || _die "invalid base branch name: $base"
 
-  # Non-git CWD guard: exit 3 if not in a git work tree.
-  if ! git -C "$git_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    printf '%s: skipped (non-git CWD)\n' "$SCRIPT_NAME" >&2
-    exit 3
-  fi
+  local git_dir="${PROJECT_PATH:-.}"
+  _require_git_work_tree "$git_dir"
 
   # Fetch the base branch. Fetch failure fails closed (exit 1).
-  if ! git -C "$git_dir" fetch origin "$base" 2>/dev/null; then
+  if ! git -C "$git_dir" fetch --end-of-options origin "$base" 2>/dev/null; then
     printf '%s: fetch failed for origin/%s — halting (fail closed)\n' "$SCRIPT_NAME" "$base" >&2
     exit 1
   fi
@@ -114,7 +139,10 @@ cmd_ancestor_check() {
 }
 
 # ---------- Subcommand: assert-reviewed-head ----------
-# Verifies the working tree is clean and every Review Gate row is bound to HEAD.
+# Verifies the working tree is clean and each of the six Review Gate rows is
+# bound to HEAD. Anything that cannot be shown to be bound is refused: a missing
+# section, a missing, duplicated, unknown or unparseable row, or a SHA cell that
+# is not a commit hash.
 
 cmd_assert_reviewed_head() {
   local story_file=""
@@ -130,80 +158,51 @@ cmd_assert_reviewed_head() {
   [ -f "$story_file" ] || _die "story file not found: $story_file"
 
   local git_dir="${PROJECT_PATH:-.}"
+  _require_git_work_tree "$git_dir"
 
   # Clean tree check.
   local dirty
-  dirty="$(git -C "$git_dir" status --porcelain 2>/dev/null)" || true
+  dirty="$(git -C "$git_dir" status --porcelain 2>/dev/null)" || _die "cannot read working tree state in $git_dir"
   if [ -n "$dirty" ]; then
     printf '%s: working tree is not clean:\n%s\n' "$SCRIPT_NAME" "$dirty" >&2
     exit 1
   fi
 
-  # Get current HEAD.
-  local head_sha
-  head_sha="$(git -C "$git_dir" rev-parse HEAD)"
-  # Use the short form for comparison (review-gate rows use short SHAs).
-  local head_short
+  local head_sha head_short
+  head_sha="$(git -C "$git_dir" rev-parse --verify --quiet HEAD)" || _die "cannot resolve HEAD in $git_dir"
   head_short="$(git -C "$git_dir" rev-parse --short HEAD)"
 
-  # Read Review Gate rows from the story file.
-  local in_gate=0
-  local line
-  while IFS= read -r line; do
-    # Detect the Review Gate section.
-    case "$line" in
-      "## Review Gate"*) in_gate=1; continue ;;
-      "## "*) [ "$in_gate" -eq 1 ] && break ;;
+  local rows
+  rows="$(parse_review_gate_table "$story_file")" || _die "no readable Review Gate table in $story_file"
+
+  local gate row_shas row_sha
+  for gate in "${CANONICAL_GATES[@]}"; do
+    row_shas="$(printf '%s\n' "$rows" | awk -F'\t' -v g="$gate" '$1 == g { print $4 }')"
+    case "$row_shas" in
+      "") _die "Review Gate has no row for \"$gate\"" ;;
+      *$'\n'*) _die "Review Gate has more than one row for \"$gate\"" ;;
     esac
-    [ "$in_gate" -eq 0 ] && continue
+    row_sha="$row_shas"
 
-    # Skip header/separator rows.
-    case "$line" in
-      "| Review"*|"| -"*|"|-"*) continue ;;
+    case "$row_sha" in
+      absent|none|"—") _die "row \"$gate\" has no reviewed SHA bound" ;;
+      *[!0-9a-f]*) _die "row \"$gate\" holds '$row_sha', which is not a commit SHA" ;;
     esac
-
-    # Only process pipe-delimited rows with content.
-    case "$line" in
-      "| "*) ;;
-      *) continue ;;
-    esac
-
-    local parsed
-    parsed="$(parse_review_gate_row "$line" 2>/dev/null)" || continue
-
-    local gate="" row_sha=""
-    gate="$(printf '%s\n' "$parsed" | grep '^gate=' | head -1)"
-    gate="${gate#gate=}"
-    row_sha="$(printf '%s\n' "$parsed" | grep '^reviewed_sha=' | head -1)"
-    row_sha="${row_sha#reviewed_sha=}"
-
-    # Trim whitespace from SHA.
-    row_sha="${row_sha#"${row_sha%%[![:space:]]*}"}"
-    row_sha="${row_sha%"${row_sha##*[![:space:]]}"}"
-
-    if [ -z "$gate" ]; then
-      continue
+    if [ "${#row_sha}" -lt 7 ] || [ "${#row_sha}" -gt 40 ]; then
+      _die "row \"$gate\" holds '$row_sha', which is not a commit SHA"
     fi
 
-    # Skip rows with "absent" SHA (legacy 3-column tables or unseeded rows).
-    if [ "$row_sha" = "absent" ] || [ "$row_sha" = "—" ] || [ -z "$row_sha" ]; then
-      printf '%s: row "%s" has no reviewed SHA bound\n' "$SCRIPT_NAME" "$gate" >&2
-      exit 1
-    fi
+    # A full or abbreviated hash is bound to HEAD when HEAD starts with it.
+    case "$head_sha" in
+      "$row_sha"*) ;;
+      *) _die "row \"$gate\" is bound to $row_sha but HEAD is $head_short" ;;
+    esac
+  done
 
-    # Compare the row SHA against HEAD. Review-gate writes short SHAs,
-    # so compare both the full and short forms.
-    if [ "$row_sha" != "$head_sha" ] && [ "$row_sha" != "$head_short" ]; then
-      # Try resolving the row SHA to compare full forms.
-      local row_full
-      row_full="$(git -C "$git_dir" rev-parse "$row_sha" 2>/dev/null)" || row_full=""
-      if [ "$row_full" != "$head_sha" ]; then
-        printf '%s: row "%s" is bound to %s but HEAD is %s\n' \
-          "$SCRIPT_NAME" "$gate" "$row_sha" "$head_short" >&2
-        exit 1
-      fi
-    fi
-  done < "$story_file"
+  # Every canonical gate matched exactly once, so any further row is unknown.
+  local unknown
+  unknown="$(printf '%s\n' "$rows" | awk -F'\t' 'NR > 6 { print $1; exit }')"
+  [ -z "$unknown" ] || _die "Review Gate has an unknown row \"$unknown\" (expected the six canonical rows)"
 
   exit 0
 }
