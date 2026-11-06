@@ -9,6 +9,9 @@
 load 'test_helper.bash'
 
 setup() {
+  # Clear root variables so root-resolving scripts don't leak across tests.
+  unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
+
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   REVIEW_ORDER="${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh"
   SKILL_MD="${PLUGIN_ROOT}/skills/gaia-dev-story/SKILL.md"
