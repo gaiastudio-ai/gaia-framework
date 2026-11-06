@@ -749,8 +749,7 @@ amp() {
 }
 SRC
   _bats_fixture "$PROJ/tests/t x&y.bats" 'amp handles one' \
-    '  # a b&c.sh
-  . "$BATS_TEST_DIRNAME/../scripts/sub dir/a b&c.sh"; run amp 1; [ "$status" -eq 0 ]'
+    '  . "$BATS_TEST_DIRNAME/../scripts/sub dir/a b&c.sh"; run amp 1; [ "$status" -eq 0 ]'
   _commit_all amp
   printf 'scripts/sub dir/a b&c.sh\n' > "$T/f"; printf 'tests/t x&y.bats\n' > "$T/t"
   run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
@@ -931,4 +930,429 @@ test_execution:
   run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_file_list '$STORY_DIR/story.md'"
   [ "$output" = "scripts/calc.sh
 tests/calc.bats" ]
+}
+
+# ---------- test output: names and secrets ----------
+
+# `! grep` does not fail a bats test unless it is the last command.
+_not_in() {
+  if grep -q -- "$1" "$2"; then
+    printf 'found %s in %s\n' "$1" "$2"
+    return 1
+  fi
+}
+
+@test "every test name is seen and the killer is named when the output exceeds the stored cap" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  local args i
+  args=('the only killer' '  . "$BATS_TEST_DIRNAME/../scripts/f.sh"; f 1')
+  for i in $(seq 1 99); do
+    args+=("filler with a long descriptive name so that the output passes the stored cap, number $i" '  true')
+  done
+  _bats_fixture "$PROJ/tests/f.bats" "${args[@]}"
+  _commit_all many
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/f.bats\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.mutants[0].killed_by' "$T/ev.json")" = '["the only killer"]' ]
+  [ "$(jq -r '.covering_test_names|length' "$T/ev.json")" = "100" ]
+  [ "$(jq -r '.mutants[0].test_output|length' "$T/ev.json")" -le 4200 ]
+}
+
+@test "secrets a test prints never reach the evidence, in any shape" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  _bats_fixture "$PROJ/tests/f.bats" 'prints secrets f.sh' \
+    '  env | grep AWS_SECRET
+  echo "bare value $MY_API_KEY"
+  export OWN_PASSWORD=hunter2hunter2; env | grep OWN_PASSWORD
+  echo "AKIAABCDEFGHIJKLMNOP"
+  . "$BATS_TEST_DIRNAME/../scripts/f.sh"; f 1'
+  _commit_all secrets
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/f.bats\n' > "$T/t"
+  AWS_SECRET_ACCESS_KEY=AKIAFAKESECRET123 MY_API_KEY=plainkeyvalue run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" = "1" ]
+  [ "$(jq -c '.mutants[0].killed_by' "$T/ev.json")" = '["prints secrets f.sh"]' ]
+  jq -r '.mutants[0].test_output' "$T/ev.json" | grep -q 'REDACTED'
+  _not_in AKIAFAKESECRET123 "$T/ev.json"
+  _not_in plainkeyvalue "$T/ev.json"
+  _not_in hunter2hunter2 "$T/ev.json"
+  _not_in AKIAABCDEFGHIJKLMNOP "$T/ev.json"
+}
+
+@test "secrets in a refused baseline never reach the evidence" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  _bats_fixture "$PROJ/tests/f.bats" 'red and noisy f.sh' '  env | grep AWS_SECRET; false'
+  _commit_all red
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/f.bats\n' > "$T/t"
+  AWS_SECRET_ACCESS_KEY=AKIAFAKESECRET123 run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .refused "$T/ev.json")" = "baseline_red" ]
+  _not_in AKIAFAKESECRET123 "$T/ev.json"
+}
+
+@test "test output that cannot be scrubbed is withheld, not stored raw" {
+  local src="$TMPDIR/gaia-mutation-unit"
+  mkdir -p "$src" "$T/plugin"
+  cp -R "$PLUGIN/scripts" "$T/plugin/scripts"
+  : > "$T/empty.patch"
+  run "$T/plugin/scripts/adapters/mutation-bash/run.sh" --source-dir "$src" --patch-file "$T/empty.patch" \
+    --test-command 'echo printed-by-the-test' --output "$T/rec.json" --timeout 10
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .status "$T/rec.json")" = "survived" ]
+  _not_in printed-by-the-test "$T/rec.json"
+  jq -r .test_output "$T/rec.json" | grep -q 'withheld'
+}
+
+# ---------- no mutants ----------
+
+# _set_file_list <entry>... rewrites the story's File List and commits.
+_set_file_list() {
+  local entry list=""
+  for entry in "$@"; do list="$list- \`$entry\`
+"; done
+  _LIST="$list" awk '
+    /^### File List/ { print; print ""; printf "%s", ENVIRON["_LIST"]; print ""; skip = 1; next }
+    /^## Findings/   { skip = 0 }
+    !skip
+  ' "$STORY_DIR/story.md" > "$T/story.new"
+  cp "$T/story.new" "$STORY_DIR/story.md"
+  _commit_all list
+}
+
+_zero_mutant_files() {
+  mkdir -p "$PROJ/docs" "$PROJ/src"
+  printf 'words\n' > "$PROJ/docs/readme.md"
+  printf 'x = 1\n' > "$PROJ/src/app.py"
+  printf '#!/usr/bin/env bash\necho hello\n' > "$PROJ/scripts/plain.sh"
+}
+
+@test "a P2 or P3 story with no mutants is advisory with a null score and the subcommand exits 0" {
+  local prio
+  for prio in P2 P3; do
+    rm -rf "$PROJ/.git"
+    _mk_project "$prio" "    P2: 50
+    P3: 50"
+    _zero_mutant_files
+    _set_file_list docs/readme.md
+    rm -f "$EV"
+    run _mutation_subcmd
+    printf '%s\n' "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$EV")" = "advisory" ]
+    [ "$(jq -r .score "$EV")" = "null" ]
+    [ "$(jq 'has("zero_mutant_reason")' "$EV")" = "false" ]
+  done
+}
+
+@test "a P0 or P1 story whose File List no adapter covers is not_applicable with a reason" {
+  local prio list
+  for prio in P0 P1; do
+    for list in docs/readme.md src/app.py tests/calc.bats "docs/readme.md src/app.py tests/calc.bats"; do
+      rm -rf "$PROJ/.git"
+      _mk_project "$prio"
+      _zero_mutant_files
+      # shellcheck disable=SC2086 # the list is split on purpose
+      _set_file_list $list
+      rm -f "$EV"
+      run _mutation_subcmd
+      printf '%s: %s\n' "$list" "$output"
+      [ "$status" -eq 0 ]
+      [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+      [ "$(jq -r .score "$EV")" = "null" ]
+      [ -n "$(jq -r '.zero_mutant_reason // ""' "$EV")" ]
+    done
+  done
+}
+
+@test "not_applicable evidence at HEAD is skipped with its reason, and does not block the verdict" {
+  _mk_project P1
+  _zero_mutant_files
+  _set_file_list docs/readme.md
+  run _mutation_subcmd
+  [ "$status" -eq 0 ]
+  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' --zero-kill
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r .status)" = "skipped" ]
+  [ "$(printf '%s' "$output" | jq -r .skip_reason)" = "$(jq -r .zero_mutant_reason "$EV")" ]
+  [ "$(printf '%s' "$output" | jq -r '.findings|length')" = "0" ]
+  printf '%s' "$output" | jq '{mutation_check:.}' > "$T/ee.json"
+  _analysis_empty
+  run _verdict --analysis-results "$T/analysis.json" --llm-findings "$T/llm.json" --execution-evidence "$T/ee.json"
+  [ "$output" = "APPROVE" ]
+}
+
+@test "not_applicable evidence that is stale, has no reason or has a score is errored" {
+  _mk_project P1
+  _zero_mutant_files
+  _set_file_list docs/readme.md
+  run _mutation_subcmd
+  [ "$status" -eq 0 ]
+  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit deadbeef --priority P1 --thresholds '{"P1":60}'
+  [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
+  jq 'del(.zero_mutant_reason)' "$EV" > "$T/no-reason.json"
+  run "$CHECKER" --story-key E9-S1 --evidence "$T/no-reason.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}'
+  [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
+  jq '.score = 90' "$EV" > "$T/scored.json"
+  run "$CHECKER" --story-key E9-S1 --evidence "$T/scored.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}'
+  [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
+  jq '.gate = "whatever"' "$EV" > "$T/unknown.json"
+  run "$CHECKER" --story-key E9-S1 --evidence "$T/unknown.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}'
+  [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
+}
+
+@test "a P0 or P1 story with no mutants is errored when a covered file has none, is missing, or the list is empty" {
+  local prio list
+  for prio in P0 P1; do
+    for list in scripts/plain.sh scripts/gone.sh "docs/readme.md scripts/gone.sh" ""; do
+      rm -rf "$PROJ/.git"
+      _mk_project "$prio"
+      _zero_mutant_files
+      # shellcheck disable=SC2086 # the list is split on purpose
+      _set_file_list $list
+      rm -f "$EV"
+      run _mutation_subcmd
+      printf '[%s]: %s\n' "$list" "$output"
+      [ "$status" -eq 1 ]
+      [[ "$output" == *'blocking_failure: runner_unavailable'* ]]
+      [ "$(jq -r .gate "$EV")" = "errored" ]
+      [ "$(jq -r .score "$EV")" = "null" ]
+      [ "$(jq 'has("zero_mutant_reason")' "$EV")" = "false" ]
+    done
+  done
+}
+
+@test "an unreadable File List is errored with evidence, whichever way the list arrives" {
+  _mk_project P1
+  chmod 000 "$STORY_DIR/story.md"
+  if [ -r "$STORY_DIR/story.md" ]; then
+    chmod 644 "$STORY_DIR/story.md"
+    skip "file permissions are not enforced for this user"
+  fi
+  run bash -c "cd '$PROJ' && '$RUNNER' --story E9-S1 --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'"
+  chmod 644 "$STORY_DIR/story.md"
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+  [ "$(jq -r .score "$T/ev.json")" = "null" ]
+  printf 'scripts/calc.sh\n' > "$T/f"
+  chmod 000 "$T/f"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --output "$T/ev2.json" --thresholds '{"P1":60}' --priority P1
+  chmod 644 "$T/f"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev2.json")" = "errored" ]
+  [ "$(jq -r .score "$T/ev2.json")" = "null" ]
+}
+
+# ---------- thresholds that cannot be compared ----------
+
+@test "a P0 or P1 threshold that is not a whole number from 0 to 100 gives gate errored, with evidence" {
+  _mk_project P1
+  local bad
+  printf 'scripts/calc.sh\n' > "$T/f"; printf 'tests/calc.bats\n' > "$T/t"
+  for bad in '74.5' '"abc"' '"60"' '101' '-1' 'true' '[60]'; do
+    rm -f "$T/ev.json"
+    run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds "{\"P1\":$bad}" --priority P1
+    printf '%s: %s\n' "$bad" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+    [[ "$output" == *'threshold'* ]]
+  done
+}
+
+@test "a threshold is compared on the boundary and a bad one on another priority does not gate this one" {
+  _mk_project P1
+  printf 'scripts/calc.sh\n' > "$T/f"; printf 'tests/calc.bats\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":75}' --priority P1
+  [ "$(jq -r .gate "$T/ev.json")" = "passed" ]
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":76}' --priority P1
+  [ "$(jq -r .gate "$T/ev.json")" = "failed" ]
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P0":"abc","P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "passed" ]
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P2":"abc"}' --priority P2
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "advisory" ]
+}
+
+# ---------- action-mode verdict ----------
+
+@test "action mode blocks on a blocking_failure held only in the execution evidence" {
+  printf '{"plan":"present","execution":"success"}' > "$T/a.json"
+  printf '{"blocking_failure":"runner_unavailable"}' > "$T/e.json"
+  run _verdict --action-mode --analysis-results "$T/a.json" --execution-evidence "$T/e.json"
+  [ "$output" = "BLOCKED" ]
+}
+
+@test "action mode blocks on execution evidence it cannot read" {
+  printf '{"plan":"present","execution":"success"}' > "$T/a.json"
+  printf 'not json' > "$T/e.json"
+  run _verdict --action-mode --analysis-results "$T/a.json" --execution-evidence "$T/e.json"
+  [ "$output" = "BLOCKED" ]
+  run _verdict --action-mode --analysis-results "$T/a.json" --execution-evidence "$T/absent.json"
+  [ "$output" = "BLOCKED" ]
+}
+
+@test "action mode approves on green execution evidence" {
+  printf '{"plan":"present","execution":"success"}' > "$T/a.json"
+  printf '{"blocking_failure":""}' > "$T/e.json"
+  run _verdict --action-mode --analysis-results "$T/a.json" --execution-evidence "$T/e.json"
+  [ "$output" = "APPROVE" ]
+  printf '{}' > "$T/e.json"
+  run _verdict --action-mode --analysis-results "$T/a.json" --execution-evidence "$T/e.json"
+  [ "$output" = "APPROVE" ]
+  run _verdict --action-mode --analysis-results "$T/a.json"
+  [ "$output" = "APPROVE" ]
+}
+
+# ---------- shell-hostile directories in test selection ----------
+
+@test "a test naming a source under a directory with a space and an ampersand covers it" {
+  _mk_project P1
+  mkdir -p "$PROJ/my scripts&x" "$PROJ/my tests"
+  printf '#!/usr/bin/env bash\nf() {\n  if [ "$1" -eq 1 ]; then return 0; fi\n  return 1\n}\n' > "$PROJ/my scripts&x/a&b c.sh"
+  _bats_fixture "$PROJ/my tests/t (1)&.bats" 'f accepts one' '  . "$BATS_TEST_DIRNAME/../my scripts&x/a&b c.sh"; f 1'
+  _commit_all hostile
+  printf 'my scripts&x/a&b c.sh\n' > "$T/f"; printf 'my tests/t (1)&.bats\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '[.mutants[]|select(.no_coverage==true)]|length' "$T/ev.json")" = "0" ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" -gt 0 ]
+  [ "$(jq -c .covering_tests "$T/ev.json")" = '["my tests/t (1)&.bats"]' ]
+}
+
+@test "a same-named source under a different spaced directory does not count as covered" {
+  _mk_project P1
+  mkdir -p "$PROJ/my scripts" "$PROJ/tests"
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/my scripts/a.sh"
+  _bats_fixture "$PROJ/tests/other.bats" 'elsewhere' '  # see not my scripts/b/a.sh and xmy scripts/a.sh
+  true'
+  _commit_all other
+  printf 'my scripts/a.sh\n' > "$T/f"; printf 'tests/other.bats\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -c .covering_tests "$T/ev.json")" = '[]' ]
+  [ "$(jq -r '.mutants[0].no_coverage' "$T/ev.json")" = "true" ]
+}
+
+# ---------- adapter index that cannot be planned from ----------
+
+@test "an unusable index entry is an error record with gate errored and evidence, whatever the entry" {
+  _mk_project P1
+  _plugin_copy_with_adapter stub .stub patch
+  cat > "$ADAPTER/generate.sh" <<'GEN'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --out-dir) o="$2"; shift 2;; *) shift 2;; esac; done
+printf -- '--- a/x\n' > "$o/m1.patch"
+printf '%s' "$STUB_INDEX" > "$o/index.json"
+GEN
+  printf '#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do case "$1" in --output) o="$2"; shift 2;; *) shift 2;; esac; done\necho "{\\"status\\":\\"survived\\",\\"test_output\\":\\"\\"}" > "$o"\n' > "$ADAPTER/run.sh"
+  chmod +x "$ADAPTER/generate.sh" "$ADAPTER/run.sh"
+  printf 'x\n' > "$PROJ/scripts/a.stub"
+  _bats_fixture "$PROJ/tests/s.bats" 'names a.stub' '  true'
+  _commit_all stub
+  printf 'scripts/a.stub\n' > "$T/f"; printf 'tests/s.bats\n' > "$T/t"
+  local idx
+  while IFS= read -r idx; do
+    rm -f "$T/ev.json"
+    STUB_INDEX="$idx" run "$T/plugin/scripts/mutation-runner.sh" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+    printf '%s => %s\n' "$idx" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+    [ "$(jq -r .score "$T/ev.json")" = "null" ]
+    [ "$(jq -r '.mutants[0].status' "$T/ev.json")" = "error" ]
+  done <<'INDEXES'
+[{"mutant_id":"m1","patch_file":"m1.patch","line":"x","operator":"o"}]
+[{"mutant_id":"m1","line":3,"operator":"o"}]
+[{"mutant_id":"m1"}]
+[{"mutant_id":"m1","patch_file":"gone.patch","line":3}]
+[{"patch_file":"m1.patch","line":3}]
+[{"mutant_id":"a/b","patch_file":"m1.patch","line":3}]
+[{"mutant_id":"m1","patch_file":"../m1.patch","line":3}]
+[{"mutant_id":"m1","patch_file":"m1.patch","line":1.5}]
+["m1"]
+INDEXES
+}
+
+@test "an unusable index taints the gate even when another file scores" {
+  _mk_project P1
+  _plugin_copy_with_adapter stub .stub patch
+  mkdir -p "$T/plugin/skills"
+  cp -R "$PLUGIN/skills/gaia-meeting" "$T/plugin/skills/gaia-meeting"
+  cat > "$ADAPTER/generate.sh" <<'GEN'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --out-dir) o="$2"; shift 2;; *) shift 2;; esac; done
+printf '[{"mutant_id":"m1","line":"x"}]' > "$o/index.json"
+GEN
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$ADAPTER/run.sh"
+  chmod +x "$ADAPTER/generate.sh" "$ADAPTER/run.sh"
+  printf 'x\n' > "$PROJ/scripts/a.stub"
+  _commit_all stub
+  printf 'scripts/calc.sh\nscripts/a.stub\n' > "$T/f"; printf 'tests/calc.bats\n' > "$T/t"
+  run "$T/plugin/scripts/mutation-runner.sh" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" = "3" ]
+  [ "$(jq -r '[.mutants[]|select(.file=="scripts/a.stub" and .status=="error")]|length' "$T/ev.json")" = "1" ]
+}
+
+# ---------- time limit ----------
+
+_slow_project() {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  _bats_fixture "$PROJ/tests/f.bats" 'slow f' '  sleep 3; . "$BATS_TEST_DIRNAME/../scripts/f.sh"; f 1'
+  _commit_all slow
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/f.bats\n' > "$T/t"
+}
+
+@test "covering tests that run out of time are reported as a timeout, not as red, and say how to raise the limit" {
+  _slow_project
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1 --timeout 1
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+  [ "$(jq -r .score "$T/ev.json")" = "null" ]
+  [ "$(jq -r .refused "$T/ev.json")" = "baseline_error" ]
+  [ "$(jq -r .baseline.status "$T/ev.json")" = "timeout" ]
+  jq -r .baseline.test_output "$T/ev.json" | grep -q -- '--timeout'
+  [[ "$output" == *'--timeout'* ]]
+}
+
+@test "the time limit is raised by the option, by the environment, and the option wins" {
+  _slow_project
+  GAIA_MUTATION_TIMEOUT=1 run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$(jq -r .baseline.status "$T/ev.json")" = "timeout" ]
+  GAIA_MUTATION_TIMEOUT=1 run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1 --timeout 120
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$T/ev.json")" = "passed" ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" = "1" ]
+}
+
+@test "the mutation subcommand passes the time limit to the runner" {
+  _slow_project
+  _set_file_list scripts/f.sh tests/f.bats
+  run _mutation_subcmd --timeout 1
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .baseline.status "$EV")" = "timeout" ]
+  run _mutation_subcmd --timeout 120
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "passed" ]
+}
+
+@test "a time limit that is not a positive whole number is a caller error" {
+  _mk_project P1
+  printf 'scripts/calc.sh\n' > "$T/f"
+  local bad
+  for bad in 0 abc 1.5 -3; do
+    run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --output "$T/ev.json" --timeout "$bad"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'--timeout'* ]]
+  done
 }

@@ -29,6 +29,9 @@
 # weak-assertion ones. A check skipped for a P2 or P3 story, or for a project
 # without thresholds, says why in skip_reason. A story whose priority could not
 # be resolved is gated like P0/P1: an unknown priority never loosens the check.
+# Evidence with gate not_applicable (no File List entry has a mutation adapter)
+# at HEAD is skipped with the reason it records, never passed; if it has no reason
+# or carries a score, it is errored.
 #
 # Exit codes:
 #   0  Check emitted (any status: passed, failed, errored, skipped)
@@ -120,6 +123,17 @@ if [ "$_mec_ev_commit" != "$_mec_commit" ]; then
     --arg message "Mutation evidence is stale (recorded at ${_mec_ev_commit}, HEAD is ${_mec_commit}). Run /gaia-test-automate --mutation ${_mec_story_key} to update it." \
     '{"name":$name,"status":$status,"message":$message,"findings":[]}'
   exit 0
+fi
+
+# ---------- Nothing to measure ----------
+if [ "$_mec_ev_gate" = "not_applicable" ]; then
+  _mec_ev_reason=$(jq -r '.zero_mutant_reason // ""' "$_mec_evidence" 2>/dev/null || true)
+  if [ -z "$_mec_ev_reason" ] || [ -n "$_mec_ev_score" ]; then
+    _mec_msg="Mutation evidence says not_applicable without a reason, or with a score. Run /gaia-test-automate --mutation ${_mec_story_key} to update it."
+    jq -n --arg m "$_mec_msg" '{"name":"mutation-score","status":"errored","error_reason":$m,"message":$m,"findings":[]}'
+    exit 0
+  fi
+  _mec_skip "$_mec_ev_reason"
 fi
 
 # ---------- Map gate to check status ----------

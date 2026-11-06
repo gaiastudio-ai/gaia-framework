@@ -27,6 +27,10 @@
 #   A PATH shim directory is created inside the source dir so scripts
 #   started via #!/usr/bin/env bash use the selected interpreter.
 #
+# Test output is scrubbed before anything reads it: values of secret-named
+# environment variables, NAME=value pairs with a secret-looking name, then the
+# shared secret-pattern scrubber. If scrubbing fails the output is withheld.
+#
 # Exit codes:
 #   0  Always (killed, survived, timeout — all are valid outcomes)
 #   1  Adapter error (invalid args, source-dir not in gaia-mutation- root)
@@ -162,30 +166,62 @@ fi
 # ---------- Run tests ----------
 _run_status="survived"
 _run_test_output=""
-_run_killed_by=()
-_run_tests_seen=()
 _run_interpreter_versions=()
 
-# Removes a TAP directive (" # skip why", " # in 12ms") from a test name.
-_run_tap_name() {
-  printf '%s' "$1" | sed -E 's/^(not ok|ok) [0-9]+ //; s/ # ([Ss][Kk][Ii][Pp]|[Tt][Oo][Dd][Oo]|in [0-9]+ms).*$//'
+_run_work=$(mktemp -d "${TMPDIR:-/tmp}/mutation-run-XXXXXX")
+trap 'rm -rf "$_run_work"' EXIT
+_run_killers_file="$_run_work/killers"
+_run_seen_file="$_run_work/seen"
+: > "$_run_killers_file"
+: > "$_run_seen_file"
+
+_run_scrubber="$SCRIPT_DIR/../../../skills/gaia-meeting/scripts/secret-scrubber.sh"
+_RUN_SECRET_NAME='SECRET|TOKEN|PASSW(OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY'
+
+# Replaces the value of every secret-named environment variable, longest first
+# so a value inside another cannot leave part of the longer one behind. Values
+# under six characters are too likely to be ordinary words in the output.
+_run_redact_env_values() {
+  _RUN_NAMES="(${_RUN_SECRET_NAME}|_KEY\$)" awk '
+    BEGIN {
+      for (k in ENVIRON) {
+        if (k == "_RUN_NAMES" || toupper(k) !~ ENVIRON["_RUN_NAMES"] || length(ENVIRON[k]) < 6) continue
+        v = ENVIRON[k]
+        for (i = ++n; i > 1 && length(vals[i - 1]) < length(v); i--) vals[i] = vals[i - 1]
+        vals[i] = v
+      }
+    }
+    {
+      line = $0
+      for (i = 1; i <= n; i++) {
+        done = ""
+        while ((at = index(line, vals[i])) > 0) {
+          done = done substr(line, 1, at - 1) "REDACTED-ENV-VALUE"
+          line = substr(line, at + length(vals[i]))
+        }
+        line = done line
+      }
+      print line
+    }
+  ' "$1"
 }
 
+_run_scrub_output() {
+  local raw="$1" clean="$2"
+  if _run_redact_env_values "$raw" > "$clean.values" \
+    && sed -E "s/([A-Za-z0-9_]*(${_RUN_SECRET_NAME})[A-Za-z0-9_]*=)[^[:space:]]+/\\1REDACTED-ENV-VALUE/Ig" "$clean.values" > "$clean.names" \
+    && bash "$_run_scrubber" --in "$clean.names" --out "$clean"; then
+    return 0
+  fi
+  rm -f "$clean"
+  return 1
+}
+
+# Reads the whole output: a test's name must not depend on where it ran.
 _run_collect_tap() {
-  local tapline name
-  while IFS= read -r tapline; do
-    case "$tapline" in
-      'not ok '*)
-        name=$(_run_tap_name "$tapline")
-        _run_killed_by+=("$name")
-        _run_tests_seen+=("$name")
-        ;;
-      'ok '*)
-        name=$(_run_tap_name "$tapline")
-        _run_tests_seen+=("$name")
-        ;;
-    esac
-  done <<< "$1"
+  local names='s/^(not ok|ok) [0-9]+ //; s/ # ([Ss][Kk][Ii][Pp]|[Tt][Oo][Dd][Oo]|in [0-9]+ms).*$//; p;'
+  sed -nE "/^not ok /{$names}" "$1" >> "$_run_killers_file"
+  sed -nE "/^(not ok|ok) /{$names}" "$1" >> "$_run_seen_file"
 }
 
 _run_exec_test() {
@@ -219,14 +255,24 @@ _run_exec_test() {
     fi
   ) || test_exit=$?
 
-  # Truncate output to last 4KB
+  # Scrub first, so nothing below can see or cut through a secret.
+  local raw_file="$_run_work/raw" clean_file="$_run_work/clean"
+  printf '%s\n' "$test_out" > "$raw_file"
+  if _run_scrub_output "$raw_file" "$clean_file"; then
+    _run_collect_tap "$clean_file"
+    test_out=$(cat "$clean_file")
+  else
+    _run_err "could not scrub the test output; withholding it"
+    test_out="(test output withheld: it could not be scrubbed)"
+  fi
+
+  # Stored output is the last 4KB.
   if [ ${#test_out} -gt 4096 ]; then
     test_out="...(truncated)...
 $(printf '%s' "$test_out" | tail -c 4096)"
   fi
 
   _run_test_output="${_run_test_output}${test_out}"
-  _run_collect_tap "$test_out"
 
   case "$test_exit" in
     0)       ;;
@@ -254,17 +300,12 @@ if [ "$_run_status" = "survived" ] && [ -n "$_run_bash32" ]; then
 fi
 
 # ---------- Build output record ----------
-# Build killed_by array
-_run_kb_json="[]"
-for kb in "${_run_killed_by[@]+"${_run_killed_by[@]}"}"; do
-  _run_kb_json=$(printf '%s' "$_run_kb_json" | jq --arg t "$kb" '. + [$t]')
-done
-
-# Build the list of every test seen, de-duplicated across interpreters
-_run_tests_json="[]"
-for ts in "${_run_tests_seen[@]+"${_run_tests_seen[@]}"}"; do
-  _run_tests_json=$(printf '%s' "$_run_tests_json" | jq --arg t "$ts" 'if index($t) then . else . + [$t] end')
-done
+# Every test name, de-duplicated across interpreters. These go through files:
+# one argument has a length limit on Linux.
+_run_kb_json="$_run_work/killed_by.json"
+jq -R -s 'split("\n") | map(select(length > 0)) | unique' "$_run_killers_file" > "$_run_kb_json"
+_run_tests_json="$_run_work/tests.json"
+jq -R -s 'split("\n") | map(select(length > 0)) | reduce .[] as $t ([]; if index($t) then . else . + [$t] end)' "$_run_seen_file" > "$_run_tests_json"
 
 # Build interpreters array
 _run_interp_json="[]"
@@ -277,16 +318,16 @@ jq -n \
   --arg test_output "$_run_test_output" \
   --arg file "${_run_mutant_file:-}" \
   --argjson line "${_run_mutant_line:-0}" \
-  --argjson killed_by "$_run_kb_json" \
-  --argjson tests "$_run_tests_json" \
+  --slurpfile killed_by "$_run_kb_json" \
+  --slurpfile tests "$_run_tests_json" \
   --argjson interpreters "$_run_interp_json" \
   '{
     "status": $status,
     "test_output": $test_output,
     "file": $file,
     "line": $line,
-    "killed_by": ($killed_by | unique),
-    "tests": $tests,
+    "killed_by": $killed_by[0],
+    "tests": $tests[0],
     "interpreters": $interpreters
   }' > "$_run_output"
 

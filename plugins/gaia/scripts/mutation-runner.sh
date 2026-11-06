@@ -16,6 +16,14 @@
 # A run first proves the covering tests are green on an unmutated copy. A red
 # baseline, or tests that cannot run at all, refuses to score: the evidence has
 # gate errored and no score, because every mutant would look killed otherwise.
+# Tests that run out of time say nothing about whether they pass, so that refusal
+# is baseline_error with baseline.status timeout: raise the limit with --timeout.
+#
+# A run with no mutants and thresholds configured: a P2 or P3 story gets gate
+# advisory with a null score. A P0 or P1 story gets gate not_applicable and a
+# zero_mutant_reason only when a non-empty File List has no entry any adapter
+# covers; anything else (an empty or unreadable list, a covered file that is
+# missing or yields no mutants) gets gate errored.
 #
 # Flags:
 #   --story <key>       Resolve story file, read priority and File List
@@ -25,6 +33,9 @@
 #   --output <json>     Path to write the evidence JSON
 #   --patch-dir <dir>   Directory for generated patches (default: alongside output)
 #   --jobs <n>          Max parallel mutant executions (default: min(4, nproc))
+#   --timeout <seconds> Limit for one test run under one interpreter, baseline
+#                       included (default: $GAIA_MUTATION_TIMEOUT, else the
+#                       adapter's default-timeout-seconds)
 #   --priority <P>      Story priority (P0..P3); overrides story-file value
 #   --thresholds <json> Inline threshold object (for testing; normally from config)
 #   --config <yaml>     Path to project-config.yaml
@@ -32,7 +43,8 @@
 #   --help              Show usage
 #
 # Exit codes:
-#   0   Run completed (evidence written; gate may be passed, failed, advisory, errored)
+#   0   Run completed (evidence written; gate may be passed, failed, advisory,
+#       not_applicable, errored)
 #   1   Usage / caller error
 #   2   worktree_mutated — integrity check failed, no evidence written
 #   3   Containment violation
@@ -86,6 +98,7 @@ _mr_tests_from=""
 _mr_output=""
 _mr_patch_dir=""
 _mr_jobs=""
+_mr_timeout=""
 _mr_priority=""
 _mr_thresholds=""
 _mr_config=""
@@ -100,6 +113,7 @@ while [ $# -gt 0 ]; do
     --output)     shift; _mr_output="${1:-}"; shift ;;
     --patch-dir)  shift; _mr_patch_dir="${1:-}"; shift ;;
     --jobs)       shift; _mr_jobs="${1:-}"; shift ;;
+    --timeout)    shift; _mr_timeout="${1:-}"; shift ;;
     --priority)   shift; _mr_priority="${1:-}"; shift ;;
     --thresholds) shift; _mr_thresholds="${1:-}"; shift ;;
     --config)     shift; _mr_config="${1:-}"; shift ;;
@@ -195,13 +209,48 @@ _mr_locate_in_worktree() {
   done
 }
 
+# ---------- Adapter discovery ----------
+# Find the mutation adapter that covers a given file extension.
+_mr_find_adapter() {
+  local file="$1"
+  local ext="${file##*.}"
+  local adapter_dir
+
+  for adapter_dir in "$SCRIPT_DIR"/adapters/mutation-*/; do
+    [ -d "$adapter_dir" ] || continue
+    local manifest="$adapter_dir/mutation-adapter.json"
+    [ -f "$manifest" ] || continue
+    if jq -e --arg ext ".$ext" '.["file-extensions"] | map(. == $ext) | any' "$manifest" >/dev/null 2>&1; then
+      printf '%s\n' "${adapter_dir%/}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_mr_is_test_path() {
+  case "$1" in
+    *.bats|*.test.*|*.spec.*|*_test.*|test_*|*/test_*) return 0 ;;
+  esac
+  return 1
+}
+
+# What the File List held, for the gate of a run with no mutants. An entry is
+# covered when an adapter claims its extension, whether or not the file exists.
+_mr_list_unreadable=0
+_mr_list_counted=0
+_mr_listed_entries=0
+_mr_covered_entries=0
+
 # ---------- Resolve story metadata ----------
 if [ -n "$_mr_story" ]; then
   _mr_story_file=""
   if [ -x "$SCRIPT_DIR/resolve-story-file.sh" ]; then
     _mr_story_file=$("$SCRIPT_DIR/resolve-story-file.sh" "$_mr_story" 2>/dev/null || true)
   fi
-  if [ -n "$_mr_story_file" ] && [ -f "$_mr_story_file" ]; then
+  if [ -n "$_mr_story_file" ] && [ -f "$_mr_story_file" ] && [ ! -r "$_mr_story_file" ]; then
+    _mr_list_unreadable=1
+  elif [ -n "$_mr_story_file" ] && [ -f "$_mr_story_file" ]; then
     if [ -z "$_mr_priority" ]; then
       _mr_priority=$(mutation_story_priority "$_mr_story_file")
       [ -n "$_mr_priority" ] || _mr_die 1 "story $_mr_story has no priority in its frontmatter"
@@ -211,24 +260,42 @@ if [ -n "$_mr_story" ]; then
       _mr_auto_tests="$_mr_root/tests.txt"
       : > "$_mr_auto_files"
       : > "$_mr_auto_tests"
+      _mr_list_counted=1
       while IFS= read -r _mr_entry; do
+        [ -n "$_mr_entry" ] || continue
+        _mr_listed_entries=$((_mr_listed_entries + 1))
         _mr_found=$(_mr_locate_in_worktree "$_mr_entry")
-        [ -n "$_mr_found" ] || continue
-        case "$_mr_found" in
-          *.bats|*.test.*|*.spec.*|*_test.*|test_*|*/test_*) printf '%s\n' "$_mr_found" >> "$_mr_auto_tests" ;;
-          *) printf '%s\n' "$_mr_found" >> "$_mr_auto_files" ;;
-        esac
+        if _mr_is_test_path "${_mr_found:-$_mr_entry}"; then
+          [ -z "$_mr_found" ] || printf '%s\n' "$_mr_found" >> "$_mr_auto_tests"
+          continue
+        fi
+        if _mr_find_adapter "$_mr_entry" >/dev/null; then
+          _mr_covered_entries=$((_mr_covered_entries + 1))
+        fi
+        [ -z "$_mr_found" ] || printf '%s\n' "$_mr_found" >> "$_mr_auto_files"
       done < <(mutation_story_file_list "$_mr_story_file")
-      [ -s "$_mr_auto_files" ] && _mr_files_from="$_mr_auto_files"
-      [ -s "$_mr_auto_tests" ] && _mr_tests_from="$_mr_auto_tests"
+      # A list with no source file is a valid outcome, decided at the gate.
+      _mr_files_from="$_mr_auto_files"
+      if [ -s "$_mr_auto_tests" ]; then _mr_tests_from="$_mr_auto_tests"; fi
     fi
   elif [ -z "$_mr_priority" ] || [ -z "$_mr_files_from" ]; then
     _mr_die 1 "story file not found for $_mr_story"
   fi
 fi
 
-[ -n "$_mr_files_from" ] || _mr_die 1 "--files-from is required (or --story with a File List)"
-[ -f "$_mr_files_from" ] || _mr_die 1 "--files-from '$_mr_files_from' not found"
+if [ "$_mr_list_unreadable" -eq 0 ]; then
+  [ -n "$_mr_files_from" ] || _mr_die 1 "--files-from is required (or --story with a File List)"
+  [ -f "$_mr_files_from" ] || _mr_die 1 "--files-from '$_mr_files_from' not found"
+  [ -r "$_mr_files_from" ] || _mr_list_unreadable=1
+fi
+if [ "$_mr_list_unreadable" -eq 1 ]; then
+  # Nothing to mutate, and the priority may be unknowable too: never default it
+  # to one that would not gate.
+  _mr_err "the File List could not be read"
+  _mr_files_from="$_mr_root/no-files.txt"
+  : > "$_mr_files_from"
+  [ -n "$_mr_priority" ] || _mr_priority="unknown"
+fi
 [ -n "$_mr_priority" ]   || _mr_priority="P2"
 
 # Default patch dir
@@ -253,13 +320,17 @@ case "$_mr_jobs" in
   ''|*[!0-9]*|0) _mr_die 1 "--jobs must be a positive whole number" ;;
 esac
 
+# Empty means the adapter's own default.
+[ -n "$_mr_timeout" ] || _mr_timeout="${GAIA_MUTATION_TIMEOUT:-}"
+case "$_mr_timeout" in
+  '') ;;
+  *[!0-9]*) _mr_die 1 "--timeout must be a positive whole number of seconds" ;;
+  *) [ "$((10#$_mr_timeout))" -gt 0 ] || _mr_die 1 "--timeout must be a positive whole number of seconds" ;;
+esac
+
 # ---------- Resolve thresholds ----------
 # Absent means not configured; an empty object means configured with defaults.
 _mr_thresholds_configured=0
-_mr_th_p0=""
-_mr_th_p1=""
-_mr_th_p2=""
-_mr_th_p3=""
 
 _mr_resolve_thresholds() {
   if [ -z "$_mr_thresholds" ] && [ -n "$_mr_config" ]; then
@@ -269,37 +340,24 @@ _mr_resolve_thresholds() {
   printf '%s' "$_mr_thresholds" | jq -e 'type == "object"' >/dev/null 2>&1 \
     || _mr_die 1 "mutation thresholds are not a JSON object: $_mr_thresholds"
   _mr_thresholds_configured=1
-  _mr_th_p0=$(printf '%s' "$_mr_thresholds" | jq -r '.P0 // empty')
-  _mr_th_p1=$(printf '%s' "$_mr_thresholds" | jq -r '.P1 // empty')
-  _mr_th_p2=$(printf '%s' "$_mr_thresholds" | jq -r '.P2 // empty')
-  _mr_th_p3=$(printf '%s' "$_mr_thresholds" | jq -r '.P3 // empty')
 }
 _mr_resolve_thresholds
 
-# ---------- Adapter discovery ----------
-# Find the mutation adapter that covers a given file extension.
-_mr_find_adapter() {
-  local file="$1"
-  local ext="${file##*.}"
-  local adapter_dir
-
-  for adapter_dir in "$SCRIPT_DIR"/adapters/mutation-*/; do
-    [ -d "$adapter_dir" ] || continue
-    local manifest="$adapter_dir/mutation-adapter.json"
-    [ -f "$manifest" ] || continue
-    if jq -e --arg ext ".$ext" '.["file-extensions"] | map(. == $ext) | any' "$manifest" >/dev/null 2>&1; then
-      printf '%s\n' "${adapter_dir%/}"
-      return 0
-    fi
-  done
-  return 1
+# A threshold is absent, or a whole number from 0 to 100. Anything else cannot be
+# compared with a score, and must not read as a pass.
+_mr_threshold_valid() {
+  printf '%s' "$_mr_thresholds" | jq -e --arg p "$1" '
+    .[$p] as $v
+    | $v == null or (($v | type) == "number" and $v == ($v | floor) and $v >= 0 and $v <= 100)
+  ' >/dev/null 2>&1
 }
 
 # ---------- Covering-test selection ----------
 # A test covers a source file when it names that file: the basename as a whole
 # token, so foo.sh is not matched by myfoo.sh or foo.sh.bak, and a stem alone
 # never counts. When the name carries a literal parent directory it must be the
-# source's own; a variable, `.` or `..` in front of it says nothing either way.
+# source's own, which may itself hold spaces or shell metacharacters; a variable,
+# `.` or `..` in front of it says nothing either way.
 # awk reads the name through ENVIRON and matches with index(), so any character
 # in a path stays literal.
 _mr_test_references() {
@@ -307,6 +365,11 @@ _mr_test_references() {
   parent="$(basename "$(dirname "$source_file")")"
   _MR_NAME="$(basename "$source_file")" _MR_PARENT="$parent" awk '
     function wordy(c) { return c ~ /[A-Za-z0-9_-]/ }
+    function own_parent(end_at, from) {
+      from = end_at - length(parent) + 1
+      if (from < 1 || substr(line, from, length(parent)) != parent) return 0
+      return from == 1 || substr(line, from - 1, 1) !~ /[A-Za-z0-9_.-]/
+    }
     BEGIN { name = ENVIRON["_MR_NAME"]; parent = ENVIRON["_MR_PARENT"]; n = length(name) }
     {
       line = $0
@@ -321,6 +384,7 @@ _mr_test_references() {
         if (wordy(after) || (after == "." && wordy(after2))) continue
         if (before == "/") {
           dir_end = start - 2
+          if (own_parent(dir_end)) { found = 1; exit }
           dir_start = dir_end
           while (dir_start >= 1 && substr(line, dir_start, 1) ~ /[A-Za-z0-9_.-]/) dir_start--
           dir = substr(line, dir_start + 1, dir_end - dir_start)
@@ -405,9 +469,13 @@ _mr_rel_patches="$(_mr_rel_to_worktree "$_mr_patch_dir")"
 _MI_MANIFEST_EXCLUDES="$_mr_rel_output
 $_mr_rel_patches"
 
-_mr_info "computing pre-run worktree manifest"
+# With an unreadable list nothing runs, so there is nothing to verify, and the
+# manifest could not read that same file if it sits in the worktree.
 _mr_manifest_before="$_mr_root/manifest-before"
-mutation_compute_manifest "$_mr_worktree" "$_mr_manifest_before"
+if [ "$_mr_list_unreadable" -eq 0 ]; then
+  _mr_info "computing pre-run worktree manifest"
+  mutation_compute_manifest "$_mr_worktree" "$_mr_manifest_before"
+fi
 
 # ---------- Generate mutants ----------
 _mr_info "discovering adapters and generating mutants"
@@ -430,9 +498,36 @@ _mr_plan_patch=()
 _mr_plan_line=()
 _mr_plan_operator=()
 _mr_extra_records=0
+_mr_index_invalid=0
+
+# True when every entry of an adapter's index can be planned: an id and a line
+# usable as they stand, and a mutant file that exists inside its output directory.
+_mr_index_entries_valid() {
+  local gen_dir="$1" entry_file
+  jq -e '
+    type == "array" and all(.[];
+      type == "object"
+      and ((.mutant_id | type) == "string") and (.mutant_id | test("^[A-Za-z0-9._-]+$"))
+      and (((.patch_file // .batch_file) | type) == "string")
+      and ((.patch_file // .batch_file) | test("^[^/]+(/[^/]+)*$"))
+      and (((.patch_file // .batch_file) | split("/") | index("..")) == null)
+      and (.line == null or ((.line | type) == "number" and .line == (.line | floor) and .line >= 0))
+      and (.operator == null or (.operator | type) == "string"))
+  ' "$gen_dir/index.json" >/dev/null 2>&1 || return 1
+  while IFS= read -r entry_file; do
+    [ -f "$gen_dir/$entry_file" ] || return 1
+  done < <(jq -r '.[] | (.patch_file // .batch_file)' "$gen_dir/index.json")
+}
 
 while IFS= read -r source_file; do
   [ -n "$source_file" ] || continue
+
+  if [ "$_mr_list_counted" -eq 0 ]; then
+    _mr_listed_entries=$((_mr_listed_entries + 1))
+    if _mr_find_adapter "$source_file" >/dev/null; then
+      _mr_covered_entries=$((_mr_covered_entries + 1))
+    fi
+  fi
 
   adapter_dir=$(_mr_find_adapter "$source_file" || true)
   if [ -z "$adapter_dir" ] || [ ! -x "$adapter_dir/generate.sh" ] || [ ! -x "$adapter_dir/run.sh" ]; then
@@ -459,6 +554,16 @@ while IFS= read -r source_file; do
     continue
   fi
 
+  # An index the runner cannot plan from taints the run whatever else scores.
+  if ! _mr_index_entries_valid "$gen_out"; then
+    _mr_err "$(basename "$adapter_dir") wrote an index with an unusable entry for $source_file"
+    _mr_index_invalid=1
+    _mr_extra_records=$((_mr_extra_records + 1))
+    _mr_error_record "mutant-$_mr_file_hash-generator" "$source_file" "generator wrote an unusable index: an entry has a bad mutant_id, line or mutant file" \
+      > "$_mr_root/records/generator-$_mr_file_hash.json"
+    continue
+  fi
+
   cover_list="$_mr_root/cover/$_mr_file_hash"
   : > "$cover_list"
   if [ -n "${_mr_tests_from:-}" ] && [ -f "$_mr_tests_from" ]; then
@@ -477,7 +582,7 @@ while IFS= read -r source_file; do
   _mr_src_file+=("$source_file")
   _mr_src_run+=("$adapter_dir/run.sh")
   _mr_src_cover+=("$cover_list")
-  _mr_src_timeout+=("$(jq -r '.["default-timeout-seconds"] // 30' "$adapter_dir/mutation-adapter.json")")
+  _mr_src_timeout+=("${_mr_timeout:-$(jq -r '.["default-timeout-seconds"] // 30' "$adapter_dir/mutation-adapter.json")}")
   _mr_src_format+=("$(jq -r '.["mutant-format"] // "patch"' "$adapter_dir/mutation-adapter.json")")
 
   while IFS=$'\t' read -r _m_id _m_file _m_line _m_op; do
@@ -541,9 +646,17 @@ if [ "${#_mr_plan_id[@]}" -gt 0 ]; then
     fi
     case "$_mr_baseline_status" in
       survived) ;;
-      killed|timeout)
+      killed)
         _mr_refused="baseline_red"
         _mr_baseline_output=$(jq -r '.test_output // ""' "$_b_out")
+        break
+        ;;
+      timeout)
+        # Out of time is not red: nothing is known about whether the tests pass.
+        _mr_refused="baseline_error"
+        _mr_baseline_output="the covering tests did not finish within ${_mr_src_timeout[$_b_idx]} seconds; raise the limit with --timeout or GAIA_MUTATION_TIMEOUT
+$(jq -r '.test_output // ""' "$_b_out")"
+        _mr_err "the covering tests did not finish within ${_mr_src_timeout[$_b_idx]} seconds; raise the limit with --timeout or GAIA_MUTATION_TIMEOUT"
         break
         ;;
       *)
@@ -601,7 +714,7 @@ fi
 
 # ---------- Post-run manifest ----------
 _mr_info "verifying post-run worktree integrity"
-if ! mutation_verify_manifest "$_mr_worktree" "$_mr_manifest_before"; then
+if [ "$_mr_list_unreadable" -eq 0 ] && ! mutation_verify_manifest "$_mr_worktree" "$_mr_manifest_before"; then
   rm -f "$_mr_output"
   _mr_die 2 "worktree_mutated"
 fi
@@ -684,26 +797,61 @@ fi
 
 # ---------- Compute gate ----------
 _mr_gate="not_configured"
+_mr_zero_mutant_reason=""
+
+# No mutants, gated priority: only a list that names nothing mutable is exempt.
+_mr_gate_for_no_mutants() {
+  if [ "$_mr_list_unreadable" -eq 0 ] && [ "$_mr_listed_entries" -gt 0 ] && [ "$_mr_covered_entries" -eq 0 ]; then
+    _mr_gate="not_applicable"
+    _mr_zero_mutant_reason="no mutation adapter covers any File List entry ($_mr_listed_entries listed), so this story has no mutation gate"
+    _mr_info "$_mr_zero_mutant_reason"
+    return 0
+  fi
+  _mr_gate="errored"
+  if [ "$_mr_list_unreadable" -eq 1 ]; then
+    _mr_err "no mutants: the File List could not be read"
+  elif [ "$_mr_listed_entries" -eq 0 ]; then
+    _mr_err "no mutants: the File List is empty"
+  else
+    _mr_err "no mutants: a covered File List entry is missing from the worktree or has no mutable line"
+  fi
+}
 
 if [ -n "$_mr_refused" ]; then
   # A run that could not measure anything never reads as a pass, configured or not.
   _mr_gate="errored"
 elif [ "$_mr_thresholds_configured" -eq 1 ]; then
-  if [ -z "$_mr_score" ]; then
-    # All mutants errored or no mutants generated
+  if [ "$_mr_index_invalid" -eq 1 ]; then
+    _mr_gate="errored"
+  elif [ "$_mr_mutant_count" -eq 0 ]; then
+    case "$_mr_priority" in
+      P2|P3)
+        _mr_gate="advisory"
+        _mr_info "$_mr_priority story: no mutants (advisory, no gate)"
+        ;;
+      *) _mr_gate_for_no_mutants ;;
+    esac
+  elif [ -z "$_mr_score" ]; then
+    # Every mutant errored
     _mr_gate="errored"
   else
     case "$_mr_priority" in
       P0|P1)
-        if [ "$_mr_priority" = "P0" ]; then
-          _mr_threshold="${_mr_th_p0:-$_MR_DEFAULT_P0}"
+        if ! _mr_threshold_valid "$_mr_priority"; then
+          _mr_err "the $_mr_priority mutation threshold is not a whole number from 0 to 100: $_mr_thresholds"
+          _mr_gate="errored"
         else
-          _mr_threshold="${_mr_th_p1:-$_MR_DEFAULT_P1}"
-        fi
-        if [ "$_mr_score" -lt "$_mr_threshold" ]; then
-          _mr_gate="failed"
-        else
-          _mr_gate="passed"
+          if [ "$_mr_priority" = "P0" ]; then
+            _mr_threshold_default="$_MR_DEFAULT_P0"
+          else
+            _mr_threshold_default="$_MR_DEFAULT_P1"
+          fi
+          _mr_threshold=$(printf '%s' "$_mr_thresholds" | jq -r --arg p "$_mr_priority" --argjson d "$_mr_threshold_default" '(.[$p] // $d) | floor')
+          if [ "$_mr_score" -lt "$_mr_threshold" ]; then
+            _mr_gate="failed"
+          else
+            _mr_gate="passed"
+          fi
         fi
         ;;
       *)
@@ -725,12 +873,12 @@ _mr_generated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 # Build thresholds applied
 _mr_th_applied="null"
 if [ "$_mr_thresholds_configured" -eq 1 ]; then
-  _mr_th_applied=$(jq -n \
-    --argjson p0 "${_mr_th_p0:-$_MR_DEFAULT_P0}" \
-    --argjson p1 "${_mr_th_p1:-$_MR_DEFAULT_P1}" \
-    --argjson p2 "${_mr_th_p2:-$_MR_DEFAULT_P2}" \
-    --argjson p3 "${_mr_th_p3:-$_MR_DEFAULT_P3}" \
-    '{"P0":$p0,"P1":$p1,"P2":$p2,"P3":$p3}')
+  _mr_th_applied=$(printf '%s' "$_mr_thresholds" | jq -c \
+    --argjson p0 "$_MR_DEFAULT_P0" \
+    --argjson p1 "$_MR_DEFAULT_P1" \
+    --argjson p2 "$_MR_DEFAULT_P2" \
+    --argjson p3 "$_MR_DEFAULT_P3" \
+    '{"P0":(.P0 // $p0),"P1":(.P1 // $p1),"P2":(.P2 // $p2),"P3":(.P3 // $p3)}')
 fi
 
 # Build unmutated files array
@@ -756,6 +904,11 @@ if [ -n "$_mr_refused" ]; then
   _mr_baseline_json=$(jq -n --arg s "$_mr_baseline_status" --arg o "$_mr_baseline_output" '{status:$s,test_output:$o}')
 fi
 
+# Every test name is kept, so the list goes through a file: one argument has a
+# length limit on Linux.
+_mr_test_names_json="$_mr_root/test-names.json"
+jq -R -s 'split("\n") | map(select(length > 0)) | unique' "$_mr_test_names" > "$_mr_test_names_json"
+
 # Write evidence
 jq -n \
   --arg schema_version "1.0" \
@@ -779,7 +932,8 @@ jq -n \
   --slurpfile mutants "$_mr_mutants_file" \
   --argjson unmutated_files "$_mr_unmutated_json" \
   --argjson covering_tests "$_mr_covering_json" \
-  --argjson test_names "$(jq -R -s 'split("\n") | map(select(length > 0)) | unique' "$_mr_test_names")" \
+  --slurpfile test_names "$_mr_test_names_json" \
+  --arg zero_mutant_reason "$_mr_zero_mutant_reason" \
   '{
     schema_version: $schema_version,
     story_key: $story_key,
@@ -794,9 +948,10 @@ jq -n \
     mutants: $mutants[0],
     unmutated_files: $unmutated_files,
     covering_tests: $covering_tests,
-    covering_test_names: $test_names
+    covering_test_names: $test_names[0]
   }
-  + (if $refused == "" then {} else {refused: $refused, baseline: $baseline} end)' > "$_mr_output"
+  + (if $refused == "" then {} else {refused: $refused, baseline: $baseline} end)
+  + (if $zero_mutant_reason == "" then {} else {zero_mutant_reason: $zero_mutant_reason} end)' > "$_mr_output"
 
 # Patches are published only now: during the run they were scratch files.
 find "$_mr_patch_dir" -maxdepth 1 -type f -name 'mutant-*' -exec rm -f {} + 2>/dev/null || true

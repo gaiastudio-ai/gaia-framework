@@ -16,12 +16,14 @@ setup() {
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
   SCRIPTS="$PLUGIN_ROOT/scripts"
   ADAPTER_BASE="$SCRIPTS/adapters"
-  TEST_TMP=$(mktemp -d "${TMPDIR:-/tmp}/mac-bats-XXXXXX")
+  TEST_TMP="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/mac-bats-XXXXXX")" && pwd -P)"
+  # A shared TMPDIR would put other runs' directories within reach of this suite.
+  export TMPDIR="$TEST_TMP/tmp"
+  mkdir -p "$TMPDIR"
 }
 
 teardown() {
   rm -rf "$TEST_TMP"
-  find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'gaia-mutation-*' -newer "$BATS_TEST_FILENAME" -exec rm -rf {} + 2>/dev/null || true
 }
 
 # ---------- Discover adapters ----------
@@ -216,4 +218,16 @@ _list_adapters() {
     ts=$(jq -r '.status' "$result" 2>/dev/null || true)
     [ "$ts" = "timeout" ] || { echo "FAIL: $name expected timeout, got $ts"; return 1; }
   done < <(_list_adapters)
+}
+
+# ---------- this suite and other runs ----------
+
+@test "this suite works in its own TMPDIR and its teardown leaves other runs' directories alone" {
+  [[ "$TMPDIR" == "$TEST_TMP"/* ]]
+  local shared="$TEST_TMP/shared"
+  mkdir -p "$shared/gaia-mutation-another-run"
+  # Only the guard belongs in the subshell: everything else it would remove is
+  # pointed elsewhere, so the real teardown still runs afterwards.
+  ( export TMPDIR="$shared"; TEST_TMP="$shared/mine"; COPY_DIR="$shared/mine-copy"; teardown )
+  [ -d "$shared/gaia-mutation-another-run" ]
 }

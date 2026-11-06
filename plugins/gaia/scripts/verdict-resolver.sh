@@ -74,7 +74,8 @@ Options:
                              the analysis document and emits
                              APPROVE | REQUEST_CHANGES | BLOCKED per the
                              action-skill verdict table. --llm-findings is NOT
-                             required in action-mode.
+                             required in action-mode. blocking_failure is also
+                             read from --execution-evidence when it is given.
   --analysis-results <path>  Path to Phase 3A analysis-results.json (required)
   --llm-findings <path>      Path to Phase 3B LLM findings JSON (required;
                              ignored under --action-mode)
@@ -290,7 +291,9 @@ fi
 # (no schema_version / checks[] envelope is required). Precedence:
 #
 #   1. blocking_failure ∈ {plan_tamper, target_outside_allowlist,
-#      runner_unavailable, plan_drift, malformed_output}     -> BLOCKED
+#      runner_unavailable, plan_drift, malformed_output}, in the analysis
+#      document or in --execution-evidence, or evidence that
+#      cannot be read                                        -> BLOCKED
 #   2. placeholders == true                                   -> REQUEST_CHANGES
 #   3. mocks_sut == true                                      -> REQUEST_CHANGES
 #   4. breaks_suite == true                                   -> REQUEST_CHANGES
@@ -302,6 +305,22 @@ if [ "$ACTION_MODE" -eq 1 ]; then
     plan_tamper|target_outside_allowlist|runner_unavailable|plan_drift|malformed_output)
       emit "BLOCKED" ;;
   esac
+
+  if [ -n "$EXECUTION_EVIDENCE" ]; then
+    if [ ! -r "$EXECUTION_EVIDENCE" ]; then
+      printf '%s: execution-evidence file not readable: %s\n' "$SCRIPT_NAME" "$EXECUTION_EVIDENCE" >&2
+      emit "BLOCKED"
+    fi
+    if ! jq -e . "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      printf '%s: malformed execution-evidence JSON: %s\n' "$SCRIPT_NAME" "$EXECUTION_EVIDENCE" >&2
+      emit "BLOCKED"
+    fi
+    evidence_failure="$(jq -r '.blocking_failure // ""' "$EXECUTION_EVIDENCE" 2>/dev/null || echo "")"
+    case "$evidence_failure" in
+      plan_tamper|target_outside_allowlist|runner_unavailable|plan_drift|malformed_output)
+        emit "BLOCKED" ;;
+    esac
+  fi
 
   placeholders="$(jq -r '.placeholders // false' "$ANALYSIS" 2>/dev/null || echo "false")"
   mocks_sut="$(jq -r '.mocks_sut // false' "$ANALYSIS" 2>/dev/null || echo "false")"

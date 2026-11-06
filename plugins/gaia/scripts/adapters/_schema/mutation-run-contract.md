@@ -40,6 +40,7 @@ For `tool-native` format adapters: one JSON batch descriptor per mutant group pl
 
 - `0` — generation completed (zero mutants is valid).
 - Non-zero, or no valid `index.json` — generation failed; the runner adds one `error` record for that file.
+- An `index.json` entry the runner cannot plan from (a bad `mutant_id` or `line`, a missing or absent mutant file) — the runner adds one `error` record for that file, runs none of its mutants, and the gate is `errored`.
 
 `mutant_id` only has to be unique within the adapter's output for one file. The runner prefixes it with a hash of the file path, so ids in the evidence are unique across files and stable across runs.
 
@@ -56,7 +57,7 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 | `--patch-file <patch>` | yes | Path to the unified-diff patch file. A zero-byte file means "no mutation": run the tests as they are. The runner uses it for the baseline. |
 | `--test-command <cmd>` | yes | Shell command to execute (the covering tests), with `--source-dir` as its working directory and as `PROJECT_PATH`. |
 | `--output <json>` | yes | Path to write the JSON result record. |
-| `--timeout <seconds>` | yes | Wall-clock budget. On expiry, the test process group is terminated and the mutant is reported as `timeout`. |
+| `--timeout <seconds>` | yes | Wall-clock budget for one test run under one interpreter. On expiry, the test process group is terminated and the mutant is reported as `timeout`. The runner passes its `--timeout` option, else `GAIA_MUTATION_TIMEOUT`, else the manifest's `default-timeout-seconds`. |
 
 ### Output Record
 
@@ -94,11 +95,11 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 
 ### Baseline
 
-Before any mutant runs, the runner calls `run.sh` with a zero-byte patch for each distinct set of covering tests. Any status other than `survived` refuses the run: the evidence has `gate: errored`, `score: null`, `refused: baseline_red` or `baseline_error`, and a `baseline` object with the output, because every mutant would otherwise look killed. Tool-native adapters are not called this way; their tools do their own green check.
+Before any mutant runs, the runner calls `run.sh` with a zero-byte patch for each distinct set of covering tests. Any status other than `survived` refuses the run: the evidence has `gate: errored`, `score: null`, `refused: baseline_red` (the tests failed) or `baseline_error` (they could not run, or ran out of time, which `baseline.status: timeout` marks), and a `baseline` object with the output, because every mutant would otherwise look killed. Tool-native adapters are not called this way; their tools do their own green check.
 
 ## 3. test_output Truncation
 
-`test_output` is capped to a tail of 4 KB. It never includes environment variables or secrets. It is stored alongside the story's other evidence under test-artifacts.
+`test_output` is capped to a tail of 4 KB. It is stored alongside the story's other evidence under test-artifacts, so an adapter scrubs it before storing it, and before truncating so that no cut hides a secret from the scrubber. The bash adapter replaces the values of secret-named environment variables and `NAME=value` pairs with a secret-looking name, then applies the shared secret-pattern scrubber; test output that cannot be scrubbed is withheld. Test names are read from the scrubbed, complete output, so `killed_by` and `tests` do not depend on the cap. Other environment variables a test prints are not removed.
 
 ## 4. tool-native Format
 
