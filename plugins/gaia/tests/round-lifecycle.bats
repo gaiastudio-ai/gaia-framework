@@ -5638,6 +5638,57 @@ _bh_set_row() {
   [ "$output" = '{"skip":["qa-tests","test-automate","review-perf"],"run":["code-review","security-review","test-review"]}' ]
 }
 
+@test "empty --bind-head is refused with exit 2" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head ""
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--bind-head requires a SHA value"* ]]
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head
+  [ "$status" -eq 2 ]
+}
+
+@test "--bind-head --force combination is defined: force re-runs all six" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  run "$BH_SKIP" --story "$BH_KEY" --force --bind-head "$BH_OLD"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.skip | length' <<<"$output")" = "0" ]
+  [ "$(jq -r '.run | length' <<<"$output")" = "6" ]
+  # Taken as a value, it matches no commit, which also re-runs every row.
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head --force
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.run | length' <<<"$output")" = "6" ]
+}
+
+@test "review-skip-check --bind-head reads a padded SHA cell as bound" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  _bh_set_row "Code Review" "| Code Review | PASSED | r |    $BH_OLD    |"
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.skip | length' <<<"$output")" = "6" ]
+}
+
+@test "review-skip-check --bind-head judges a duplicated row by its first occurrence" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  awk -v r="| Code Review | PASSED | r | 0000000 |" 'index($0, "| Code Review |") == 1 { print r } { print }' "$BH_STORY" > "$BH_STORY.new"
+  mv "$BH_STORY.new" "$BH_STORY"
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.run | length' <<<"$output")" = "1" ]
+}
+
+@test "review-skip-check --bind-head ignores a table in a later section" {
+  _bind_head_fixture
+  _bh_record_all_passed
+  printf '\n| Code Review | PASSED | r | 0000000 |\n' >> "$BH_STORY"
+  run "$BH_SKIP" --story "$BH_KEY" --bind-head "$BH_OLD"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.skip | length' <<<"$output")" = "6" ]
+}
+
 @test "review-skip-check without --bind-head stays blind to the commit a row is bound to" {
   _bind_head_fixture
   _bh_record_all_passed

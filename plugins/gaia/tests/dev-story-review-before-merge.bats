@@ -11,6 +11,8 @@ load 'test_helper.bash'
 setup() {
   # Clear root variables so root-resolving scripts don't leak across tests.
   unset PROJECT_ROOT CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT PROJECT_PATH 2>/dev/null || true
+  # The host's git config never reaches a fixture.
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 
   PLUGIN_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
   REVIEW_ORDER="${PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh"
@@ -179,38 +181,6 @@ _reentry_fence() {
   [ -s "$2" ]
 }
 
-# Worktree on a story branch, a stub checkpoint reader that records it, and a
-# stub gh that, like the real one, matches --head only on the exact branch name.
-_reentry_fixture() {
-  _make_repo "$TMP/wt"
-  git -C "$TMP/wt" checkout -qb feat/some-story-some-slug
-  mkdir -p "$TMP/plugin/scripts" "$TMP/bin"
-  cat > "$TMP/plugin/scripts/resume-checkpoint.sh" <<STUB
-#!/bin/sh
-printf '{"key_variables":{"worktree_path":"%s"}}\n' "$TMP/wt"
-STUB
-  chmod +x "$TMP/plugin/scripts/resume-checkpoint.sh"
-  cat > "$TMP/bin/gh" <<STUB
-#!/bin/sh
-printf '%s\n' "\$*" >> "$TMP/gh-calls.log"
-[ "\${GH_STUB_RC:-0}" -eq 0 ] || exit "\$GH_STUB_RC"
-case " \$* " in
-  *" --head feat/some-story-some-slug "*) printf '2380\n' ;;
-esac
-STUB
-  chmod +x "$TMP/bin/gh"
-}
-
-# ---------- Portability: print BASH_VERSION ----------
-# The ATDD mandates printing BASH_VERSION from inside each run.
-# bats itself prints it, but we assert it here too.
-@test "portability: BASH_VERSION is printed and not empty" {
-  [ -n "$BASH_VERSION" ]
-  echo "BASH_VERSION=$BASH_VERSION"
-}
-
-# ---------- AC1: schema, resolve-config, review-order mode, doctor ----------
-
 @test "schema accepts boolean review_before_merge under dev_story" {
   /usr/bin/grep -A3 '"review_before_merge"' "$SCHEMA" | /usr/bin/grep -q '"type": "boolean"'
 }
@@ -358,7 +328,7 @@ YAML
   intro="$(_flat "$(_step9a | awk '/^1\. \*\*/ { exit } { print }')")"
   _has "$intro" 'scripts/review-order.sh mode` to read the active ordering.'
   _has "$intro" 'When it prints `default`, skip this sub-step entirely and fall through to Step 10'
-  _has "$intro" '`pre-push`, execute the following sequence:'
+  _has "$intro" 'Then execute the following sequence:'
 }
 
 @test "the pre-push checks in Step 10 are limited to pre-push mode" {
@@ -464,77 +434,23 @@ YAML
   _has "$block" 'Before the `detect-mode.sh` RESUME path'
   _has "$block" '(a) `$STATUS` is `review`,'
   _has "$block" '(b) `review-order.sh mode` prints `pre-push`,'
-  _has "$block" '(c) the story worktree recorded in the checkpoint still exists on disk'
+  _has "$block" '(c) this story'"'"'s worktree still exists on disk'
   _has "$block" '(d) `gh pr list` for that exact branch returns empty'
 }
 
 @test "re-entry targets Step 9a, or the push when the assertion passes, and key-absent keeps the halt" {
   local block
   block="$(_flat "$(_reentry)")"
-  _has "$block" 'exit 0 means every Review Gate row is bound to HEAD: re-enter at the push step inside Step 10.'
-  _has "$block" 'Any other result: re-enter at Step 9a (skipping Steps 2 through 9).'
+  _has "$block" '`_target=push` means re-enter at the push step inside Step 10.'
+  _has "$block" '`_target=step-9a` means re-enter at Step 9a (skipping Steps 2 through 9).'
   _has "$block" 'When the key is absent (`review-order.sh mode` prints `default`) and status is `review`, the existing Step 1 status halt applies'
-}
-
-@test "the re-entry PR probe finds an open PR because it asks for the exact branch" {
-  _reentry_fixture
-  _reentry_fence 1 "$TMP/fence1.sh"
-  cat > "$TMP/run.sh" <<RUN
-#!/bin/bash
-set -euo pipefail
-. "$TMP/fence1.sh"
-printf 'wt=%s\nbranch=%s\npr=%s\n' "\$_wt" "\$STORY_BRANCH" "\$_open_pr"
-RUN
-  run env PATH="$TMP/bin:$PATH" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$TMP/run.sh"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"wt=$TMP/wt"* ]]
-  [[ "$output" == *"branch=feat/some-story-some-slug"* ]]
-  [[ "$output" == *"pr=2380"* ]]
-  grep -qF -- "--head feat/some-story-some-slug --state open" "$TMP/gh-calls.log"
-}
-
-@test "a failing gh is never read as no open PR" {
-  _reentry_fixture
-  _reentry_fence 1 "$TMP/fence1.sh"
-  cat > "$TMP/run.sh" <<RUN
-#!/bin/bash
-set -euo pipefail
-. "$TMP/fence1.sh"
-printf 'reached\n'
-RUN
-  run env GH_STUB_RC=1 PATH="$TMP/bin:$PATH" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$TMP/run.sh"
-  [ "$status" -ne 0 ]
-  [[ "$output" != *"reached"* ]]
-  _has "$(_flat "$(_reentry)")" 'A non-zero `gh` exit is a HALT, never read as "no open PR".'
-}
-
-@test "re-entry rebinds PROJECT_PATH so the helpers act on the worktree, and keeps the teardown inputs" {
-  _reentry_fixture
-  _make_repo "$TMP/primary"
-  git -C "$TMP/primary" commit -q --allow-empty -m "different head"
-  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/wt" rev-parse HEAD)"
-  _reentry_fence 2 "$TMP/fence2.sh"
-  cat > "$TMP/run.sh" <<RUN
-#!/bin/bash
-set -euo pipefail
-_wt="$TMP/wt"
-PROJECT_PATH="$TMP/primary"
-export PROJECT_PATH
-. "$TMP/fence2.sh"
-printf 'primary=%s\nworktree=%s\n' "\$PRIMARY_CODE_TREE" "\$STORY_WORKTREE_PATH"
-"$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
-RUN
-  run bash "$TMP/run.sh"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"primary=$TMP/primary"* ]]
-  [[ "$output" == *"worktree=$TMP/wt"* ]]
 }
 
 @test "the re-entry rebind comes before the assertion that picks the target" {
   _assert_order "$(_reentry)" \
     '_open_pr="$(' \
     'export PROJECT_PATH' \
-    'review-order.sh assert-reviewed-head --story {story_path}'
+    'assert-reviewed-head --story {story_path}'
 }
 
 @test "re-entry installs no teardown trap, so a stopped run keeps its worktree" {
@@ -856,7 +772,7 @@ EOF
   _record_git_calls
   run env PATH="$TMP/bin:$PATH" PROJECT_PATH="$TMP/clone" "$REVIEW_ORDER" ancestor-check --base staging
   [ "$status" -eq 0 ]
-  grep -qF -- "fetch --end-of-options origin staging" "$TMP/git-calls.log"
+  grep -qF -- "fetch --end-of-options origin +refs/heads/staging:refs/remotes/origin/staging" "$TMP/git-calls.log"
 }
 
 @test "ancestor-check refuses an option-shaped base without running it or fetching" {
@@ -1113,17 +1029,6 @@ EOF
   done
 }
 
-# ---------- AC12: bash portability (meta — this test itself validates) ----------
-
-@test "suite passes under bash 3.2 and bash 5 with zero skips" {
-  # This is a meta assertion — the test itself runs under whichever bash
-  # bats was invoked with. The ATDD mandates printing the version and
-  # checking the test count and skip count from outside.
-  echo "BASH_VERSION=$BASH_VERSION"
-  # Assert we are actually running (not skipped)
-  [ -n "$BASH_VERSION" ]
-}
-
 # ---------- AC-EC2: preflight dirties tree ----------
 
 @test "a preflight that modifies files halts before the review and says to commit" {
@@ -1196,4 +1101,987 @@ EOF
   local scope_line
   scope_line="$(/usr/bin/grep 'out of scope for v1' "$SKILL_MD")"
   /usr/bin/grep -qF "9a" <<< "$scope_line"
+}
+
+# ---------- Real worktree, real checkpoint writer and reader ----------
+
+_fence_vars() {
+  sed -e "s#{story_key}#${FX_KEY}#g" -e "s#{story_path}#${FX_STORY}#g" -e "s#{story_file}#${FX_STORY}#g" "$1" > "$1.subst"
+  mv "$1.subst" "$1"
+}
+
+# A primary checkout and a linked worktree on this story's branch. The stub gh
+# matches --head on the exact branch name, like the real one, and answers with
+# whatever PR number FX_PR holds for it.
+_wt_fixture() {
+  FX_KEY="E900-S1"
+  FX_BRANCH="feat/${FX_KEY}-some-slug"
+  FX_WT="$TMP/worktrees/$FX_KEY"
+  FX_STORY="$TMP/story.md"
+  _make_repo "$TMP/primary"
+  git -C "$TMP/primary" worktree add -q -b "$FX_BRANCH" "$FX_WT"
+  export CHECKPOINT_ROOT="$TMP/checkpoints"
+  export PROJECT_PATH="$TMP/primary"
+  export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/gh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$TMP/gh-calls.log"
+[ "\${GH_STUB_RC:-0}" -eq 0 ] || exit "\$GH_STUB_RC"
+case " \$* " in
+  *" --head $FX_BRANCH "*) printf '%s\n' "\${FX_PR:-}" ;;
+esac
+STUB
+  chmod +x "$TMP/bin/gh"
+  export PATH="$TMP/bin:$PATH"
+}
+
+_checkpoint() {
+  "$PLUGIN_ROOT/scripts/write-checkpoint.sh" gaia-dev-story "$1" "${@:2}" >/dev/null
+}
+
+# Run the skill's own read of conditions (c) and (d), with no strict mode, so
+# the commands have to hold on their own. Prints the variables it sets.
+_run_reentry_read() {
+  _reentry_fence 1 "$TMP/fence1.sh"
+  _fence_vars "$TMP/fence1.sh"
+  cat > "$TMP/run.sh" <<RUN
+#!/bin/bash
+. "$TMP/fence1.sh"
+printf 'reentry=%s\nwt=%s\nbranch=%s\npr=%s\n' "\$_reentry" "\${_wt:-}" "\${STORY_BRANCH:-}" "\${_open_pr:-}"
+RUN
+  run bash "$TMP/run.sh"
+}
+
+@test "re-entry reads the checkpoint through the real writer and reader, this story only" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  _run_reentry_read
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reentry=yes"* ]]
+  [[ "$output" == *"wt=$FX_WT"* ]]
+  [[ "$output" == *"branch=$FX_BRANCH"* ]]
+  grep -qF -- "--head $FX_BRANCH --state open" "$TMP/gh-calls.log"
+}
+
+@test "re-entry with a later checkpoint without worktree_path still finds the worktree" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  _checkpoint 6 story_key="$FX_KEY"
+  # The unscoped latest read is what used to come back empty.
+  run "$PLUGIN_ROOT/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest
+  [ "$status" -eq 0 ]
+  [ -z "$(jq -r '.key_variables.worktree_path // empty' <<<"$output")" ]
+  _run_reentry_read
+  [[ "$output" == *"reentry=yes"* ]]
+  [[ "$output" == *"wt=$FX_WT"* ]]
+}
+
+@test "re-entry with a sibling story checkpoint does not take the sibling path" {
+  _wt_fixture
+  git -C "$TMP/primary" worktree add -q -b "feat/E900-S2-other" "$TMP/worktrees/E900-S2"
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  _checkpoint 3 worktree_path="$TMP/worktrees/E900-S2" story_key="E900-S2"
+  _run_reentry_read
+  [[ "$output" == *"reentry=yes"* ]]
+  [[ "$output" == *"wt=$FX_WT"* ]]
+  [[ "$output" != *"E900-S2"* ]]
+}
+
+@test "re-entry falls back to git worktree list when no checkpoint names this story" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$TMP/worktrees/E900-S2" story_key="E900-S2"
+  _run_reentry_read
+  [[ "$output" == *"reentry=yes"* ]]
+  # git reports the physical path.
+  [[ "$output" == *"wt=$(cd "$FX_WT" && pwd -P)"* ]]
+}
+
+@test "find-worktree never returns the main checkout, even on the story branch" {
+  _make_repo "$TMP/primary"
+  git -C "$TMP/primary" checkout -qb "feat/E900-S1-on-primary"
+  PROJECT_PATH="$TMP/primary" CHECKPOINT_ROOT="$TMP/none" run "$REVIEW_ORDER" find-worktree --story-key E900-S1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"E900-S1"* ]]
+}
+
+@test "re-entry fails (c) on empty path, missing directory and another branch, with no gh wrapper strict mode" {
+  _wt_fixture
+  # Remove the worktree itself so the git fallback cannot rescue any case.
+  git -C "$TMP/primary" worktree remove --force "$FX_WT"
+  git -C "$TMP/primary" worktree prune
+
+  # Empty recorded path.
+  _checkpoint 3 worktree_path="" story_key="$FX_KEY"
+  _run_reentry_read
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reentry=no"* ]]
+
+  # Directory that does not exist.
+  _checkpoint 4 worktree_path="$TMP/gone" story_key="$FX_KEY"
+  _run_reentry_read
+  [[ "$output" == *"reentry=no"* ]]
+
+  # A directory on another story's branch.
+  git -C "$TMP/primary" worktree add -q -b "feat/E900-S2-other" "$TMP/worktrees/E900-S2"
+  _checkpoint 5 worktree_path="$TMP/worktrees/E900-S2" story_key="$FX_KEY"
+  _run_reentry_read
+  [[ "$output" == *"reentry=no"* ]]
+
+  # None of them got as far as asking GitHub.
+  [ ! -e "$TMP/gh-calls.log" ]
+  _has "$(_flat "$(_reentry)")" 'An empty recorded path, a missing directory or a branch belonging to another story fails (c)'
+  _has "$(_flat "$(_reentry)")" 'The same halt applies when (c) or (d) fails.'
+}
+
+@test "re-entry with no open PR takes the empty-result path" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  FX_PR="" _run_reentry_read
+  [[ "$output" == *"reentry=yes"* ]]
+  [[ "$output" == *$'pr=\n'* || "$output" == *"pr=" ]]
+}
+
+@test "re-entry with an open PR for the exact branch does not re-enter" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  export FX_PR=2380
+  _run_reentry_read
+  [[ "$output" == *"reentry=no"* ]]
+  [[ "$output" == *"pr=2380"* ]]
+}
+
+@test "a failing gh is never read as no open PR, with no strict mode to catch it" {
+  _wt_fixture
+  _checkpoint 3 worktree_path="$FX_WT" story_key="$FX_KEY"
+  export GH_STUB_RC=1
+  _run_reentry_read
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"reentry=no"* ]]
+  _has "$(_flat "$(_reentry)")" 'A non-zero `gh` exit is a HALT, never read as "no open PR".'
+}
+
+# ---------- Re-entry target: verdicts decide, not only bindings ----------
+
+# Story in real-writer shape inside an implementation-artifacts tree; verdicts
+# go through the real gate writer, bound to the worktree HEAD.
+_target_fixture() {
+  _wt_fixture
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
+  export IMPLEMENTATION_ARTIFACTS="$TMP/impl"
+  export PROJECT_ROOT="$TMP/state"
+  mkdir -p "$IMPLEMENTATION_ARTIFACTS" "$PROJECT_ROOT"
+  FX_STORY="$IMPLEMENTATION_ARTIFACTS/${FX_KEY}-fixture.md"
+  cat > "$FX_STORY" <<STORY
+---
+template: 'story'
+key: "${FX_KEY}"
+status: review
+---
+# Story
+
+## Acceptance Criteria
+
+- [ ] AC1: something
+
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | — |
+| QA Tests | UNVERIFIED | — | — |
+| Security Review | UNVERIFIED | — | — |
+| Test Automation | UNVERIFIED | — | — |
+| Test Review | UNVERIFIED | — | — |
+| Performance Review | UNVERIFIED | — | — |
+
+## Findings
+STORY
+  export PROJECT_PATH="$FX_WT"
+}
+
+_record_all() {
+  local gate
+  for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+    "$PLUGIN_ROOT/scripts/review-gate.sh" update --story "$FX_KEY" --gate "$gate" --verdict "$1" >/dev/null
+  done
+}
+
+_run_target() {
+  _reentry_fence 3 "$TMP/fence3.sh"
+  _fence_vars "$TMP/fence3.sh"
+  printf 'printf "target=%%s\\n" "$_target"\n' >> "$TMP/fence3.sh"
+  run bash "$TMP/fence3.sh"
+}
+
+@test "re-entry does not choose the push step when rows are FAILED and no accept override exists" {
+  _target_fixture
+  _record_all FAILED
+  run "$REVIEW_ORDER" assert-reviewed-head --story "$FX_STORY"
+  [ "$status" -eq 0 ]
+  _run_target
+  [[ "$output" == *"target=step-9a"* ]]
+}
+
+@test "re-entry with an unresolved escalation stays out of the push step" {
+  _target_fixture
+  _record_all FAILED
+  local rw="$PLUGIN_ROOT/scripts/review-common/register-write.sh" run_id="round-20261106T000000Z-1"
+  "$rw" record-round --story "$FX_KEY" --run-id "$run_id" --repo "$FX_WT" --gate "code-review=selected" >/dev/null
+  "$rw" record-escalation --story "$FX_KEY" --run-id "$run_id" --round-count 2 --max-cycles 2 >/dev/null
+  _run_target
+  [[ "$output" == *"target=step-9a"* ]]
+}
+
+@test "re-entry takes the push step on a recorded accept override" {
+  _target_fixture
+  _record_all FAILED
+  local rw="$PLUGIN_ROOT/scripts/review-common/register-write.sh" run_id="round-20261106T000000Z-1"
+  "$rw" record-round --story "$FX_KEY" --run-id "$run_id" --repo "$FX_WT" --gate "code-review=selected" >/dev/null
+  "$rw" record-escalation --story "$FX_KEY" --run-id "$run_id" --round-count 2 --max-cycles 2 >/dev/null
+  "$rw" resolve-escalation --story "$FX_KEY" --run-id "$run_id" --choice accept >/dev/null
+  _run_target
+  [[ "$output" == *"target=push"* ]]
+}
+
+@test "re-entry takes the push step on a COMPLETE composite with no rework, after a push failure" {
+  _target_fixture
+  _record_all PASSED
+  _run_target
+  [[ "$output" == *"target=push"* ]]
+}
+
+@test "re-entry goes back to Step 9a when a passing row is bound to an older commit" {
+  _target_fixture
+  _record_all PASSED
+  git -C "$FX_WT" commit -q --allow-empty -m "after the review"
+  _run_target
+  [[ "$output" == *"target=step-9a"* ]]
+}
+
+@test "re-entry installs no teardown handler and the rule is stated" {
+  _has "$(_flat "$(_reentry)")" 'Re-entry sets up no exit handler for that teardown: a stopped or halted pre-push run keeps its worktree.'
+}
+
+# ---------- Layout: a linked worktree, and a story outside it ----------
+
+_layout_fixture() {
+  mkdir -p "$TMP/root/.gaia/config"
+  cat > "$TMP/root/.gaia/config/project-config.yaml" <<'YAML'
+project_root: "."
+project_path: "repo"
+memory_path: m
+checkpoint_path: c
+installed_path: i
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: true
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+YAML
+  _make_repo "$TMP/root/repo"
+  git -C "$TMP/root/repo" worktree add -q -b "feat/E900-S1-slug" "$TMP/root/wt"
+  _write_bound_story "$TMP/root/story.md" abc1234
+  export CLAUDE_PROJECT_ROOT="$TMP/root"
+}
+
+@test "check-layout passes a linked worktree with the story outside it" {
+  _layout_fixture
+  GAIA_WORKTREE_MODE=1 PROJECT_PATH="$TMP/root/wt" run "$REVIEW_ORDER" check-layout --story "$TMP/root/story.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-layout refuses worktree mode off, naming the layout and both remedies" {
+  _layout_fixture
+  env -u GAIA_WORKTREE_MODE PROJECT_PATH="$TMP/root/wt" "$REVIEW_ORDER" check-layout --story "$TMP/root/story.md" 2>"$TMP/err" || rc=$?
+  [ "${rc:-0}" -eq 1 ]
+  grep -qF 'worktree mode is off' "$TMP/err"
+  grep -qF 'GAIA_WORKTREE_MODE=1' "$TMP/err"
+  grep -qF 'dev_story.review_before_merge to false' "$TMP/err"
+}
+
+@test "check-layout refuses a code path that is the main checkout" {
+  _layout_fixture
+  GAIA_WORKTREE_MODE=1 PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" check-layout --story "$TMP/root/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not a linked worktree"* ]]
+  [[ "$output" == *"GAIA_WORKTREE_MODE=1"* ]]
+}
+
+@test "check-layout refuses a story file inside the code work tree, also through a symlink" {
+  _layout_fixture
+  _write_bound_story "$TMP/root/wt/story.md" abc1234
+  GAIA_WORKTREE_MODE=1 PROJECT_PATH="$TMP/root/wt" run "$REVIEW_ORDER" check-layout --story "$TMP/root/wt/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"inside the code work tree"* ]]
+  ln -s "$TMP/root/wt/story.md" "$TMP/root/link.md"
+  GAIA_WORKTREE_MODE=1 PROJECT_PATH="$TMP/root/wt" run "$REVIEW_ORDER" check-layout --story "$TMP/root/link.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"inside the code work tree"* ]]
+}
+
+@test "check-layout skips a non-git code path with exit 3" {
+  _layout_fixture
+  mkdir -p "$TMP/root/plain"
+  env -u GAIA_WORKTREE_MODE PROJECT_PATH="$TMP/root/plain" GIT_CEILING_DIRECTORIES="$TMP" "$REVIEW_ORDER" check-layout --story "$TMP/root/story.md" 2>/dev/null || rc=$?
+  [ "${rc:-0}" -eq 3 ]
+}
+
+@test "check-layout passes with no promotion chain, which never pushes" {
+  _layout_fixture
+  sed -e '/^ci_cd:/,$d' "$TMP/root/.gaia/config/project-config.yaml" > "$TMP/cfg"
+  mv "$TMP/cfg" "$TMP/root/.gaia/config/project-config.yaml"
+  unset GAIA_WORKTREE_MODE
+  PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" check-layout --story "$TMP/root/story.md"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-layout --worktree-mode-only ignores the rest, so Step 1 can run it before a worktree exists" {
+  _layout_fixture
+  GAIA_WORKTREE_MODE=1 PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" check-layout --worktree-mode-only
+  [ "$status" -eq 0 ]
+  env -u GAIA_WORKTREE_MODE PROJECT_PATH="$TMP/root/repo" "$REVIEW_ORDER" check-layout --worktree-mode-only 2>"$TMP/err" || rc=$?
+  [ "${rc:-0}" -eq 1 ]
+  grep -qF 'worktree mode is off' "$TMP/err"
+}
+
+@test "check-layout needs a story or the worktree-mode flag" {
+  _layout_fixture
+  PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" check-layout
+  [ "$status" -eq 2 ]
+}
+
+@test "mode stays pure: it answers on an unsupported layout" {
+  _layout_fixture
+  unset GAIA_WORKTREE_MODE
+  PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "pre-push" ]
+}
+
+@test "Step 1 applies only the worktree-mode check, Step 9a all of it, and neither falls back" {
+  local step1 top
+  step1="$(_flat "$(awk '/^\*\*Pre-push ordering read\.\*\*/ { print; exit }' "$SKILL_MD")")"
+  _has "$step1" 'check-layout --worktree-mode-only'
+  _has "$step1" 'Exit 1 = HALT naming the layout and both remedies'
+  _has "$step1" 'with no fallback to the default order'
+  top="$(_flat "$(_step9a | awk '/^1\. \*\*/ { exit } { print }')")"
+  _has "$top" 'check-layout --story {story_file}'
+  _has "$top" 'Exit 1 = HALT before any status change, commit or review'
+  _has "$top" 'enable worktree mode with `GAIA_WORKTREE_MODE=1`'
+  _has "$top" 'Never fall back to the default order.'
+  _assert_order "$(cat "$SKILL_MD")" \
+    '**Pre-push ordering read.**' \
+    '**Pre-push re-entry exception.**' \
+    'check-layout --story {story_file}' \
+    '2. **Commit.**'
+}
+
+@test "doctor warns on the layout, naming both remedies" {
+  local body
+  body="$(_flat "$(cat "$DOCTOR_MD")")"
+  _has "$body" 'review-order.sh check-layout --worktree-mode-only'
+  _has "$body" 'enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false'
+  grep -qF 'layout that cannot run it' "${PLUGIN_ROOT}/../../documentation/commands/gaia-doctor.html"
+}
+
+@test "doctor keeps both ordering rows" {
+  grep -qF 'review_ordering:                default           (when absent or false)' "$DOCTOR_MD"
+  grep -qF 'review_ordering:                pre-push review   (when dev_story.review_before_merge: true)' "$DOCTOR_MD"
+}
+
+# ---------- Step 9a items ----------
+
+_commit_fence() {
+  _item 'Commit.' > /dev/null
+  _step9a | awk '
+    /^2\. \*\*Commit/ { item = 1 }
+    /^3\. \*\*/ { item = 0 }
+    item && /^ *```bash$/ { on = 1; next }
+    item && /^ *```$/ { on = 0 }
+    on' > "$1"
+  [ -s "$1" ]
+}
+
+@test "clean-tree re-entry skips the commit item" {
+  FX_KEY="E900-S1"; FX_STORY="$TMP/story.md"
+  _make_repo "$TMP/wt"
+  _commit_fence "$TMP/commit.sh"
+  _fence_vars "$TMP/commit.sh"
+  mkdir -p "$TMP/plugin/skills/gaia-dev-story/scripts"
+  printf '#!/bin/sh\nprintf "feat: fixture\\n"\n' > "$TMP/plugin/skills/gaia-dev-story/scripts/commit-msg.sh"
+  chmod +x "$TMP/plugin/skills/gaia-dev-story/scripts/commit-msg.sh"
+  local before
+  before="$(git -C "$TMP/wt" rev-parse HEAD)"
+  CLAUDE_PLUGIN_ROOT="$TMP/plugin" PROJECT_PATH="$TMP/wt" run bash -e "$TMP/commit.sh"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$TMP/wt" rev-parse HEAD)" = "$before" ]
+
+  # A dirty tree still gets its commit.
+  printf 'change\n' > "$TMP/wt/new.txt"
+  CLAUDE_PLUGIN_ROOT="$TMP/plugin" PROJECT_PATH="$TMP/wt" run bash -e "$TMP/commit.sh"
+  [ "$status" -eq 0 ]
+  [ "$(git -C "$TMP/wt" rev-parse HEAD)" != "$before" ]
+  [ -z "$(git -C "$TMP/wt" status --porcelain)" ]
+  _has "$(_item 'Commit.')" 'A clean tree skips this item'
+}
+
+@test "the reviewed-head assertion is skipped on ABSENT and the ancestor check needs a base" {
+  local item
+  item="$(_item 'Reviewed-head assertion.')"
+  _has "$item" 'When the guard in item 1 returned `ABSENT`, skip this item: nothing is pushed and the story ends in `review`.'
+  item="$(_item 'Ancestor check (pre-push).')"
+  _has "$item" 'When the guard in item 1 returned `PRESENT:<branch>`'
+}
+
+@test "a resume with no worktree prints the run-all command" {
+  _has "$(_item 'Interactive gate (non-YOLO).')" 'the command to print is `/gaia-run-all-reviews {story_key}` instead'
+}
+
+@test "preflight that rewrites a file halts before review, with a real runner" {
+  _make_repo "$TMP/wt"
+  mkdir -p "$TMP/root/.gaia/config"
+  cat > "$TMP/root/.gaia/config/project-config.yaml" <<'YAML'
+project_root: "."
+project_path: "wt"
+memory_path: m
+checkpoint_path: c
+installed_path: i
+framework_version: "1.0.0"
+date: "2026-01-01"
+preflight_commands:
+  - "printf 'formatted\\n' >> file.txt"
+YAML
+  CLAUDE_PROJECT_ROOT="$TMP/root" run bash "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/run-configured-commands.sh" \
+    --key preflight_commands --workdir "$TMP/wt"
+  [ "$status" -eq 0 ]
+  [ -n "$(git -C "$TMP/wt" status --porcelain)" ]
+  _write_bound_story "$TMP/story.md" "$(git -C "$TMP/wt" rev-parse HEAD)"
+  PROJECT_PATH="$TMP/wt" run "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not clean"* ]]
+  local item
+  item="$(_item 'Preflight gate.')"
+  _has "$item" 'verify the working tree is still clean'
+  _has "$item" 'HALT before the review'
+  _has "$item" 'to commit the change and re-run'
+}
+
+# ---------- Ancestor check: the ref it reads ----------
+
+@test "ancestor-check halts under a narrowed refspec with the base advanced" {
+  _make_origin_and_clone
+  git -C "$TMP/clone" config remote.origin.fetch "+refs/heads/other:refs/remotes/origin/other"
+  local tip
+  tip="$(_advance_remote_staging)"
+  PROJECT_PATH="$TMP/clone" run "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$tip"* ]]
+}
+
+@test "ancestor-check ignores a local branch and a tag named origin/<base>" {
+  _make_origin_and_clone
+  _advance_remote_staging >/dev/null
+  git -C "$TMP/clone" branch "origin/staging"
+  PROJECT_PATH="$TMP/clone" run "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+  git -C "$TMP/clone" branch -qD "origin/staging"
+  git -C "$TMP/clone" tag "origin/staging"
+  PROJECT_PATH="$TMP/clone" run "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+}
+
+@test "drift stderr names base tip, HEAD and rebase advice" {
+  _make_origin_and_clone
+  local tip head
+  tip="$(_advance_remote_staging)"
+  head="$(git -C "$TMP/clone" rev-parse HEAD)"
+  PROJECT_PATH="$TMP/clone" run "$REVIEW_ORDER" ancestor-check --base staging
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$tip"* ]]
+  [[ "$output" == *"$head"* ]]
+  [[ "$output" == *"rebase or merge the base branch and re-review"* ]]
+}
+
+@test "helper usage errors and an unbound literal exit with their documented codes and messages" {
+  run "$REVIEW_ORDER" ancestor-check
+  [ "$status" -eq 2 ]
+  run "$REVIEW_ORDER" assert-reviewed-head
+  [ "$status" -eq 2 ]
+  _make_repo "$TMP/wt"
+  PROJECT_PATH="$TMP/wt" run "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/missing.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"story file not found"* ]]
+  _write_bound_story "$TMP/story.md" absent
+  PROJECT_PATH="$TMP/wt" run "$REVIEW_ORDER" assert-reviewed-head --story "$TMP/story.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"has no reviewed SHA bound"* ]]
+}
+
+# ---------- mode and the resolver ----------
+
+_nongit_root_fixture() {
+  mkdir -p "$TMP/root/.gaia/config"
+  cat > "$TMP/root/.gaia/config/project-config.yaml" <<'YAML'
+project_root: "."
+project_path: "repo"
+memory_path: m
+checkpoint_path: c
+installed_path: i
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: true
+YAML
+  _make_repo "$TMP/root/repo"
+}
+
+@test "mode exits non-zero when the config is malformed" {
+  mkdir -p "$TMP/.gaia/config"
+  printf 'dev_story: [\n' > "$TMP/.gaia/config/project-config.yaml"
+  CLAUDE_PROJECT_ROOT="$TMP" run "$REVIEW_ORDER" mode
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"dev_story.review_before_merge"* ]]
+  [[ "$output" != *"default"* ]]
+}
+
+@test "mode reads the config above a repo in a non-git root in all three environments" {
+  _nongit_root_fixture
+  cd "$TMP/root/repo"
+  run "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "pre-push" ]
+  cd "$TMP"
+  PROJECT_PATH="$TMP/root/repo" run "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "pre-push" ]
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "pre-push" ]
+}
+
+@test "mode prints default when no config exists anywhere" {
+  mkdir -p "$TMP/empty"
+  cd "$TMP/empty"
+  run "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "default" ]
+}
+
+@test "mode halts for yes in shared and local layers, and every call site halts on non-zero" {
+  _nongit_root_fixture
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e 's/review_before_merge: true/review_before_merge: "yes"/' "$cfg" > "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$REVIEW_ORDER" mode
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"dev_story.review_before_merge"* ]]
+  [[ "$output" == *"allowed: true, false"* ]]
+
+  # Shared layer clean, the bad value only in the local override.
+  sed -e 's/review_before_merge: "yes"/review_before_merge: false/' "$cfg" > "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+  printf 'dev_story:\n  review_before_merge: yes\n' > "$TMP/root/.gaia/config/global.yaml"
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$REVIEW_ORDER" mode
+  [ "$status" -ne 0 ]
+
+  _has "$(awk '/^\*\*Pre-push ordering read\.\*\*/ { print; exit }' "$SKILL_MD")" 'Any non-zero exit is a HALT'
+  _has "$(_flat "$(_step9a)")" 'Any non-zero exit is a HALT with its stderr, naming the key'
+  _has "$(_step10)" 'A non-zero exit from `review-order.sh mode` is a HALT.'
+  _has "$(_step16)" 'A non-zero exit from `review-order.sh mode` is a HALT.'
+}
+
+@test "flow-style mapping resolves the configured value" {
+  _nongit_root_fixture
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e '/^dev_story:/,$d' "$cfg" > "$TMP/cfg"
+  printf 'dev_story: {review_before_merge: true}\nreview: {max_fix_cycles: 7, other: 1}\n' >> "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --field dev_story.review_before_merge
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$REVIEW_ORDER" mode
+  [ "$output" = "pre-push" ]
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --field review.max_fix_cycles
+  [ "$output" = "7" ]
+}
+
+@test "flow-style mapping reads only its own keys, not a nested one" {
+  _nongit_root_fixture
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e '/^dev_story:/,$d' "$cfg" > "$TMP/cfg"
+  printf 'dev_story: {other: {review_before_merge: true}, "review_before_merge": false}\n' >> "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --field dev_story.review_before_merge
+  [ "$output" = "false" ]
+}
+
+@test "resolve-config --all and JSON output carry the key" {
+  _nongit_root_fixture
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dev_story.review_before_merge='true'"* ]]
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --format json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '."dev_story.review_before_merge"' <<<"$output")" = "true" ]
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --all --format json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '."dev_story.review_before_merge"' <<<"$output")" = "true" ]
+}
+
+@test "the JSON output omits the key when it is absent" {
+  _nongit_root_fixture
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e '/^dev_story:/,$d' "$cfg" > "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+  CLAUDE_PROJECT_ROOT="$TMP/root" run "$RESOLVE" --format json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r 'has("dev_story.review_before_merge")' <<<"$output")" = "false" ]
+}
+
+@test "the YAML descriptor lists the key in the dev_story description" {
+  local line
+  line="$(awk '/^  dev_story:/ { on = 1; next } on && /^  [a-z_]+:/ { exit } on' "$YAML_SCHEMA")"
+  _has "$line" 'review_before_merge'
+}
+
+# ---------- Move to done: the merge guard on every path ----------
+
+# A review-status story with all rows PASSED, in a project whose code path is a
+# git repo under a non-git root. The stub gh answers the verifier's list query
+# with GH_LIST and records its working directory.
+_done_fixture() {
+  _nongit_root_fixture
+  FX_KEY="E900-S1"
+  local impl="$TMP/root/.gaia/artifacts/implementation-artifacts" plan="$TMP/root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$impl" "$plan" "$TMP/root/.gaia/memory" "$TMP/bin"
+  FX_STORY="$impl/${FX_KEY}-fixture.md"
+  local sha
+  sha="$(git -C "$TMP/root/repo" rev-parse HEAD)"
+  cat > "$FX_STORY" <<STORY
+---
+template: 'story'
+key: "${FX_KEY}"
+title: "Fixture"
+epic: "E900"
+status: review
+sprint_id: "fixture-sprint"
+priority: "P2"
+size: "S"
+points: 1
+risk: "low"
+---
+
+# Story: Fixture
+
+> **Status:** review
+
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | — | ${sha} |
+| QA Tests | PASSED | — | ${sha} |
+| Security Review | PASSED | — | ${sha} |
+| Test Automation | PASSED | — | ${sha} |
+| Test Review | PASSED | — | ${sha} |
+| Performance Review | PASSED | — | ${sha} |
+
+## Findings
+STORY
+  cat > "$impl/sprint-status.yaml" <<STATUS
+sprint_id: "fixture-sprint"
+stories:
+  - key: ${FX_KEY}
+    status: "review"
+STATUS
+  cat > "$plan/epics-and-stories.md" <<EPICS
+# Epics and Stories
+
+## Epic 900 — Fixture
+
+### Story ${FX_KEY}: Fixture
+
+- **Status:** review
+EPICS
+  cat > "$impl/story-index.yaml" <<INDEX
+stories:
+  ${FX_KEY}:
+    story_key: "${FX_KEY}"
+    status: "review"
+INDEX
+  cat > "$TMP/bin/gh" <<STUB
+#!/bin/sh
+printf '%s %s\n' "\$PWD" "\$*" >> "$TMP/gh-calls.log"
+printf '%s\n' "\${GH_LIST:-NO_MATCH}"
+STUB
+  chmod +x "$TMP/bin/gh"
+  _record_git_calls
+  export PATH="$TMP/bin:$PATH"
+  export CLAUDE_PROJECT_ROOT="$TMP/root"
+  export IMPLEMENTATION_ARTIFACTS="$impl" PLANNING_ARTIFACTS="$plan"
+  export MEMORY_PATH="$TMP/root/.gaia/memory"
+  export SPRINT_STATUS_YAML="$impl/sprint-status.yaml"
+  export EPICS_AND_STORIES="$plan/epics-and-stories.md"
+  export STORY_INDEX_YAML="$impl/story-index.yaml"
+  export STORY_STATUS_LOCK="$TMP/root/.gaia/memory/.lock"
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
+  unset GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE
+  TRANSITION="$PLUGIN_ROOT/scripts/transition-story-status.sh"
+  cd "$TMP/root"
+}
+
+_add_chain() {
+  printf 'ci_cd:\n  promotion_chain:\n    - id: staging\n      branch: staging\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+}
+
+_set_key() {
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e "s/review_before_merge: true/review_before_merge: $1/" "$cfg" > "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+}
+
+_drop_key() {
+  local cfg="$TMP/root/.gaia/config/project-config.yaml"
+  sed -e '/^dev_story:/d' -e '/review_before_merge/d' "$cfg" > "$TMP/cfg"
+  cp "$TMP/cfg" "$cfg"
+}
+
+_status_of() {
+  awk '/^status:/ { print $2; exit }' "$FX_STORY"
+}
+
+@test "done is refused until merge exits 0 and post-merge verification passes" {
+  _done_fixture
+  _add_chain
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [[ "$output" == *"$FX_KEY"* ]]
+  [[ "$output" == *"finish push and merge"* ]]
+  [ "$(_status_of)" = "review" ]
+
+  GH_LIST=MERGED run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+}
+
+@test "the guard runs the verifier in the code path from config, not the non-git working directory" {
+  _done_fixture
+  _add_chain
+  GH_LIST=MERGED run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  local phys
+  phys="$(cd "$TMP/root/repo" && pwd -P)"
+  grep -qE "^(${phys}|${TMP}/root/repo) pr list" "$TMP/gh-calls.log"
+}
+
+@test "with the key absent or false a transition to done makes no verifier, gh or fetch call" {
+  _done_fixture
+  _add_chain
+  _drop_key
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+  [ ! -e "$TMP/gh-calls.log" ]
+  ! grep -qE '(^| )fetch( |$)' "$TMP/git-calls.log"
+}
+
+@test "with the key false a transition to done makes no gh call either" {
+  _done_fixture
+  _add_chain
+  _set_key false
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+@test "with no promotion chain a pre-push story may move to done" {
+  _done_fixture
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+@test "a resolver failure refuses done rather than reading as default" {
+  _done_fixture
+  _add_chain
+  printf 'dev_story: [\n' > "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [[ "$output" == *"$FX_KEY"* ]]
+  [ "$(_status_of)" = "review" ]
+}
+
+@test "a non-boolean value refuses done" {
+  _done_fixture
+  _add_chain
+  _set_key maybe
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+}
+
+@test "the operator bypass allows done with no verifier call" {
+  _done_fixture
+  _add_chain
+  GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE=1 GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+@test "--reconcile-only stays exempt" {
+  _done_fixture
+  _add_chain
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
+  [ "$status" -ne 9 ]
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+@test "transition exit code 9 is documented in the tool header" {
+  grep -qE '^#   9  review -> done refused' "$PLUGIN_ROOT/scripts/transition-story-status.sh"
+}
+
+@test "sprint-state transition cannot reach done past the guard either" {
+  _done_fixture
+  _add_chain
+  GH_LIST=NO_MATCH run "$PLUGIN_ROOT/scripts/sprint-state.sh" transition --story "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+  # The copy shipped beside the helper reaches the same decision.
+  GH_LIST=NO_MATCH run "$PLUGIN_ROOT/skills/gaia-dev-story/scripts/sprint-state.sh" transition --story "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+}
+
+@test "the verifier exit codes map to allow and refuse" {
+  _done_fixture
+  _add_chain
+  mkdir -p "$TMP/copy/skills/gaia-dev-story"
+  cp -R "$PLUGIN_ROOT/scripts" "$TMP/copy/scripts"
+  cp -R "$PLUGIN_ROOT/skills/gaia-dev-story/scripts" "$TMP/copy/skills/gaia-dev-story/scripts"
+  local rc_case
+  for rc_case in 0:0 3:0 2:1 1:1 7:1; do
+    printf '#!/bin/sh\nexit %s\n' "${rc_case%%:*}" > "$TMP/copy/skills/gaia-dev-story/scripts/verify-pr-merged.sh"
+    run "$TMP/copy/skills/gaia-dev-story/scripts/review-order.sh" merge-guard --story-key "$FX_KEY"
+    [ "$status" -eq "${rc_case##*:}" ] || { printf 'verifier rc %s gave %s\n' "$rc_case" "$status" >&2; return 1; }
+  done
+}
+
+@test "merge-guard refuses a bad key and a missing code path" {
+  _done_fixture
+  run "$REVIEW_ORDER" merge-guard --story-key '../x'
+  [ "$status" -eq 1 ]
+  run "$REVIEW_ORDER" merge-guard
+  [ "$status" -eq 2 ]
+  rm -rf "$TMP/root/repo"
+  run "$REVIEW_ORDER" merge-guard --story-key "$FX_KEY"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"code path does not exist"* ]]
+}
+
+@test "the pre-push tail ends with done after the merge, and Step 14 no longer assumes a subagent" {
+  local tail
+  tail="$(_flat "$(awk '/^\*\*Pre-push tail: move to `done`\.\*\*/ { print; exit }' "$SKILL_MD")")"
+  _has "$tail" 'when Step 13 exited 0 and Step 14 exited 0, the last action of the run is'
+  _has "$tail" 'transition-story-status.sh {story_key} --to done'
+  _has "$tail" 'Step 13 exit 3 (merge deferred) and a project with no promotion chain end in `review`'
+  _assert_order "$(cat "$SKILL_MD")" \
+    '### Step 13 -- Merge PR' \
+    '### Step 14 -- Post-Completion Gate' \
+    '### Step 15 -- Update Review Gate' \
+    '<!-- step 16 end -->' \
+    '**Pre-push tail: move to `done`.**'
+  _lacks "$(sed -n '/### Step 14 -- /,/### Step 14b/p' "$SKILL_MD" | sed -n '1,6p')" 'subagent returns `status=done`'
+}
+
+@test "deferred merge keeps rows bound and a later merge needs no re-review, against a real gate check" {
+  _done_fixture
+  _add_chain
+  local head
+  head="$(git -C "$TMP/root/repo" rev-parse HEAD)"
+  # Exit 3 leaves the story and its rows alone, so the gate check still passes.
+  run "$PLUGIN_ROOT/scripts/review-gate-check.sh" --bind-head "$head" --ci-sha "$head" --story "$FX_STORY"
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "review" ]
+  _has "$(sed -n '/### Step 13/,/### Step 14/p' "$SKILL_MD")" '**Step 14 is skipped when Step 13 returns exit 3.**'
+}
+
+# ---------- Default-order tail against a fixed baseline ----------
+
+@test "Steps 11-16 keep their commands against a baseline" {
+  _assert_order "$(sed -n '/<!-- step 10 git-push wire end -->/,$p' "$SKILL_MD")" \
+    '<!-- step 10 git-push wire end -->' \
+    '### Step 11 -- Create PR' \
+    'forbidden-sentinel-scan.sh' \
+    '### Step 12 ' \
+    'scripts/ci-wait.sh {pr_number}' \
+    '--key post_ci_smoke_commands' \
+    '### Step 13 -- Merge PR' \
+    '### Step 14 -- Post-Completion Gate' \
+    'scripts/verify-pr-merged.sh {story_key} {target_branch}' \
+    '### Step 14b ' \
+    '### Step 15 -- Update Review Gate' \
+    'scripts/init-review-gate.sh {story_file}' \
+    'transition-story-status.sh {story_key} --to review' \
+    '<!-- step 16 begin -->' \
+    'yolo-mode.sh is_yolo'
+}
+
+# ---------- Run-all, documentation and changelog ----------
+
+@test "run-all accepts and forwards --bind-head, per line, with no ONLY-flag contradiction" {
+  grep -qF 'argument-hint: "[story-key] [--force] [--bind-head <sha>]"' "$RUN_ALL_MD"
+  grep -qF 'usage: /gaia-run-all-reviews [story-key] [--force] [--bind-head <sha>]' "$RUN_ALL_MD"
+  grep -qF '`--force` and `--bind-head <sha>` are the ONLY supported flags' "$RUN_ALL_MD"
+  ! grep -qF 'The `--force` flag is the ONLY supported flag' "$RUN_ALL_MD"
+  grep -qF 'the optional `--force` and `--bind-head <sha>` flags' "$RUN_ALL_MD"
+  grep -qF 'review-skip-check.sh --story {story_key} [--force] [--bind-head <sha>]' "$RUN_ALL_MD"
+  grep -qF 'If `--bind-head <s' "$RUN_ALL_MD"
+  grep -qF -- '--bind-head' "${PLUGIN_ROOT}/../../documentation/commands/gaia-review-all.html"
+}
+
+@test "docs and changelog pin key, default, step order, stop-and-resume and drift halt per sentence" {
+  local doc cl
+  doc="$(_flat "$(sed -n '/Pre-push review ordering (opt-in)/,/<\/div>/p' "$DOC_DEV_STORY")")"
+  _has "$doc" '<code>dev_story.review_before_merge: true</code>'
+  _has "$doc" 'The key defaults to <code>false</code>'
+  _has "$doc" 'commit &rarr; push &rarr; PR &rarr; CI &rarr; review &rarr; merge'
+  _has "$doc" 'commit &rarr; preflight &rarr; review &rarr; fix loop &rarr; push &rarr; PR &rarr; CI &rarr; merge &rarr; done'
+  _has "$doc" 'Interactive stop and resume.'
+  _has "$doc" 'Drift halt.'
+  _has "$doc" 'Reviewed-head check.'
+  _has "$doc" 'Layout requirement.'
+  _has "$doc" 'Moving to done.'
+  _has "$doc" '<code>transition-story-status.sh --to done</code> exits 9'
+  _lacks "$(_flat "$(cat "$DOC_DEV_STORY")")" 'once all reviews pass, transitions the story to done'
+  _has "$(_flat "$(cat "$DOC_DEV_STORY")")" 'It is read-only and does not change the story'
+
+  cl="$(sed -n '/### Pre-push review ordering/,/### Fix-cycle cap/p' "$CHANGELOG")"
+  _has "$cl" '`dev_story.review_before_merge` — opt-in boolean'
+  _has "$cl" '(default `false`)'
+  _has "$cl" 'Interactive stop-and-resume:'
+  _has "$cl" 'Drift halt:'
+  _has "$cl" 'Layout check:'
+  _has "$cl" 'Moving to `done`:'
+  grep -qE 'review-skip-check|--bind-head' "${PLUGIN_ROOT}/../../documentation/commands/gaia-review-all.html"
+}
+
+# ---------- Two shells, for real ----------
+
+@test "fixtures isolate git config from the host" {
+  [ "$GIT_CONFIG_GLOBAL" = "/dev/null" ]
+  [ -z "$(git config --global --list 2>/dev/null)" ]
+}
+
+@test "the helper parses and answers under both system shells" {
+  local shell_path
+  mkdir -p "$TMP/empty"
+  cd "$TMP/empty"
+  for shell_path in /bin/bash "$(command -v bash)"; do
+    "$shell_path" -n "$REVIEW_ORDER"
+    run "$shell_path" "$REVIEW_ORDER" mode
+    [ "$status" -eq 0 ]
+    [ "$output" = "default" ]
+  done
 }
