@@ -187,6 +187,29 @@ parse_yaml_nested_key() {
       if (in_parent) { in_parent=0 }
     }
     $0 ~ "^"P"[[:space:]]*:[[:space:]]*$" { in_parent=1; next }
+    # Flow-style parent on one line: `parent: {child: value, other: value}`.
+    # Only keys of this mapping match; a nested mapping is one opaque value.
+    $0 ~ "^"P"[[:space:]]*:[[:space:]]*[{]" {
+      body=$0
+      sub(/^[^{]*[{]/, "", body)
+      depth=0; tok=""; n=length(body)
+      for (i=1; i<=n+1; i++) {
+        ch=(i<=n) ? substr(body, i, 1) : ","
+        if (ch == "{") depth++
+        if (ch == "}" && depth == 0) ch=","
+        else if (ch == "}") depth--
+        if (ch != "," || depth > 0) { tok=tok ch; continue }
+        key=tok; val=tok; tok=""
+        sub(/[[:space:]]*:.*$/, "", key); sub(/^[[:space:]]+/, "", key); gsub(/["\x27]/, "", key)
+        if (key != C || val !~ /:/) continue
+        sub(/^[^:]*:[[:space:]]*/, "", val); sub(/[[:space:]]+$/, "", val)
+        if (val ~ /^".*"$/) { val=substr(val, 2, length(val)-2) }
+        else if (val ~ /^\x27.*\x27$/) { val=substr(val, 2, length(val)-2) }
+        print val
+        exit
+      }
+      next
+    }
     in_parent && $0 ~ "^[[:space:]]+"C"[[:space:]]*:" {
       line=$0
       sub(/^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:[[:space:]]*/, "", line)
@@ -744,7 +767,7 @@ fi
 # Only --all + --cache use the cache (single-key callers retain byte-stable
 # legacy behavior). When a fresh cache file matches the source mtimes, dump
 # its body and exit — bypassing parse, merge, env-override, and emit.
-if [ "$EMIT_ALL" -eq 1 ] && [ "$USE_CACHE" -eq 1 ]; then
+if [ "$EMIT_ALL" -eq 1 ] && [ "$USE_CACHE" -eq 1 ] && [ "$FORMAT" = "shell" ]; then
   CACHE_FILE=$(cache_file_path)
   if [ -f "$CACHE_FILE" ]; then
     expected_digest=$(cache_digest)
@@ -1779,7 +1802,7 @@ emit_all_body() {
   return 0
 }
 
-if [ "$EMIT_ALL" -eq 1 ]; then
+if [ "$EMIT_ALL" -eq 1 ] && [ "$FORMAT" = "shell" ]; then
   body=$(emit_all_body)
   printf '%s\n' "$body"
   if [ "$USE_CACHE" -eq 1 ]; then
@@ -1948,6 +1971,9 @@ else
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_device_targets_json" '. + {device_targets: $v}')
     fi
     # Preflight / post-CI smoke command arrays — passed through unchanged.
+    if [ -n "$v_dev_story_review_before_merge" ]; then
+      new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --arg v "$v_dev_story_review_before_merge" '. + {"dev_story.review_before_merge": $v}')
+    fi
     if [ -n "$v_preflight_commands_json" ]; then
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$v_preflight_commands_json" '. + {preflight_commands: $v}')
     fi
