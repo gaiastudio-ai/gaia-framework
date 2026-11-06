@@ -3,6 +3,21 @@
 
 load '../test_helper.bash'
 
+# Write a bats fixture file from name/body pairs without placing @test at
+# column 0 in THIS source file (avoids inflating bats plan count).
+_write_bats_fixture() {
+  local outfile="$1"; shift
+  local at_test
+  # shellcheck disable=SC1003
+  at_test='@test'
+  printf '#!/usr/bin/env bats\n' > "$outfile"
+  while [ $# -ge 2 ]; do
+    local tname="$1" tbody="$2"; shift 2
+    printf '%s "%s" {\n  %s\n}\n' "$at_test" "$tname" "$tbody" >> "$outfile"
+  done
+  chmod +x "$outfile"
+}
+
 setup() {
   BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
@@ -54,19 +69,11 @@ SCRIPT
   cp "$COPY_DIR/scripts/sample.sh" "$FIXTURE_WT/scripts/"
 
   # Real bats test that exercises sample.sh
-  cat > "$COPY_DIR/tests/sample.bats" <<'TESTFILE'
-#!/usr/bin/env bats
-  @test "check_val 0 returns 0" {
-    source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
-    run check_val 0
-    [ "$status" -eq 0 ]
-  }
-  @test "check_val 5 returns small" {
-    source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true
-    run check_val 5
-    [[ "$output" == *"small"* ]]
-  }
-TESTFILE
+  _write_bats_fixture "$COPY_DIR/tests/sample.bats" \
+    'check_val 0 returns 0' \
+    'source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true; run check_val 0; [ "$status" -eq 0 ]' \
+    'check_val 5 returns small' \
+    'source "$BATS_TEST_DIRNAME/../scripts/sample.sh" 2>/dev/null || true; run check_val 5; [[ "$output" == *"small"* ]]'
 
   FILES_LIST="$TEST_TMP/files.txt"
   printf 'scripts/sample.sh\n' > "$FILES_LIST"

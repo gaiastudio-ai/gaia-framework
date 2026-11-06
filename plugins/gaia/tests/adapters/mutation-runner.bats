@@ -5,6 +5,23 @@ load '../test_helper.bash'
 
 # ---------- Helpers ----------
 
+# Write a bats fixture file from name/body pairs. Keeps literal @test off
+# column 0 in this source (which would inflate bats plan count) while
+# producing valid bats syntax in the output file.
+# Usage: _write_bats_fixture <path> <name1> <body1> [<name2> <body2> ...]
+_write_bats_fixture() {
+  local outfile="$1"; shift
+  local at_test
+  # shellcheck disable=SC1003
+  at_test='@test'
+  printf '#!/usr/bin/env bats\n' > "$outfile"
+  while [ $# -ge 2 ]; do
+    local tname="$1" tbody="$2"; shift 2
+    printf '%s "%s" {\n  %s\n}\n' "$at_test" "$tname" "$tbody" >> "$outfile"
+  done
+  chmod +x "$outfile"
+}
+
 setup() {
   BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PLUGIN_ROOT="$(cd "$BATS_TEST_DIR/../.." && pwd)"
@@ -37,22 +54,13 @@ SCRIPT
   chmod +x "$FIXTURE_WT/scripts/target.sh"
 
   # Real bats test fixture that sources and exercises target.sh.
-  # The test detects the -eq -> -ne mutation by checking return codes.
-  cat > "$FIXTURE_WT/tests/target.bats" <<'TESTFILE'
-#!/usr/bin/env bats
-  # (indented to avoid col-0 @test in fixture)
-  @test "check 0 returns 0" {
-    source "$BATS_TEST_DIRNAME/../scripts/target.sh"
-    run check 0
-    [ "$status" -eq 0 ]
-  }
-  @test "check 5 returns 1" {
-    source "$BATS_TEST_DIRNAME/../scripts/target.sh"
-    run check 5
-    [ "$status" -eq 1 ]
-  }
-TESTFILE
-  chmod +x "$FIXTURE_WT/tests/target.bats"
+  # Written via printf to keep literal @test off column 0 in this source
+  # while producing valid bats at column 0 in the output file.
+  _write_bats_fixture "$FIXTURE_WT/tests/target.bats" \
+    'check 0 returns 0' \
+    'source "$BATS_TEST_DIRNAME/../scripts/target.sh"; run check 0; [ "$status" -eq 0 ]' \
+    'check 5 returns 1' \
+    'source "$BATS_TEST_DIRNAME/../scripts/target.sh"; run check 5; [ "$status" -eq 1 ]'
 
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "init"
@@ -233,13 +241,8 @@ TERMHELPER
 
 @test "survivors are registered via register-write.sh add with --story and --defect flags" {
   # Create a test that always passes so all mutants survive
-  cat > "$FIXTURE_WT/tests/target.bats" <<'TESTFILE'
-#!/usr/bin/env bats
-  @test "always passes (target.sh reference)" {
-    true
-  }
-TESTFILE
-  chmod +x "$FIXTURE_WT/tests/target.bats"
+  _write_bats_fixture "$FIXTURE_WT/tests/target.bats" \
+    'always passes (target.sh reference)' 'true'
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "weak test"
 
@@ -295,13 +298,8 @@ MOCK
 
 @test "missing threshold defaults apply and P0 below threshold gets gate failed while P2 gets advisory" {
   # Use a test that always passes (survivors only) so score = 0%
-  cat > "$FIXTURE_WT/tests/target.bats" <<'TESTFILE'
-#!/usr/bin/env bats
-  @test "always passes (target.sh reference)" {
-    true
-  }
-TESTFILE
-  chmod +x "$FIXTURE_WT/tests/target.bats"
+  _write_bats_fixture "$FIXTURE_WT/tests/target.bats" \
+    'always passes (target.sh reference)' 'true'
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "pass-all"
 
@@ -492,14 +490,9 @@ module_fn() { if [ "$1" -eq 0 ]; then return 0; fi; return 1; }
 SCRIPT
   chmod +x "$FIXTURE_WT/scripts/sub dir/my module.sh"
 
-  # Test file with bracket metacharacter; indented to avoid col-0 fixture
-  cat > "$FIXTURE_WT/tests/test[1].bats" <<'TESTFILE'
-#!/usr/bin/env bats
-  @test "module test (my module.sh reference)" {
-    true
-  }
-TESTFILE
-  chmod +x "$FIXTURE_WT/tests/test[1].bats"
+  # Test file with bracket metacharacter
+  _write_bats_fixture "$FIXTURE_WT/tests/test[1].bats" \
+    'module test (my module.sh reference)' 'true'
 
   git -C "$FIXTURE_WT" add -A
   git -C "$FIXTURE_WT" commit -q -m "add metachar files"
