@@ -1075,15 +1075,15 @@ v_test_execution_tier_3_placement=$(merge_doubly_nested_key test_execution tier_
 # {} counts as present). Loud failure when the key is present and yq is
 # missing.
 v_test_execution_mutation_thresholds=""
-if [ -n "$_shared_config" ] && [ -f "$_shared_config" ]; then
+if [ -n "${SHARED_PATH:-}" ] && [ -f "$SHARED_PATH" ]; then
   if command -v yq >/dev/null 2>&1; then
-    _mt_raw=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$_shared_config" 2>/dev/null || true)
+    _mt_raw=$(yq -o=json '.test_execution.mutation_thresholds // empty' "$SHARED_PATH" 2>/dev/null || true)
     if [ -n "$_mt_raw" ] && [ "$_mt_raw" != "null" ]; then
       v_test_execution_mutation_thresholds="$_mt_raw"
     fi
   else
     # Check whether the key is present (grep-based, no yq)
-    if grep -q 'mutation_thresholds' "$_shared_config" 2>/dev/null; then
+    if grep -q 'mutation_thresholds' "$SHARED_PATH" 2>/dev/null; then
       printf 'resolve-config.sh: error: yq is required to read test_execution.mutation_thresholds but is not installed\n' >&2
       exit 1
     fi
