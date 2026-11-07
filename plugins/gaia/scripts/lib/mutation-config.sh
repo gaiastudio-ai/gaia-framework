@@ -14,7 +14,8 @@
 #   mutation_config_path                path of the project config, if any
 #   mutation_evidence_path <story_key>  path of the story's mutation evidence
 #   mutation_story_priority <story>     P0..P3 from the story frontmatter
-#   mutation_story_file_list <story>    one path per line from the File List
+#   mutation_story_file_list <story>    one path per line from the File List;
+#                                       returns 1 when a line names no path
 #
 # bash 3.2 compatible.
 
@@ -80,27 +81,109 @@ mutation_story_priority() {
   ' "$1"
 }
 
-# Handles `- \`path\` — note`, `| \`path\` | note |` and bare `- path` entries.
-# The first backticked token on a line is the path; later ones are prose.
+# Prints every path a story's File List names, one per line and each once, however
+# the line writes it: backticked, bold, quoted, a link target, a table cell, a
+# comma-separated list, with a label in front or a note or `:12` behind. A path
+# is a token holding a slash or ending in an extension, or the first backticked
+# word on a line. URLs are not paths.
+# Headings, labels ending in a colon or set in bold, wrapped text under an item,
+# quotes, table headers and separators, comments and fences carry no entry. Any
+# other line that names no path cannot be read: it is reported on stderr and the
+# function returns 1 after printing the rest.
 mutation_story_file_list() {
-  awk '
-    /^##+[[:space:]]+[Ff]ile [Ll]ist/ { in_list = 1; next }
-    in_list && /^#+[[:space:]]/       { exit }
-    !in_list                          { next }
-    {
-      line = $0
-      first = index(line, "`")
-      if (first > 0) {
-        rest = substr(line, first + 1)
-        close_at = index(rest, "`")
-        if (close_at > 1) print substr(rest, 1, close_at - 1)
-        next
+  LC_ALL=C awk '
+    BEGIN { SEPARATORS = " \t,;|()<>[]\"`:#=&+!?" sprintf("%c", 39) }
+    function clean(t) {
+      while (t ~ /^[*~]/) t = substr(t, 2)
+      while (t ~ /[*~.]$/) t = substr(t, 1, length(t) - 1)
+      if (length(t) > 2 && t ~ /^_.*_$/) t = substr(t, 2, length(t) - 2)
+      sub(/^\.\//, "", t)
+      return t
+    }
+    function has_extension(t) { return t ~ /\.[A-Za-z0-9_-]+$/ }
+    function path_shaped(t) {
+      if (t ~ /^-/ || t !~ /[A-Za-z0-9]/) return 0
+      return index(t, "/") > 0 || has_extension(t)
+    }
+    function keep(t) {
+      found++
+      if (!(t in seen)) { seen[t] = 1; print t }
+    }
+    # Walks characters so that no awk has to agree on a bracket expression. Any
+    # byte outside printable ASCII separates, so a dash glued to a path does not
+    # become part of its extension.
+    function scan_tokens(text,    i, c, token) {
+      token = ""
+      for (i = 1; i <= length(text) + 1; i++) {
+        c = i <= length(text) ? substr(text, i, 1) : " "
+        if (index(SEPARATORS, c) > 0 || c < " " || c > "~") {
+          token = clean(token)
+          if (path_shaped(token)) keep(token)
+          token = ""
+        } else {
+          token = token c
+        }
       }
-      if (line ~ /^[[:space:]]*([-*|])[[:space:]]+/) {
-        sub(/^[[:space:]]*[-*|][[:space:]]+/, "", line)
-        split(line, parts, /[[:space:]]+/)
-        if (parts[1] ~ /[.\/]/ && parts[1] !~ /^-+$/) print parts[1]
+    }
+    function scan_span(span) {
+      if (span ~ /[ \t]/) {
+        if (span !~ /^-/ && has_extension(span)) keep(span)
+      } else if (found == 0 && span ~ /^[A-Za-z0-9_@{}$][A-Za-z0-9_@{}$.-]*$/ && !path_shaped(span)) {
+        keep(span)
       }
+      scan_tokens(span)
+    }
+    # Returns how many paths the text names.
+    function scan_text(text,    open_at, tail, close_at, outside) {
+      found = 0
+      while (match(text, /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^ \t)>]*/))
+        text = substr(text, 1, RSTART - 1) " " substr(text, RSTART + RLENGTH)
+      gsub(/\\/, "", text)
+      outside = ""
+      while ((open_at = index(text, "`")) > 0) {
+        tail = substr(text, open_at + 1)
+        close_at = index(tail, "`")
+        if (close_at == 0) break
+        outside = outside substr(text, 1, open_at - 1) " "
+        scan_span(substr(tail, 1, close_at - 1))
+        text = substr(tail, close_at + 1)
+      }
+      scan_tokens(outside text)
+      return found
+    }
+    function is_table_separator(l) { return l ~ /^[ \t]*\|?[ \t:|-]*-[ \t:|-]*\|?[ \t]*$/ }
+    /^(```|~~~)/ { in_fence = !in_fence }
+    !in_fence && /^#+[ \t]/ {
+      level = match($0, /[ \t]/) - 1
+      if (level >= 2 && $0 ~ /^#+[ \t]+[Ff]ile [Ll]ist/) { in_list = 1; list_level = level; next }
+      if (in_list && level <= list_level) in_list = 0
+      next
+    }
+    in_list { lines[++count] = $0 }
+    END {
+      bad = 0
+      in_fence = 0
+      in_comment = 0
+      for (n = 1; n <= count; n++) {
+        line = lines[n]
+        sub(/^[ \t]+/, "", line)
+        if (line ~ /^(```|~~~)/) { in_fence = !in_fence; continue }
+        if (in_comment) { if (index(line, "-->") > 0) in_comment = 0; continue }
+        if (line ~ /^<!--/) { if (index(line, "-->") == 0) in_comment = 1; continue }
+        if (line !~ /[A-Za-z0-9]/) continue
+        if (line ~ /^\|/ && (n < count) && is_table_separator(lines[n + 1])) continue
+        is_item = sub(/^([-*+]|[0-9]+[.)])[ \t]+/, "", line)
+        if (scan_text(line) > 0 || in_fence) continue
+        # An indented line under an item, a quote or a bold title names nothing
+        # of its own; neither does a label.
+        if (!is_item && (lines[n] ~ /^[ \t]/ || line ~ /^>/ || line ~ /^\*\*.*\*\*$/)) continue
+        label = line
+        gsub(/[*_ \t]/, "", label)
+        if (label ~ /:$/) continue
+        printf "File List line cannot be read as a path: %s\n", lines[n] > "/dev/stderr"
+        bad = 1
+      }
+      exit bad
     }
   ' "$1"
 }

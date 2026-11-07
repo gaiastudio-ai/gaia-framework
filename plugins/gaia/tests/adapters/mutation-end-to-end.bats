@@ -976,7 +976,7 @@ _not_in() {
   [ "$status" -eq 0 ]
   [ "$(jq -r .totals.killed "$T/ev.json")" = "1" ]
   [ "$(jq -c '.mutants[0].killed_by' "$T/ev.json")" = '["prints secrets f.sh"]' ]
-  jq -r '.mutants[0].test_output' "$T/ev.json" | grep -q 'REDACTED'
+  [ "$(jq -r '.mutants[0].test_output' "$T/ev.json")" = "not ok 1 prints secrets f.sh" ]
   _not_in AKIAFAKESECRET123 "$T/ev.json"
   _not_in plainkeyvalue "$T/ev.json"
   _not_in hunter2hunter2 "$T/ev.json"
@@ -1355,4 +1355,389 @@ _slow_project() {
     [ "$status" -eq 1 ]
     [[ "$output" == *'--timeout'* ]]
   done
+}
+
+# ---------- File List reading ----------
+
+# _set_file_list_text <text> writes the text as the story's File List and commits.
+_set_file_list_text() {
+  _LIST="$1" awk '
+    /^### File List/ { print; print ""; print ENVIRON["_LIST"]; print ""; skip = 1; next }
+    /^## Findings/   { skip = 0 }
+    !skip
+  ' "$STORY_DIR/story.md" > "$T/story.new"
+  cp "$T/story.new" "$STORY_DIR/story.md"
+  _commit_all list
+}
+
+@test "a File List line naming a covered file gets a real run in every form stories write it" {
+  local form
+  while IFS= read -r form; do
+    rm -rf "$PROJ"; mkdir -p "$PROJ"
+    _mk_project P1
+    mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+    _set_file_list_text "$form"
+    run _mutation_subcmd
+    printf '[%s]: %s\n' "$form" "$output"
+    [ "$(jq -r .gate "$EV")" != "not_applicable" ]
+    [ "$(jq -r '[.mutants[].file]|unique|join(",")' "$EV")" = "scripts/calc.sh" ]
+  done <<'FORMS'
+- **scripts/calc.sh**
+- scripts/calc.sh, tests/none.bats
+- [scripts/calc.sh](scripts/calc.sh)
+- [the calculator](scripts/calc.sh)
+- scripts/calc.sh: added
+- "scripts/calc.sh"
+- 'scripts/calc.sh'
+| **scripts/calc.sh** | added |
+- `scripts/calc.sh:12`
+- `docs/readme.md`, `scripts/calc.sh`
+- `docs/readme.md` — moved next to `scripts/calc.sh`
+- modified: scripts/calc.sh
+- **New:** `scripts/calc.sh`
+- NEW scripts/calc.sh (executable)
+- scripts/calc.sh — added
+* scripts/calc.sh
+1. scripts/calc.sh
+scripts/calc.sh
+FORMS
+}
+
+@test "a File List line that cannot be read as a path is errored, whatever else is listed" {
+  local line
+  while IFS= read -r line; do
+    rm -rf "$PROJ"; mkdir -p "$PROJ"
+    _mk_project P1
+    mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+    _set_file_list_text "- \`docs/readme.md\`
+$line"
+    run _mutation_subcmd
+    printf '[%s]: %s\n' "$line" "$output"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"$line"* ]]
+    [ "$(jq -r .gate "$EV")" = "errored" ]
+    [ "$(jq -r .score "$EV")" = "null" ]
+    [ "$(jq 'has("zero_mutant_reason")' "$EV")" = "false" ]
+  done <<'LINES'
+- the calculator script
+| the calculator | added |
+the calculator script
+- [the calculator](https://example.com/calc)
+LINES
+}
+
+@test "File List scaffolding is not a path and not an unreadable line, so a docs-only story stays not_applicable" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"; printf 'more\n' > "$PROJ/docs/more.md"
+  _set_file_list_text '**Modified:**
+
+- `docs/readme.md` (new) with a flag called `--unrelated` and `a_function()`
+
+New files (2):
+
+- **Added:**
+  - docs/more.md — NEW
+
+#### Tables
+
+| File | Action |
+|------|--------|
+| `docs/readme.md` | Created |
+
+<!-- a note
+over two lines -->
+
+```text
+```
+
+—'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "mutation_story_file_list prints each path once per mention and fails on an unreadable line" {
+  _mk_project P1
+  _set_file_list_text '- `a/one.sh` — NEW, see `a/two.sh`
+- **b/three.sh**, b/four.sh: added
+- [text](c/five.sh)
+| `d/six.sh:12` | Created |
+- `Makefile`
+- `my dir/seven.sh`
+- https://example.com/not/this.sh and e/eight.sh'
+  run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_file_list '$STORY_DIR/story.md'"
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  local want
+  for want in a/one.sh a/two.sh b/three.sh b/four.sh c/five.sh d/six.sh Makefile "my dir/seven.sh" e/eight.sh; do
+    printf '%s\n' "$output" | grep -qxF -- "$want"
+  done
+  if printf '%s\n' "$output" | grep -qF 'not/this.sh'; then return 1; fi
+  _set_file_list_text '- a/one.sh
+- no path on this line'
+  run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_file_list '$STORY_DIR/story.md' 2>/dev/null"
+  [ "$status" -ne 0 ]
+  [ "$output" = "a/one.sh" ]
+}
+
+# ---------- the adapter set ----------
+
+@test "a broken adapter set is errored with evidence, never not_applicable" {
+  local mode bash_adapter
+  for mode in malformed manifest-deleted dir-deleted extensions-missing extensions-empty extensions-null extensions-not-strings; do
+    rm -rf "$PROJ/.git" "$T/plugin" "$T/ev.json" "$T/ev2.json"
+    _mk_project P1
+    mkdir -p "$T/plugin"
+    cp -R "$PLUGIN/scripts" "$T/plugin/scripts"
+    bash_adapter="$T/plugin/scripts/adapters/mutation-bash"
+    case "$mode" in
+      malformed)              printf '{ not json' > "$bash_adapter/mutation-adapter.json" ;;
+      manifest-deleted)       rm "$bash_adapter/mutation-adapter.json" ;;
+      dir-deleted)            rm -rf "$bash_adapter" ;;
+      extensions-missing)     printf '{"provider":"bash"}' > "$bash_adapter/mutation-adapter.json" ;;
+      extensions-empty)       printf '{"file-extensions":[]}' > "$bash_adapter/mutation-adapter.json" ;;
+      extensions-null)        printf '{"file-extensions":null}' > "$bash_adapter/mutation-adapter.json" ;;
+      extensions-not-strings) printf '{"file-extensions":[1]}' > "$bash_adapter/mutation-adapter.json" ;;
+    esac
+    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story E9-S1 --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'"
+    printf '%s story path: %s\n' "$mode" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
+    [ "$(jq -r .score "$T/ev.json")" = "null" ]
+    [ "$(jq 'has("zero_mutant_reason")' "$T/ev.json")" = "false" ]
+    printf 'scripts/calc.sh\n' > "$T/f"
+    run "$T/plugin/scripts/mutation-runner.sh" --worktree "$PROJ" --files-from "$T/f" --output "$T/ev2.json" --thresholds '{"P1":60}' --priority P1
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$T/ev2.json")" = "errored" ]
+  done
+}
+
+@test "healthy adapters that claim nothing leave docs-only and Python-only stories not_applicable" {
+  local list
+  for list in docs/readme.md src/app.py; do
+    rm -rf "$PROJ" "$T/plugin"; mkdir -p "$PROJ"
+    _mk_project P1
+    _zero_mutant_files
+    _set_file_list "$list"
+    _plugin_copy_with_adapter stub .stub patch
+    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story E9-S1 --worktree '$PROJ' --output '$EV' --thresholds '{\"P1\":60}'"
+    printf '%s: %s\n' "$list" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+  done
+}
+
+# ---------- what counts as a test ----------
+
+@test "only a .bats file or a file under a tests directory is a test: test-like names are sources" {
+  local name
+  for name in test_calc.sh calc_test.sh; do
+    rm -rf "$PROJ"; mkdir -p "$PROJ"
+    _mk_project P1
+    cp "$PROJ/scripts/calc.sh" "$PROJ/scripts/$name"
+    _set_file_list "scripts/$name"
+    run _mutation_subcmd
+    printf '%s: %s\n' "$name" "$output"
+    [ "$(jq -r .gate "$EV")" != "not_applicable" ]
+    [ "$(jq -r '[.mutants[].file]|unique|join(",")' "$EV")" = "scripts/$name" ]
+  done
+}
+
+@test "a tests-only story stays not_applicable whatever the tests are called" {
+  _mk_project P1
+  mkdir -p "$PROJ/test/deep"
+  cp "$PROJ/scripts/calc.sh" "$PROJ/tests/test_calc.sh"
+  cp "$PROJ/scripts/calc.sh" "$PROJ/tests/helper.sh"
+  cp "$PROJ/scripts/calc.sh" "$PROJ/test/deep/helper.sh"
+  _set_file_list tests/test_calc.sh tests/helper.sh test/deep/helper.sh tests/calc.bats
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "test selection takes listed .bats files and tests-directory scripts, and not a source with a test-like name" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\n# drives calc.sh\nexit 0\n' > "$PROJ/tests/drive.sh"
+  printf '#!/usr/bin/env bash\n# names calc.sh and calc.sh only\nx=1\nif [ "$x" -eq 1 ]; then\n  exit 0\nfi\n' > "$PROJ/scripts/calc_test.sh"
+  _bats_fixture "$PROJ/scripts/calc.bats" 'beside calc.sh' '  true'
+  _set_file_list scripts/calc.sh tests/calc.bats tests/drive.sh scripts/calc.bats scripts/calc_test.sh
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$(jq -c '.covering_tests|sort' "$EV")" = '["scripts/calc.bats","tests/calc.bats","tests/drive.sh"]' ]
+  jq -e '[.mutants[].file]|index("scripts/calc_test.sh") != null' "$EV" >/dev/null
+}
+
+# ---------- stored output ----------
+
+# A source with one mutant, and a covering script whose output the tests below
+# decide. $1 is the body that runs before the real check.
+_noisy_project() {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  cat > "$PROJ/tests/noisy.sh" <<NOISY
+#!/usr/bin/env bash
+here="\$(dirname "\$0")"
+$1
+echo "ok 1 the first test"
+. "\$here/../scripts/f.sh"
+if f 1; then echo "ok 2 f accepts one"; else echo "not ok 2 f accepts one"; exit 1; fi
+NOISY
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/noisy.sh\n' > "$T/t"
+}
+
+@test "the evidence holds test result lines only: no secret shape and no environment reaches it" {
+  # Built from parts so that no secret-shaped literal sits in this source.
+  local aws gh36 out="$T/shapes.txt"
+  aws='wJalrXUtnFEMIK7MDENG'"bPxRfiCYEXAMPLEKEY"
+  gh36='abcdefghijklmnopqrstuvwxyz'"0123456789"
+  cat > "$T/cases" <<CASES
+AKIA${gh36:0:0}IOSFODNN7EXAMPLE|AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=$aws|$aws
+aws_secret_access_key = $aws|$aws
+aws_secret_access_key: $aws|$aws
+AWS_SESSION_TOKEN=FwoGZXIvYXdzEBYaDHqa0AP1a2b3c|FwoGZXIvYXdzEBYaDHqa0AP1a2b3c
+token ghp_$gh36 used|ghp_$gh36
+gho_$gh36|gho_$gh36
+ghs_$gh36|ghs_$gh36
+ghu_$gh36|ghu_$gh36
+ghr_$gh36|ghr_$gh36
+github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABC|github_pat_11ABCDEFG0
+git clone https://alice:s3cretpassw0rd@github.com/x/y.git|s3cretpassw0rd
+https://x-access-token:ghx_$gh36@github.com/x.git|ghx_$gh36
+DATABASE_URL=postgres://app:dbpassw0rd99@db.example.com:5432/x|dbpassw0rd99
+https://api.example.com/v1?token=qqq1234567&x=1|qqq1234567
+curl https://api.example.com/v1?api_key=kkk1234567|kkk1234567
+https://s3.example.com/o?X-Amz-Signature=sss1234567abc|sss1234567abc
+export AWS_SECRET_ACCESS_KEY=$aws|$aws
+export DB_PASSWORD="my long passphrase here"|long passphrase here
+export DB_PASSWORD='hunter2hunter2'|hunter2hunter2
+export X=plainvalue12345|plainvalue12345
+{"token":"abcdefghijklmnopqrstuvwxyz123456"}|abcdefghijklmnopqrstuvwxyz123456
+{"token": "abcdefghijklmnopqrstuvwxyz123456"}|abcdefghijklmnopqrstuvwxyz123456
+{"password":"hunter2hunter2"}|hunter2hunter2
+{"client_secret":"cs_abcdef0123456789"}|cs_abcdef0123456789
+{"api_key": "k_abcdefghijklmnopqrstuvwxyz"}|k_abcdefghijklmnopqrstuvwxyz
+{"SecretAccessKey":"$aws"}|$aws
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123|eyJhbGciOiJIUzI1NiJ9
+password: hunter2hunter2|hunter2hunter2
+xox""b-1234567890-abcdefghijkl|1234567890-abcdefghijkl
+sk-""ant-api03-abcdefghijklmnopqrstuvwxyz|api03-abcdefghijklmnopqrstuvwxyz
+CASES
+  sed -e 's/|[^|]*$//' -e 's/""//' "$T/cases" > "$out"
+  _noisy_project "cat '$out'
+env"
+  _commit_all noisy
+  DATABASE_URL=postgres://u:pw12345678@h/d MYAPP_CFG=topsecretvalue99 run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ -s "$T/ev.json" ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" = "1" ]
+  [ "$(jq -r '.mutants[0].test_output' "$T/ev.json")" = "ok 1 the first test
+not ok 2 f accepts one" ]
+  [ "$(jq -c '.mutants[0].killed_by' "$T/ev.json")" = '["f accepts one"]' ]
+  [ "$(jq -c '.covering_test_names' "$T/ev.json")" = '["f accepts one","the first test"]' ]
+  local needle
+  while IFS= read -r needle; do
+    _not_in "$needle" "$T/ev.json"
+  done < <(sed -e 's/^.*|//' "$T/cases")
+  _not_in DATABASE_URL "$T/ev.json"
+  _not_in pw12345678 "$T/ev.json"
+  _not_in MYAPP_CFG "$T/ev.json"
+  _not_in topsecretvalue99 "$T/ev.json"
+  _not_in PATH= "$T/ev.json"
+}
+
+@test "a test command printing no result lines leaves test_output empty and the status still counts" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  printf '#!/usr/bin/env bash\necho free-form-words\n. "$(dirname "$0")/../scripts/f.sh"\nf 1\n' > "$PROJ/tests/plain.sh"
+  _commit_all plain
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/plain.sh\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .totals.killed "$T/ev.json")" = "1" ]
+  [ "$(jq -r '.mutants[0].test_output' "$T/ev.json")" = "" ]
+  _not_in free-form-words "$T/ev.json"
+}
+
+@test "a secret inside a test name is still scrubbed, and a line that only looks like a result is dropped" {
+  local id='AKIA''IOSFODNN7EXAMPLE'
+  _noisy_project "echo 'ok 9 uses $id'
+echo 'ok but-not-a-result-line'"
+  _commit_all named
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ -s "$T/ev.json" ]
+  _not_in "$id" "$T/ev.json"
+  _not_in but-not-a-result-line "$T/ev.json"
+  jq -r '.mutants[0].test_output' "$T/ev.json" | grep -q '^ok 9 uses '
+}
+
+@test "stored result lines keep the newest whole lines under the cap and drop test directives" {
+  _mk_project P1
+  printf '#!/usr/bin/env bash\nf() {\n  [ "$1" -eq 1 ]\n}\n' > "$PROJ/scripts/f.sh"
+  cat > "$PROJ/tests/many.sh" <<'MANY'
+#!/usr/bin/env bash
+for i in $(seq 1 200); do echo "ok $i a filler test with quite a long descriptive name, number $i # skip a reason"; done
+. "$(dirname "$0")/../scripts/f.sh"
+if f 1; then echo "ok 201 the last test"; else echo "not ok 201 the last test"; exit 1; fi
+MANY
+  _commit_all many
+  printf 'scripts/f.sh\n' > "$T/f"; printf 'tests/many.sh\n' > "$T/t"
+  run "$RUNNER" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  jq -r '.mutants[0].test_output' "$T/ev.json" > "$T/stored"
+  [ "$(wc -c < "$T/stored")" -le 4097 ]
+  [ "$(tail -1 "$T/stored")" = "not ok 201 the last test" ]
+  [ "$(grep -cvE '^(not ok|ok) [0-9]+ ' "$T/stored")" = "0" ]
+  _not_in 'skip a reason' "$T/stored"
+  [ "$(jq -r '.covering_test_names|length' "$T/ev.json")" = "201" ]
+}
+
+@test "a generator's stderr does not reach the evidence, and the operator still sees it" {
+  _mk_project P1
+  local id='AKIA''IOSFODNN7EXAMPLE'
+  _plugin_copy_with_adapter stub .stub patch
+  printf '#!/usr/bin/env bash\necho "boom %s DATABASE_URL=postgres://u:pw12345678@h/d" >&2\nexit 3\n' "$id" > "$ADAPTER/generate.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$ADAPTER/run.sh"
+  chmod +x "$ADAPTER/run.sh"
+  printf 'x\n' > "$PROJ/scripts/a.stub"
+  _commit_all stub
+  printf 'scripts/a.stub\n' > "$T/f"
+  run "$T/plugin/scripts/mutation-runner.sh" --worktree "$PROJ" --files-from "$T/f" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.mutants[0].status' "$T/ev.json")" = "error" ]
+  _not_in "$id" "$T/ev.json"
+  _not_in DATABASE_URL "$T/ev.json"
+  _not_in pw12345678 "$T/ev.json"
+  [[ "$output" == *boom* ]]
+}
+
+@test "an adapter's stderr and a patch tool's output do not reach an error record" {
+  _mk_project P1
+  local id='AKIA''IOSFODNN7EXAMPLE'
+  _plugin_copy_with_adapter stub .stub tool-native
+  printf '#!/usr/bin/env bash\necho "boom %s DATABASE_URL=postgres://u:pw12345678@h/d" >&2\nexit 9\n' "$id" > "$ADAPTER/run.sh"
+  chmod +x "$ADAPTER/run.sh"
+  printf 'x\n' > "$PROJ/scripts/a.stub"
+  _bats_fixture "$PROJ/tests/a.bats" 'names a.stub' '  true'
+  _commit_all stub
+  printf 'scripts/a.stub\n' > "$T/f"; printf 'tests/a.bats\n' > "$T/t"
+  run "$T/plugin/scripts/mutation-runner.sh" --worktree "$PROJ" --files-from "$T/f" --tests-from "$T/t" --output "$T/ev.json" --thresholds '{"P1":60}' --priority P1
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.mutants[0].status' "$T/ev.json")" = "error" ]
+  [ "$(jq -r '.mutants[0].test_output' "$T/ev.json")" = "adapter exited 9" ]
+  _not_in "$id" "$T/ev.json"
+  _not_in DATABASE_URL "$T/ev.json"
+
+  local src="$TMPDIR/gaia-mutation-unit"
+  mkdir -p "$src"
+  printf -- '--- a/%s\n+++ b/%s\n@@ -1 +1 @@\n-no\n+yes\n' "$id" "$id" > "$T/bad.patch"
+  run "$ADAPTER_RUN" --source-dir "$src" --patch-file "$T/bad.patch" --test-command true --output "$T/rec.json" --timeout 5
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .status "$T/rec.json")" = "error" ]
+  [ "$(jq -r .test_output "$T/rec.json")" = "patch failed to apply" ]
+  _not_in "$id" "$T/rec.json"
 }

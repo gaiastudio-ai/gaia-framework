@@ -39,7 +39,7 @@ For `tool-native` format adapters: one JSON batch descriptor per mutant group pl
 ### Exit Code
 
 - `0` — generation completed (zero mutants is valid).
-- Non-zero, or no valid `index.json` — generation failed; the runner adds one `error` record for that file.
+- Non-zero, or no valid `index.json` — generation failed; the runner adds one `error` record for that file. Its stderr goes to the runner's stderr, not into the record.
 - An `index.json` entry the runner cannot plan from (a bad `mutant_id` or `line`, a missing or absent mutant file) — the runner adds one `error` record for that file, runs none of its mutants, and the gate is `errored`.
 
 `mutant_id` only has to be unique within the adapter's output for one file. The runner prefixes it with a hash of the file path, so ids in the evidence are unique across files and stable across runs.
@@ -65,7 +65,7 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 {
   "mutant_id": "mutant-1",
   "status": "killed",
-  "test_output": "...",
+  "test_output": "ok 1 first test\nnot ok 2 test name 1",
   "file": "relative/path.sh",
   "line": 42,
   "operator": "comparison flip eq/ne",
@@ -79,7 +79,7 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 |---|---|---|---|
 | `mutant_id` | string | no | Set by the runner if absent. |
 | `status` | enum | yes | `killed` (a test genuinely failed), `survived` (tests passed), `timeout` (tests exceeded the deadline), `error` (the tests could not run, for example exit 126, exit 127 or death by signal, or the adapter failed). Only a real test failure may be reported as `killed`. |
-| `test_output` | string | yes | Truncated tail of test stdout+stderr. Capped at 4 KB. |
+| `test_output` | string | yes | Test result lines only, capped at 4 KB, or a fixed message when the adapter failed or withheld the output. See section 3. |
 | `file` | string | no | Relative path of the mutated file. |
 | `line` | integer | no | 1-based line number of the mutation. |
 | `operator` | string | no | Human-readable description of the mutation operator. |
@@ -95,11 +95,17 @@ run.sh --source-dir <dir> --patch-file <patch> --test-command <cmd>
 
 ### Baseline
 
-Before any mutant runs, the runner calls `run.sh` with a zero-byte patch for each distinct set of covering tests. Any status other than `survived` refuses the run: the evidence has `gate: errored`, `score: null`, `refused: baseline_red` (the tests failed) or `baseline_error` (they could not run, or ran out of time, which `baseline.status: timeout` marks), and a `baseline` object with the output, because every mutant would otherwise look killed. Tool-native adapters are not called this way; their tools do their own green check.
+Before any mutant runs, the runner calls `run.sh` with a zero-byte patch for each distinct set of covering tests. Any status other than `survived` refuses the run: the evidence has `gate: errored`, `score: null`, `refused: baseline_red` (the tests failed) or `baseline_error` (they could not run, or ran out of time, which `baseline.status: timeout` marks), and a `baseline` object with the stored result lines (after a message naming the limit, on a timeout), because every mutant would otherwise look killed. Tool-native adapters are not called this way; their tools do their own green check.
 
-## 3. test_output Truncation
+## 3. What test_output Holds
 
-`test_output` is capped to a tail of 4 KB. It is stored alongside the story's other evidence under test-artifacts, so an adapter scrubs it before storing it, and before truncating so that no cut hides a secret from the scrubber. The bash adapter replaces the values of secret-named environment variables and `NAME=value` pairs with a secret-looking name, then applies the shared secret-pattern scrubber; test output that cannot be scrubbed is withheld. Test names are read from the scrubbed, complete output, so `killed_by` and `tests` do not depend on the cap. Other environment variables a test prints are not removed.
+`test_output` is stored with the story's other evidence under test-artifacts, so it holds test result lines and nothing else. A result line is `ok` or `not ok`, the test number and the test name, one per line, without a `# skip`, `# todo` or timing suffix. Anything else a test prints, including its environment, is not stored. A test command that prints no result lines gives an empty `test_output`.
+
+An adapter scrubs the complete output before reading it. The bash adapter replaces the values of secret-named environment variables and `NAME=value` pairs with a secret-looking name, then applies the shared secret-pattern scrubber. Result lines, `killed_by` and `tests` are all read from that scrubbed text; `killed_by` and `tests` always cover the complete output. The status comes from the exit code. If the scrubber fails or is missing, `test_output` is a fixed message saying the output was withheld, and `killed_by` and `tests` are empty.
+
+The stored lines are capped at the newest whole lines that fit 4 KB. A test name is stored as the test wrote it, so a secret in a name is removed only if scrubbing recognises it.
+
+In an adapter or generator failure, `test_output` is a fixed message from the adapter or the runner: `patch failed to apply`, `generator failed`, `adapter exited <code>`. The failing tool's stderr goes to the runner's stderr for the operator and never into the record. The runner stores what a tool-native adapter returns as it stands, so that adapter owns the same guarantee.
 
 ## 4. tool-native Format
 

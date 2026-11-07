@@ -23,7 +23,9 @@
 # advisory with a null score. A P0 or P1 story gets gate not_applicable and a
 # zero_mutant_reason only when a non-empty File List has no entry any adapter
 # covers; anything else (an empty or unreadable list, a covered file that is
-# missing or yields no mutants) gets gate errored.
+# missing or yields no mutants) gets gate errored. A File List line that names no
+# path, or an adapter set that cannot say what it covers, counts as unreadable:
+# nothing runs and the gate is errored on those priorities.
 #
 # Flags:
 #   --story <key>       Resolve story file, read priority and File List
@@ -228,9 +230,27 @@ _mr_find_adapter() {
   return 1
 }
 
+# Prints what is wrong with the adapter set, if anything. Without a working set
+# nobody can say a file has no adapter, so that answer must not be given.
+_mr_adapter_set_problem() {
+  local adapter_dir found=0
+  for adapter_dir in "$SCRIPT_DIR"/adapters/mutation-*/; do
+    [ -d "$adapter_dir" ] || continue
+    found=1
+    if ! jq -e '.["file-extensions"] | type == "array" and length > 0 and all(.[]; type == "string" and test("^[.].+"))' \
+        "$adapter_dir/mutation-adapter.json" >/dev/null 2>&1; then
+      printf 'adapter %s has a manifest that is missing, malformed or has no usable file-extensions\n' "$(basename "$adapter_dir")"
+      return 0
+    fi
+  done
+  [ "$found" -eq 1 ] || printf 'no mutation adapter is installed\n'
+}
+
+# A test is a .bats file or a file under a tests directory. A name alone says
+# nothing: scripts/test_calc.sh is a source.
 _mr_is_test_path() {
   case "$1" in
-    *.bats|*.test.*|*.spec.*|*_test.*|test_*|*/test_*) return 0 ;;
+    *.bats|tests/*|test/*|*/tests/*|*/test/*) return 0 ;;
   esac
   return 1
 }
@@ -261,6 +281,8 @@ if [ -n "$_mr_story" ]; then
       : > "$_mr_auto_files"
       : > "$_mr_auto_tests"
       _mr_list_counted=1
+      _mr_listed="$_mr_root/listed.txt"
+      mutation_story_file_list "$_mr_story_file" > "$_mr_listed" || _mr_list_unreadable=1
       while IFS= read -r _mr_entry; do
         [ -n "$_mr_entry" ] || continue
         _mr_listed_entries=$((_mr_listed_entries + 1))
@@ -273,7 +295,7 @@ if [ -n "$_mr_story" ]; then
           _mr_covered_entries=$((_mr_covered_entries + 1))
         fi
         [ -z "$_mr_found" ] || printf '%s\n' "$_mr_found" >> "$_mr_auto_files"
-      done < <(mutation_story_file_list "$_mr_story_file")
+      done < "$_mr_listed"
       # A list with no source file is a valid outcome, decided at the gate.
       _mr_files_from="$_mr_auto_files"
       if [ -s "$_mr_auto_tests" ]; then _mr_tests_from="$_mr_auto_tests"; fi
@@ -281,6 +303,12 @@ if [ -n "$_mr_story" ]; then
   elif [ -z "$_mr_priority" ] || [ -z "$_mr_files_from" ]; then
     _mr_die 1 "story file not found for $_mr_story"
   fi
+fi
+
+_mr_adapter_problem="$(_mr_adapter_set_problem)"
+if [ -n "$_mr_adapter_problem" ]; then
+  _mr_err "$_mr_adapter_problem"
+  _mr_list_unreadable=1
 fi
 
 if [ "$_mr_list_unreadable" -eq 0 ]; then
@@ -291,7 +319,7 @@ fi
 if [ "$_mr_list_unreadable" -eq 1 ]; then
   # Nothing to mutate, and the priority may be unknowable too: never default it
   # to one that would not gate.
-  _mr_err "the File List could not be read"
+  _mr_err "the File List or the adapter set could not be read"
   _mr_files_from="$_mr_root/no-files.txt"
   : > "$_mr_files_from"
   [ -n "$_mr_priority" ] || _mr_priority="unknown"
@@ -547,9 +575,10 @@ while IFS= read -r source_file; do
 
   if ! _mr_gen_err=$(TMPDIR="$_mr_root/tmp" "$adapter_dir/generate.sh" --source-dir "$_mr_gen_copy" --files-from "$gen_out.files" --out-dir "$gen_out" 2>&1) \
      || ! jq -e 'type == "array"' "$gen_out/index.json" >/dev/null 2>&1; then
-    _mr_info "generator failed for $source_file (adapter: $(basename "$adapter_dir"))"
+    # Its stderr is for the operator: the evidence is stored, so it gets none.
+    _mr_err "generator failed for $source_file (adapter: $(basename "$adapter_dir")): $_mr_gen_err"
     _mr_extra_records=$((_mr_extra_records + 1))
-    _mr_error_record "mutant-$_mr_file_hash-generator" "$source_file" "generator failed: $_mr_gen_err" \
+    _mr_error_record "mutant-$_mr_file_hash-generator" "$source_file" "generator failed" \
       > "$_mr_root/records/generator-$_mr_file_hash.json"
     continue
   fi
@@ -685,7 +714,8 @@ _mr_run_mutant() {
   _mr_call_adapter "${_mr_src_run[$src]}" "$copy" "${_mr_plan_patch[$idx]}" "$cmd" "$result" \
     "${_mr_src_timeout[$src]}" 2>"$errfile" || rc=$?
   if [ "$rc" -ne 0 ]; then
-    _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter exited $rc: $(tail -c 2048 "$errfile")" > "$result"
+    _mr_err "adapter exited $rc for $mid: $(tail -c 2048 "$errfile")"
+    _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter exited $rc" > "$result"
   fi
   rm -rf "$copy"
 }
@@ -809,7 +839,7 @@ _mr_gate_for_no_mutants() {
   fi
   _mr_gate="errored"
   if [ "$_mr_list_unreadable" -eq 1 ]; then
-    _mr_err "no mutants: the File List could not be read"
+    _mr_err "no mutants: the File List or the adapter set could not be read"
   elif [ "$_mr_listed_entries" -eq 0 ]; then
     _mr_err "no mutants: the File List is empty"
   else

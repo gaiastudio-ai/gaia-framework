@@ -30,6 +30,8 @@
 # Test output is scrubbed before anything reads it: values of secret-named
 # environment variables, NAME=value pairs with a secret-looking name, then the
 # shared secret-pattern scrubber. If scrubbing fails the output is withheld.
+# test_output keeps only test result lines (`ok` / `not ok`, the number and the
+# test name) from that scrubbed text; nothing else a test prints is stored.
 #
 # Exit codes:
 #   0  Always (killed, survived, timeout — all are valid outcomes)
@@ -153,8 +155,8 @@ _run_mutant_line=0
 if [ -s "$_run_patch_file" ]; then
   # -f and -N keep patch from prompting; stdin is closed for the same reason.
   if ! _run_patch_err=$(patch -p1 -f -N -d "$_run_source_dir" -i "$_run_patch_file" </dev/null 2>&1); then
-    jq -n --arg test_output "patch failed to apply: $_run_patch_err" \
-      '{"status":"error","test_output":$test_output}' > "$_run_output"
+    _run_err "patch failed to apply: $_run_patch_err"
+    jq -n '{"status":"error","test_output":"patch failed to apply"}' > "$_run_output"
     exit 0
   fi
 
@@ -165,15 +167,17 @@ fi
 
 # ---------- Run tests ----------
 _run_status="survived"
-_run_test_output=""
 _run_interpreter_versions=()
 
 _run_work=$(mktemp -d "${TMPDIR:-/tmp}/mutation-run-XXXXXX")
 trap 'rm -rf "$_run_work"' EXIT
 _run_killers_file="$_run_work/killers"
 _run_seen_file="$_run_work/seen"
+_run_results_file="$_run_work/results"
+_run_withheld=""
 : > "$_run_killers_file"
 : > "$_run_seen_file"
+: > "$_run_results_file"
 
 _run_scrubber="$SCRIPT_DIR/../../../skills/gaia-meeting/scripts/secret-scrubber.sh"
 _RUN_SECRET_NAME='SECRET|TOKEN|PASSW(OR)?D|PASSPHRASE|CREDENTIAL|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY'
@@ -217,11 +221,14 @@ _run_scrub_output() {
   return 1
 }
 
-# Reads the whole output: a test's name must not depend on where it ran.
+# Reads the whole output: a test's name must not depend on where it ran. A result
+# line is `ok` or `not ok`, a test number and a name; other text is not one.
+_RUN_DIRECTIVE='s/ # ([Ss][Kk][Ii][Pp]|[Tt][Oo][Dd][Oo]|in [0-9]+ms).*$//'
 _run_collect_tap() {
-  local names='s/^(not ok|ok) [0-9]+ //; s/ # ([Ss][Kk][Ii][Pp]|[Tt][Oo][Dd][Oo]|in [0-9]+ms).*$//; p;'
-  sed -nE "/^not ok /{$names}" "$1" >> "$_run_killers_file"
-  sed -nE "/^(not ok|ok) /{$names}" "$1" >> "$_run_seen_file"
+  local names="s/^(not ok|ok) [0-9]+ //; $_RUN_DIRECTIVE; p;"
+  sed -nE "/^not ok [0-9]+ /{$names}" "$1" >> "$_run_killers_file"
+  sed -nE "/^(not ok|ok) [0-9]+ /{$names}" "$1" >> "$_run_seen_file"
+  sed -nE "/^(not ok|ok) [0-9]+( |\$)/{$_RUN_DIRECTIVE; p;}" "$1" >> "$_run_results_file"
 }
 
 _run_exec_test() {
@@ -260,19 +267,10 @@ _run_exec_test() {
   printf '%s\n' "$test_out" > "$raw_file"
   if _run_scrub_output "$raw_file" "$clean_file"; then
     _run_collect_tap "$clean_file"
-    test_out=$(cat "$clean_file")
   else
     _run_err "could not scrub the test output; withholding it"
-    test_out="(test output withheld: it could not be scrubbed)"
+    _run_withheld="(test output withheld: it could not be scrubbed)"
   fi
-
-  # Stored output is the last 4KB.
-  if [ ${#test_out} -gt 4096 ]; then
-    test_out="...(truncated)...
-$(printf '%s' "$test_out" | tail -c 4096)"
-  fi
-
-  _run_test_output="${_run_test_output}${test_out}"
 
   case "$test_exit" in
     0)       ;;
@@ -300,6 +298,17 @@ if [ "$_run_status" = "survived" ] && [ -n "$_run_bash32" ]; then
 fi
 
 # ---------- Build output record ----------
+# Stored result lines are capped at the newest whole lines that fit 4 KB; names
+# in killed_by and tests are complete regardless. The cut may land inside a line,
+# so the first line of a cut tail is dropped.
+if [ -n "$_run_withheld" ]; then
+  _run_test_output="$_run_withheld"
+elif [ "$(wc -c < "$_run_results_file")" -gt 4096 ]; then
+  _run_test_output=$(tail -c 4096 "$_run_results_file" | sed 1d)
+else
+  _run_test_output=$(cat "$_run_results_file")
+fi
+
 # Every test name, de-duplicated across interpreters. These go through files:
 # one argument has a length limit on Linux.
 _run_kb_json="$_run_work/killed_by.json"
