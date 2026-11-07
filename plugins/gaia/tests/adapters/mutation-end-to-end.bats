@@ -1470,10 +1470,11 @@ over two lines -->
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
   local want
+  printf '%s\n' "$output" > "$T/listed"
   for want in a/one.sh a/two.sh b/three.sh b/four.sh c/five.sh d/six.sh Makefile "my dir/seven.sh" e/eight.sh; do
-    printf '%s\n' "$output" | grep -qxF -- "$want"
+    grep -qxF -- "$want" "$T/listed"
   done
-  if printf '%s\n' "$output" | grep -qF 'not/this.sh'; then return 1; fi
+  _not_in 'not/this.sh' "$T/listed"
   _set_file_list_text '- a/one.sh
 - no path on this line'
   run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_file_list '$STORY_DIR/story.md' 2>/dev/null"
