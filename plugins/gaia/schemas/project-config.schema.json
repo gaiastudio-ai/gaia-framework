@@ -520,6 +520,17 @@
             "command":         { "type": "string", "minLength": 1 },
             "timeout_seconds": { "type": "integer", "minimum": 1 }
           }
+        },
+        "mutation_thresholds": {
+          "description": "Opt-in mutation-testing score thresholds per story priority. When present, the mutation runner gates stories whose score falls below their priority's threshold. When absent, mutation testing is off and no behaviour changes on upgrade. Missing priorities default at the point of use (P0: 80, P1: 60, P2: 0, P3: 0).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "P0": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P1": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P2": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P3": { "type": "integer", "minimum": 0, "maximum": 100 }
+          }
         }
       }
     },

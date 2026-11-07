@@ -123,6 +123,14 @@ Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/projec
 
 This is a read-only listing. It never executes the commands.
 
+### Step 9 — Mutation testing
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/mutation-runner.sh --doctor` (passing `--config` when the project config path is known). The output reports:
+
+- The configured mutation-testing score thresholds (or that mutation testing is off when `test_execution.mutation_thresholds` is absent).
+- Whether each installed mutation adapter's tool is available.
+- A warning when leftover `gaia-mutation-` temp directories exist under the temp root.
+
 ## Finalize
 
 !${CLAUDE_PLUGIN_ROOT}/skills/gaia-doctor/scripts/finalize.sh

@@ -85,6 +85,19 @@
       "description": "True when execution was delegated to the Test Execution Bridge.",
       "type": "boolean"
     },
+    "mutation_check": {
+      "description": "Optional mutation-score check from review-common/mutation-evidence-check.sh, present only when mutation thresholds are configured. verdict-resolver.sh treats status errored as BLOCKED and status failed as REQUEST_CHANGES.",
+      "type": "object",
+      "required": ["name", "status"],
+      "properties": {
+        "name": { "type": "string", "const": "mutation-score" },
+        "status": { "type": "string", "enum": ["passed", "failed", "errored", "skipped"] },
+        "message": { "type": "string" },
+        "error_reason": { "type": "string" },
+        "skip_reason": { "type": "string" },
+        "findings": { "type": "array", "items": { "type": "object" } }
+      }
+    },
     "diagnostics": {
       "description": "Free-form diagnostic strings emitted during execution (e.g., INFO 'test_execution not configured').",
       "type": "array",

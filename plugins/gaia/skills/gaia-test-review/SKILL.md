@@ -207,6 +207,10 @@ The four scanners cover the analyzers below (1–3 plus the new tag-conformance 
 
 **Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with the canonical review-skill pattern).
 
+4. **Mutation-score check (with weak-assertion findings).** When mutation-testing thresholds are configured in the project config (`test_execution.mutation_thresholds`), `phase3a-test-review.sh` reads the mutation evidence produced by `/gaia-test-automate --mutation` from `{test-artifacts}/test-results/{story_key}-mutation.json` and adds a `mutation-score` check to `analysis-results.json`. It calls `review-common/mutation-evidence-check.sh` with `--zero-kill`, which additionally reports every covering test that killed zero mutants as a weak-assertion finding, by test name. The skill reads the score but never produces mutants or invokes the mutation runner.
+
+When evidence is missing or stale on a P0/P1 story, the check status is `errored` with an actionable message, which the verdict resolver maps to BLOCKED. A score below the threshold gives status `failed` with a blocking finding, which maps to REQUEST_CHANGES. P2 and P3 stories get status `skipped` with a `skip_reason`. A P0 or P1 story whose evidence at HEAD has gate `not_applicable` (no File List entry has a mutation adapter) gets status `skipped` with the recorded reason, never `passed`. When thresholds are absent, no mutation-score check is emitted.
+
 **Cache plumbing.** Cache lives at `.gaia/state/review/test-review/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
 
 Cache key:

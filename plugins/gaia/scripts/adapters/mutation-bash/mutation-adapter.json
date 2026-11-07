@@ -1,0 +1,9 @@
+{
+  "provider": "bash",
+  "stack": "bash",
+  "file-extensions": [".sh", ".bash"],
+  "default-timeout-seconds": 30,
+  "version-range": ">=3.2.0",
+  "mutant-format": "patch",
+  "description": "Mutation adapter for bash/shell scripts. Generates mutants using a fixed sed operator table and runs tests under bash 5 and (when available) macOS bash 3.2 through a PATH shim."
+}
