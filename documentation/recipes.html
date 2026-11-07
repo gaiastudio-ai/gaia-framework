@@ -28,6 +28,7 @@
           <li><a href="#deploy">6. Deploy a release</a></li>
           <li><a href="#recover">7. Recover from interruption</a></li>
           <li><a href="#test-audit">8. Audit test coverage</a></li>
+          <li><a href="#lint-pack">9. Run the lint pack</a></li>
         </ul>
       </nav>
     </aside>
@@ -217,6 +218,84 @@
             Run <code>/gaia-test-gap-analysis --mode verification</code> to
             cross-reference generated test cases against actual execution
             results (JUnit XML, LCOV) instead of just planned coverage.
+          </p>
+        </div>
+      </section>
+
+      <!-- Recipe 9 -->
+      <section id="lint-pack">
+        <h2>9. Run the deterministic lint pack before push</h2>
+        <p>
+          The lint pack catches known mechanical bug types — leaked internal
+          identifiers, spliced <code>yq</code>/<code>jq</code> values,
+          hardcoded credentials, bash&#160;4-only constructs,
+          <code>sed -i ''</code>, <code>|| skip</code> in red tests, and
+          syntax errors — using fast regex checks with no LLM calls.
+        </p>
+        <ol>
+          <li>
+            <strong>Configure the leaked-identifier rule (optional).</strong>
+            Create <code>.gaia/lint-pack.yaml</code> with your identifier
+            patterns and published-path prefixes:
+            <pre><code>lint_pack:
+  leaked_identifiers:
+    patterns:
+      - "PROJ-[0-9]+"
+    published_paths:
+      - "src/"</code></pre>
+            This file is optional. The commands below pass it only when it
+            exists; without it, and without the project-config key, the
+            leaked-identifier rule is off and reported as skipped.
+          </li>
+          <li>
+            <strong>List the lint pack in <code>preflight_commands</code>.</strong>
+            Add the following entry to your project config (replace
+            <code>&lt;base-branch&gt;</code> with your project's base branch,
+            e.g. <code>main</code> or <code>staging</code>).
+            Use <code>--diff</code> mode so only lines added in the current
+            branch are checked, avoiding false positives on pre-existing content.
+            A syntax error is still reported wherever bash finds it in a changed
+            file, and a file git treats as binary is checked whole, because git
+            gives no line data for it.
+            <p>For projects containing the plugin source tree:</p>
+            <pre><code>preflight_commands:
+  - 'set --; [ -f .gaia/lint-pack.yaml ] &amp;&amp; set -- --config .gaia/lint-pack.yaml; bash plugins/gaia/scripts/lint-pack.sh "$@" --diff "origin/&lt;base-branch&gt;...HEAD"'</code></pre>
+            <p>For user projects where the pack is installed via the plugin
+            cache, use a runtime discovery pattern:</p>
+            <pre><code>preflight_commands:
+  - 'p=""; for f in "$HOME"/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/*/scripts/lint-pack.sh; do p="$f"; done; [ -f "$p" ] || { echo "lint-pack: plugin not installed" &gt;&amp;2; exit 1; }; set --; [ -f .gaia/lint-pack.yaml ] &amp;&amp; set -- --config .gaia/lint-pack.yaml; bash "$p" "$@" --diff "origin/&lt;base-branch&gt;...HEAD"'</code></pre>
+            The leaked-identifier rule is configured through the
+            <code>.gaia/lint-pack.yaml</code> file, which these commands pass
+            with <code>--config</code> when it exists, or via the
+            <code>lint_pack.leaked_identifiers</code> key in project config.
+            Without configuration, the rule is off and reported as skipped.
+            The lint pack then runs automatically before every push in
+            <code>/gaia-dev-story</code>.
+          </li>
+          <li>
+            <strong>Run manually.</strong>
+            To scan specific files outside the preflight gate:
+            <pre><code>bash plugins/gaia/scripts/lint-pack.sh --files src/app.sh tests/app.bats \
+  --report /tmp/lint-report.json</code></pre>
+          </li>
+          <li>
+            <strong>Exclude a rule.</strong>
+            Pass <code>--exclude &lt;rule-id&gt;</code> to skip a rule:
+            <pre><code>bash plugins/gaia/scripts/lint-pack.sh --files src/app.sh --exclude sed-inplace</code></pre>
+            Excluded rules are recorded in the JSON report.
+          </li>
+        </ol>
+        <div class="callout">
+          <p class="callout-title">Available rules</p>
+          <p>
+            Cross-stack: <code>leaked-identifiers</code> (configurable),
+            <code>spliced-yq-jq</code>, <code>hardcoded-credentials</code>.
+            Bash-specific (run only when shell files are in scope):
+            <code>bash4-constructs</code>, <code>bash-syntax</code>,
+            <code>sed-inplace</code>, <code>skip-in-red-test</code>.
+            Each finding includes a rule id, file, line number, and a
+            one-line fix hint. The JSON report is consumed by the
+            review-packet pipeline.
           </p>
         </div>
       </section>

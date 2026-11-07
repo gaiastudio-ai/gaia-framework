@@ -843,3 +843,4 @@
 1	preflight-gate.bats	19
 1	post-ci-smoke.bats	28
 3	review-semaphore.bats	50
+3	lint-pack.bats	74
