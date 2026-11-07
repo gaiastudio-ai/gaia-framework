@@ -978,6 +978,32 @@
         }
       }
     },
+    "lint_pack": {
+      "x-no-auto-hydration": true,
+      "description": "Configuration for the deterministic lint pack. The lint pack is opt-in: it runs when listed in preflight_commands or called directly. Only the leaked_identifiers sub-key is read by the pack; all other rules are unconditional.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "leaked_identifiers": {
+          "description": "Configures the leaked-identifier rule. When absent, the rule is off and reported as skipped. Patterns are POSIX extended regexes passed to grep -E; published_paths are path prefixes relative to the repository root.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Regex patterns matching internal planning identifiers that must not appear in published source."
+            },
+            "published_paths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Path prefixes (relative to repo root) that count as published source. Only files under these prefixes are scanned."
+            }
+          },
+          "required": ["patterns", "published_paths"]
+        }
+      }
+    },
     "preflight_commands": {
       "x-no-auto-hydration": true,
       "description": "Shell commands executed sequentially before every push in /gaia-dev-story. Each entry runs as a command string in the story working tree. A non-zero exit (including 127 command-not-found) halts the push. Absent or empty = no-op (opt-in). TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline. Timeouts are the user's responsibility (wrap long-running commands with `timeout`).",

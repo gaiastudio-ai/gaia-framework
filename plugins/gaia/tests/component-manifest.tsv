@@ -286,6 +286,7 @@ core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
 core	lifecycle-immutability.bats
 core	lint-bats-script-refs.bats
+core	lint-pack.bats
 core	lock-helper.bats
 core	lock-review-gate-ledger.bats
 core	lock-sprint-state.bats

@@ -35,6 +35,11 @@
 # plugins/gaia/scripts/gen-ci-config.sh; a CI lint fails on drift.
 !/.gaia/ci-config.yaml
 
+# EXCEPTION: the lint-pack configuration IS tracked. It configures the
+# leaked-identifier rule for the framework's own preflight gate. User
+# projects create their own .gaia/lint-pack.yaml to opt in.
+!/.gaia/lint-pack.yaml
+
 # --- Build / test / coverage outputs ----------------------------------------
 coverage/
 err
