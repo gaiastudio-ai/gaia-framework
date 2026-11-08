@@ -365,8 +365,7 @@ test_execution: {}'
   [ "$status" -eq 0 ]
   _analysis_empty
   local wd="$T/qa"
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" \ # lint-pack:allow leaked-identifiers — fixture story key in test
-    --story-file "$STORY_DIR/story.md"
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(jq -r .mutation_check.name "$wd/execution-evidence.json")" = "mutation-score" ]
   [ "$(jq -r .mutation_check.status "$wd/execution-evidence.json")" = "passed" ]
