@@ -22,7 +22,7 @@
 #      runner_unavailable): runner failure, unreadable config, or evidence with
 #      gate errored
 #
-# POSIX discipline: bash 3.2, no local -A, no mapfile.
+# POSIX discipline: bash 3.2, no local -A, no mapfile. # lint-pack:allow bash4-constructs — comment documents discipline, not actual usage
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL

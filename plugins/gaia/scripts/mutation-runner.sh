@@ -51,7 +51,7 @@
 #   2   worktree_mutated — integrity check failed, no evidence written
 #   3   Containment violation
 #
-# POSIX discipline: bash 3.2 (macOS), no local -A, no mapfile, no readarray.
+# POSIX discipline: bash 3.2 (macOS), no local -A, no mapfile, no readarray. # lint-pack:allow bash4-constructs — comment documents discipline, not actual usage
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
@@ -222,7 +222,7 @@ _mr_find_adapter() {
     [ -d "$adapter_dir" ] || continue
     local manifest="$adapter_dir/mutation-adapter.json"
     [ -f "$manifest" ] || continue
-    if jq -e --arg ext ".$ext" '.["file-extensions"] | map(. == $ext) | any' "$manifest" >/dev/null 2>&1; then
+    if jq -e --arg ext ".$ext" '.["file-extensions"] | map(. == $ext) | any' "$manifest" >/dev/null 2>&1; then # lint-pack:allow spliced-yq-jq — value passed via --arg, not spliced into program
       printf '%s\n' "${adapter_dir%/}"
       return 0
     fi
@@ -725,9 +725,7 @@ if [ -z "$_mr_refused" ]; then
     _r_src="${_mr_plan_src[$_r_idx]}"
     if [ ! -s "${_mr_src_cover[$_r_src]}" ]; then
       # No covering test: nothing to run, and never a full-suite fallback.
-      jq -n --arg mid "${_mr_plan_id[$_r_idx]}" --arg f "${_mr_src_file[$_r_src]}" \
-        '{"mutant_id":$mid,"file":$f,"status":"survived","no_coverage":true,"test_output":""}' \
-        > "$_mr_root/results/${_mr_plan_id[$_r_idx]}.json"
+      jq -n --arg mid "${_mr_plan_id[$_r_idx]}" --arg f "${_mr_src_file[$_r_src]}" '{"mutant_id":$mid,"file":$f,"status":"survived","no_coverage":true,"test_output":""}' > "$_mr_root/results/${_mr_plan_id[$_r_idx]}.json" # lint-pack:allow spliced-yq-jq — value passed via --arg
       continue
     fi
     while [ "${#_mr_active_pids[@]}" -ge "$_mr_jobs" ]; do
@@ -764,8 +762,7 @@ _mr_normalise_result() {
   elif ! jq -e . "$result" >/dev/null 2>&1; then
     _mr_error_record "$mid" "${_mr_src_file[$src]}" "adapter produced non-JSON output" > "$result"
   fi
-  jq --arg mid "$mid" --arg file "${_mr_src_file[$src]}" \
-     --argjson line "${_mr_plan_line[$idx]:-0}" --arg operator "${_mr_plan_operator[$idx]}" '
+  jq --arg mid "$mid" --arg file "${_mr_src_file[$src]}" --argjson line "${_mr_plan_line[$idx]:-0}" --arg operator "${_mr_plan_operator[$idx]}" ' # lint-pack:allow spliced-yq-jq — value passed via --arg
     def known: . as $s | ["killed","survived","timeout","error"] | index($s) != null;
     def checked:
       if type != "object" then {status:"error",test_output:"adapter record is not an object"}
@@ -801,7 +798,7 @@ done
 # Generator failures were written as single records; give them the array shape.
 for _g_rec in "$_mr_root"/records/generator-*.json; do
   [ -f "$_g_rec" ] || continue
-  jq '[.]' "$_g_rec" > "$_g_rec.tmp" && mv "$_g_rec.tmp" "$_g_rec"
+  jq '[.]' "$_g_rec" > "$_g_rec.tmp" && mv "$_g_rec.tmp" "$_g_rec" # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
 done
 
 _mr_mutants_file="$_mr_root/mutants.json"

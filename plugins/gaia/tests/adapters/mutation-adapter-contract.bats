@@ -49,10 +49,10 @@ _list_adapters() {
     local manifest="$adapter_dir/mutation-adapter.json"
 
     # Required fields
-    jq -e '.provider' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .provider"; return 1; }
-    jq -e '.["file-extensions"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .file-extensions"; return 1; }
-    jq -e '.["default-timeout-seconds"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .default-timeout-seconds"; return 1; }
-    jq -e '.["mutant-format"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .mutant-format"; return 1; }
+    jq -e '.provider' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .provider"; return 1; } # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
+    jq -e '.["file-extensions"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .file-extensions"; return 1; } # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
+    jq -e '.["default-timeout-seconds"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .default-timeout-seconds"; return 1; } # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
+    jq -e '.["mutant-format"]' "$manifest" >/dev/null 2>&1 || { echo "FAIL: $name missing .mutant-format"; return 1; } # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
 
     # mutant-format must be patch or tool-native
     local fmt
@@ -127,7 +127,7 @@ _list_adapters() {
     [ -f "$result" ] || { echo "FAIL: $name run.sh wrote no output"; return 1; }
 
     # Validate output record shape
-    jq -e '.status' "$result" >/dev/null 2>&1 || { echo "FAIL: $name result missing .status"; return 1; }
+    jq -e '.status' "$result" >/dev/null 2>&1 || { echo "FAIL: $name result missing .status"; return 1; } # lint-pack:allow spliced-yq-jq — static jq program, file path is an argument
     local s
     s=$(jq -r '.status' "$result")
     [ "$s" = "survived" ] || { echo "FAIL: $name expected survived, got $s"; return 1; }

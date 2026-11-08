@@ -86,8 +86,10 @@ mutation_story_priority() {
 # comma-separated list, with a label in front or a note or `:12` behind. A path
 # is a token holding a slash or ending in an extension, or the first backticked
 # word on a line. URLs are not paths.
-# Headings, labels ending in a colon or set in bold, wrapped text under an item,
-# quotes, table headers and separators, comments and fences carry no entry. Any
+# Headings, blank lines, table headers and separators, HTML comments and fence
+# markers are ignored.  Paths inside a fence are read.  A list-item label
+# ending in a colon (section heading for a nested list) and a bold line ending
+# in a colon (section heading) are structural scaffolding and ignored.  Any
 # other line that names no path cannot be read: it is reported on stderr and the
 # function returns 1 after printing the rest.
 mutation_story_file_list() {
@@ -173,13 +175,13 @@ mutation_story_file_list() {
         if (line !~ /[A-Za-z0-9]/) continue
         if (line ~ /^\|/ && (n < count) && is_table_separator(lines[n + 1])) continue
         is_item = sub(/^([-*+]|[0-9]+[.)])[ \t]+/, "", line)
-        if (scan_text(line) > 0 || in_fence) continue
-        # An indented line under an item, a quote or a bold title names nothing
-        # of its own; neither does a label.
-        if (!is_item && (lines[n] ~ /^[ \t]/ || line ~ /^>/ || line ~ /^\*\*.*\*\*$/)) continue
-        label = line
-        gsub(/[*_ \t]/, "", label)
-        if (label ~ /:$/) continue
+        if (scan_text(line) > 0) continue
+        # A list-item label ending in a colon is a heading for a nested list.
+        # A bold line ending in a colon is a section heading (e.g. **Modified:**).
+        # Both are structural scaffolding; everything else naming no path is
+        # unreadable.
+        label = line; gsub(/[*_ \t]/, "", label)
+        if (label ~ /:$/ && (is_item || line ~ /^\*\*.*\*\*$/)) continue
         printf "File List line cannot be read as a path: %s\n", lines[n] > "/dev/stderr"
         bad = 1
       }

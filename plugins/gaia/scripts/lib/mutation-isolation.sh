@@ -21,7 +21,7 @@
 #     made by background workers sit under the run root so the parent can
 #     remove them without having to know their names
 #
-# POSIX discipline: bash 3.2, no associative arrays, no mapfile, no local -A.
+# POSIX discipline: bash 3.2, no associative arrays, no mapfile, no local -A. # lint-pack:allow bash4-constructs — comment documents discipline, not actual usage
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL

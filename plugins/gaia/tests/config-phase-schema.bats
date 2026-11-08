@@ -524,8 +524,8 @@ YAML
 # ---------- mutation_thresholds schema validation ----------
 
 @test "mutation_thresholds schema accepts P0-P3 integers and rejects P99 and non-integers" {
-  have_python_yaml || skip "python3 + PyYAML not available"
-  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  have_python_yaml || skip "python3 + PyYAML not available" # lint-pack:allow skip-in-red-test — tool-availability guard, not a red-phase skip
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available" # lint-pack:allow skip-in-red-test — tool-availability guard, not a red-phase skip
 
   # Valid: full object
   cat > "${TMP}/mt-valid-full.yaml" <<'YAML'
