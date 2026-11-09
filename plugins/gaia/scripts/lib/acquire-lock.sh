@@ -459,7 +459,7 @@ _al_safe_reap() {
 
   # Atomic rename: removes the path so new acquirers can link, and gives
   # us a private copy to inspect.
-  local reap_tmp="${lock_file}.reap.${BASHPID:-$$}.$$.$RANDOM"
+  local reap_tmp="${lock_file}.reap.${BASHPID:-$$}.$$.$RANDOM" # bash32-portability-lint: skip (falls back to $$ on bash 3.2; same pattern as line 762)
   if ! mv "$lock_file" "$reap_tmp" 2>/dev/null; then
     return 1  # File already gone — nothing to reap.
   fi

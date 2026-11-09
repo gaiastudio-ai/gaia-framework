@@ -532,16 +532,20 @@ _seed_file() {
   # Create an empty (ownerless) lock file.
   : > "$lock_file"
 
-  # Hook: swap the lock with a new holder's file between read and rename.
+  # Hook: between the reaper's read and its rename, atomically replace the
+  # lock with a new holder's file.  The inode-safe reap must detect the
+  # swap and restore the new holder's file.
   _al_pre_reap_delete_hook() {
-    rm -f "$1" 2>/dev/null || true
-    printf '%s %s\n' "$$" "$(date +%s)" > "${1}.hook-tmp"
-    ln "${1}.hook-tmp" "$1" 2>/dev/null || true
-    rm -f "${1}.hook-tmp" 2>/dev/null || true
+    local lf="$1" tmp="${1}.swap-$$"
+    # Write the new holder's content to a temp, then atomically swap it
+    # into the lock path via mv (rename(2)).  mv replaces whatever is at
+    # the destination in one syscall, so the empty file is gone and the
+    # new content is at the lock path with a different inode.
+    printf '%s %s\n' "$$" "$(date +%s)" > "$tmp"
+    mv -f "$tmp" "$lf"
   }
 
-  # The reaper (inside _al_try_reap) reads the empty file, decides to reap,
-  # then the hook swaps it.  The inode-safe reap must detect the swap.
+  # The reaper reads the empty file, decides to reap, then the hook swaps.
   _al_try_reap "$lock_file" 5 2>/dev/null || true
 
   # The new holder's file must survive.
@@ -567,12 +571,11 @@ _seed_file() {
     touch -t 202001010000 "$lock_file"
   fi
 
-  # Hook: swap with a new holder's file.
+  # Hook: atomically swap the lock with a new holder's file.
   _al_pre_reap_delete_hook() {
-    rm -f "$1" 2>/dev/null || true
-    printf '%s %s\n' "$$" "$(date +%s)" > "${1}.hook-tmp"
-    ln "${1}.hook-tmp" "$1" 2>/dev/null || true
-    rm -f "${1}.hook-tmp" 2>/dev/null || true
+    local lf="$1" tmp="${1}.swap-$$"
+    printf '%s %s\n' "$$" "$(date +%s)" > "$tmp"
+    mv -f "$tmp" "$lf"
   }
 
   GAIA_LOCK_REAP_SECONDS=1 _al_try_reap "$lock_file" 5 2>/dev/null || true
