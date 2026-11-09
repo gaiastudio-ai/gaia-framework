@@ -3048,7 +3048,7 @@ YAML
   mkdir -p "$noyq_dir"
   local _tool _tp
   for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
-               sleep wc sort tr head tail printf; do
+               sleep wc sort tr head tail printf dirname ln kill shasum; do
     _tp="$(command -v "$_tool" 2>/dev/null)" || continue
     ln -sf "$_tp" "$noyq_dir/$_tool" 2>/dev/null || true
   done
@@ -3095,7 +3095,7 @@ SH
   chmod +x "$fakeyq_dir/yq"
   local _tool _tp
   for _tool in bash awk sed cat date stat mktemp mv rm chmod mkdir rmdir \
-               sleep wc sort tr head tail printf; do
+               sleep wc sort tr head tail printf dirname ln kill shasum; do
     _tp="$(command -v "$_tool" 2>/dev/null)" || continue
     ln -sf "$_tp" "$fakeyq_dir/$_tool" 2>/dev/null || true
   done
