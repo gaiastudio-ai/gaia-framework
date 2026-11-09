@@ -9,6 +9,28 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Action-items writer lock hardening
+
+#### Changed
+- The action-items writer (`action-items-write.sh`) now acquires its lock
+  through the shared lock helper (`scripts/lib/acquire-lock.sh`) instead of
+  hand-rolled mkdir/flock loops. Both `aiw_append_entry` and `aiw_resolve`
+  use the same lock path and timeout. Two behaviour changes:
+  - **Fail-closed under parallel execution:** when `GAIA_PARALLEL_EXECUTION=1`
+    is active and flock is absent (or `GAIA_LOCK_FORCE_FALLBACK=1` is set),
+    the writer now exits with `status=error` and
+    `reason=<function>: lock unavailable (parallel execution requires flock)`
+    instead of silently falling through to the fallback path.
+  - **Flock-path timeout:** the flock path now respects
+    `GAIA_AIW_LOCK_TIMEOUT` (default 120 s) instead of blocking indefinitely.
+    A dead holder's fallback lock is reaped only after 360 s at the default
+    timeout.
+- `aiw_write` now computes the next id and the dedup check inside the lock,
+  so concurrent appends never produce duplicate ids or slip past the dedup
+  check.
+- `aiw_resolve` creates its temp file only after the lock is held, so a
+  timeout leaves no leftover temp files.
+
 ### Fix-cycle cap with escalation and critical-security carve-out
 
 #### Added

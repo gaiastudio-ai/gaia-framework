@@ -3175,9 +3175,13 @@ SH
 # ================================================================
 
 @test "mixed parallel resolves and appends preserve all updates" {
+  # Parallel execution must be off for this test — it exercises the
+  # writer's own lock, not the sprint-state parallel gate.
+  unset GAIA_PARALLEL_EXECUTION
+
   source "$AIW_SH"
 
-  # Run 2 rounds of 16+16 mixed race.
+  # Run 2 rounds of 16+16 mixed race (flock path).
   local round
   for round in 1 2; do
     local target="$TEST_TMP/ai-mixed-race-r${round}.yaml"
@@ -3191,24 +3195,29 @@ SH
       done
     } > "$target"
 
-    # 16 parallel resolves.
-    local pids=()
+    # 16 parallel resolves — capture exit codes.
+    local pids=() rc_file="$TEST_TMP/rc-r${round}"
+    mkdir -p "$rc_file"
     for i in $(seq 1 16); do
       (
         source "$AIW_SH"
+        local _rc=0
         aiw_resolve --target "$target" --item "AI-R${round}-$i" --status "done" \
-          --resolution "resolved-$i" > /dev/null 2>&1
+          --resolution "resolved-$i" > "$rc_file/res-$i.out" 2>&1 || _rc=$?
+        printf '%s' "$_rc" > "$rc_file/res-$i.rc"
       ) &
       pids+=($!)
     done
 
-    # 16 parallel appends.
+    # 16 parallel appends — capture exit codes.
     for i in $(seq 1 16); do
       (
         source "$AIW_SH"
+        local _rc=0
         aiw_write --target "$target" --sprint-id "sprint-99" \
           --classification "implementation" --text "Appended r${round}-$i" \
-          --ref-key "story_key" --ref-value "E999-S$i" > /dev/null 2>&1
+          --ref-key "story_key" --ref-value "E999-S$i" > "$rc_file/app-$i.out" 2>&1 || _rc=$?
+        printf '%s' "$_rc" > "$rc_file/app-$i.rc"
       ) &
       pids+=($!)
     done
@@ -3216,6 +3225,17 @@ SH
     # Wait for all.
     for pid in "${pids[@]}"; do
       wait "$pid" 2>/dev/null || true
+    done
+
+    # Check all exit codes.
+    local _f _rc
+    for _f in "$rc_file"/*.rc; do
+      [ -f "$_f" ] || continue
+      _rc="$(cat "$_f")"
+      [ "$_rc" = "0" ] || {
+        echo "Round $round: writer $(basename "${_f%.rc}") failed rc=$_rc: $(cat "${_f%.rc}.out" 2>/dev/null)" >&2
+        false
+      }
     done
 
     yq '.' "$target" > /dev/null || {
@@ -3240,10 +3260,8 @@ SH
     }
   done
 
-  # Round 3: mkdir-fallback round — flock hidden from PATH so
-  # action-items-write.sh falls through to the mkdir lock.
-  # GAIA_LOCK_FORCE_FALLBACK is not read by this script, so we must
-  # actually remove flock from PATH.
+  # Round 3: forced-fallback round via GAIA_LOCK_FORCE_FALLBACK
+  # (replaces the old hand-built no-flock PATH).
   local target="$TEST_TMP/ai-mixed-race-fallback.yaml"
   {
     printf 'last_updated: "2026-01-01"\nitems:\n'
@@ -3253,47 +3271,52 @@ SH
     done
   } > "$target"
 
-  # Hide flock from PATH so `command -v flock` returns non-zero and
-  # the script falls through to the mkdir fallback. We build a clean
-  # PATH by symlinking every executable from the current PATH directories
-  # except flock itself.
-  local noflock_dir="$TEST_TMP/noflock-bin"
-  mkdir -p "$noflock_dir"
-  local _pd _f _bn
-  local OLDIFS="$IFS"; IFS=':'
-  for _pd in $PATH; do
-    [ -d "$_pd" ] || continue
-    for _f in "$_pd"/*; do
-      [ -x "$_f" ] || continue
-      _bn="${_f##*/}"
-      [ "$_bn" = "flock" ] && continue
-      [ -e "$noflock_dir/$_bn" ] || ln -sf "$_f" "$noflock_dir/$_bn" 2>/dev/null || true
-    done
-  done
-  IFS="$OLDIFS"
-
-  local pids=()
+  local pids=() rc_file="$TEST_TMP/rc-fb"
+  mkdir -p "$rc_file"
   for i in $(seq 1 16); do
     (
-      export PATH="$noflock_dir"
+      export GAIA_LOCK_FORCE_FALLBACK=1
       source "$AIW_SH"
+      local _rc=0
       aiw_resolve --target "$target" --item "AI-FB-$i" --status "done" \
-        --resolution "resolved-fb-$i" > /dev/null 2>&1
+        --resolution "resolved-fb-$i" > "$rc_file/res-$i.out" 2>&1 || _rc=$?
+      printf '%s' "$_rc" > "$rc_file/res-$i.rc"
     ) &
     pids+=($!)
   done
   for i in $(seq 1 16); do
     (
-      export PATH="$noflock_dir"
+      export GAIA_LOCK_FORCE_FALLBACK=1
       source "$AIW_SH"
+      local _rc=0
       aiw_write --target "$target" --sprint-id "sprint-99" \
         --classification "implementation" --text "Appended fb-$i" \
-        --ref-key "story_key" --ref-value "E999-S$i" > /dev/null 2>&1
+        --ref-key "story_key" --ref-value "E999-S$i" > "$rc_file/app-$i.out" 2>&1 || _rc=$?
+      printf '%s' "$_rc" > "$rc_file/app-$i.rc"
     ) &
     pids+=($!)
   done
   for pid in "${pids[@]}"; do
     wait "$pid" 2>/dev/null || true
+  done
+
+  # Verify all 32 exit codes were recorded.
+  local _rc_count
+  _rc_count="$(find "$rc_file" -name '*.rc' | wc -l)"
+  _rc_count="${_rc_count##* }"
+  [ "$_rc_count" -eq 32 ] || {
+    echo "Fallback round: only $_rc_count/32 writers wrote exit codes" >&2
+    false
+  }
+
+  # Check all fallback-round exit codes.
+  for _f in "$rc_file"/*.rc; do
+    [ -f "$_f" ] || continue
+    _rc="$(cat "$_f")"
+    [ "$_rc" = "0" ] || {
+      echo "Fallback round: writer $(basename "${_f%.rc}") failed rc=$_rc: $(cat "${_f%.rc}.out" 2>/dev/null)" >&2
+      false
+    }
   done
 
   yq '.' "$target" > /dev/null || {
@@ -3309,6 +3332,134 @@ SH
   }
   [ "$total_count" -eq 32 ] || {
     echo "Fallback round: lost appends: only $total_count/32 total items" >&2
+    false
+  }
+
+  # Check no duplicate ids across all appended entries.
+  local append_ids unique_append_ids
+  append_ids="$(yq -r '[.items[].id] | length' "$target")"
+  unique_append_ids="$(yq -r '[.items[].id] | unique | length' "$target")"
+  [ "$append_ids" -eq "$unique_append_ids" ] || {
+    echo "Fallback round: duplicate ids detected ($unique_append_ids unique of $append_ids total)" >&2
+    false
+  }
+}
+
+@test "forced race: 16+16 writers with hold hook lose no updates" {
+  # Stress test: 16 resolves + 16 appends with a short timeout and a
+  # test-only hold hook that sleeps inside the critical section. Every
+  # writer must either apply its update or fail with the lock-timeout
+  # error — no update may be silently lost.
+  unset GAIA_PARALLEL_EXECUTION
+
+  source "$AIW_SH"
+
+  local target="$TEST_TMP/ai-forced-race.yaml"
+  {
+    printf 'last_updated: "2026-01-01"\nitems:\n'
+    local i
+    for i in $(seq 1 16); do
+      printf '  - id: "AI-FR-%d"\n    status: "open"\n    text: "Item %d"\n' "$i" "$i"
+    done
+  } > "$target"
+
+  local rc_dir="$TEST_TMP/rc-forced"
+  mkdir -p "$rc_dir"
+
+  # Short timeout + hold hook to force contention.
+  local pids=()
+  for i in $(seq 1 16); do
+    (
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      source "$AIW_SH"
+      local _rc=0
+      aiw_resolve --target "$target" --item "AI-FR-$i" --status "done" \
+        --resolution "fr-resolved-$i" > "$rc_dir/res-$i.out" 2>&1 || _rc=$?
+      printf '%s' "$_rc" > "$rc_dir/res-$i.rc"
+    ) &
+    pids+=($!)
+  done
+  for i in $(seq 1 16); do
+    (
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      source "$AIW_SH"
+      local _rc=0
+      aiw_write --target "$target" --sprint-id "sprint-99" \
+        --classification "implementation" --text "FR appended $i" \
+        --ref-key "story_key" --ref-value "E999-FR-S$i" > "$rc_dir/app-$i.out" 2>&1 || _rc=$?
+      printf '%s' "$_rc" > "$rc_dir/app-$i.rc"
+    ) &
+    pids+=($!)
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+
+  yq '.' "$target" > /dev/null || {
+    echo "Forced race: file is not valid YAML" >&2
+    false
+  }
+
+  # Count successes and timeouts — nothing else is acceptable.
+  local res_ok=0 res_timeout=0 app_ok=0 app_timeout=0
+  local _f _rc _out
+  for _f in "$rc_dir"/res-*.rc; do
+    [ -f "$_f" ] || continue
+    _rc="$(cat "$_f")"
+    _out="$(cat "${_f%.rc}.out" 2>/dev/null)" || _out=""
+    if [ "$_rc" = "0" ]; then
+      res_ok=$((res_ok + 1))
+    else
+      [[ "$_out" == *"lock timeout"* ]] || {
+        echo "Forced race: unexpected resolve failure: rc=$_rc out=$_out" >&2
+        false
+      }
+      res_timeout=$((res_timeout + 1))
+    fi
+  done
+  for _f in "$rc_dir"/app-*.rc; do
+    [ -f "$_f" ] || continue
+    _rc="$(cat "$_f")"
+    _out="$(cat "${_f%.rc}.out" 2>/dev/null)" || _out=""
+    if [ "$_rc" = "0" ]; then
+      app_ok=$((app_ok + 1))
+    else
+      [[ "$_out" == *"lock timeout"* ]] || {
+        echo "Forced race: unexpected append failure: rc=$_rc out=$_out" >&2
+        false
+      }
+      app_timeout=$((app_timeout + 1))
+    fi
+  done
+
+  echo "Forced race: resolves ok=$res_ok timeout=$res_timeout, appends ok=$app_ok timeout=$app_timeout" >&2
+
+  # Every writer that reported success must have its update in the file.
+  local done_count total_count
+  done_count="$(yq -r '[.items[] | select(.status == "done")] | length' "$target")"
+  total_count="$(yq -r '.items | length' "$target")"
+
+  [ "$done_count" -eq "$res_ok" ] || {
+    echo "Forced race: done_count=$done_count != res_ok=$res_ok" >&2
+    false
+  }
+  [ "$total_count" -eq $((16 + app_ok)) ] || {
+    echo "Forced race: total=$total_count != expected $((16 + app_ok))" >&2
+    false
+  }
+
+  # No duplicate ids.
+  local all_ids unique_ids
+  all_ids="$(yq -r '[.items[].id] | length' "$target")"
+  unique_ids="$(yq -r '[.items[].id] | unique | length' "$target")"
+  [ "$all_ids" -eq "$unique_ids" ] || {
+    echo "Forced race: duplicate ids: $unique_ids unique of $all_ids" >&2
+    false
+  }
+
+  # Sanity: at least some writers succeeded (not all timed out).
+  [ "$((res_ok + app_ok))" -gt 0 ] || {
+    echo "Forced race: no writers succeeded at all" >&2
     false
   }
 }
