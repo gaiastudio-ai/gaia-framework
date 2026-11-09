@@ -425,3 +425,163 @@ _seed_file() {
   unique_ids="$(yq -r '[.items[].id] | unique | length' "$target")"
   [ "$unique_ids" -eq 8 ]
 }
+
+# ================================================================
+# Mutual exclusion: no two holders overlap inside the critical section.
+# Each holder creates a marker directory on entry (mkdir is atomic — fails
+# if already present) and removes it on exit.  An overlap means the mkdir
+# succeeded while another holder's marker was still present.
+#
+# The writer tests go through _aiw_lock / _aiw_unlock (the writer's
+# lock/unlock cycle) so they exercise the release mechanism.  The flock
+# test uses the raw helper.
+#
+# Fails on fafa06f5 because the truncation release in _aiw_unlock lets
+# the reaper delete a live holder's lock, allowing a second holder in.
+# ================================================================
+
+@test "mutual exclusion: no two writer lock/unlock holders overlap (fallback)" {
+  local lock_file="$TEST_TMP/mx-writer-fb.lock"
+  local marker="$TEST_TMP/mx-writer-fb-cs"
+  local log="$TEST_TMP/mx-writer-fb.log"
+  : > "$log"
+
+  # 12 processes x 5 iterations: enough contention to expose the
+  # truncation-release race window on fafa06f5.
+  local N=12 ITERS=5
+  local pids=() i
+  for i in $(seq 1 "$N"); do
+    bash -c '
+      unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=30
+      source "'"$AIW_SH"'"
+      for k in $(seq 1 '"$ITERS"'); do
+        if ! _aiw_lock "'"$lock_file"'" "mx-test" 2>/dev/null; then
+          echo "FAIL" >> "'"$log"'"
+          continue
+        fi
+        if mkdir "'"$marker"'" 2>/dev/null; then
+          sleep 0.02
+          rmdir "'"$marker"'" 2>/dev/null || echo "CS_STOLEN" >> "'"$log"'"
+          echo "OK" >> "'"$log"'"
+        else
+          echo "OVERLAP" >> "'"$log"'"
+        fi
+        _aiw_unlock 2>/dev/null
+      done
+    ' &
+    pids+=($!)
+  done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  local overlaps
+  overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0
+  [ "$overlaps" -eq 0 ]
+}
+
+@test "mutual exclusion: no two holders overlap (flock, separate processes)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+
+  local lock_file="$TEST_TMP/mx-flock.lock"
+  local marker="$TEST_TMP/mx-flock-cs"
+  local log="$TEST_TMP/mx-flock.log"
+  : > "$log"
+
+  local N=8 ITERS=6
+  local pids=() i
+  for i in $(seq 1 "$N"); do
+    bash -c '
+      unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+      source "'"$LOCK_LIB"'"
+      for k in $(seq 1 '"$ITERS"'); do
+        acquire_lock "'"$lock_file"'" 30 6 2>/dev/null || { echo "FAIL" >> "'"$log"'"; continue; }
+        if mkdir "'"$marker"'" 2>/dev/null; then
+          sleep 0.01
+          rmdir "'"$marker"'" 2>/dev/null || echo "CS_STOLEN" >> "'"$log"'"
+          echo "OK" >> "'"$log"'"
+        else
+          echo "OVERLAP" >> "'"$log"'"
+        fi
+        release_lock 6 2>/dev/null
+      done
+    ' &
+    pids+=($!)
+  done
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  local overlaps
+  overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0
+  [ "$overlaps" -eq 0 ]
+}
+
+# ================================================================
+# Deterministic reap-interleaving test: uses _al_pre_reap_delete_hook to
+# swap the lock file between the reaper's read and its rename, then verifies
+# the new holder's file survives.
+#
+# Fails on staging's helper (which does rm -f without inode verification):
+# the hook is never called (old code doesn't check for it), so the empty
+# file is unconditionally deleted and the test's existence assertion fails.
+# ================================================================
+
+@test "reaper does not delete a lock swapped by a new holder (ownerless case)" {
+  source "$LOCK_LIB"
+
+  local lock_file="$TEST_TMP/reap-own.lock"
+
+  # Create an empty (ownerless) lock file.
+  : > "$lock_file"
+
+  # Hook: swap the lock with a new holder's file between read and rename.
+  _al_pre_reap_delete_hook() {
+    rm -f "$1" 2>/dev/null || true
+    printf '%s %s\n' "$$" "$(date +%s)" > "${1}.hook-tmp"
+    ln "${1}.hook-tmp" "$1" 2>/dev/null || true
+    rm -f "${1}.hook-tmp" 2>/dev/null || true
+  }
+
+  # The reaper (inside _al_try_reap) reads the empty file, decides to reap,
+  # then the hook swaps it.  The inode-safe reap must detect the swap.
+  _al_try_reap "$lock_file" 5 2>/dev/null || true
+
+  # The new holder's file must survive.
+  [ -f "$lock_file" ]
+  local pid_line=""
+  read -r pid_line _ < "$lock_file" 2>/dev/null || pid_line=""
+  [ "$pid_line" = "$$" ]
+
+  unset -f _al_pre_reap_delete_hook
+}
+
+@test "reaper does not delete a lock swapped by a new holder (dead-PID case)" {
+  source "$LOCK_LIB"
+
+  local lock_file="$TEST_TMP/reap-dead.lock"
+
+  # Create a lock with a dead PID, back-dated past the reap threshold.
+  printf '99999999 1000000000\n' > "$lock_file"
+  if kill -0 99999999 2>/dev/null; then skip "PID 99999999 is somehow alive"; fi
+  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
+    touch -d '2020-01-01' "$lock_file"
+  else
+    touch -t 202001010000 "$lock_file"
+  fi
+
+  # Hook: swap with a new holder's file.
+  _al_pre_reap_delete_hook() {
+    rm -f "$1" 2>/dev/null || true
+    printf '%s %s\n' "$$" "$(date +%s)" > "${1}.hook-tmp"
+    ln "${1}.hook-tmp" "$1" 2>/dev/null || true
+    rm -f "${1}.hook-tmp" 2>/dev/null || true
+  }
+
+  GAIA_LOCK_REAP_SECONDS=1 _al_try_reap "$lock_file" 5 2>/dev/null || true
+
+  # The new holder's file must survive.
+  [ -f "$lock_file" ]
+  local pid_line=""
+  read -r pid_line _ < "$lock_file" 2>/dev/null || pid_line=""
+  [ "$pid_line" = "$$" ]
+
+  unset -f _al_pre_reap_delete_hook
+}
