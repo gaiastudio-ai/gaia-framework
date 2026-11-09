@@ -5,6 +5,7 @@
 # adding or removing test files, run: .github/scripts/rebalance-shards.sh
 # shard	file	tests
 1	AF-2026-05-21-4-review-skill-resolvers.bats	8
+1	action-items-write-lock.bats	12
 1	E74-S9-mobile-dynamic-adapters.bats	15
 1	E77-S15-plugin-qa-nfr-sub-rubrics.bats	20
 1	E77-S5-plugin-code-sub-rubric.bats	14
