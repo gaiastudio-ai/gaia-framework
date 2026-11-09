@@ -1534,7 +1534,7 @@ scripts/calc.sh
 
 @test "plain and bold colon labels and a bold title line are ignored so a covered path gets a real run" {
   local label
-  for label in 'Modified:' 'Created:' '**Modified files**'; do
+  for label in 'Modified:' 'Created:' '**Modified files**' '**Modified:**' '**Modified**:'; do
     rm -rf "$PROJ"; mkdir -p "$PROJ"
     _mk_project P1
     _set_file_list_text "$label
@@ -1542,6 +1542,99 @@ scripts/calc.sh
 - \`tests/calc.bats\`"
     run _mutation_subcmd
     printf '[%s]: %s\n' "$label" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$EV")" != "not_applicable" ]
+    [ "$(jq -r .gate "$EV")" != "errored" ]
+    [ "$(jq -r '[.mutants[].file]|unique|join(",")' "$EV")" = "scripts/calc.sh" ]
+  done
+}
+
+@test "an indented list-item label is still a label so a docs-only story stays not_applicable" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '  - Modified:
+  - `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "a list-item bold title gives not_applicable on a docs-only story" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '- **Sources**
+  - `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "a multi-bold-span line is not a bold title and gives errored" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '**Note:** updated the calculator script **too**
+- `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .gate "$EV")" = "errored" ]
+}
+
+@test "an indented non-item colon line gives errored, not a label" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '- `docs/readme.md`
+  also changed the calculator script:'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .gate "$EV")" = "errored" ]
+}
+
+@test "a quoted colon line gives errored, not a label" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '> also changed the calculator script:
+- `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .gate "$EV")" = "errored" ]
+}
+
+@test "an indented bold line gives errored, not a bold title" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '- `docs/readme.md`
+  **the calculator script**'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .gate "$EV")" = "errored" ]
+}
+
+@test "a quoted bold line gives errored, not a bold title" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '> **the calculator script**
+- `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 1 ]
+  [ "$(jq -r .gate "$EV")" = "errored" ]
+}
+
+@test "a quoted or indented line naming a path still reads the path" {
+  local form
+  for form in '> scripts/calc.sh' '    scripts/calc.sh'; do
+    rm -rf "$PROJ"; mkdir -p "$PROJ"
+    _mk_project P1
+    _set_file_list_text "$form
+- \`tests/calc.bats\`"
+    run _mutation_subcmd
+    printf '[%s]: %s\n' "$form" "$output"
     [ "$status" -eq 0 ]
     [ "$(jq -r .gate "$EV")" != "not_applicable" ]
     [ "$(jq -r .gate "$EV")" != "errored" ]
