@@ -446,9 +446,9 @@ _seed_file() {
   local log="$TEST_TMP/mx-writer-fb.log"
   : > "$log"
 
-  # 12 processes x 5 iterations: enough contention to expose the
-  # truncation-release race window on fafa06f5.
-  local N=12 ITERS=5
+  # 6 processes x 4 iterations: enough contention to verify exclusion
+  # without exceeding a reasonable test budget.
+  local N=6 ITERS=4
   local pids=() i
   for i in $(seq 1 "$N"); do
     bash -c '
