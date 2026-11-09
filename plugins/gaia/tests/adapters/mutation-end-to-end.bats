@@ -1424,8 +1424,6 @@ the calculator script
 - [the calculator](https://example.com/calc)
   and the calculator script
 > the calculator script
-**the calculator script**
-Calculator script:
 LINES
 }
 
@@ -1497,6 +1495,58 @@ over two lines -->
   run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_file_list '$STORY_DIR/story.md' 2>/dev/null"
   [ "$status" -ne 0 ]
   [ "$output" = "a/one.sh" ]
+}
+
+@test "a covered path inside a fenced block in the File List gets a real run" {
+  _mk_project P1
+  _set_file_list_text '```
+scripts/calc.sh
+```
+- `tests/calc.bats`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" != "not_applicable" ]
+  [ "$(jq -r '[.mutants[].file]|unique|join(",")' "$EV")" = "scripts/calc.sh" ]
+}
+
+@test "a list-item label ending in a colon above a nested list gives not_applicable on a docs-only story" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '- Modified:
+  - `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "bold-then-colon **Modified**: above a docs path gives not_applicable" {
+  _mk_project P1
+  mkdir -p "$PROJ/docs"; printf 'words\n' > "$PROJ/docs/readme.md"
+  _set_file_list_text '**Modified**:
+- `docs/readme.md`'
+  run _mutation_subcmd
+  printf '%s\n' "$output"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r .gate "$EV")" = "not_applicable" ]
+}
+
+@test "plain and bold colon labels and a bold title line are ignored so a covered path gets a real run" {
+  local label
+  for label in 'Modified:' 'Created:' '**Modified files**'; do
+    rm -rf "$PROJ"; mkdir -p "$PROJ"
+    _mk_project P1
+    _set_file_list_text "$label
+- \`scripts/calc.sh\`
+- \`tests/calc.bats\`"
+    run _mutation_subcmd
+    printf '[%s]: %s\n' "$label" "$output"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r .gate "$EV")" != "not_applicable" ]
+    [ "$(jq -r .gate "$EV")" != "errored" ]
+    [ "$(jq -r '[.mutants[].file]|unique|join(",")' "$EV")" = "scripts/calc.sh" ]
+  done
 }
 
 # ---------- the adapter set ----------
