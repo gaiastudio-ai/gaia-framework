@@ -44,7 +44,7 @@ _seed_file() {
     if [ "$count" -gt 0 ] 2>/dev/null; then
       local i
       for i in $(seq 1 "$count"); do
-        printf '  - id: "AI-%d"\n    sprint_id: "sprint-99"\n    text: "Item %d"\n    classification: "implementation"\n    status: "open"\n    escalation_count: 0\n    created_at: "2026-01-01T00:00:00Z"\n    theme_hash: "sha256:abc"\n    story_key: "E1-S%d"\n' "$i" "$i" "$i"
+        printf '  - id: "AI-%d"\n    sprint_id: "sprint-99"\n    text: "Item %d"\n    classification: "implementation"\n    status: "open"\n    escalation_count: 0\n    created_at: "2026-01-01T00:00:00Z"\n    theme_hash: "sha256:abc"\n    story_key: "STORY-%d"\n' "$i" "$i" "$i"
       done
     fi
   } > "$target"
@@ -112,7 +112,7 @@ _seed_file() {
     GAIA_AIW_LOCK_TIMEOUT=1 GAIA_LOCK_FORCE_FALLBACK=1 \
     aiw_write --target "$target" --sprint-id sprint-99 \
       --classification implementation --text "should timeout" \
-      --ref-key story_key --ref-value "E1-S99" 2>/dev/null
+      --ref-key story_key --ref-value "STORY-99" 2>/dev/null
   )" && rc=0 || rc=$?
 
   [ "$rc" -ne 0 ]
@@ -145,7 +145,7 @@ _seed_file() {
   local lock_file="${target}.lock"
   printf '99999999 1000000000\n' > "$lock_file"
   # Verify the PID is actually dead.
-  ! kill -0 99999999 2>/dev/null || skip "PID 99999999 is somehow alive"
+  if kill -0 99999999 2>/dev/null; then skip "PID 99999999 is somehow alive"; fi
 
   # Back-date the lock so it exceeds the reap threshold.
   if [ "$_TEST_STAT_FMT" = "gnu" ]; then
@@ -229,7 +229,7 @@ _seed_file() {
     GAIA_AIW_LOCK_TIMEOUT=1 GAIA_LOCK_FORCE_FALLBACK=1 \
     aiw_write --target "$target" --sprint-id sprint-99 \
       --classification implementation --text "fb test" \
-      --ref-key story_key --ref-value "E1-S99" 2>/dev/null
+      --ref-key story_key --ref-value "STORY-99" 2>/dev/null
   )" && rc=0 || rc=$?
 
   [ "$rc" -ne 0 ]
@@ -239,7 +239,7 @@ _seed_file() {
 }
 
 @test "flock-path times out after GAIA_AIW_LOCK_TIMEOUT seconds instead of blocking forever" {
-  command -v flock >/dev/null 2>&1 || skip "flock not available"
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
   source "$AIW_SH"
 
   local target="$TEST_TMP/ac3-flock-timeout.yaml"
@@ -257,7 +257,7 @@ _seed_file() {
     GAIA_AIW_LOCK_TIMEOUT=1 \
     aiw_write --target "$target" --sprint-id sprint-99 \
       --classification implementation --text "flock timeout" \
-      --ref-key story_key --ref-value "E1-S99" 2>/dev/null
+      --ref-key story_key --ref-value "STORY-99" 2>/dev/null
   )" && rc=0 || rc=$?
 
   [ "$rc" -ne 0 ]
@@ -295,7 +295,7 @@ _seed_file() {
     source "$AIW_SH"
     aiw_write --target "$target" --sprint-id sprint-99 \
       --classification implementation --text "should reject" \
-      --ref-key story_key --ref-value "E1-S99" 2>/dev/null
+      --ref-key story_key --ref-value "STORY-99" 2>/dev/null
   )" && rc=0 || rc=$?
 
   [ "$rc" -ne 0 ]
@@ -332,7 +332,7 @@ _seed_file() {
 # ================================================================
 
 @test "aiw_resolve restores original file mode under BSD stat (macOS)" {
-  [ "$_TEST_STAT_FMT" = "bsd" ] || skip "BSD stat not available"
+  if [ "$_TEST_STAT_FMT" != "bsd" ]; then skip "BSD stat not available"; fi
   source "$AIW_SH"
 
   local target="$TEST_TMP/ac5-mode.yaml"
@@ -348,7 +348,7 @@ _seed_file() {
 }
 
 @test "aiw_resolve restores original file mode under GNU stat" {
-  [ "$_TEST_STAT_FMT" = "gnu" ] || skip "GNU stat not available"
+  if [ "$_TEST_STAT_FMT" != "gnu" ]; then skip "GNU stat not available"; fi
   source "$AIW_SH"
 
   local target="$TEST_TMP/ac5-mode-gnu.yaml"
@@ -364,10 +364,10 @@ _seed_file() {
 }
 
 @test "aiw_resolve mode restoration works under /bin/bash 3.2" {
-  [ -x /bin/bash ] || skip "/bin/bash not available"
+  if [ ! -x /bin/bash ]; then skip "/bin/bash not available"; fi
   local bash_ver
   bash_ver="$(/bin/bash -c 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"')"
-  [ "$bash_ver" = "3.2" ] || skip "/bin/bash is $bash_ver, not 3.2"
+  if [ "$bash_ver" != "3.2" ]; then skip "/bin/bash is $bash_ver, not 3.2"; fi
 
   local target="$TEST_TMP/ac5-mode-bash32.yaml"
   _seed_file "$target" 1
@@ -407,7 +407,7 @@ _seed_file() {
       source "$AIW_SH"
       aiw_write --target "$target" --sprint-id sprint-99 \
         --classification implementation --text "Concurrent item $i" \
-        --ref-key story_key --ref-value "E1-S$i" > /dev/null 2>&1
+        --ref-key story_key --ref-value "STORY-$i" > /dev/null 2>&1
     ) &
     pids+=($!)
   done
