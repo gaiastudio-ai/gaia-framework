@@ -98,6 +98,10 @@
 #   _al_identity_hook <lock_path> <fd> — called during the strict-mode
 #     post-lock identity re-check. Lets tests inject a deterministic
 #     mismatch.
+#   _al_pre_reap_delete_hook <lock_path> — called after the reap decision
+#     in _al_try_reap but before the inode-safe rename.  Lets tests swap
+#     the lock file with a new holder's file to prove the inode check
+#     catches the interleaving.
 
 # Sourcing contract: this library DOES NOT alter the caller's shell options.
 # Every public function sets its own errexit/pipefail internally via subshell
@@ -422,6 +426,66 @@ _al_trace() {
   fi
 }
 
+# --- Internal: inode-safe reap ---
+#
+# Replaces a bare `rm -f` with an atomic rename, inode verification and
+# conditional delete.  This closes the race where a new holder publishes a
+# lock between the reaper's read and unlink: the rename captures whatever is
+# at the path, the inode check detects a mismatch, and the file is restored.
+#
+# Test-only hook (not user-facing):
+#   _al_pre_reap_delete_hook <lock_path> — called after the reap decision but
+#     before the rename.  Lets tests inject a deterministic interleaving (swap
+#     the lock with a new holder's file) to prove the inode check catches it.
+#
+# Arguments: lock_file expected_inode
+# Returns 0 if the stale file was deleted, 1 if it was not (file gone, inode
+# mismatch, or stat unavailable on a host without either stat format).
+
+_al_safe_reap() {
+  local lock_file="$1" expected_ino="$2"
+
+  # Test-only hook: fires after the reap decision, before the rename.
+  if declare -F _al_pre_reap_delete_hook >/dev/null 2>&1; then
+    _al_pre_reap_delete_hook "$lock_file"
+  fi
+
+  # Without an inode to compare, rename-then-verify cannot confirm the
+  # captured file is the one we read.  Refuse to reap — the caller will
+  # time out instead, which is fail-closed.
+  if [ -z "$expected_ino" ]; then
+    return 1
+  fi
+
+  # Atomic rename: removes the path so new acquirers can link, and gives
+  # us a private copy to inspect.
+  local reap_tmp="${lock_file}.reap.${BASHPID:-$$}.$$.$RANDOM" # bash32-portability-lint: skip (falls back to $$ on bash 3.2; same pattern as line 762)
+  if ! mv "$lock_file" "$reap_tmp" 2>/dev/null; then
+    return 1  # File already gone — nothing to reap.
+  fi
+
+  # Verify we captured the file we read, not a newly published lock.
+  local captured_ino=""
+  captured_ino="$(_al_inode "$reap_tmp" 2>/dev/null)" || captured_ino=""
+  if [ -n "$captured_ino" ] && [ "$captured_ino" != "$expected_ino" ]; then
+    # Wrong file — a new holder published between our read and rename.
+    # Restore via hard-link (ln fails EEXIST if another holder already
+    # linked at the path, which is fine — they have the slot).
+    if ln "$reap_tmp" "$lock_file" 2>/dev/null; then
+      rm -f "$reap_tmp" 2>/dev/null || true
+    else
+      # Path already taken by yet another holder.  Move-back as a last
+      # resort so the captured file is not lost at a non-standard name.
+      mv "$reap_tmp" "$lock_file" 2>/dev/null || rm -f "$reap_tmp" 2>/dev/null || true
+    fi
+    return 1
+  fi
+
+  # Correct file — delete the renamed copy.
+  rm -f "$reap_tmp" 2>/dev/null || true
+  return 0
+}
+
 # --- Internal: stale-lock reap ---
 
 _al_try_reap() {
@@ -452,18 +516,28 @@ _al_try_reap() {
     return 1
   fi
 
+  # Record the inode before reading, so the safe-reap can verify that the
+  # file it renames is the same one we inspected.
+  local _reap_ino=""
+  _reap_ino="$(_al_inode "$lock_file" 2>/dev/null)" || _reap_ino=""
+
   local recorded_pid=""
   # Read PID and discard the epoch (used only as a format marker).
-  read -r recorded_pid _ < "$lock_file" 2>/dev/null || true
+  read -r recorded_pid _ < "$lock_file" 2>/dev/null || recorded_pid=""
 
   # No valid PID line — ownerless file, immediately stale.
   # A correctly held lock always contains "<pid> <epoch>\n" (created
   # atomically via hard-link). An empty file is a legitimate post-release
   # sentinel (transition-story-status.sh, set-story-sprint.sh re-touch the
   # path for path-split-resolution compatibility) or a remnant from a prior
-  # version's bare `touch`. Reap silently — this is expected, not an anomaly.
+  # version's bare `touch`.
+  #
+  # A failed read (file unlinked between the existence check and the read)
+  # also lands here.  That is NOT proof the file is ownerless — a new holder
+  # may have published between the failed read and the delete.  The inode-safe
+  # reap catches the interleaving.
   if [ -z "$recorded_pid" ] || ! [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
-    rm -f "$lock_file" 2>/dev/null || true
+    _al_safe_reap "$lock_file" "$_reap_ino" || return 1
     return 0
   fi
 
@@ -478,10 +552,12 @@ _al_try_reap() {
   local age
   age="$(_al_file_age "$lock_file" 2>/dev/null)" || age=""
   if [ -n "$age" ] && [ "$age" -ge "$reap_threshold" ]; then
-    rm -f "$lock_file" 2>/dev/null || true
-    printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
-      "$lock_file" "$recorded_pid" "$age" >&2
-    return 0
+    if _al_safe_reap "$lock_file" "$_reap_ino"; then
+      printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
+        "$lock_file" "$recorded_pid" "$age" >&2
+      return 0
+    fi
+    return 1
   fi
 
   # PID dead but file not old enough yet — do not reap.
