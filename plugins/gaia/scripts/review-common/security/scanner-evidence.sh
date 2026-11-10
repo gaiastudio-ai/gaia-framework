@@ -249,11 +249,11 @@ elif [ -d "$REPO_PATH" ]; then
   # this story changed, not the whole repository.
   _story_file="$story_dir/story.md"
   if command -v git >/dev/null 2>&1 && git -C "$REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    # Resolve the integration branch from config, then fall back to
-    # the repo's default branch. Never hard-code a branch name.
+    # Resolve the diff base branch from the framework's promotion chain
+    # first, then fall back to the remote default, then common names.
     _integration_branch=""
     if [ -f "$_config_file" ] && command -v yq >/dev/null 2>&1; then
-      _integration_branch="$(yq -r '.ci_cd.integration_branch // ""' "$_config_file" 2>/dev/null)" || _integration_branch=""
+      _integration_branch="$(yq -r '.ci_cd.promotion_chain[0].branch // ""' "$_config_file" 2>/dev/null)" || _integration_branch=""
     fi
     if [ -z "$_integration_branch" ]; then
       # Detect the default branch from the remote.
@@ -281,7 +281,7 @@ elif [ -d "$REPO_PATH" ]; then
     # to the whole repo, which would be a performance and correctness issue.
     if [ -z "$_base" ] && [ ! -s "$_file_list_tmp" ]; then
       printf '%s: cannot resolve diff base (no integration branch found). Run is incomplete.\n' "$SCRIPT_NAME" >&2
-      printf '%s: set ci_cd.integration_branch in project config or ensure origin has a default branch.\n' "$SCRIPT_NAME" >&2
+      printf '%s: set ci_cd.promotion_chain[0].branch in project config or ensure origin has a default branch.\n' "$SCRIPT_NAME" >&2
       # Write an incomplete manifest and exit 2.
       mkdir -p "$EVIDENCE_DIR"
       manifest="$(jq -nc \
@@ -452,6 +452,12 @@ if [ "$complete_bool" = "true" ] && [ -x "$_findings_register" ]; then
   if [ "$_reg_rc" -ne 0 ]; then
     printf '%s: findings register write failed (rc=%d) — marking run incomplete\n' "$SCRIPT_NAME" "$_reg_rc" >&2
     exit_code=2
+    # Rewrite the manifest with complete=false so the reuse path does not
+    # skip the register step on a re-run with the same run id.
+    manifest="$(jq -c '.complete = false' "$EVIDENCE_DIR/evidence-manifest.json")"
+    _tmp="$(mktemp "$EVIDENCE_DIR/evidence-manifest.json.XXXXXX")"
+    printf '%s\n' "$manifest" > "$_tmp"
+    mv "$_tmp" "$EVIDENCE_DIR/evidence-manifest.json"
   fi
 fi
 

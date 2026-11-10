@@ -138,18 +138,26 @@ done < "$DOCKERFILE"
 
 # ---------------------------------------------------------------------------
 # Check 4: Unversioned pip installs (pip install <name> without ==).
+# Also catches bare package specs after "pip install -r <file> <bare>".
 # ---------------------------------------------------------------------------
 while IFS= read -r line; do
   instr="$(printf '%s' "$line" | sed 's/[[:space:]]*#.*//' | sed 's/\\$//')"
   [ -n "$instr" ] || continue
   case "$instr" in
     *"pip install"*)
-      # Skip lines that only reference a requirements file.
-      case "$instr" in *"-r "*) continue ;; esac
+      _past_req_file=false
       # Check each word that looks like a package name without ==.
       for word in $instr; do
         case "$word" in
           RUN|pip|pip3|install|--*|python3|*==*|*"'"*|*'"'*) continue ;;
+          -r) _past_req_file=true; continue ;;
+        esac
+        # The word right after -r is the requirements file path; skip it.
+        if [ "$_past_req_file" = "true" ]; then
+          _past_req_file=false
+          continue
+        fi
+        case "$word" in
           [a-zA-Z][a-zA-Z0-9_-]*)
             _err "unversioned pip install: $word (needs ==version)" ;;
         esac
@@ -178,14 +186,38 @@ while [ "$i" -lt "$scanner_count" ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Check 6: Every curl download must have a corresponding sha256sum -c.
+# Check 6: Every curl download in the fetcher stage must have a corresponding
+# sha256sum -c for the same output file. Joins continuation lines, then
+# checks each curl -o. Runtime-stage utility downloads (dotnet, NodeSource)
+# are outside the scanner pin scope.
 # ---------------------------------------------------------------------------
-# Count curl downloads and sha256sum verifications across the whole file.
-_download_count="$(grep -c 'curl.*-o ' "$DOCKERFILE" 2>/dev/null)" || _download_count=0
-_verified_count="$(grep -c 'sha256sum -c' "$DOCKERFILE" 2>/dev/null)" || _verified_count=0
-if [ "$_download_count" -gt 0 ] && [ "$_verified_count" -lt "$_download_count" ]; then
-  _err "Dockerfile has $_download_count curl downloads but only $_verified_count sha256sum -c verifications"
-fi
+# Join continuation lines (trailing backslash) portably.
+_joined_dockerfile="$(awk '/\\$/ {sub(/\\$/,""); buf=buf $0; next} {print buf $0; buf=""}
+  END {if (buf) print buf}' "$DOCKERFILE")"
+# For each curl download (with -o), verify a sha256sum -c references the same file.
+while IFS= read -r _dl_line; do
+  [ -n "$_dl_line" ] || continue
+  # Extract the -o target: the word after -o.
+  _out_file="$(printf '%s' "$_dl_line" | grep -oE -- '-o[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}')" || _out_file=""
+  [ -n "$_out_file" ] || continue
+  # Strip quotes around the filename.
+  _out_file="$(printf '%s' "$_out_file" | tr -d '"'"'")"
+  # The basename is what sha256sum -c checks against.
+  _out_base="${_out_file##*/}"
+  # Look for a sha256sum -c line that references this file (by path or basename).
+  _found=false
+  if printf '%s\n' "$_joined_dockerfile" | grep -F "$_out_base" | grep -q 'sha256sum -c' 2>/dev/null; then
+    _found=true
+  fi
+  if [ "$_found" = "false" ] && printf '%s\n' "$_joined_dockerfile" | grep -F "$_out_file" | grep -q 'sha256sum -c' 2>/dev/null; then
+    _found=true
+  fi
+  if [ "$_found" = "false" ]; then
+    _err "curl download to $_out_file has no sha256sum -c verification"
+  fi
+done < <(awk 'BEGIN{s=0} /^FROM.*AS fetcher/{s=1; next} /^FROM/{s=0} s{print}' "$DOCKERFILE" | \
+  awk '/\\$/ {sub(/\\$/,""); buf=buf $0; next} {print buf $0; buf=""}
+    END {if (buf) print buf}' | grep 'curl.*-o ')
 
 # ---------------------------------------------------------------------------
 # Summary.

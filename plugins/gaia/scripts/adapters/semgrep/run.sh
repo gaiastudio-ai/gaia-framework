@@ -61,14 +61,14 @@ _run_native() {
 
 _run_docker() {
   local image="${GAIA_TOOLS_IMAGE:-ghcr.io/gaiastudio-ai/gaia-tools:latest}"
-  local args=(semgrep --json --quiet --metrics=off)
-  if [ -n "$CONFIG" ]; then
-    args+=(--config "$CONFIG")
-  else
-    # In the container, use baked-in local rules (no registry fetch over
-    # --network=none). The image bakes a rules snapshot at build time.
-    args+=(--config /opt/semgrep-rules/)
+  if [ -z "$CONFIG" ]; then
+    # Semgrep rules are not baked into the image (moved to a separate story).
+    # Without baked rules, docker mode with --network=none cannot fetch from
+    # the registry and must not do an empty pass. Fail explicitly.
+    echo "run.sh: semgrep rules are not baked into the image; docker mode requires baked rules or an explicit --config path" >&2
+    exit 1
   fi
+  local args=(semgrep --json --quiet --metrics=off --config "$CONFIG")
   local docker_targets=()
   for t in "${TARGETS[@]}"; do
     docker_targets+=("/workspace/$t")

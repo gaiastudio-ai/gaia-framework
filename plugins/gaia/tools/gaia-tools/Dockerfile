@@ -217,25 +217,6 @@ RUN pip install --break-system-packages --require-hashes \
     semgrep --version && \
     checkov --version
 
-# Bake semgrep default rules at build time for offline scanning.
-# Download the p/default ruleset from the Semgrep Registry API and save as
-# JSON (semgrep accepts JSON rule files). Offline scans use
-# --config /opt/semgrep-rules/.
-RUN mkdir -p /opt/semgrep-rules && \
-    python3 -c " \
-import urllib.request, json, sys; \
-data = urllib.request.urlopen('https://semgrep.dev/api/registry/rules?config=p/default', timeout=30).read(); \
-rules = json.loads(data); \
-out = rules if isinstance(rules, list) else rules.get('rules', []); \
-open('/opt/semgrep-rules/default.json','w').write(json.dumps({'rules': out})); \
-print(f'Baked {len(out)} semgrep rules'); \
-assert len(out) > 0, 'no rules fetched' \
-" && \
-    printf 'x = 1\n' > /tmp/verify.py && \
-    semgrep --config /opt/semgrep-rules/default.json --json /tmp/verify.py 2>/dev/null && \
-    rm -f /tmp/verify.py && \
-    echo "Semgrep offline scan verified"
-
 # Pure-pip Tier 1 tools.
 RUN pip install --break-system-packages \
       'vulture==2.13' \

@@ -10,6 +10,7 @@ load 'test_helper.bash'
 # Shared repo template: built once per file, cloned per test via cp -r.
 # This avoids the expensive git-init + git-clone + git-push per test.
 setup_file() {
+  _litter_snapshot_before
   export BATS_FILE_TMPDIR="${BATS_FILE_TMPDIR:-${BATS_TMPDIR:-/tmp}/scanner-ev-file-$$}"
   mkdir -p "$BATS_FILE_TMPDIR"
   _TMPL="$BATS_FILE_TMPDIR/template"
@@ -32,6 +33,7 @@ setup_file() {
 
 teardown_file() {
   rm -rf "$BATS_FILE_TMPDIR" 2>/dev/null || true
+  _litter_check_after
 }
 
 setup() {
@@ -68,7 +70,9 @@ MD
 project_name: test
 project_kind: web-app
 ci_cd:
-  integration_branch: main
+  promotion_chain:
+    - id: main
+      branch: main
 YAML
 
   # Create stub adapter directory with adapters that exit 0.
@@ -183,7 +187,7 @@ YAML
   jq -e '.enabled == true' "$manifest_path"
 }
 
-@test "scanner evidence: string false does NOT turn scanner-first off (AC-EC9)" {
+@test "scanner evidence: string false does NOT turn scanner-first off" {
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 review:
@@ -345,7 +349,7 @@ SH
   jq -e '.complete == false' "$manifest_path"
 }
 
-# --- Concurrency (AC-EC7) ---
+# --- Concurrency ---
 
 @test "scanner evidence: concurrent same-run-id calls do not clobber" {
   # Run 4 concurrent calls; none should exit 1 due to mv collision.
@@ -469,20 +473,27 @@ SH
 # --- Deleted files filtered ---
 
 @test "scanner evidence: deleted files are excluded from the file list" {
-  # Build a fresh repo with a deleted file on a story branch.
+  # Build a repo where gone.py exists on the base branch (origin/main) and is
+  # deleted on the story branch. Without --diff-filter=d the deletion would
+  # appear in the diff; with it, gone.py is excluded.
   cd "$REPO_DIR"
-  # Push the initial commit to origin/main as a base.
-  git push -q origin HEAD:main 2>/dev/null || true
-  git checkout -b feat-del -q
+  # Create gone.py on the base and push to origin/main.
   printf 'gone\n' > src/gone.py
-  git add -A && git -c user.email=a@b -c user.name=a commit -qm "add gone.py"
+  printf 'kept\n' > src/kept.py
+  git add -A && git -c user.email=a@b -c user.name=a commit -qm "add gone.py and kept.py"
+  git push -q origin HEAD:main 2>/dev/null || true
+  # Story branch: delete gone.py, modify kept.py (so the diff is non-empty).
+  git checkout -b feat-del -q
   git rm -q src/gone.py
-  git -c user.email=a@b -c user.name=a commit -qm "remove gone.py"
+  printf 'kept v2\n' > src/kept.py
+  git add -A && git -c user.email=a@b -c user.name=a commit -qm "remove gone.py, update kept.py"
 
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 ci_cd:
-  integration_branch: main
+  promotion_chain:
+    - id: main
+      branch: main
 YAML
 
   # Adapter that captures the file list it receives.
@@ -506,11 +517,11 @@ SH
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id del1 --repo "$REPO_DIR"
   [ "$status" -eq 0 ]
 
+  # The adapter must have received a file list (assert it exists).
+  [ -f "$WORK_TMP/received-files.txt" ]
   # The deleted file must not be in the list passed to the adapter.
-  if [ -f "$WORK_TMP/received-files.txt" ]; then
-    run grep "gone.py" "$WORK_TMP/received-files.txt"
-    [ "$status" -ne 0 ]
-  fi
+  run grep "gone.py" "$WORK_TMP/received-files.txt"
+  [ "$status" -ne 0 ]
 }
 
 # --- No base resolution exits incomplete ---
@@ -525,7 +536,7 @@ SH
   git add -A && git -c user.email=a@b -c user.name=a commit -qm init
   cd - >/dev/null
 
-  # No integration_branch in config, no origin, no common branch names.
+  # No promotion_chain in config, no origin, no common branch names.
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 YAML
@@ -557,15 +568,22 @@ SH
   # Build a copy of the scanner evidence scripts in a temp tree, with a
   # register-write.sh that always fails. The register script resolves its
   # writer relative to itself, so placing a failing stub there is enough.
-  local sec_dir="$WORK_TMP/scripts/review-common/security"
-  local rw_dir="$WORK_TMP/scripts/review-common"
-  mkdir -p "$sec_dir"
+  # Also copy the probe so the script reaches the register step.
+  local tree="$WORK_TMP/scripts"
+  local sec_dir="$tree/review-common/security"
+  local rw_dir="$tree/review-common"
+  mkdir -p "$sec_dir" "$tree/adapters"
   cp "$PLUGIN_DIR/scripts/review-common/security/scanner-evidence.sh" "$sec_dir/"
   cp "$PLUGIN_DIR/scripts/review-common/security/scanner-findings-register.sh" "$sec_dir/"
-  chmod +x "$sec_dir/scanner-evidence.sh" "$sec_dir/scanner-findings-register.sh"
+  cp "$PLUGIN_DIR/scripts/tool-availability-probe.sh" "$tree/"
+  chmod +x "$sec_dir/scanner-evidence.sh" "$sec_dir/scanner-findings-register.sh" "$tree/tool-availability-probe.sh"
+  # Stub resolve-story-file.sh so story lookup works.
+  printf '#!/usr/bin/env bash\necho "%s/story.md"\n' "$STORY_DIR" > "$tree/resolve-story-file.sh"
+  chmod +x "$tree/resolve-story-file.sh"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$rw_dir/register-write.sh"
   chmod +x "$rw_dir/register-write.sh"
 
+  BUILTIN_ADAPTERS_DIR="$STUB_ADAPTERS" \
   PATH="$WORK_TMP/fakebin:$PATH" \
     run "$sec_dir/scanner-evidence.sh" --story E999-S1 --run-id failreg1 --repo "$REPO_DIR"
 
@@ -573,6 +591,11 @@ SH
   # a finding that never reaches the register would be invisible to the
   # verdict resolver.
   [ "$status" -eq 2 ]
+  # The manifest must also record complete=false so a re-run does not
+  # reuse evidence that missed the register step.
+  local manifest="$STORY_DIR/scanner-evidence/failreg1/evidence-manifest.json"
+  [ -f "$manifest" ]
+  jq -e '.complete == false' "$manifest"
 }
 
 # --- Docker mode test (skipped without docker) ---
@@ -583,7 +606,9 @@ SH
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 ci_cd:
-  integration_branch: main
+  promotion_chain:
+    - id: main
+      branch: main
 brownfield:
   tools:
     runner: docker
@@ -596,6 +621,34 @@ YAML
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id dock1 --repo "$REPO_DIR"
   # With stubs that don't care about runtime profile, this should complete normally.
   [ "$status" -eq 0 ]
+}
+
+@test "scanner evidence: docker mode semgrep without baked rules fails as errored" {
+  # The semgrep adapter in docker mode without baked rules (no --config) must
+  # fail with a message saying rules are not baked, never do an empty pass.
+  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+project_name: test
+ci_cd:
+  promotion_chain:
+    - id: main
+      branch: main
+brownfield:
+  tools:
+    runner: docker
+YAML
+
+  # Use the REAL semgrep run.sh (not the stub) to exercise the docker branch.
+  local real_run="$PLUGIN_DIR/scripts/adapters/semgrep/run.sh"
+  cp "$real_run" "$STUB_ADAPTERS/semgrep/run.sh"
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id dockersem1 --repo "$REPO_DIR"
+  # Evidence is incomplete because the adapter errored.
+  [ "$status" -eq 2 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  [ -f "$manifest_path" ]
+  jq -e '.adapters[] | select(.name == "semgrep") | .state == "ran_and_errored"' "$manifest_path"
 }
 
 # --- Fixture extension tests (.kt, .swift, .dart) ---
@@ -791,7 +844,9 @@ SH
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 ci_cd:
-  integration_branch: main
+  promotion_chain:
+    - id: main
+      branch: main
 tools:
   dep-audit:
     provider: dep-audit
@@ -810,17 +865,14 @@ YAML
 
   # Run the register script directly against the manifest.
   local reg_script="$PLUGIN_DIR/scripts/review-common/security/scanner-findings-register.sh"
-  if [ -x "$reg_script" ]; then
-    "$reg_script" --story E999-S1 --manifest "$manifest_path" 2>/dev/null || true
-    # If the register exists, check that the duplicate advisory was counted once.
-    local reg_path="$STORY_DIR/reviews/findings-register-E999-S1.yaml"
-    if [ -f "$reg_path" ]; then
-      local count; count="$(yq '.entries | length' "$reg_path" 2>/dev/null)" || count=0
-      # osv-scanner's GHSA-1234 should be registered; dep-audit's duplicate skipped.
-      # Plus semgrep has no findings in this config, so total = 1 (osv-scanner's).
-      [ "$count" -le 2 ]
-    fi
-  fi
+  [ -x "$reg_script" ]
+  "$reg_script" --story E999-S1 --manifest "$manifest_path" 2>/dev/null
+  # The register must exist with exactly 1 entry (osv-scanner's GHSA-1234);
+  # dep-audit's duplicate must have been skipped by the cross-adapter dedup.
+  local reg_path="$STORY_DIR/reviews/findings-register-E999-S1.yaml"
+  [ -f "$reg_path" ]
+  local count; count="$(yq '.entries | length' "$reg_path")"
+  [ "$count" -eq 1 ]
 }
 
 # --- Probe --output passthrough ---
