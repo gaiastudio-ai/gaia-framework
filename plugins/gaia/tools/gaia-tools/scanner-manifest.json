@@ -12,11 +12,11 @@
       "artifacts": {
         "amd64": {
           "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_amd64.tar.gz",
-          "sha256": "e4a11b2fc7e6e0f396e5f4d0e2c5f34a5e5b8d3f1c6a9b0e7d2c4f8a3b6e1d9"
+          "sha256": "ff054e389ffb40619911f6bd75b3f46610245df9b11ab72fcdc2e08b9c34a09e"
         },
         "arm64": {
           "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_arm64.tar.gz",
-          "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+          "sha256": "20f55117742aec388bf28bb24122236d3705e53996a27524e934569c5a0992cb"
         }
       }
     },
@@ -27,11 +27,11 @@
       "artifacts": {
         "amd64": {
           "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_amd64.tar.gz",
-          "sha256": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3"
+          "sha256": "5e4c6a0d1ca28d25e060a29c7cca0aedc50d951bfb270b45bc9a71e86ac6fbe2"
         },
         "arm64": {
           "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_arm64.tar.gz",
-          "sha256": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+          "sha256": "a28d63bb2bca96092a1a42cd5afdd0787633ae05998935a5e6e2aac8f2e2ec44"
         }
       }
     },
@@ -42,11 +42,11 @@
       "artifacts": {
         "amd64": {
           "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_amd64",
-          "sha256": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
+          "sha256": "0b35daf50d3a9992836e7f78f56cb21b870da58f15f75c516dfb2c2ab4789d0f"
         },
         "arm64": {
           "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_arm64",
-          "sha256": "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6"
+          "sha256": "fe26a8bd00e38d2b70bd049a97e03f6c27ac8fd74d5608c2c48b425cf46568ae"
         }
       }
     },
@@ -64,8 +64,9 @@
     },
     {
       "name": "cppcheck",
-      "version": "2.13.0",
+      "version": "2.10",
       "install": "apt",
+      "apt_pin": "2.10-2",
       "artifacts": {}
     },
     {
@@ -74,12 +75,12 @@
       "install": "binary",
       "artifacts": {
         "amd64": {
-          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_amd64.tar.gz",
-          "sha256": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz",
+          "sha256": "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
         },
         "arm64": {
           "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_arm64.tar.gz",
-          "sha256": "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8"
+          "sha256": "bf5f7f466ebfade1296c8bd32cf7d3f592c2aa78836aa9980ffbe2cadca7a861"
         }
       }
     },

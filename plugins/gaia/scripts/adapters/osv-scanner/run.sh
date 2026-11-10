@@ -8,7 +8,7 @@
 # maps its JSON output into a deterministic analysis-results fragment.
 #
 # Exit codes:
-#   0   — scan completed (findings may be present)
+#   0   — scan completed (findings may be present), or not_applicable
 #   1   — scanner errored (not "findings found" — that is exit 0)
 #   127 — osv-scanner not found on PATH
 
@@ -44,70 +44,96 @@ done
 [ -n "$INPUT" ] || { echo "run.sh: --input required" >&2; exit 1; }
 [ -r "$INPUT" ] || { echo "run.sh: input file not readable: $INPUT" >&2; exit 1; }
 
-# Derive the project root from the first file in the list.
-first_file=""
-while IFS= read -r _line; do
-  [ -n "$_line" ] && { first_file="$_line"; break; }
-done < "$INPUT"
+# Known lockfiles that osv-scanner can consume.
+_lockfile_names="package-lock.json yarn.lock pnpm-lock.yaml go.sum go.mod Cargo.lock Gemfile.lock composer.lock poetry.lock Pipfile.lock requirements.txt pom.xml build.gradle build.gradle.kts"
 
-if [ -z "$first_file" ]; then
-  # No files — not applicable; emit a skipped fragment.
-  fragment="$(jq -nc '{name:"osv-scanner",status:"skipped",reason:"no files in file list",findings:[]}')"
-  if [ -n "$OUTPUT" ]; then printf '%s\n' "$fragment" > "$OUTPUT"; else printf '%s\n' "$fragment"; fi
-  exit 0
-fi
+# Collect unique parent directories of every listed file, plus the repo root
+# (first entry's ancestor). Walk up from each to find a lockfile.
+_found_root=""
+_seen_dirs=""
 
-# Determine scan root: the directory of the first file, walking up to find a
-# lockfile. For simplicity, use the directory of the file list itself or CWD.
-scan_root="${first_file%/*}"
-[ "$scan_root" = "$first_file" ] && scan_root="."
-# Walk up to find any lockfile (package-lock.json, go.sum, Cargo.lock, etc.)
-_resolve_root() {
-  local d="$1"
-  while [ "$d" != "/" ] && [ "$d" != "." ]; do
-    for lf in package-lock.json yarn.lock pnpm-lock.yaml go.sum go.mod Cargo.lock \
-              Gemfile.lock composer.lock poetry.lock Pipfile.lock requirements.txt \
-              pom.xml build.gradle build.gradle.kts; do
-      [ -f "$d/$lf" ] && { printf '%s' "$d"; return 0; }
-    done
-    d="${d%/*}"
-    [ -z "$d" ] && d="/"
+_has_lockfile() {
+  local dir="$1"
+  local lf
+  for lf in $_lockfile_names; do
+    [ -f "$dir/$lf" ] && return 0
   done
   return 1
 }
 
-project_root="$(_resolve_root "$scan_root" 2>/dev/null)" || project_root=""
-if [ -z "$project_root" ]; then
-  # No lockfiles found — not applicable.
-  fragment="$(jq -nc '{name:"osv-scanner",status:"skipped",reason:"no lockfiles found",findings:[]}')"
+# Read the file list and search for a directory containing a lockfile.
+while IFS= read -r _line; do
+  [ -n "$_line" ] || continue
+  # Get the directory of this file. Handle root-level files (no /).
+  local_dir="${_line%/*}"
+  [ "$local_dir" = "$_line" ] && local_dir="."
+
+  # Walk up from local_dir. Use an absolute path to avoid the no-op bug
+  # where ${d%/*} is the same as d for a single-component relative path.
+  d="$local_dir"
+  while true; do
+    if _has_lockfile "$d"; then
+      _found_root="$d"
+      break
+    fi
+    parent="${d%/*}"
+    # If parent equals d, we've hit the root (. or /).
+    if [ "$parent" = "$d" ]; then
+      break
+    fi
+    # Handle the case where d was a single-component path like "src".
+    [ -z "$parent" ] && parent="."
+    d="$parent"
+  done
+  [ -n "$_found_root" ] && break
+done < "$INPUT"
+
+if [ -z "$_found_root" ]; then
+  # No lockfiles found — not applicable. Emit a status fragment.
+  fragment="$(jq -nc '{name:"osv-scanner",status:"not_applicable",reason:"no lockfiles found",findings:[]}')"
   if [ -n "$OUTPUT" ]; then printf '%s\n' "$fragment" > "$OUTPUT"; else printf '%s\n' "$fragment"; fi
   exit 0
 fi
+
+project_root="$_found_root"
 
 _run_native() {
   if ! command -v osv-scanner >/dev/null 2>&1; then
     echo "run.sh: osv-scanner not found on PATH" >&2
     exit 127
   fi
-  osv-scanner scan --format json --recursive "$project_root" 2>&1 || true
+  local osv_rc=0
+  # Capture stderr separately to avoid merging progress output into JSON.
+  osv-scanner scan --format json --recursive -- "$project_root" 2>/dev/null || osv_rc=$?
+  return "$osv_rc"
 }
 
 _run_docker() {
   local image="${GAIA_TOOLS_IMAGE:-ghcr.io/gaiastudio-ai/gaia-tools:latest}"
+  local osv_rc=0
   docker run --rm --network=none \
     -v "${project_root}:/workspace:ro" \
-    -v "${ADAPTER_OUT_DIR:-/tmp}:/out" \
-    "$image" osv-scanner scan --format json --recursive /workspace 2>&1 || true
+    "$image" osv-scanner scan --format json --recursive -- /workspace 2>/dev/null || osv_rc=$?
+  return "$osv_rc"
 }
 
+rc=0
 case "$RUNTIME_PROFILE" in
-  container) raw="$(_run_docker)" ;;
-  *)         raw="$(_run_native)" ;;
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
 esac
 
+# osv-scanner exits 1 when vulnerabilities are found, 0 when clean.
+# Exit > 1 is an infrastructure error. Treat 1 as "ran, findings present".
+scanner_errored=false
+if [ "$rc" -gt 1 ]; then
+  scanner_errored=true
+elif [ "$rc" -eq 1 ]; then
+  # rc 1 = vulnerabilities found (not an error).
+  rc=0
+fi
+
 # Map osv-scanner JSON into findings[].
-# osv-scanner --format json outputs {"results": [{"packages": [...]}]} on
-# findings, or exits 0 with empty results when clean.
 findings="$(printf '%s' "$raw" | jq -c '
   [(.results // [])[] | (.packages // [])[] |
    (.vulnerabilities // [])[] |
@@ -121,13 +147,14 @@ findings="$(printf '%s' "$raw" | jq -c '
      source: "osv-scanner"
    }]
 ' 2>/dev/null)" || findings="[]"
+[ -n "$findings" ] || findings="[]"
 
-# Determine status.
-finding_count="$(printf '%s' "$findings" | jq 'length' 2>/dev/null)" || finding_count=0
-if [ "$finding_count" -gt 0 ]; then
-  status="passed"
+if [ "$scanner_errored" = "true" ]; then
+  status="errored"
+  exit_rc=1
 else
   status="passed"
+  exit_rc=0
 fi
 
 fragment="$(jq -nc \
@@ -143,4 +170,4 @@ else
   printf '%s\n' "$fragment"
 fi
 
-exit 0
+exit "$exit_rc"

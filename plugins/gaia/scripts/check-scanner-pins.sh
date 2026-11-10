@@ -6,7 +6,10 @@
 #   - A sha256 entry in the manifest for each architecture (binary scanners)
 #   - Matching version between Dockerfile ARG and manifest
 #   - Every FROM line has an @sha256: digest
-#   - Sarif.Multitool install uses an exact --version
+#   - Sarif.Multitool install uses an exact --version matching the manifest
+#   - The pip lock file exists and contains --hash lines
+#   - apt-pinned scanners have an exact version in the Dockerfile
+#   - No loose version pins (>=, ~=, ^, :latest) in Dockerfile instructions
 #
 # Exit codes:
 #   0 — all pins verified
@@ -37,24 +40,30 @@ _err() {
 # ---------------------------------------------------------------------------
 while IFS= read -r line; do
   case "$line" in
-    FROM*@sha256:*) ;; # Good — has digest.
-    FROM*AS*|FROM*as*) _err "FROM without @sha256: digest: $line" ;;
+    \#*|"") continue ;;
+  esac
+  case "$line" in
+    FROM*)
+      case "$line" in
+        *@sha256:*) ;;
+        *) _err "FROM without @sha256: digest: $line" ;;
+      esac
+      ;;
   esac
 done < "$DOCKERFILE"
 
 # ---------------------------------------------------------------------------
-# Check 2: Binary scanners — exact version in Dockerfile, sha256 per arch in manifest.
+# Check 2: Per-scanner checks by install type.
 # ---------------------------------------------------------------------------
 scanner_count="$(jq '.scanners | length' "$MANIFEST")"
 i=0
 while [ "$i" -lt "$scanner_count" ]; do
-  name="$(jq -r ".scanners[$i].name" "$MANIFEST")"
-  version="$(jq -r ".scanners[$i].version" "$MANIFEST")"
-  install="$(jq -r ".scanners[$i].install" "$MANIFEST")"
+  name="$(jq -r --argjson idx "$i" '.scanners[$idx].name' "$MANIFEST")"
+  version="$(jq -r --argjson idx "$i" '.scanners[$idx].version' "$MANIFEST")"
+  install="$(jq -r --argjson idx "$i" '.scanners[$idx].install' "$MANIFEST")"
 
   case "$install" in
     binary)
-      # Check Dockerfile has an exact ARG pin.
       name_upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
       arg_version="$(grep -E "^ARG ${name_upper}_VERSION=" "$DOCKERFILE" | head -1 | sed 's/.*=//' | tr -d '[:space:]')" || arg_version=""
       if [ -z "$arg_version" ]; then
@@ -62,36 +71,48 @@ while [ "$i" -lt "$scanner_count" ]; do
       elif [ "$arg_version" != "$version" ]; then
         _err "$name version mismatch: Dockerfile=$arg_version, manifest=$version"
       fi
-      # Check sha256 per arch.
       for arch in amd64 arm64; do
-        sha="$(jq -r ".scanners[$i].artifacts.${arch}.sha256 // \"\"" "$MANIFEST")"
+        sha="$(jq -r --argjson idx "$i" --arg arch "$arch" '.scanners[$idx].artifacts[$arch].sha256 // ""' "$MANIFEST")"
         if [ -z "$sha" ]; then
           _err "$name missing sha256 for $arch in manifest"
+        elif [ "${#sha}" -ne 64 ]; then
+          _err "$name sha256 for $arch is not 64 characters: $sha"
         fi
       done
       ;;
     pip)
-      # Verify the lock file exists and references the version.
-      lock_file="$(jq -r ".scanners[$i].lock_file // \"\"" "$MANIFEST")"
-      if [ -n "$lock_file" ] && [ -f "$TOOLS_DIR/$lock_file" ]; then
-        if ! grep -qF "${name}==${version}" "$TOOLS_DIR/$lock_file"; then
-          _err "$name version $version not found in $lock_file"
+      lock_file="$(jq -r --argjson idx "$i" '.scanners[$idx].lock_file // ""' "$MANIFEST")"
+      if [ -n "$lock_file" ]; then
+        if [ ! -f "$TOOLS_DIR/$lock_file" ]; then
+          _err "$name lock file not found: $lock_file"
+        else
+          if ! grep -qF "${name}==${version}" "$TOOLS_DIR/$lock_file"; then
+            _err "$name version $version not found in $lock_file"
+          fi
+          if ! grep -qF -- "--hash=" "$TOOLS_DIR/$lock_file"; then
+            _err "$lock_file has no --hash lines (--require-hashes will fail)"
+          fi
         fi
       fi
       ;;
     apt)
-      # Verify the Dockerfile installs the specific package.
-      if ! grep -qE "\\b${name}\\b" "$DOCKERFILE"; then
-        _err "$name not found in Dockerfile apt install"
+      apt_pin="$(jq -r --argjson idx "$i" '.scanners[$idx].apt_pin // ""' "$MANIFEST")"
+      if [ -n "$apt_pin" ]; then
+        if ! grep -qE "${name}=${apt_pin}" "$DOCKERFILE"; then
+          _err "$name apt install not pinned to $apt_pin in Dockerfile"
+        fi
+      else
+        if ! grep -qE "\\b${name}\\b" "$DOCKERFILE"; then
+          _err "$name not found in Dockerfile apt install"
+        fi
       fi
       ;;
     dotnet)
-      # Sarif.Multitool must use --version.
-      if ! grep -qE "dotnet tool install.*${name}" "$DOCKERFILE"; then
-        _err "$name not found in Dockerfile dotnet tool install"
-      fi
-      if ! grep -qE "dotnet tool install.*--version" "$DOCKERFILE" 2>/dev/null; then
+      sarif_version="$(grep -oE 'dotnet tool install.*--version[[:space:]]+[0-9][0-9.]*' "$DOCKERFILE" | grep -oE '[0-9][0-9.]*$' | head -1)" || sarif_version=""
+      if [ -z "$sarif_version" ]; then
         _err "Sarif.Multitool install does not use --version"
+      elif [ "$sarif_version" != "$version" ]; then
+        _err "Sarif.Multitool version mismatch: Dockerfile=$sarif_version, manifest=$version"
       fi
       ;;
   esac
@@ -100,25 +121,16 @@ while [ "$i" -lt "$scanner_count" ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Check 3: No loose version pins (>=, ~=, ^, :latest) in non-comment
-# Dockerfile instructions. Comment lines and pip install lines are exempt.
+# Check 3: No loose version pins in Dockerfile instructions.
 # ---------------------------------------------------------------------------
 while IFS= read -r line; do
-  # Strip everything after # to get the instruction part only.
   instr="$(printf '%s' "$line" | sed 's/[[:space:]]*#.*//')"
-  # Skip lines that are entirely comments (instruction part is empty or
-  # just a line number).
-  case "$instr" in
-    [0-9]*:) continue ;;
-    [0-9]*:[[:space:]]*) continue ;;
-  esac
-  # Skip pip install lines (pip uses >= legitimately in requirements).
-  case "$instr" in *pip*install*) continue ;; esac
+  [ -n "$instr" ] || continue
   case "$instr" in
     *'>='*|*'~='*|*'^'*|*':latest'*)
       _err "loose version pin in Dockerfile: $line" ;;
   esac
-done < <(grep -nE '(>=|~=|\^|:latest)' "$DOCKERFILE" 2>/dev/null || true)
+done < "$DOCKERFILE"
 
 # ---------------------------------------------------------------------------
 # Summary.

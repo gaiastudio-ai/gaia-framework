@@ -49,7 +49,7 @@ TARGETS=()
 while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-  fragment="$(jq -nc '{name:"checkov",status:"skipped",reason:"no files in file list",findings:[]}')"
+  fragment="$(jq -nc '{name:"checkov",status:"not_applicable",reason:"no files in file list",findings:[]}')"
   if [ -n "$OUTPUT" ]; then printf '%s\n' "$fragment" > "$OUTPUT"; else printf '%s\n' "$fragment"; fi
   exit 0
 fi
@@ -63,7 +63,7 @@ _run_native() {
   for t in "${TARGETS[@]}"; do
     args+=(-f "$t")
   done
-  checkov "${args[@]}" 2>&1 || true
+  checkov "${args[@]}" 2>/dev/null
 }
 
 _run_docker() {
@@ -75,18 +75,16 @@ _run_docker() {
   local project_root="${PROJECT_ROOT:-.}"
   docker run --rm --network=none \
     -v "${project_root}:/workspace:ro" \
-    -v "${ADAPTER_OUT_DIR:-/tmp}:/out" \
-    "$image" "${args[@]}" 2>&1 || true
+    "$image" "${args[@]}" 2>/dev/null
 }
 
+rc=0
 case "$RUNTIME_PROFILE" in
-  container) raw="$(_run_docker)" ;;
-  *)         raw="$(_run_native)" ;;
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
 esac
 
 # Map checkov JSON into findings[].
-# checkov --output json emits {"results":{"passed_checks":[...],"failed_checks":[...],...}}
-# or an array of such objects when multiple frameworks are scanned.
 findings="$(printf '%s' "$raw" | jq -c '
   def map_sev: if . == "CRITICAL" then "critical"
                elif . == "HIGH" then "high"
@@ -103,15 +101,14 @@ findings="$(printf '%s' "$raw" | jq -c '
     }
   ]
 ' 2>/dev/null)" || findings="[]"
-
-finding_count="$(printf '%s' "$findings" | jq 'length' 2>/dev/null)" || finding_count=0
+[ -n "$findings" ] || findings="[]"
 
 fragment="$(jq -nc \
   --arg name "checkov" \
-  --arg status "passed" \
+  --argjson rc "$rc" \
   --argjson findings "$findings" \
   --arg raw "$raw" \
-  '{name: $name, status: $status, findings: $findings, raw: $raw}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: $findings, raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"
@@ -119,4 +116,4 @@ else
   printf '%s\n' "$fragment"
 fi
 
-exit 0
+exit "$rc"

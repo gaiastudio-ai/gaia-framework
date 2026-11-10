@@ -442,6 +442,35 @@ main() {
     _render_block "$s" "${applicable[@]}"
   done
 
+  # Scanner-first health section (AC13, AC14).
+  _render_scanner_health() {
+    local config_file="${PROJECT_CONFIG:-${PROJECT_ROOT_ARG}/.gaia/config/project-config.yaml}"
+    local enabled="on (default)"
+    if [ -f "$config_file" ] && command -v yq >/dev/null 2>&1; then
+      local raw; raw="$(yq -o=json '.review.scanner_first_enabled' "$config_file" 2>/dev/null)" || raw="null"
+      if [ "$raw" = "false" ]; then
+        enabled="off (config: review.scanner_first_enabled: false)"
+      elif [ "$raw" != "null" ] && [ "$raw" != "true" ]; then
+        enabled="on (non-boolean value ignored: $raw)"
+      fi
+    fi
+    echo ""
+    echo "Scanner-first: $enabled"
+    # Probe each scanner in the default set.
+    local scanners=(semgrep osv-scanner gitleaks checkov cppcheck)
+    local scanner_status=""
+    for s in "${scanners[@]}"; do
+      if command -v "$s" >/dev/null 2>&1; then
+        local sv; sv="$("$s" --version 2>/dev/null | head -1)" || sv="unknown"
+        scanner_status="${scanner_status}  $s: present ($sv)\n"
+      else
+        scanner_status="${scanner_status}  $s: missing\n"
+      fi
+    done
+    printf '%b' "$scanner_status"
+  }
+  _render_scanner_health
+
   # Summary + verdict
   local m=0 n=0
   for tid in "${applicable[@]}"; do

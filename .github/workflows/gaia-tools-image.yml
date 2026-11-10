@@ -106,18 +106,25 @@ jobs:
           done
 
           # Post-build version comparison: verify each scanner's reported
-          # version matches the pin manifest.
+          # version matches the pin manifest (exact, not major-only).
           echo "::group::version-pin-check"
+          set -o pipefail
           BOM="$(docker run --platform linux/amd64 --rm "$IMG" --bom)"
           MANIFEST="plugins/gaia/tools/gaia-tools/scanner-manifest.json"
-          jq -r '.scanners[] | "\(.name) \(.version)"' "$MANIFEST" | while read -r name ver; do
+          MISMATCH=0
+          while read -r name ver; do
             case "$name" in Sarif.Multitool) name_lc="sarif" ;; *) name_lc="$name" ;; esac
             reported="$(echo "$BOM" | grep -i "$name_lc" | awk '{print $NF}')" || reported=""
-            if [ -n "$reported" ] && [ "$reported" != "unknown" ] && [ "${reported%%.*}" != "${ver%%.*}" ]; then
-              echo "::error::$name version mismatch: manifest=$ver, image=$reported"
-              exit 1
+            if [ -z "$reported" ] || [ "$reported" = "unknown" ]; then
+              echo "::warning::$name: version not reported in BOM"
+              continue
             fi
-          done
+            if [ "$reported" != "$ver" ]; then
+              echo "::error::$name version mismatch: manifest=$ver, image=$reported"
+              MISMATCH=1
+            fi
+          done < <(jq -r '.scanners[] | "\(.name) \(.version)"' "$MANIFEST")
+          if [ "$MISMATCH" -ne 0 ]; then exit 1; fi
           echo "::endgroup::"
 
       - name: Summary

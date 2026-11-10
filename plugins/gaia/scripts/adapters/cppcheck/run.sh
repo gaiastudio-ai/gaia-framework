@@ -49,7 +49,7 @@ TARGETS=()
 while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-  fragment="$(jq -nc '{name:"cppcheck",status:"skipped",reason:"no files in file list",findings:[]}')"
+  fragment="$(jq -nc '{name:"cppcheck",status:"not_applicable",reason:"no files in file list",findings:[]}')"
   if [ -n "$OUTPUT" ]; then printf '%s\n' "$fragment" > "$OUTPUT"; else printf '%s\n' "$fragment"; fi
   exit 0
 fi
@@ -62,9 +62,11 @@ _run_native() {
   # cppcheck writes XML to stderr; capture it.
   local xml_tmp
   xml_tmp="$(mktemp -t cppcheck-xml-XXXXXX)"
-  cppcheck --xml --quiet "${TARGETS[@]}" 2>"$xml_tmp" || true
+  local cpp_rc=0
+  cppcheck --xml --quiet -- "${TARGETS[@]}" 2>"$xml_tmp" || cpp_rc=$?
   cat "$xml_tmp"
   rm -f "$xml_tmp"
+  return "$cpp_rc"
 }
 
 _run_docker() {
@@ -76,50 +78,59 @@ _run_docker() {
   local project_root="${PROJECT_ROOT:-.}"
   local xml_tmp
   xml_tmp="$(mktemp -t cppcheck-xml-XXXXXX)"
+  local cpp_rc=0
   docker run --rm --network=none \
     -v "${project_root}:/workspace:ro" \
-    -v "${ADAPTER_OUT_DIR:-/tmp}:/out" \
-    "$image" cppcheck --xml --quiet "${docker_targets[@]}" 2>"$xml_tmp" || true
+    "$image" cppcheck --xml --quiet -- "${docker_targets[@]}" 2>"$xml_tmp" || cpp_rc=$?
   cat "$xml_tmp"
   rm -f "$xml_tmp"
+  return "$cpp_rc"
 }
 
+rc=0
 case "$RUNTIME_PROFILE" in
-  container) raw="$(_run_docker)" ;;
-  *)         raw="$(_run_native)" ;;
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
 esac
 
-# Map cppcheck XML into findings[].
-# cppcheck --xml emits <results><errors><error id="..." severity="..." msg="..."/></errors></results>
-# Use a simple awk parser since jq cannot parse XML.
+# Map cppcheck XML into findings[] using POSIX-portable awk (no gawk extensions).
+# Parses id="...", severity="..." and msg="..." from <error> elements.
 findings="$(printf '%s' "$raw" | awk '
   BEGIN { printf "["; sep="" }
   /<error / {
     id="unknown"; sev="low"; msg="finding"
-    if (match($0, /id="([^"]*)"/, a)) id=a[1]
-    if (match($0, /severity="([^"]*)"/, a)) {
-      s=a[1]
+    # Extract id attribute
+    n = split($0, parts, "id=\"")
+    if (n > 1) { split(parts[2], val, "\""); id = val[1] }
+    # Extract severity attribute
+    n = split($0, parts, "severity=\"")
+    if (n > 1) {
+      split(parts[2], val, "\""); s = val[1]
       if (s == "error") sev="high"
       else if (s == "warning") sev="medium"
-      else if (s == "style" || s == "performance" || s == "portability" || s == "information") sev="low"
     }
-    if (match($0, /msg="([^"]*)"/, a)) msg=a[1]
+    # Extract msg attribute
+    n = split($0, parts, "msg=\"")
+    if (n > 1) { split(parts[2], val, "\""); msg = val[1] }
+    # Escape embedded double quotes in msg
     gsub(/"/, "\\\"", msg)
     printf "%s{\"id\":\"%s\",\"severity\":\"%s\",\"message\":\"%s\",\"source\":\"cppcheck\"}", sep, id, sev, msg
     sep=","
   }
   END { printf "]" }
 ' 2>/dev/null)" || findings="[]"
+[ -n "$findings" ] || findings="[]"
 
 # Validate the JSON; fall back to empty array if awk produced invalid output.
 printf '%s' "$findings" | jq . >/dev/null 2>&1 || findings="[]"
+[ -n "$findings" ] || findings="[]"
 
 fragment="$(jq -nc \
   --arg name "cppcheck" \
-  --arg status "passed" \
+  --argjson rc "$rc" \
   --argjson findings "$findings" \
   --arg raw "$raw" \
-  '{name: $name, status: $status, findings: $findings, raw: $raw}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: $findings, raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"
@@ -127,4 +138,4 @@ else
   printf '%s\n' "$fragment"
 fi
 
-exit 0
+exit "$rc"

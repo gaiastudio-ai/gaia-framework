@@ -50,14 +50,14 @@ done
 # so we create a temporary directory with symlinks to the listed files and
 # scan that. This respects the --input contract: only listed files are scanned.
 SCAN_TMP="$(mktemp -d -t gitleaks-scan-XXXXXX)"
-_cleanup() { rm -rf "$SCAN_TMP" 2>/dev/null || true; }
+REPORT_TMP="$(mktemp -t gitleaks-report-XXXXXX.json)"
+_cleanup() { rm -rf "$SCAN_TMP" "$REPORT_TMP" 2>/dev/null || true; }
 trap _cleanup EXIT
 
 file_count=0
 while IFS= read -r _line; do
   [ -n "$_line" ] || continue
   if [ -f "$_line" ]; then
-    # Create parent directories in the temp tree.
     _parent="$SCAN_TMP/${_line%/*}"
     mkdir -p "$_parent" 2>/dev/null || true
     ln -sf "$(cd "$(dirname "$_line")" && pwd)/$(basename "$_line")" "$SCAN_TMP/$_line" 2>/dev/null || true
@@ -70,34 +70,61 @@ _run_native() {
     echo "run.sh: gitleaks not found on PATH" >&2
     exit 127
   fi
-  local args=(detect --no-git --redact --report-format json --report-path - --source "$SCAN_TMP")
+  local gl_rc=0
+  local args=(detect --no-git --redact --follow-symlinks --report-format json --report-path "$REPORT_TMP" --source "$SCAN_TMP")
   if [ -n "$CONFIG" ]; then
     args+=(--config "$CONFIG")
   fi
-  gitleaks "${args[@]}" 2>/dev/null || true
+  gitleaks "${args[@]}" 2>/dev/null || gl_rc=$?
+  # gitleaks exits 1 = leaks found (with a valid report), 0 = clean.
+  # Any other exit code is a real infrastructure error.
+  if [ "$gl_rc" -eq 0 ] || [ "$gl_rc" -eq 1 ]; then
+    if [ -f "$REPORT_TMP" ]; then
+      cat "$REPORT_TMP"
+    else
+      echo "[]"
+    fi
+    return 0
+  else
+    echo "run.sh: gitleaks exited $gl_rc" >&2
+    return "$gl_rc"
+  fi
 }
 
 _run_docker() {
   local image="${GAIA_TOOLS_IMAGE:-ghcr.io/gaiastudio-ai/gaia-tools:latest}"
-  local args=(gitleaks detect --no-git --redact --report-format json --report-path - --source /workspace)
+  local gl_rc=0
+  local args=(gitleaks detect --no-git --redact --follow-symlinks --report-format json --report-path /out/report.json --source /workspace)
   if [ -n "$CONFIG" ]; then
     args+=(--config "$CONFIG")
   fi
+  local out_tmp; out_tmp="$(mktemp -d -t gitleaks-docker-out-XXXXXX)"
   docker run --rm --network=none \
     -v "${SCAN_TMP}:/workspace:ro" \
-    -v "${ADAPTER_OUT_DIR:-/tmp}:/out" \
-    "$image" "${args[@]}" 2>/dev/null || true
+    -v "${out_tmp}:/out" \
+    "$image" "${args[@]}" 2>/dev/null || gl_rc=$?
+  if [ "$gl_rc" -eq 0 ] || [ "$gl_rc" -eq 1 ]; then
+    if [ -f "$out_tmp/report.json" ]; then
+      cat "$out_tmp/report.json"
+    else
+      echo "[]"
+    fi
+    rm -rf "$out_tmp"
+    return 0
+  else
+    rm -rf "$out_tmp"
+    echo "run.sh: gitleaks (docker) exited $gl_rc" >&2
+    return "$gl_rc"
+  fi
 }
 
+rc=0
 case "$RUNTIME_PROFILE" in
-  container) raw="$(_run_docker)" ;;
-  *)         raw="$(_run_native)" ;;
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
 esac
 
 # Map gitleaks JSON into findings[].
-# gitleaks exits 1 when leaks are found (with valid JSON on stdout) and
-# exits 0 when clean. We treat both as "scan completed" and map leaks
-# to findings. Only infrastructure errors (exit > 1) are real errors.
 findings="$(printf '%s' "$raw" | jq -c '
   if type == "array" then
     [.[] | {
@@ -109,13 +136,14 @@ findings="$(printf '%s' "$raw" | jq -c '
   else []
   end
 ' 2>/dev/null)" || findings="[]"
+[ -n "$findings" ] || findings="[]"
 
 fragment="$(jq -nc \
   --arg name "gitleaks" \
-  --arg status "passed" \
+  --argjson rc "$rc" \
   --argjson findings "$findings" \
   --arg raw "$raw" \
-  '{name: $name, status: $status, findings: $findings, raw: $raw}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: $findings, raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"
@@ -123,4 +151,4 @@ else
   printf '%s\n' "$fragment"
 fi
 
-exit 0
+exit "$rc"

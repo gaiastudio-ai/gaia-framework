@@ -1,19 +1,25 @@
 #!/usr/bin/env bats
 # scanner-pins.bats — pin-check script tests.
 #
-# Tests check-scanner-pins.sh against fixture Dockerfiles and manifests
-# to verify it catches loose pins, missing hashes, missing digests,
-# unpinned Sarif.Multitool, and passes on a clean manifest.
+# Tests the REAL check-scanner-pins.sh against fixture Dockerfiles and
+# manifests. Every test builds a clean fixture tree, mutates one aspect,
+# and verifies the shipped script catches it.
 
 bats_require_minimum_version 1.5.0
+load 'test_helper.bash'
 
 setup() {
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/scanner-pins-$$-$BATS_TEST_NUMBER"
-  mkdir -p "$WORK_TMP/tools/gaia-tools"
+  mkdir -p "$WORK_TMP/plugins/gaia/scripts" "$WORK_TMP/plugins/gaia/tools/gaia-tools"
 
   BATS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PLUGIN_DIR="$(cd "$BATS_DIR/.." && pwd)"
-  CHECK_SCRIPT="$PLUGIN_DIR/scripts/check-scanner-pins.sh"
+
+  # Copy the REAL check-scanner-pins.sh into the fixture tree so its
+  # relative path resolution (SCRIPT_DIR -> ../tools/gaia-tools) works.
+  cp "$PLUGIN_DIR/scripts/check-scanner-pins.sh" "$WORK_TMP/plugins/gaia/scripts/"
+  chmod +x "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
+  CHECK_SCRIPT="$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
 }
 
 teardown() {
@@ -21,187 +27,144 @@ teardown() {
 }
 
 _write_clean_fixture() {
-  # Write a minimal Dockerfile and manifest that pass all checks.
-  cat > "$WORK_TMP/tools/gaia-tools/Dockerfile" <<'DOCK'
-FROM debian:bookworm-slim@sha256:abc123 AS fetcher
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools"
+  cat > "$D/Dockerfile" <<'DOCK'
+FROM debian:bookworm-slim@sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d AS fetcher
 ARG GRYPE_VERSION=0.79.5
 ARG SYFT_VERSION=1.4.1
 ARG OSV_SCANNER_VERSION=1.7.4
 ARG GITLEAKS_VERSION=8.18.4
+ARG CPPCHECK_VERSION=2.10
+RUN apt-get install -y cppcheck=2.10-2
 RUN dotnet tool install --tool-path /usr/local/bin Sarif.Multitool --version 5.0.2
-RUN apt-get install -y cppcheck
-FROM debian:bookworm-slim@sha256:abc123 AS runtime
+FROM debian:bookworm-slim@sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d AS runtime
 DOCK
 
-  cat > "$WORK_TMP/tools/gaia-tools/scanner-manifest.json" <<'MAN'
+  cat > "$D/scanner-manifest.json" <<'MAN'
 {
   "version": 1,
-  "base_image": {"ref":"debian:bookworm-slim","digest":"sha256:abc123"},
+  "base_image": {"ref":"debian:bookworm-slim","digest":"sha256:4b50eb66"},
   "scanners": [
-    {"name":"grype","version":"0.79.5","install":"binary","artifacts":{"amd64":{"sha256":"aaa"},"arm64":{"sha256":"bbb"}}},
-    {"name":"syft","version":"1.4.1","install":"binary","artifacts":{"amd64":{"sha256":"ccc"},"arm64":{"sha256":"ddd"}}},
-    {"name":"osv-scanner","version":"1.7.4","install":"binary","artifacts":{"amd64":{"sha256":"eee"},"arm64":{"sha256":"fff"}}},
-    {"name":"gitleaks","version":"8.18.4","install":"binary","artifacts":{"amd64":{"sha256":"ggg"},"arm64":{"sha256":"hhh"}}},
+    {"name":"grype","version":"0.79.5","install":"binary","artifacts":{"amd64":{"sha256":"ff054e389ffb40619911f6bd75b3f46610245df9b11ab72fcdc2e08b9c34a09e"},"arm64":{"sha256":"20f55117742aec388bf28bb24122236d3705e53996a27524e934569c5a0992cb"}}},
+    {"name":"syft","version":"1.4.1","install":"binary","artifacts":{"amd64":{"sha256":"5e4c6a0d1ca28d25e060a29c7cca0aedc50d951bfb270b45bc9a71e86ac6fbe2"},"arm64":{"sha256":"a28d63bb2bca96092a1a42cd5afdd0787633ae05998935a5e6e2aac8f2e2ec44"}}},
+    {"name":"osv-scanner","version":"1.7.4","install":"binary","artifacts":{"amd64":{"sha256":"0b35daf50d3a9992836e7f78f56cb21b870da58f15f75c516dfb2c2ab4789d0f"},"arm64":{"sha256":"fe26a8bd00e38d2b70bd049a97e03f6c27ac8fd74d5608c2c48b425cf46568ae"}}},
+    {"name":"gitleaks","version":"8.18.4","install":"binary","artifacts":{"amd64":{"sha256":"ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"},"arm64":{"sha256":"bf5f7f466ebfade1296c8bd32cf7d3f592c2aa78836aa9980ffbe2cadca7a861"}}},
     {"name":"semgrep","version":"1.90.0","install":"pip","lock_file":"requirements-scanners.txt"},
     {"name":"checkov","version":"3.2.262","install":"pip","lock_file":"requirements-scanners.txt"},
-    {"name":"cppcheck","version":"2.13.0","install":"apt","artifacts":{}},
+    {"name":"cppcheck","version":"2.10","install":"apt","apt_pin":"2.10-2","artifacts":{}},
     {"name":"Sarif.Multitool","version":"5.0.2","install":"dotnet"}
   ]
 }
 MAN
 
-  printf 'semgrep==1.90.0\ncheckov==3.2.262\n' > "$WORK_TMP/tools/gaia-tools/requirements-scanners.txt"
+  cat > "$D/requirements-scanners.txt" <<'REQ'
+semgrep==1.90.0 \
+    --hash=sha256:b90fef7562101f76b66a3836b4e8d0619bf73aa14d27515c7645a7b758f36214
+checkov==3.2.262 \
+    --hash=sha256:b45f4d8a4bc902ef2823413fd9fd2f796016f714a97728c4e5e07d2ef2737c93
+REQ
 }
+
+# --- Clean fixture passes ---
 
 @test "scanner pins: clean fixture passes" {
   _write_clean_fixture
-
-  # Point the script at our fixture.
-  SCRIPT_DIR="$WORK_TMP/scripts"
-  mkdir -p "$SCRIPT_DIR"
-  # The check script navigates relative to its own location. Create a
-  # wrapper that overrides the tools dir.
-  cat > "$SCRIPT_DIR/check-wrapper.sh" <<WRAP
-#!/usr/bin/env bash
-set -euo pipefail
-TOOLS_DIR="$WORK_TMP/tools/gaia-tools"
-DOCKERFILE="\$TOOLS_DIR/Dockerfile"
-MANIFEST="\$TOOLS_DIR/scanner-manifest.json"
-source "$CHECK_SCRIPT"
-WRAP
-  # Actually, the check script uses SCRIPT_DIR to find TOOLS_DIR.
-  # Simpler: run the real script after symlinking.
-  mkdir -p "$WORK_TMP/plugins/gaia/scripts" "$WORK_TMP/plugins/gaia/tools"
-  ln -sf "$WORK_TMP/tools/gaia-tools" "$WORK_TMP/plugins/gaia/tools/gaia-tools"
-  cat > "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh" <<'WRAP'
-#!/usr/bin/env bash
-set -euo pipefail
-LC_ALL=C; export LC_ALL
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOOLS_DIR="$(cd "$SCRIPT_DIR/../tools/gaia-tools" && pwd)"
-DOCKERFILE="$TOOLS_DIR/Dockerfile"
-MANIFEST="$TOOLS_DIR/scanner-manifest.json"
-errors=0
-_err() { printf 'FAIL: %s\n' "$*" >&2; errors=$((errors + 1)); }
-[ -f "$DOCKERFILE" ] || { _err "Dockerfile not found"; exit 1; }
-[ -f "$MANIFEST" ] || { _err "manifest not found"; exit 1; }
-# FROM digest check
-while IFS= read -r line; do
-  case "$line" in FROM*@sha256:*) ;; FROM*AS*|FROM*as*) _err "FROM without @sha256: digest: $line" ;; esac
-done < "$DOCKERFILE"
-# Scanner version checks
-scanner_count="$(jq '.scanners | length' "$MANIFEST")"
-i=0; while [ "$i" -lt "$scanner_count" ]; do
-  name="$(jq -r ".scanners[$i].name" "$MANIFEST")"
-  version="$(jq -r ".scanners[$i].version" "$MANIFEST")"
-  install="$(jq -r ".scanners[$i].install" "$MANIFEST")"
-  case "$install" in
-    binary)
-      name_upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
-      arg_version="$(grep -E "^ARG ${name_upper}_VERSION=" "$DOCKERFILE" | head -1 | sed 's/.*=//' | tr -d '[:space:]')" || arg_version=""
-      [ -z "$arg_version" ] && _err "no ARG ${name_upper}_VERSION= for $name"
-      [ -n "$arg_version" ] && [ "$arg_version" != "$version" ] && _err "$name version mismatch"
-      for arch in amd64 arm64; do
-        sha="$(jq -r ".scanners[$i].artifacts.${arch}.sha256 // \"\"" "$MANIFEST")"
-        [ -z "$sha" ] && _err "$name missing sha256 for $arch"
-      done ;;
-    dotnet) grep -qE "dotnet tool install.*--version" "$DOCKERFILE" || _err "Sarif.Multitool without --version" ;;
-  esac
-  i=$((i + 1))
-done
-[ "$errors" -gt 0 ] && { printf 'check-scanner-pins: %d error(s)\n' "$errors" >&2; exit 1; }
-printf 'check-scanner-pins: all pins verified\n'; exit 0
-WRAP
-  chmod +x "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
-
-  run "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
+  run "$CHECK_SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" == *"all pins verified"* ]]
 }
 
-@test "scanner pins: loose pin in Dockerfile fails" {
-  _write_clean_fixture
-  # Replace an exact pin with a range.
-  sed -i.bak 's/GRYPE_VERSION=0.79.5/GRYPE_VERSION=>=0.79/' "$WORK_TMP/tools/gaia-tools/Dockerfile"
-
-  _setup_wrapper
-
-  run "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
-  [ "$status" -eq 1 ]
-}
-
-@test "scanner pins: missing sha256 for arm64 fails" {
-  _write_clean_fixture
-  # Remove arm64 sha256 for grype.
-  jq '.scanners[0].artifacts.arm64 = {}' "$WORK_TMP/tools/gaia-tools/scanner-manifest.json" > "$WORK_TMP/tools/gaia-tools/scanner-manifest.json.tmp"
-  mv "$WORK_TMP/tools/gaia-tools/scanner-manifest.json.tmp" "$WORK_TMP/tools/gaia-tools/scanner-manifest.json"
-
-  _setup_wrapper
-
-  run "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
-  [ "$status" -eq 1 ]
-}
+# --- FROM without digest (RF-20 case a) ---
 
 @test "scanner pins: FROM without digest fails" {
   _write_clean_fixture
-  # Remove the digest from the first FROM.
-  sed -i.bak 's/@sha256:abc123//' "$WORK_TMP/tools/gaia-tools/Dockerfile"
-
-  _setup_wrapper
-
-  run "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
+  printf 'FROM debian:bookworm-slim\n' >> "$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  run "$CHECK_SCRIPT"
   [ "$status" -eq 1 ]
+  [[ "$output" == *"FROM without"*"digest"* ]] || [[ "${lines[*]}" == *"FROM without"*"digest"* ]]
 }
 
-@test "scanner pins: Sarif.Multitool without --version fails" {
+# --- pip install with loose pin (RF-20 case b) ---
+
+@test "scanner pins: pip loose pin in Dockerfile fails" {
   _write_clean_fixture
-  sed -i.bak 's/--version 5.0.2//' "$WORK_TMP/tools/gaia-tools/Dockerfile"
+  # Add a loose pip install
+  printf 'RUN pip install --break-system-packages "semgrep>=1"\n' >> "$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"loose version pin"* ]] || [[ "${lines[*]}" == *"loose version pin"* ]]
+}
 
-  _setup_wrapper
+# --- cppcheck apt unpinned (RF-20 case c) ---
 
-  run "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
+@test "scanner pins: cppcheck apt unpinned fails" {
+  _write_clean_fixture
+  # Replace the pinned cppcheck install with an unpinned one
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools"
+  sed -i.bak 's/cppcheck=2.10-2/cppcheck/' "$D/Dockerfile"
+  run "$CHECK_SCRIPT"
   [ "$status" -eq 1 ]
 }
 
-_setup_wrapper() {
-  mkdir -p "$WORK_TMP/plugins/gaia/scripts" "$WORK_TMP/plugins/gaia/tools"
-  ln -sf "$WORK_TMP/tools/gaia-tools" "$WORK_TMP/plugins/gaia/tools/gaia-tools" 2>/dev/null || true
-  cat > "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh" <<'WRAP'
-#!/usr/bin/env bash
-set -euo pipefail
-LC_ALL=C; export LC_ALL
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TOOLS_DIR="$(cd "$SCRIPT_DIR/../tools/gaia-tools" && pwd)"
-DOCKERFILE="$TOOLS_DIR/Dockerfile"
-MANIFEST="$TOOLS_DIR/scanner-manifest.json"
-errors=0
-_err() { printf 'FAIL: %s\n' "$*" >&2; errors=$((errors + 1)); }
-[ -f "$DOCKERFILE" ] || { _err "Dockerfile not found"; exit 1; }
-[ -f "$MANIFEST" ] || { _err "manifest not found"; exit 1; }
-while IFS= read -r line; do
-  case "$line" in FROM*@sha256:*) ;; FROM*AS*|FROM*as*) _err "FROM without @sha256: digest: $line" ;; esac
-done < "$DOCKERFILE"
-scanner_count="$(jq '.scanners | length' "$MANIFEST")"
-i=0; while [ "$i" -lt "$scanner_count" ]; do
-  name="$(jq -r ".scanners[$i].name" "$MANIFEST")"
-  version="$(jq -r ".scanners[$i].version" "$MANIFEST")"
-  install="$(jq -r ".scanners[$i].install" "$MANIFEST")"
-  case "$install" in
-    binary)
-      name_upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
-      arg_version="$(grep -E "^ARG ${name_upper}_VERSION=" "$DOCKERFILE" | head -1 | sed 's/.*=//' | tr -d '[:space:]')" || arg_version=""
-      [ -z "$arg_version" ] && _err "no ARG ${name_upper}_VERSION= for $name"
-      [ -n "$arg_version" ] && [ "$arg_version" != "$version" ] && _err "$name version mismatch"
-      for arch in amd64 arm64; do
-        sha="$(jq -r ".scanners[$i].artifacts.${arch}.sha256 // \"\"" "$MANIFEST")"
-        [ -z "$sha" ] && _err "$name missing sha256 for $arch"
-      done ;;
-    dotnet) grep -qE "dotnet tool install.*--version" "$DOCKERFILE" || _err "Sarif.Multitool without --version" ;;
-  esac
-  i=$((i + 1))
-done
-[ "$errors" -gt 0 ] && { printf 'check-scanner-pins: %d error(s)\n' "$errors" >&2; exit 1; }
-printf 'check-scanner-pins: all pins verified\n'; exit 0
-WRAP
-  chmod +x "$WORK_TMP/plugins/gaia/scripts/check-scanner-pins.sh"
+# --- pip lock file deleted (RF-20 case d) ---
+
+@test "scanner pins: deleted pip lock file fails" {
+  _write_clean_fixture
+  rm "$WORK_TMP/plugins/gaia/tools/gaia-tools/requirements-scanners.txt"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lock file not found"* ]] || [[ "${lines[*]}" == *"lock file not found"* ]]
+}
+
+# --- sha256 value is bogus (RF-20 case e) ---
+
+@test "scanner pins: bogus sha256 in manifest fails" {
+  _write_clean_fixture
+  local M="$WORK_TMP/plugins/gaia/tools/gaia-tools/scanner-manifest.json"
+  local tmp_m; tmp_m="$(jq '.scanners[0].artifacts.amd64.sha256="x"' < "$M")"
+  printf '%s\n' "$tmp_m" > "$M"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not 64 characters"* ]] || [[ "${lines[*]}" == *"not 64 characters"* ]]
+}
+
+# --- Sarif --version differs from manifest (RF-20 case f) ---
+
+@test "scanner pins: Sarif.Multitool version mismatch fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  sed -i.bak 's/--version 5.0.2/--version 9.9.9/' "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"version mismatch"* ]] || [[ "${lines[*]}" == *"version mismatch"* ]]
+}
+
+# --- Lock file missing --hash lines ---
+
+@test "scanner pins: lock file without hashes fails" {
+  _write_clean_fixture
+  printf 'semgrep==1.90.0\ncheckov==3.2.262\n' > "$WORK_TMP/plugins/gaia/tools/gaia-tools/requirements-scanners.txt"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no --hash lines"* ]] || [[ "${lines[*]}" == *"no --hash lines"* ]]
+}
+
+# --- Binary version mismatch ---
+
+@test "scanner pins: binary version mismatch between Dockerfile and manifest fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  sed -i.bak 's/GRYPE_VERSION=0.79.5/GRYPE_VERSION=0.80.0/' "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"version mismatch"* ]] || [[ "${lines[*]}" == *"version mismatch"* ]]
+}
+
+# --- Verify the SHIPPED check script ---
+
+@test "scanner pins: shipped check-scanner-pins.sh passes on shipped Dockerfile and manifest" {
+  # This runs the REAL script against the REAL shipped files.
+  run "$PLUGIN_DIR/scripts/check-scanner-pins.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"all pins verified"* ]]
 }

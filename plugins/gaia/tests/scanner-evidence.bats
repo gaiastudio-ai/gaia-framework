@@ -2,9 +2,10 @@
 # scanner-evidence.bats — scanner-first evidence collection tests.
 #
 # Tests the scanner-evidence.sh interface: manifest layout, fields, exit
-# codes, set resolution, reuse, off switch, and completeness checks.
+# codes, set resolution, reuse, off switch, completeness, and error cases.
 
 bats_require_minimum_version 1.5.0
+load 'test_helper.bash'
 
 setup() {
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/scanner-ev-$$-$BATS_TEST_NUMBER"
@@ -28,8 +29,8 @@ MD
 
   # Build a minimal repo tree.
   REPO_DIR="$WORK_TMP/repo"
-  mkdir -p "$REPO_DIR"
-  printf 'hello\n' > "$REPO_DIR/main.py"
+  mkdir -p "$REPO_DIR/src"
+  cd "$REPO_DIR" && git init -q && printf 'import os\n' > src/app.py && git add -A && git -c user.email=a@b -c user.name=a commit -qm init && cd - >/dev/null
 
   # Config directory.
   CONFIG_DIR="$WORK_TMP/.gaia/config"
@@ -151,16 +152,65 @@ YAML
   jq -e '.enabled == true' "$manifest_path"
 }
 
+@test "scanner evidence: string false does NOT turn scanner-first off (AC-EC9)" {
+  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+project_name: test
+review:
+  scanner_first_enabled: "false"
+YAML
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id sf1 --repo "$REPO_DIR"
+  [ "$status" -eq 0 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  jq -e '.enabled == true' "$manifest_path"
+}
+
 # --- Reuse (AC5) ---
 
 @test "scanner evidence: reuses complete evidence with matching head" {
-  PATH="$WORK_TMP/fakebin:$PATH" \
-    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id reuse1 --repo "$REPO_DIR"
-  [ "$status" -eq 0 ]
+  # Use a counter file to detect how many times the adapter runs.
+  local counter="$WORK_TMP/call_count"
+  printf '0\n' > "$counter"
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in --output) OUTPUT="\$2"; shift 2 ;; *) shift ;; esac
+done
+c=\$(cat "$counter"); c=\$((c + 1)); printf '%s\n' "\$c" > "$counter"
+frag='{"name":"semgrep","status":"passed","findings":[]}'
+if [ -n "\$OUTPUT" ]; then printf '%s\n' "\$frag" > "\$OUTPUT"; else printf '%s\n' "\$frag"; fi
+exit 0
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+  cat > "$STUB_ADAPTERS/osv-scanner/run.sh" <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in --output) OUTPUT="\$2"; shift 2 ;; *) shift ;; esac
+done
+c=\$(cat "$counter"); c=\$((c + 1)); printf '%s\n' "\$c" > "$counter"
+frag='{"name":"osv-scanner","status":"passed","findings":[]}'
+if [ -n "\$OUTPUT" ]; then printf '%s\n' "\$frag" > "\$OUTPUT"; else printf '%s\n' "\$frag"; fi
+exit 0
+SH
+  chmod +x "$STUB_ADAPTERS/osv-scanner/run.sh"
 
   PATH="$WORK_TMP/fakebin:$PATH" \
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id reuse1 --repo "$REPO_DIR"
   [ "$status" -eq 0 ]
+  local count_after_first; count_after_first="$(cat "$counter")"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id reuse1 --repo "$REPO_DIR"
+  [ "$status" -eq 0 ]
+  local count_after_second; count_after_second="$(cat "$counter")"
+
+  # The second call should not have run the adapters again.
+  [ "$count_after_first" = "$count_after_second" ]
 }
 
 # --- Caller errors ---
@@ -180,7 +230,7 @@ YAML
   [ "$status" -eq 1 ]
 }
 
-# --- Bad provider (EC2) ---
+# --- Provider validation (AC3, AC-EC2) ---
 
 @test "scanner evidence: exit 1 on provider with path separator in config" {
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
@@ -192,4 +242,91 @@ YAML
 
   run "$SCANNER_EVIDENCE" --story E999-S1 --run-id bad1 --repo "$REPO_DIR"
   [ "$status" -eq 1 ]
+}
+
+@test "scanner evidence: exit 1 on provider containing slash" {
+  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+project_name: test
+tools:
+  sast:
+    provider: semgrep/test
+YAML
+
+  run "$SCANNER_EVIDENCE" --story E999-S1 --run-id bad2 --repo "$REPO_DIR"
+  [ "$status" -eq 1 ]
+}
+
+@test "scanner evidence: non-scanner provider does not drop default set" {
+  # A linter (non-scanner category) should not suppress the default scanners.
+  mkdir -p "$STUB_ADAPTERS/radon"
+  printf '{"provider":"radon","category":"complexity","runtime-profile":"subprocess","default-timeout-seconds":10,"file-extensions":[".py"],"scope":"file","description":"linter"}\n' \
+    > "$STUB_ADAPTERS/radon/adapter.json"
+
+  cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
+project_name: test
+tools:
+  lint:
+    provider: radon
+YAML
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id set1 --repo "$REPO_DIR"
+  [ "$status" -eq 0 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  # Should still have the default set (semgrep + osv-scanner), not empty.
+  local adapter_count; adapter_count="$(jq '.adapters | length' "$manifest_path")"
+  [ "$adapter_count" -eq 2 ]
+}
+
+# --- HALT on errored adapter ---
+
+@test "scanner evidence: exit 2 when adapter errors" {
+  # Make semgrep adapter exit 2 (errored).
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<'SH'
+#!/usr/bin/env bash
+echo "fatal error" >&2
+exit 2
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id halt1 --repo "$REPO_DIR"
+  [ "$status" -eq 2 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  jq -e '.complete == false' "$manifest_path"
+}
+
+# --- Fragment validation ---
+
+@test "scanner evidence: available adapter with no fragment is incomplete" {
+  # Adapter runs but writes no output file.
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<'SH'
+#!/usr/bin/env bash
+# Intentionally writes nothing
+exit 0
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id nofrag1 --repo "$REPO_DIR"
+  [ "$status" -eq 2 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  jq -e '.complete == false' "$manifest_path"
+}
+
+# --- Concurrency (AC-EC7) ---
+
+@test "scanner evidence: concurrent same-run-id calls do not clobber" {
+  # Run 4 concurrent calls; none should exit 1 due to mv collision.
+  local rc_file="$WORK_TMP/rc_results"
+  : > "$rc_file"
+  for j in 1 2 3 4; do
+    (PATH="$WORK_TMP/fakebin:$PATH" \
+      "$SCANNER_EVIDENCE" --story E999-S1 --run-id concurrent1 --repo "$REPO_DIR" >/dev/null 2>&1; echo $? >> "$rc_file") &
+  done
+  wait
+
+  # All should succeed (exit 0), not fail due to temp file collision.
+  local fail_count; fail_count="$(grep -c '^1$' "$rc_file" || true)"
+  [ "$fail_count" -eq 0 ]
 }

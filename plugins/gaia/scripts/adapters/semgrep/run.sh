@@ -56,7 +56,7 @@ _run_native() {
   else
     args+=(--config "p/default")
   fi
-  semgrep "${args[@]}" "${TARGETS[@]}" 2>&1 || true
+  semgrep "${args[@]}" -- "${TARGETS[@]}" 2>/dev/null
 }
 
 _run_docker() {
@@ -76,16 +76,14 @@ _run_docker() {
   local project_root="${PROJECT_ROOT:-.}"
   docker run --rm --network=none \
     -v "${project_root}:/workspace:ro" \
-    -v "${ADAPTER_OUT_DIR:-/tmp}:/out" \
-    "$image" "${args[@]}" "${docker_targets[@]}" 2>&1 || true
+    "$image" "${args[@]}" -- "${docker_targets[@]}" 2>/dev/null
 }
 
-case "$RUNTIME_PROFILE" in
-  container) raw="$(_run_docker)" ;;
-  *)         raw="$(_run_native)" ;;
-esac
-
 rc=0
+case "$RUNTIME_PROFILE" in
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
+esac
 
 # Map semgrep JSON into findings[].
 # semgrep --json exits 0 with findings present; the results object is
@@ -101,14 +99,15 @@ findings="$(printf '%s' "$raw" | jq -c '
     source: "semgrep"
   }]
 ' 2>/dev/null)" || findings="[]"
+[ -n "$findings" ] || findings="[]"
 
 # Emit canonical analysis-results fragment.
 fragment="$(jq -nc \
   --arg name "semgrep" \
-  --arg status "passed" \
+  --argjson rc "$rc" \
   --argjson findings "$findings" \
   --arg raw "$raw" \
-  '{name: $name, status: $status, findings: $findings, raw: $raw}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: $findings, raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"
@@ -116,4 +115,4 @@ else
   printf '%s\n' "$fragment"
 fi
 
-exit 0
+exit "$rc"

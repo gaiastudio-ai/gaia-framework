@@ -12,7 +12,7 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 ### Scanner-first security pipeline
 
 #### Added
-- Scanner-first evidence collection: security reviews now run configured scanner adapters (semgrep, gitleaks, osv-scanner by default) before any LLM judgment and require complete scanner evidence. The evidence lives at `{story_dir}/scanner-evidence/{run-id}/` with a stable manifest format.
+- Scanner-first evidence collection: security reviews now run configured scanner adapters (semgrep + osv-scanner by default) before any LLM judgment and require complete scanner evidence. The evidence lives at `{story_dir}/scanner-evidence/{run-id}/` with a stable manifest format.
 - New adapters: `osv-scanner` (dependency audit), `checkov` (infrastructure-as-code), `cppcheck` (C/C++ static analysis).
 - Updated adapters: `semgrep` now supports `.kt`, `.swift`, `.dart` extensions and docker-runner dispatch; `gitleaks` now honours `--input` file lists, runs with redaction, and maps "leaks found" to findings instead of errors.
 - `scanner-evidence.sh` entry point with three exit codes (0 complete, 1 config error, 2 incomplete) and an atomic evidence-manifest format that downstream steps read.

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/project-config.schema.json",
-  "title": "GAIA project-config.yaml \u2014 full structural schema v2.0.0",
-  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. v2.0.0 introduces the `config_phase` state machine (minimal -> partial -> full) and `schema_version` field. Conditional section requirements via `allOf`+`if/then` blocks: `minimal` requires only project_name + project_kind; `partial` adds stacks + platforms; `full` adds environments + ci_cd. The absence of `config_phase` (legacy configs) is treated as `full` by gate-side code for backward compatibility \u2014 the schema enforces this by NOT placing `config_phase` in `required` and by guarding every `if` with `required:[config_phase]` so absence skips all conditional blocks. Covers the eleven new top-level sections plus the existing surface. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. Schema-validation discipline is required; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list.",
+  "title": "GAIA project-config.yaml — full structural schema v2.0.0",
+  "description": "JSON Schema (draft-07) for the canonical project-config.yaml surface. v2.0.0 introduces the `config_phase` state machine (minimal -> partial -> full) and `schema_version` field. Conditional section requirements via `allOf`+`if/then` blocks: `minimal` requires only project_name + project_kind; `partial` adds stacks + platforms; `full` adds environments + ci_cd. The absence of `config_phase` (legacy configs) is treated as `full` by gate-side code for backward compatibility — the schema enforces this by NOT placing `config_phase` in `required` and by guarding every `if` with `required:[config_phase]` so absence skips all conditional blocks. Covers the eleven new top-level sections plus the existing surface. Designed for offline validation via `npx ajv-cli validate -s project-config.schema.json -d project-config.json`. Schema-validation discipline is required; this file extends the same load-time-validation pattern used by analysis-results.schema.json. Credential values literally embedded in environments.*.credentials.* are rejected via a pattern-based deny-list.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -21,30 +21,14 @@
       "minLength": 1,
       "not": {
         "anyOf": [
-          {
-            "pattern": "^sk-"
-          },
-          {
-            "pattern": "^ghp_"
-          },
-          {
-            "pattern": "^gho_"
-          },
-          {
-            "pattern": "^github_pat_"
-          },
-          {
-            "pattern": "^AKIA"
-          },
-          {
-            "pattern": "^xox[abposr]-"
-          },
-          {
-            "pattern": "^glpat-"
-          },
-          {
-            "pattern": "(password|secret|token|credential|PASSWORD|SECRET|TOKEN|CREDENTIAL)\\s*=\\s*\\S+"
-          }
+          { "pattern": "^sk-" },
+          { "pattern": "^ghp_" },
+          { "pattern": "^gho_" },
+          { "pattern": "^github_pat_" },
+          { "pattern": "^AKIA" },
+          { "pattern": "^xox[abposr]-" },
+          { "pattern": "^glpat-" },
+          { "pattern": "(password|secret|token|credential|PASSWORD|SECRET|TOKEN|CREDENTIAL)\\s*=\\s*\\S+" }
         ]
       }
     },
@@ -74,31 +58,17 @@
     },
     "severityVerdict": {
       "type": "string",
-      "enum": [
-        "BLOCKED",
-        "REQUEST_CHANGES",
-        "APPROVE"
-      ]
+      "enum": ["BLOCKED", "REQUEST_CHANGES", "APPROVE"]
     },
     "severityMap": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "Critical": {
-          "$ref": "#/definitions/severityVerdict"
-        },
-        "High": {
-          "$ref": "#/definitions/severityVerdict"
-        },
-        "Medium": {
-          "$ref": "#/definitions/severityVerdict"
-        },
-        "Low": {
-          "$ref": "#/definitions/severityVerdict"
-        },
-        "Info": {
-          "$ref": "#/definitions/severityVerdict"
-        }
+        "Critical": { "$ref": "#/definitions/severityVerdict" },
+        "High":     { "$ref": "#/definitions/severityVerdict" },
+        "Medium":   { "$ref": "#/definitions/severityVerdict" },
+        "Low":      { "$ref": "#/definitions/severityVerdict" },
+        "Info":     { "$ref": "#/definitions/severityVerdict" }
       }
     },
     "ciProvider": {
@@ -113,155 +83,74 @@
       ]
     },
     "platformId": {
-      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server`, `embedded`. `server` represents headless backend services with no UI surface; `embedded` represents embedded/firmware targets (e.g., ESP32 microcontrollers) \u2014 both satisfy the platforms minItems:1 constraint without a UI-platform language gate. The natural-language spelling `firmware` is normalized to `embedded` on the write side (mirroring the `backend`\u2192`server` alias). The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. The surface is EXTENSIBLE at the resolver layer \u2014 `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
+      "description": "Platform identifier. Documented values are `web`, `ios`, `android`, `server`, `embedded`. `server` represents headless backend services with no UI surface; `embedded` represents embedded/firmware targets (e.g., ESP32 microcontrollers) — both satisfy the platforms minItems:1 constraint without a UI-platform language gate. The natural-language spelling `firmware` is normalized to `embedded` on the write side (mirroring the `backend`→`server` alias). The schema enforces this strict enum so typos and out-of-domain identifiers (e.g., `windows`, `linux`) are rejected at validation time. The surface is EXTENSIBLE at the resolver layer — `resolve-config.sh` emits a stderr warning (rather than aborting) for unknown identifiers that match the kebab-case pattern, so a project on a stale schema-version that adds a future identifier (e.g., `harmonyos`) is not blocked. Schema changes are still REQUIRED to formally document a new platform, but downstream consumers degrade gracefully in the meantime.",
       "type": "string",
-      "enum": [
-        "web",
-        "ios",
-        "android",
-        "server",
-        "embedded"
-      ]
+      "enum": ["web", "ios", "android", "server", "embedded"]
     },
     "formFactor": {
       "description": "Device form-factor enum. Intentionally broader than the current iOS / Android scope to support future wearable / TV adapters without schema-version bumps.",
       "type": "string",
-      "enum": [
-        "phone",
-        "tablet",
-        "foldable",
-        "watch",
-        "tv"
-      ]
+      "enum": ["phone", "tablet", "foldable", "watch", "tv"]
     },
     "screenSize": {
       "description": "Logical screen-size descriptor. `width` and `height` are integer points; `density` is a float pixel-ratio (e.g., 2.0 Retina, 3.0 iPhone Plus, 2.625 typical Android xxhdpi).",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "width",
-        "height",
-        "density"
-      ],
+      "required": ["width", "height", "density"],
       "properties": {
-        "width": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "height": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "density": {
-          "type": "number",
-          "exclusiveMinimum": 0
-        }
+        "width":   { "type": "integer", "minimum": 1 },
+        "height":  { "type": "integer", "minimum": 1 },
+        "density": { "type": "number",  "exclusiveMinimum": 0 }
       }
     },
     "deviceTargetEntry": {
-      "description": "Per-platform device matrix entry. `os_versions` are free-form version strings (semver, marketing version, or major-only \u2014 no canonical form imposed). `screen_sizes` is the device-grid the mobile rubrics iterate over. `form_factors` is the enumerated list of device classes the project ships against.",
+      "description": "Per-platform device matrix entry. `os_versions` are free-form version strings (semver, marketing version, or major-only — no canonical form imposed). `screen_sizes` is the device-grid the mobile rubrics iterate over. `form_factors` is the enumerated list of device classes the project ships against.",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "os_versions",
-        "screen_sizes",
-        "form_factors"
-      ],
+      "required": ["os_versions", "screen_sizes", "form_factors"],
       "properties": {
         "os_versions": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items":    { "type": "string", "minLength": 1 },
           "minItems": 1
         },
         "screen_sizes": {
           "type": "array",
-          "items": {
-            "$ref": "#/definitions/screenSize"
-          },
+          "items":    { "$ref": "#/definitions/screenSize" },
           "minItems": 1
         },
         "form_factors": {
           "type": "array",
-          "items": {
-            "$ref": "#/definitions/formFactor"
-          },
-          "minItems": 1,
+          "items":     { "$ref": "#/definitions/formFactor" },
+          "minItems":  1,
           "uniqueItems": true
         }
       }
     },
     "triggerScopeRule": {
-      "description": "Scope rule for a single CI trigger \u2014 specifies which stacks and test tags are included or excluded. include_stacks and exclude_stacks are mutually exclusive; include_tags and exclude_tags are mutually exclusive.",
+      "description": "Scope rule for a single CI trigger — specifies which stacks and test tags are included or excluded. include_stacks and exclude_stacks are mutually exclusive; include_tags and exclude_tags are mutually exclusive.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "include_stacks": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Run tests only for these stacks."
-        },
-        "exclude_stacks": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Run tests for all stacks EXCEPT these."
-        },
-        "include_tags": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Run only tests matching these tags."
-        },
-        "exclude_tags": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Exclude tests matching these tags."
-        }
+        "include_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests only for these stacks." },
+        "exclude_stacks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run tests for all stacks EXCEPT these." },
+        "include_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Run only tests matching these tags." },
+        "exclude_tags":   { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Exclude tests matching these tags." }
       },
       "allOf": [
-        {
-          "not": {
-            "required": [
-              "include_stacks",
-              "exclude_stacks"
-            ]
-          }
-        },
-        {
-          "not": {
-            "required": [
-              "include_tags",
-              "exclude_tags"
-            ]
-          }
-        }
+        { "not": { "required": ["include_stacks", "exclude_stacks"] } },
+        { "not": { "required": ["include_tags",   "exclude_tags"]   } }
       ]
     },
     "healthCheck": {
-      "description": "Post-deploy health-check phase configuration. Drives the `/gaia-deploy` Phase 3 behavior. Optional \u2014 backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) \u2014 when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
+      "description": "Post-deploy health-check phase configuration. Drives the `/gaia-deploy` Phase 3 behavior. Optional — backward compatibility is preserved when the key is omitted (resolver defaults to mode=poll). The `skip` mode is intended for projects that have no reachable health-check endpoint (e.g., marketplace-published plugins) — when set, the deploy skill bypasses the poll loop and writes an audit-trail evidence entry recording the configured skip.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "mode": {
           "description": "Health-check execution mode. `poll` (default) runs the existing exponential-backoff poll loop against `environments.<env>.url`. `skip` bypasses the poll loop entirely and records `{mode: skip, reason: \"configured skip\"}` to the evidence directory. Any value other than these two MUST be rejected at config-load time.",
           "type": "string",
-          "enum": [
-            "poll",
-            "skip"
-          ],
+          "enum": ["poll", "skip"],
           "default": "poll"
         }
       }
@@ -270,9 +159,7 @@
       "description": "Per-stack health-check configuration. Specifies a command to execute after deploying the stack and a timeout in seconds. The health check must pass before deploying the next stack in deploy_order. Distinct from the top-level healthCheck definition (which configures poll/skip mode for the environment-level check).",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "command"
-      ],
+      "required": ["command"],
       "properties": {
         "command": {
           "description": "Shell command to execute as the health check. Exit code 0 = healthy, non-zero = unhealthy.",
@@ -291,9 +178,7 @@
       "description": "Per-stack post-deploy smoke test configuration. Specifies a command to run after a stack passes its health check (or immediately after deploy when no health check is configured).",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "command"
-      ],
+      "required": ["command"],
       "properties": {
         "command": {
           "description": "Shell command to execute as the post-deploy smoke test.",
@@ -309,19 +194,15 @@
       }
     },
     "distributionChannel": {
-      "description": "A single distribution channel entry. Declarative configuration for marketplace publishing \u2014 `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
+      "description": "A single distribution channel entry. Declarative configuration for marketplace publishing — `type` is intentionally generic (e.g., `marketplace` rather than `github` or `npm`) so future channel types (`registry`, `cdn`, etc.) can be added to the enum without breaking existing configs. `version_file` is a flat filesystem path (NOT a JSON Pointer); the resolved deploy_adapter is responsible for reading the file and extracting `version_key` from it. `additionalProperties: false` prevents typo'd field names from silently passing validation.",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "type"
-      ],
+      "required": ["type"],
       "properties": {
         "type": {
-          "description": "Generic channel type. Intentionally NOT vendor-specific \u2014 the value is `marketplace`, not `github` or `npm`. Future types may be added to the enum without breaking existing configs.",
+          "description": "Generic channel type. Intentionally NOT vendor-specific — the value is `marketplace`, not `github` or `npm`. Future types may be added to the enum without breaking existing configs.",
           "type": "string",
-          "enum": [
-            "marketplace"
-          ]
+          "enum": ["marketplace"]
         },
         "provider": {
           "description": "Concrete release backend identifier (e.g., `github-releases`). Free-form string; the resolved deploy_adapter interprets it.",
@@ -339,7 +220,7 @@
           "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
         },
         "version_file": {
-          "description": "Flat filesystem path to the file holding the authoritative version (e.g., `package.json`, `manifest.yaml`). MUST NOT be a JSON Pointer \u2014 the leading `#` form (e.g., `#/version`) is rejected so the schema stays decoupled from any particular file format. The resolved deploy_adapter reads the file and extracts `version_key` from it.",
+          "description": "Flat filesystem path to the file holding the authoritative version (e.g., `package.json`, `manifest.yaml`). MUST NOT be a JSON Pointer — the leading `#` form (e.g., `#/version`) is rejected so the schema stays decoupled from any particular file format. The resolved deploy_adapter reads the file and extracts `version_key` from it.",
           "type": "string",
           "minLength": 1,
           "not": {
@@ -358,15 +239,13 @@
           "default": "CHANGELOG.md"
         },
         "smoke_test": {
-          "description": "Post-deploy smoke verification mode for this channel. `manual-checklist` signals that smoke is a manual approval step rather than automated \u2014 coordinates with empty `smoke_suites` handling.",
+          "description": "Post-deploy smoke verification mode for this channel. `manual-checklist` signals that smoke is a manual approval step rather than automated — coordinates with empty `smoke_suites` handling.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "mode": {
               "type": "string",
-              "enum": [
-                "manual-checklist"
-              ]
+              "enum": ["manual-checklist"]
             }
           }
         }
@@ -388,17 +267,13 @@
       }
     },
     "config_phase": {
-      "description": "Config-phase state machine value. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint \u2014 gate-side code treats absence as `full` (absence-over-sentinel, backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
+      "description": "Config-phase state machine value. Enum: minimal | partial | full. `default: \"full\"` is a documentation hint — gate-side code treats absence as `full` (absence-over-sentinel, backward compatibility). The conditional `required` blocks in `allOf` are guarded by `required:[config_phase]` so legacy configs without this field skip all phase-conditional requirements.",
       "type": "string",
-      "enum": [
-        "minimal",
-        "partial",
-        "full"
-      ],
+      "enum": ["minimal", "partial", "full"],
       "default": "full"
     },
     "schema_version": {
-      "description": "Schema version string (semver format, e.g., \"2.0.0\"). Optional for backward compatibility but SHOULD be present in all new configs. Top-level `string` property \u2014 distinct from JSON Schema's `$schema` / `$id` metadata fields.",
+      "description": "Schema version string (semver format, e.g., \"2.0.0\"). Optional for backward compatibility but SHOULD be present in all new configs. Top-level `string` property — distinct from JSON Schema's `$schema` / `$id` metadata fields.",
       "type": "string",
       "minLength": 1
     },
@@ -407,96 +282,47 @@
       "type": "string",
       "minLength": 1
     },
-    "project_root": {
-      "type": "string",
-      "minLength": 1
-    },
-    "project_path": {
-      "type": "string",
-      "minLength": 1
-    },
-    "memory_path": {
-      "type": "string",
-      "minLength": 1
-    },
-    "checkpoint_path": {
-      "type": "string",
-      "minLength": 1
-    },
-    "installed_path": {
-      "type": "string",
-      "minLength": 1
-    },
-    "framework_version": {
-      "type": "string",
-      "minLength": 1
-    },
-    "date": {
-      "type": "string",
-      "minLength": 1
-    },
-    "user_name": {
-      "type": "string"
-    },
-    "communication_language": {
-      "type": "string"
-    },
-    "test_artifacts": {
-      "type": "string"
-    },
-    "planning_artifacts": {
-      "type": "string"
-    },
-    "implementation_artifacts": {
-      "type": "string"
-    },
-    "creative_artifacts": {
-      "type": "string"
-    },
-    "val_integration": {
-      "type": "object"
-    },
-    "ci_cd": {
+    "project_root":             { "type": "string", "minLength": 1 },
+    "project_path":             { "type": "string", "minLength": 1 },
+    "memory_path":              { "type": "string", "minLength": 1 },
+    "checkpoint_path":          { "type": "string", "minLength": 1 },
+    "installed_path":           { "type": "string", "minLength": 1 },
+    "framework_version":        { "type": "string", "minLength": 1 },
+    "date":                     { "type": "string", "minLength": 1 },
+    "user_name":                { "type": "string" },
+    "communication_language":   { "type": "string" },
+    "test_artifacts":           { "type": "string" },
+    "planning_artifacts":       { "type": "string" },
+    "implementation_artifacts": { "type": "string" },
+    "creative_artifacts":       { "type": "string" },
+    "val_integration":          { "type": "object" },
+    "ci_cd":                    {
       "type": "object",
       "properties": {
         "template_overrides": {
           "type": "object",
-          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate. Three fields: disable (array of job names), timeout_overrides (map of job-name \u2192 integer minutes), adapter_versions (map of adapter-name \u2192 semver). The disable: array is gated by a closed-enum of security-critical job names \u2014 see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
+          "description": "Declarative overrides applied to generated workflows during /gaia-config-ci --regenerate. Three fields: disable (array of job names), timeout_overrides (map of job-name → integer minutes), adapter_versions (map of adapter-name → semver). The disable: array is gated by a closed-enum of security-critical job names — see plugins/gaia/scripts/lib/template-overrides.sh for the canonical list.",
           "properties": {
             "disable": {
               "type": "array",
               "items": {
                 "type": "string",
                 "not": {
-                  "enum": [
-                    "commitlint",
-                    "legacy-reference-guard",
-                    "no-claude-attribution",
-                    "secrets-scan",
-                    "credential-audit",
-                    "adr-048-guard",
-                    "nfr-082-credential-audit"
-                  ]
+                  "enum": ["commitlint", "legacy-reference-guard", "no-claude-attribution", "secrets-scan", "credential-audit", "adr-048-guard", "nfr-082-credential-audit"]
                 },
-                "description": "Job name to remove. The five security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED at /gaia-config-validate time. Legacy aliases for renamed jobs are also rejected. Note: the schema enforces the LITERAL form only \u2014 canonicalization to lowercase letters and digits (e.g. `commit-lint` or `Commit_Lint` \u2192 `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
+                "description": "Job name to remove. The five security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED at /gaia-config-validate time. Legacy aliases for renamed jobs are also rejected. Note: the schema enforces the LITERAL form only — canonicalization to lowercase letters and digits (e.g. `commit-lint` or `Commit_Lint` → `commitlint`) happens at regen time in template-overrides.sh as a defense-in-depth layer."
               },
               "description": "Job names to remove from the generated workflow's jobs: map. Security-critical names (commitlint, legacy-reference-guard, no-claude-attribution, secrets-scan, credential-audit) are REJECTED both at /gaia-config-validate time (schema-level not.enum) and at regen time (template-overrides.sh, with canonicalization to lowercase letters and digits for defense in depth). Legacy aliases for renamed jobs are also rejected."
             },
             "timeout_overrides": {
               "type": "object",
-              "additionalProperties": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 360
-              },
+              "additionalProperties": { "type": "integer", "minimum": 1, "maximum": 360 },
               "description": "Per-job timeout-minutes override. Values outside [1, 360] are HARD ERROR at regen time."
             },
             "adapter_versions": {
               "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              },
-              "description": "Adapter-name \u2192 semver pin (e.g. {markdownlint: \"0.41.0\"}). Unknown adapter names and unparseable semver values are HARD ERROR at regen time."
+              "additionalProperties": { "type": "string" },
+              "description": "Adapter-name → semver pin (e.g. {markdownlint: \"0.41.0\"}). Unknown adapter names and unparseable semver values are HARD ERROR at regen time."
             }
           },
           "additionalProperties": false
@@ -509,12 +335,8 @@
         }
       }
     },
-    "testing": {
-      "type": "object"
-    },
-    "test_execution_bridge": {
-      "type": "object"
-    },
+    "testing":                  { "type": "object" },
+    "test_execution_bridge":    { "type": "object" },
     "sprint": {
       "type": "object",
       "properties": {
@@ -548,7 +370,7 @@
         "scanner_first_enabled": {
           "type": "boolean",
           "default": true,
-          "description": "When true (the default), security reviews run configured scanner adapters before LLM judgment and require complete scanner evidence. When false, scanner-first evidence is turned off and the security review runs without mandatory scanner output. The default is applied at the single point of use in scanner-evidence.sh, not by config hydration."
+          "description": "When true (the default), the security review collects scanner evidence before any gate runs. Only boolean false turns scanner-first off; the string \"false\" does not. Absent key means on."
         }
       }
     },
@@ -557,10 +379,7 @@
       "properties": {
         "manual_test_mode": {
           "type": "string",
-          "enum": [
-            "advisory",
-            "gating"
-          ],
+          "enum": ["advisory", "gating"],
           "default": "advisory",
           "description": "Controls whether a FAILED manual-test verdict blocks the review-to-done transition (gating) or emits a non-blocking WARNING (advisory)."
         },
@@ -569,49 +388,25 @@
           "description": "Per-gate file-scope globs for carry-forward overlap detection. Each key is a gate slug (e.g. code-review, qa-tests) and each value is an array of glob patterns. When a carry-forward is requested, the diff between the old and new SHAs is checked against these globs; any overlap refuses the carry. Gates with no configured scope refuse carry-forward (fail closed).",
           "additionalProperties": {
             "type": "array",
-            "items": {
-              "type": "string"
-            },
+            "items": { "type": "string" },
             "minItems": 1
           }
         }
       },
       "additionalProperties": true
     },
-    "team_conventions": {
-      "type": "object"
-    },
-    "agent_customizations": {
-      "type": "object"
-    },
+    "team_conventions":         { "type": "object" },
+    "agent_customizations":     { "type": "object" },
     "dev_story": {
       "type": "object",
       "properties": {
         "tdd_review": {
           "type": "object",
           "properties": {
-            "threshold": {
-              "type": "string",
-              "enum": [
-                "off",
-                "low",
-                "medium",
-                "high"
-              ]
-            },
-            "phases": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "qa_auto_in_yolo": {
-              "type": "boolean"
-            },
-            "qa_timeout_seconds": {
-              "type": "integer",
-              "minimum": 0
-            }
+            "threshold": { "type": "string", "enum": ["off", "low", "medium", "high"] },
+            "phases":    { "type": "array", "items": { "type": "string" } },
+            "qa_auto_in_yolo": { "type": "boolean" },
+            "qa_timeout_seconds": { "type": "integer", "minimum": 0 }
           },
           "additionalProperties": true
         }
@@ -621,22 +416,10 @@
     "sizing_map": {
       "type": "object",
       "properties": {
-        "S": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "M": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "L": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "XL": {
-          "type": "integer",
-          "minimum": 1
-        }
+        "S":  { "type": "integer", "minimum": 1 },
+        "M":  { "type": "integer", "minimum": 1 },
+        "L":  { "type": "integer", "minimum": 1 },
+        "XL": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },
@@ -647,18 +430,11 @@
       "properties": {
         "regimes": {
           "type": "array",
-          "items": {
-            "$ref": "#/definitions/complianceRegime"
-          },
+          "items": { "$ref": "#/definitions/complianceRegime" },
           "uniqueItems": true
         },
-        "domain": {
-          "type": "string",
-          "minLength": 1
-        },
-        "ui_present": {
-          "type": "boolean"
-        }
+        "domain": { "type": "string", "minLength": 1 },
+        "ui_present": { "type": "boolean" }
       }
     },
     "brownfield": {
@@ -668,86 +444,48 @@
       "x-no-auto-hydration": true
     },
     "tools": {
-      "description": "Provider/config selection per category. A category names one blocking PR-gate scanner via `provider` (the default, unchanged single-gate behavior) and MAY additionally declare one or more non-blocking scheduled deep-scan scanners via `scheduled[]` \u2014 mirroring the tiered `test_execution.tier_*.placement` model so a fast low-false-positive scanner gates every PR while heavier scanners run on a schedule. `placement` defaults the gate provider to `ci-pre-merge` (blocking); a `scheduled[]` entry's `placement` defaults to `ci-post-merge` (non-blocking). NOTE: this `placement` axis (WHERE in the pipeline a scanner runs) is orthogonal to `brownfield.scanner_tier` (HOW DEEP the brownfield deterministic-tools battery goes \u2014 a capability cap); the two are independent and do not conflict. The reserved `aggregation` key (NOT a scanner category) holds the pipeline-wide SARIF-merge / dedup / DefectDojo export settings.",
+      "description": "Provider/config selection per category. A category names one blocking PR-gate scanner via `provider` (the default, unchanged single-gate behavior) and MAY additionally declare one or more non-blocking scheduled deep-scan scanners via `scheduled[]` — mirroring the tiered `test_execution.tier_*.placement` model so a fast low-false-positive scanner gates every PR while heavier scanners run on a schedule. `placement` defaults the gate provider to `ci-pre-merge` (blocking); a `scheduled[]` entry's `placement` defaults to `ci-post-merge` (non-blocking). NOTE: this `placement` axis (WHERE in the pipeline a scanner runs) is orthogonal to `brownfield.scanner_tier` (HOW DEEP the brownfield deterministic-tools battery goes — a capability cap); the two are independent and do not conflict. The reserved `aggregation` key (NOT a scanner category) holds the pipeline-wide SARIF-merge / dedup / DefectDojo export settings.",
       "type": "object",
       "properties": {
         "aggregation": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Pipeline-wide scanner-output aggregation: merge multi-scanner SARIF, deduplicate findings, and (opt-in) export to DefectDojo. Applies to the standard `/gaia-review-security` gate AND scheduled deep-scans \u2014 the same merge/dedup/export capability previously available only under `brownfield.*`. The brownfield aggregation knobs continue to work unchanged; this block is the additive, pipeline-wide read path.",
+          "description": "Pipeline-wide scanner-output aggregation: merge multi-scanner SARIF, deduplicate findings, and (opt-in) export to DefectDojo. Applies to the standard `/gaia-review-security` gate AND scheduled deep-scans — the same merge/dedup/export capability previously available only under `brownfield.*`. The brownfield aggregation knobs continue to work unchanged; this block is the additive, pipeline-wide read path.",
           "properties": {
-            "sarif_merge_enabled": {
-              "type": "boolean",
-              "description": "Merge multi-scanner SARIF output across the pipeline's scanners (default true at the consumer)."
-            },
-            "dedup_enabled": {
-              "type": "boolean",
-              "description": "Deduplicate findings across scanners (default true at the consumer)."
-            },
-            "defectdojo_enabled": {
-              "type": "boolean",
-              "description": "Opt-in DefectDojo export of the aggregated findings (default false)."
-            },
-            "defectdojo_api_url": {
-              "type": "string",
-              "description": "DefectDojo API base URL (companion to defectdojo_enabled)."
-            },
-            "defectdojo_api_token": {
-              "type": "string",
-              "description": "The NAME of an environment variable that holds the DefectDojo API token \u2014 NEVER a literal secret. The token value is read from the named env var at run time and is never persisted in config. (Same invariant as brownfield.defectdojo_api_token.)"
-            },
-            "defectdojo_engagement_id": {
-              "type": "string",
-              "description": "DefectDojo engagement id (companion to defectdojo_enabled)."
-            }
+            "sarif_merge_enabled": { "type": "boolean", "description": "Merge multi-scanner SARIF output across the pipeline's scanners (default true at the consumer)." },
+            "dedup_enabled":       { "type": "boolean", "description": "Deduplicate findings across scanners (default true at the consumer)." },
+            "defectdojo_enabled":  { "type": "boolean", "description": "Opt-in DefectDojo export of the aggregated findings (default false)." },
+            "defectdojo_api_url":  { "type": "string",  "description": "DefectDojo API base URL (companion to defectdojo_enabled)." },
+            "defectdojo_api_token": { "type": "string", "description": "The NAME of an environment variable that holds the DefectDojo API token — NEVER a literal secret. The token value is read from the named env var at run time and is never persisted in config. (Same invariant as brownfield.defectdojo_api_token.)" },
+            "defectdojo_engagement_id": { "type": "string", "description": "DefectDojo engagement id (companion to defectdojo_enabled)." }
           }
         }
       },
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "provider"
-        ],
+        "required": ["provider"],
         "properties": {
-          "provider": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The blocking PR-gate scanner for this category."
-          },
-          "config": {
-            "type": "object"
-          },
+          "provider":  { "type": "string", "minLength": 1, "description": "The blocking PR-gate scanner for this category." },
+          "config":    { "type": "object" },
           "placement": {
             "$ref": "#/definitions/testPlacement",
-            "description": "Pipeline stage for the gate `provider`. Omitted \u21d2 `ci-pre-merge` (blocking)."
+            "description": "Pipeline stage for the gate `provider`. Omitted ⇒ `ci-pre-merge` (blocking)."
           },
           "scheduled": {
             "type": "array",
             "description": "Optional non-blocking deep-scan scanners run on a schedule (e.g. nightly/weekly), in addition to the blocking `provider` gate. A bare string is the deep-scan provider name; an object form carries `provider` + optional `config` + optional `placement` (defaults `ci-post-merge`, non-blocking).",
             "items": {
               "oneOf": [
-                {
-                  "type": "string",
-                  "minLength": 1
-                },
+                { "type": "string", "minLength": 1 },
                 {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "provider"
-                  ],
+                  "required": ["provider"],
                   "properties": {
-                    "provider": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "config": {
-                      "type": "object"
-                    },
-                    "placement": {
-                      "$ref": "#/definitions/testPlacement"
-                    }
+                    "provider":  { "type": "string", "minLength": 1 },
+                    "config":    { "type": "object" },
+                    "placement": { "$ref": "#/definitions/testPlacement" }
                   }
                 }
               ]
@@ -757,7 +495,7 @@
       }
     },
     "test_execution": {
-      "description": "Pipeline-tier placement + runner command for the three test tiers. Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` \u2014 without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner.",
+      "description": "Pipeline-tier placement + runner command for the three test tiers. Each tier MAY carry: `placement` (which pipeline stage runs the tier), `command` (the runner command-string the bridge dispatcher executes), and `timeout_seconds` (per-tier execution budget). The bridge dispatcher (`scripts/run-tests.sh`) reads `command` and `timeout_seconds` — without these the bridge emits a `no command declared` skip-evidence and the run never drives the test runner.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -765,57 +503,33 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "placement": {
-              "$ref": "#/definitions/testPlacement"
-            },
-            "command": {
-              "type": "string",
-              "minLength": 1
-            },
-            "timeout_seconds": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
           }
         },
         "tier_2": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "placement": {
-              "$ref": "#/definitions/testPlacement"
-            },
-            "command": {
-              "type": "string",
-              "minLength": 1
-            },
-            "timeout_seconds": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
           }
         },
         "tier_3": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "placement": {
-              "$ref": "#/definitions/testPlacement"
-            },
-            "command": {
-              "type": "string",
-              "minLength": 1
-            },
-            "timeout_seconds": {
-              "type": "integer",
-              "minimum": 1
-            }
+            "placement":       { "$ref": "#/definitions/testPlacement" },
+            "command":         { "type": "string", "minLength": 1 },
+            "timeout_seconds": { "type": "integer", "minimum": 1 }
           }
         }
       }
     },
     "test_policy": {
-      "description": "Per-trigger scope rules controlling which tests run. Each key is a CI trigger type; its value specifies included/excluded stacks or test tags. When absent, all tests run for all stacks on every trigger (backward-compatible default). This section controls test SCOPE only \u2014 pass/fail thresholds are governed by severity and gates (orthogonal).",
+      "description": "Per-trigger scope rules controlling which tests run. Each key is a CI trigger type; its value specifies included/excluded stacks or test tags. When absent, all tests run for all stacks on every trigger (backward-compatible default). This section controls test SCOPE only — pass/fail thresholds are governed by severity and gates (orthogonal).",
       "type": "object",
       "additionalProperties": false,
       "x-no-auto-hydration": true,
@@ -823,19 +537,13 @@
         "always_run": {
           "description": "Stack or suite identifiers that always run regardless of affected-set narrowing.",
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "default": []
         },
         "flaky": {
           "description": "Test identifiers flagged as flaky for retry-aware execution.",
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "default": []
         },
         "retry_limit": {
@@ -849,71 +557,50 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "pr": {
-              "$ref": "#/definitions/triggerScopeRule"
-            },
-            "push": {
-              "$ref": "#/definitions/triggerScopeRule"
-            },
-            "schedule": {
-              "$ref": "#/definitions/triggerScopeRule"
-            }
+            "pr":       { "$ref": "#/definitions/triggerScopeRule" },
+            "push":     { "$ref": "#/definitions/triggerScopeRule" },
+            "schedule": { "$ref": "#/definitions/triggerScopeRule" }
           }
         }
       }
     },
     "sprint_review": {
-      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B. The playwright_headed key is constrained to `true` at schema level (foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) \u2014 human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
+      "description": "Per-stack execution-review configuration consumed by /gaia-sprint-review Track B. The playwright_headed key is constrained to `true` at schema level (foreground-mode enforcement is unbypassable). Unknown stack identifiers in the *_commands maps emit a WARNING from /gaia-config-validate but do NOT fail schema validation (forward-compatibility precedent). Section is classified in _CONFIG_HYDRATION_MANAGED_ELSEWHERE (config-hydration.sh) — human-managed via /gaia-config-sprint-review only; never written by the auto-hydration reconciler.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "backend_commands": {
-          "description": "Map: backend stack identifier (e.g., backend-python, backend-node, backend-go) \u2192 command-string. Unknown identifiers WARN.",
+          "description": "Map: backend stack identifier (e.g., backend-python, backend-node, backend-go) → command-string. Unknown identifiers WARN.",
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "frontend_command": {
-          "description": "DEPRECATED \u2014 single command-string for the frontend Playwright execution-review run. Kept as a backward-compatible alias for single-web-stack projects. Prefer `frontend_commands` (map) for projects with more than one web/front-end stack. When both are set, `frontend_commands` entries take precedence; the scalar is merged in as the synthetic stack-id `frontend` only when that key is absent from the map.",
+          "description": "DEPRECATED — single command-string for the frontend Playwright execution-review run. Kept as a backward-compatible alias for single-web-stack projects. Prefer `frontend_commands` (map) for projects with more than one web/front-end stack. When both are set, `frontend_commands` entries take precedence; the scalar is merged in as the synthetic stack-id `frontend` only when that key is absent from the map.",
           "type": "string",
           "minLength": 1
         },
         "frontend_commands": {
-          "description": "Map: frontend / web stack identifier (e.g., frontend, website, marketing-site) \u2192 command-string. Mirrors backend_commands / mobile_commands / desktop_commands / plugin_commands. Unknown identifiers WARN. Lifts the single-web-stack cap baked into the legacy `frontend_command` scalar.",
+          "description": "Map: frontend / web stack identifier (e.g., frontend, website, marketing-site) → command-string. Mirrors backend_commands / mobile_commands / desktop_commands / plugin_commands. Unknown identifiers WARN. Lifts the single-web-stack cap baked into the legacy `frontend_command` scalar.",
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "mobile_commands": {
-          "description": "Map: mobile stack identifier (e.g., mobile-react-native, mobile-flutter) \u2192 command-string. Unknown identifiers WARN.",
+          "description": "Map: mobile stack identifier (e.g., mobile-react-native, mobile-flutter) → command-string. Unknown identifiers WARN.",
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "desktop_commands": {
-          "description": "Map: desktop stack identifier (electron | tauri | native) \u2192 command-string. Unknown identifiers WARN.",
+          "description": "Map: desktop stack identifier (electron | tauri | native) → command-string. Unknown identifiers WARN.",
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "plugin_commands": {
-          "description": "Map: plugin stack identifier (claude-code | vscode) \u2192 command-string. Unknown identifiers WARN.",
+          "description": "Map: plugin stack identifier (claude-code | vscode) → command-string. Unknown identifiers WARN.",
           "type": "object",
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
+          "additionalProperties": { "type": "string", "minLength": 1 }
         },
         "playwright_headed": {
-          "description": "Foreground-mode enforcement. MUST be true. The schema-level `const: true` ensures /gaia-config-validate REJECTS \u2014 not just warns \u2014 on `playwright_headed: false`, closing the silent-bypass attack vector.",
+          "description": "Foreground-mode enforcement. MUST be true. The schema-level `const: true` ensures /gaia-config-validate REJECTS — not just warns — on `playwright_headed: false`, closing the silent-bypass attack vector.",
           "type": "boolean",
           "const": true,
           "default": true
@@ -928,10 +615,7 @@
         "human_confirm": {
           "description": "Whether human confirmation is required after each stack's execution-review run. `required` halts for user input; `optional` auto-continues with a logged WARNING (only set this in CI bridge fixtures).",
           "type": "string",
-          "enum": [
-            "required",
-            "optional"
-          ],
+          "enum": ["required", "optional"],
           "default": "required"
         },
         "screen_recording_fallback": {
@@ -945,7 +629,7 @@
           "additionalProperties": false,
           "properties": {
             "api_command": {
-              "description": "Project-supplied functional smoke command run by the Track B `api` surface (e.g. a curl/health-check or end-to-end smoke script). Its transcript and exit code are captured as the api-surface manual-test evidence. When absent, the `api` surface is SKIPPED rather than run with a placeholder \u2014 there is no meaningful default functional command.",
+              "description": "Project-supplied functional smoke command run by the Track B `api` surface (e.g. a curl/health-check or end-to-end smoke script). Its transcript and exit code are captured as the api-surface manual-test evidence. When absent, the `api` surface is SKIPPED rather than run with a placeholder — there is no meaningful default functional command.",
               "type": "string",
               "minLength": 1
             }
@@ -964,9 +648,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "severity": {
-            "$ref": "#/definitions/severityMap"
-          }
+          "severity": { "$ref": "#/definitions/severityMap" }
         }
       }
     },
@@ -976,36 +658,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "name",
-          "language",
-          "paths"
-        ],
+        "required": ["name", "language", "paths"],
         "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "language": {
-            "type": "string",
-            "minLength": 1
-          },
+          "name":     { "type": "string", "minLength": 1 },
+          "language": { "type": "string", "minLength": 1 },
           "paths": {
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items":    { "type": "string", "minLength": 1 },
             "minItems": 1
           },
           "repository": {
-            "description": "Target git repository for this stack in `owner/repo` format, for multi-repo / per-service layouts where each service is its own git repository under a shared (non-git) project root. Optional \u2014 when absent (the single-repo default), the stack lives in the same repo as the central config. Used by the per-service config-slice projection (`project-config-slice.sh` / `/gaia-config-ci --project-slice`) to map stacks to repos and emit each service repo a self-contained config slice. Pattern matches GitHub repository naming rules (alphanumeric, dot, hyphen, underscore, exactly one slash).",
+            "description": "Target git repository for this stack in `owner/repo` format, for multi-repo / per-service layouts where each service is its own git repository under a shared (non-git) project root. Optional — when absent (the single-repo default), the stack lives in the same repo as the central config. Used by the per-service config-slice projection (`project-config-slice.sh` / `/gaia-config-ci --project-slice`) to map stacks to repos and emit each service repo a self-contained config slice. Pattern matches GitHub repository naming rules (alphanumeric, dot, hyphen, underscore, exactly one slash).",
             "type": "string",
             "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$",
             "default": null
           },
           "path": {
-            "description": "Stack ROOT directory \u2014 a coarse-grained partitioning anchor. Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) \u2014 single-stack repos omit it entirely.",
+            "description": "Stack ROOT directory — a coarse-grained partitioning anchor. Distinct from `paths` (the in-stack glob list): the deterministic-tools orchestrator scopes adapter dispatch to this subtree BEFORE applying `paths` glob matching. Default null (unset) — single-stack repos omit it entirely.",
             "type": "string",
             "minLength": 1,
             "default": null
@@ -1013,19 +682,13 @@
           "excludes": {
             "description": "Glob patterns excluded from this stack's file set. Defaults to secret-file patterns (`.env`, `.env.*`, `secrets/`, `*.pem`, `*.key`) when seeded by /gaia-init, reducing the chance of credentials leaking into deterministic-tool scans.",
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items": { "type": "string", "minLength": 1 },
             "default": []
           },
           "cross_refs": {
-            "description": "Allowed cross-stack references \u2014 each entry MUST name another stack in this `stacks[]` list. Referential integrity (entry names an existing stack) is enforced as a post-validation pass in /gaia-config-stack and /gaia-config-validate, NOT in this schema (JSON Schema cannot express cross-property validation).",
+            "description": "Allowed cross-stack references — each entry MUST name another stack in this `stacks[]` list. Referential integrity (entry names an existing stack) is enforced as a post-validation pass in /gaia-config-stack and /gaia-config-validate, NOT in this schema (JSON Schema cannot express cross-property validation).",
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items": { "type": "string", "minLength": 1 },
             "default": []
           },
           "ignore_nested_manifests": {
@@ -1034,7 +697,7 @@
             "default": true
           },
           "deploy_order": {
-            "description": "Integer controlling the order in which stacks deploy within a single environment. Lower values deploy first. Stacks without deploy_order are deployed AFTER all ordered stacks, in alphabetical name order. Optional \u2014 when absent, the stack participates in the alphabetical-default group.",
+            "description": "Integer controlling the order in which stacks deploy within a single environment. Lower values deploy first. Stacks without deploy_order are deployed AFTER all ordered stacks, in alphabetical name order. Optional — when absent, the stack participates in the alphabetical-default group.",
             "type": "integer",
             "minimum": 0
           },
@@ -1052,12 +715,9 @@
             "minLength": 1
           },
           "environments": {
-            "description": "Declarative per-stack environment targeting \u2014 the list of environment ids this stack deploys into. Distinct from `deploy_order` (which only ORDERS stacks within a single deploy): `environments` SCOPES a stack to specific environments, so an env-asymmetric layout (e.g. a marketing site that is production-only and a pre-launch site that is staging-only) is declarable in config rather than enforced imperatively at deploy time. Each entry SHOULD name an environment present in the top-level `environments` section \u2014 referential integrity is an ADVISORY post-validation check in /gaia-config-stack and /gaia-config-validate, mirroring the `cross_refs` convention (JSON Schema cannot express the cross-property constraint). Environment ids MUST NOT contain a comma or a pipe character \u2014 the deploy resolver parses both the block (`- staging`) and inline-flow (`[staging, prod]`) YAML forms and joins entries on `|`, so those two characters are reserved delimiters. Optional with a zero-regression default: when absent OR an empty array, the stack deploys into EVERY environment exactly as before \u2014 an empty list means \"unscoped / all environments\", NOT \"no environments\". When the array is non-empty, the deploy resolver (deploy-ordered.sh) skips this stack for any deploy whose target environment is not in the list.",
+            "description": "Declarative per-stack environment targeting — the list of environment ids this stack deploys into. Distinct from `deploy_order` (which only ORDERS stacks within a single deploy): `environments` SCOPES a stack to specific environments, so an env-asymmetric layout (e.g. a marketing site that is production-only and a pre-launch site that is staging-only) is declarable in config rather than enforced imperatively at deploy time. Each entry SHOULD name an environment present in the top-level `environments` section — referential integrity is an ADVISORY post-validation check in /gaia-config-stack and /gaia-config-validate, mirroring the `cross_refs` convention (JSON Schema cannot express the cross-property constraint). Environment ids MUST NOT contain a comma or a pipe character — the deploy resolver parses both the block (`- staging`) and inline-flow (`[staging, prod]`) YAML forms and joins entries on `|`, so those two characters are reserved delimiters. Optional with a zero-regression default: when absent OR an empty array, the stack deploys into EVERY environment exactly as before — an empty list means \"unscoped / all environments\", NOT \"no environments\". When the array is non-empty, the deploy resolver (deploy-ordered.sh) skips this stack for any deploy whose target environment is not in the list.",
             "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            },
+            "items": { "type": "string", "minLength": 1 },
             "default": []
           }
         }
@@ -1068,30 +728,17 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "contract_dir": {
-          "type": "string"
-        },
-        "integration_dir": {
-          "type": "string"
-        },
+        "contract_dir":    { "type": "string" },
+        "integration_dir": { "type": "string" },
         "pairs": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": true,
-            "required": [
-              "producer",
-              "consumer"
-            ],
+            "required": ["producer", "consumer"],
             "properties": {
-              "producer": {
-                "type": "string",
-                "minLength": 1
-              },
-              "consumer": {
-                "type": "string",
-                "minLength": 1
-              }
+              "producer": { "type": "string", "minLength": 1 },
+              "consumer": { "type": "string", "minLength": 1 }
             }
           }
         }
@@ -1106,14 +753,10 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "url": {
-                "type": "string"
-              },
+              "url":         { "type": "string" },
               "credentials": {
                 "type": "object",
-                "additionalProperties": {
-                  "$ref": "#/definitions/credentialEnvVarRef"
-                }
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
               }
             }
           }
@@ -1122,32 +765,17 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": [
-              "id"
-            ],
+            "required": ["id"],
             "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              },
-              "name": {
-                "type": "string"
-              },
-              "branch": {
-                "type": "string"
-              },
+              "id":     { "type": "string", "minLength": 1 },
+              "name":   { "type": "string" },
+              "branch": { "type": "string" },
               "kind": {
-                "description": "Closed 3-value discriminator. Field is optional \u2014 read-time default is `deployable` for silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time.",
+                "description": "Closed 3-value discriminator. Field is optional — read-time default is `deployable` for silent back-compat (resolved by scripts/lib/resolve-env-kind.sh). Unknown values are rejected at schema-validation time.",
                 "type": "string",
-                "enum": [
-                  "deployable",
-                  "branch-only",
-                  "distribution-only"
-                ]
+                "enum": ["deployable", "branch-only", "distribution-only"]
               },
-              "url": {
-                "type": "string"
-              },
+              "url":    { "type": "string" },
               "dormant": {
                 "description": "When true, the environment is declared but not yet provisioned on target infrastructure. Deploy adapters emit a distinct diagnostic (exit 3) instead of a generic misconfiguration error (exit 127) when the deploy script is missing for a dormant environment.",
                 "type": "boolean",
@@ -1155,9 +783,7 @@
               },
               "credentials": {
                 "type": "object",
-                "additionalProperties": {
-                  "$ref": "#/definitions/credentialEnvVarRef"
-                }
+                "additionalProperties": { "$ref": "#/definitions/credentialEnvVarRef" }
               }
             }
           }
@@ -1168,52 +794,37 @@
       "description": "CI provider selection and pipeline pointer.",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "provider"
-      ],
+      "required": ["provider"],
       "properties": {
-        "provider": {
-          "$ref": "#/definitions/ciProvider"
-        },
-        "pipeline": {
-          "type": "string"
-        }
+        "provider": { "$ref": "#/definitions/ciProvider" },
+        "pipeline": { "type": "string" }
       }
     },
     "platforms": {
       "description": "List of platform identifiers. Presence of ios or android triggers mobile gates downstream.",
       "type": "array",
-      "items": {
-        "$ref": "#/definitions/platformId"
-      },
-      "minItems": 1,
+      "items":     { "$ref": "#/definitions/platformId" },
+      "minItems":  1,
       "uniqueItems": true
     },
     "project_kind": {
-      "description": "Project shape identifier. Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library \u2014 but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking). Optional \u2014 backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
+      "description": "Project shape identifier. Foundational axis for the review / test / CI / deploy pipeline to branch behavior by project type. Documented values: claude-code-plugin, web-app, mobile-app, api, library — but the schema deliberately omits an enum constraint so the field is open-vocabulary. resolve-config.sh emits a stderr WARNING for unrecognized values (advisory, non-blocking). Optional — backward compatibility is preserved when the field is omitted (no warning, no functional regression).",
       "type": "string",
       "minLength": 1
     },
     "deployment_model": {
-      "description": "Explicit declarative deployment-model signal. A dedicated first-class key so the project's deployment model is DECLARED rather than inferred by overloading `compliance.ui_present` (which exists only to gate UI-specific reviews such as accessibility). Closed enum: `deployable` \u2014 the project deploys running services to environments; `distribution-only` \u2014 the project publishes an artifact to a registry/marketplace but deploys no environments (e.g. a plugin or library); `branch-only` \u2014 the project's release is a branch/tag promotion with no publish and no deploy; `ui-app` \u2014 a deployable whose primary surface is a user-facing UI (the case `compliance.ui_present: true` was historically overloaded to express). Named `deployment_model` (NOT `project_shape`) to avoid colliding with the free-text `project_shape` field on the /gaia-init questionnaire input bundle, which uses a different vocabulary (e.g. `single backend`, `microservices`, `claude-code-plugin`) and is consumed transiently by config generation rather than persisted. This key is additive and operator-managed: it does NOT change `compliance.ui_present` semantics \u2014 existing consumers of `ui_present` continue to work unchanged \u2014 it gives operators a non-overloaded place to state the deployment model directly. Optional; absent \u21d2 no model declared (consumers fall back to their existing inference, zero-regression). Operator-managed only: never auto-hydrated by the config reconciler (mirrors `lifecycle` / `brownfield` / `test_policy`).",
+      "description": "Explicit declarative deployment-model signal. A dedicated first-class key so the project's deployment model is DECLARED rather than inferred by overloading `compliance.ui_present` (which exists only to gate UI-specific reviews such as accessibility). Closed enum: `deployable` — the project deploys running services to environments; `distribution-only` — the project publishes an artifact to a registry/marketplace but deploys no environments (e.g. a plugin or library); `branch-only` — the project's release is a branch/tag promotion with no publish and no deploy; `ui-app` — a deployable whose primary surface is a user-facing UI (the case `compliance.ui_present: true` was historically overloaded to express). Named `deployment_model` (NOT `project_shape`) to avoid colliding with the free-text `project_shape` field on the /gaia-init questionnaire input bundle, which uses a different vocabulary (e.g. `single backend`, `microservices`, `claude-code-plugin`) and is consumed transiently by config generation rather than persisted. This key is additive and operator-managed: it does NOT change `compliance.ui_present` semantics — existing consumers of `ui_present` continue to work unchanged — it gives operators a non-overloaded place to state the deployment model directly. Optional; absent ⇒ no model declared (consumers fall back to their existing inference, zero-regression). Operator-managed only: never auto-hydrated by the config reconciler (mirrors `lifecycle` / `brownfield` / `test_policy`).",
       "type": "string",
-      "enum": [
-        "deployable",
-        "distribution-only",
-        "branch-only",
-        "ui-app"
-      ],
+      "enum": ["deployable", "distribution-only", "branch-only", "ui-app"],
       "x-no-auto-hydration": true
     },
     "device_targets": {
-      "description": "Device/OS matrix for mobile platforms. Keyed by platform identifier \u2014 keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors`.",
+      "description": "Device/OS matrix for mobile platforms. Keyed by platform identifier — keys SHOULD match entries in `platforms[]`; orphan keys (e.g., `device_targets.ios` when `platforms: [android]`) are flagged at the resolver layer, not the schema (open `additionalProperties` mirrors the extensibility principle on `platforms`). Each value is a `deviceTargetEntry` requiring `os_versions`, `screen_sizes`, and `form_factors`.",
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/definitions/deviceTargetEntry"
-      }
+      "additionalProperties": { "$ref": "#/definitions/deviceTargetEntry" }
     },
     "distribution": {
-      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array; (b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish; the (a) shape is preserved for back-compat. Optional \u2014 backward compatibility is preserved when the key is omitted (no functional regression).",
+      "description": "Distribution / publish configuration. Two shapes accepted via oneOf: (a) legacy `channels[]` array; (b) single-channel shape with 4 required common fields (channel, registry, manifest, release_workflow) plus per-channel sub-fields. The new (b) shape is the canonical surface for /gaia-publish; the (a) shape is preserved for back-compat. Optional — backward compatibility is preserved when the key is omitted (no functional regression).",
       "oneOf": [
         {
           "type": "object",
@@ -1221,21 +832,14 @@
           "properties": {
             "channels": {
               "type": "array",
-              "items": {
-                "$ref": "#/definitions/distributionChannel"
-              },
+              "items": { "$ref": "#/definitions/distributionChannel" },
               "minItems": 1
             }
           }
         },
         {
           "type": "object",
-          "required": [
-            "channel",
-            "registry",
-            "manifest",
-            "release_workflow"
-          ],
+          "required": ["channel", "registry", "manifest", "release_workflow"],
           "properties": {
             "channel": {
               "description": "Closed 10-channel enum. Adding a named channel requires a schema bump; do NOT extend this list inline.",
@@ -1253,200 +857,56 @@
                 "custom"
               ]
             },
-            "registry": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Free-form registry URL or identifier (e.g., https://registry.npmjs.org, ghcr.io/myorg/myimage)."
-            },
-            "manifest": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Relative path to the version-bearing manifest file (e.g., plugin.json, package.json, Cargo.toml)."
-            },
-            "release_workflow": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Relative path or name of the workflow under .github/workflows/ that publishes the artifact."
-            },
-            "platform": {
-              "type": "string",
-              "enum": [
-                "ios",
-                "android",
-                "both"
-              ],
-              "description": "mobile-app required sub-field"
-            },
-            "store_id": {
-              "type": "string",
-              "description": "mobile-app required sub-field"
-            },
-            "review_required": {
-              "type": "boolean",
-              "description": "mobile-app required sub-field"
-            },
-            "image_name": {
-              "type": "string",
-              "description": "container-registry required sub-field"
-            },
-            "tag_strategy": {
-              "type": "string",
-              "enum": [
-                "semver",
-                "sha",
-                "latest"
-              ],
-              "description": "container-registry required sub-field"
-            },
-            "provider": {
-              "type": "string",
-              "enum": [
-                "cloudflare-pages",
-                "s3",
-                "netlify",
-                "vercel",
-                "github-pages",
-                "custom"
-              ],
-              "description": "static-site required sub-field"
-            },
-            "domain": {
-              "type": "string",
-              "description": "static-site required sub-field"
-            },
-            "group_id": {
-              "type": "string",
-              "description": "maven required sub-field"
-            },
-            "artifact_id": {
-              "type": "string",
-              "description": "maven required sub-field"
-            },
-            "tap": {
-              "type": "string",
-              "description": "homebrew required sub-field"
-            },
-            "repo": {
-              "type": "string",
-              "description": "github-releases required sub-field"
-            },
-            "adapter_name": {
-              "type": "string",
-              "pattern": "^[a-z0-9-]{1,64}$",
-              "description": "custom required sub-field \u2014 names the directory under .gaia/custom/adapters/publish-<adapter_name>/. Regex bars slashes / dots / uppercase to prevent path-traversal."
-            }
+            "registry":         { "type": "string", "minLength": 1, "description": "Free-form registry URL or identifier (e.g., https://registry.npmjs.org, ghcr.io/myorg/myimage)." },
+            "manifest":         { "type": "string", "minLength": 1, "description": "Relative path to the version-bearing manifest file (e.g., plugin.json, package.json, Cargo.toml)." },
+            "release_workflow": { "type": "string", "minLength": 1, "description": "Relative path or name of the workflow under .github/workflows/ that publishes the artifact." },
+            "platform":         { "type": "string", "enum": ["ios", "android", "both"], "description": "mobile-app required sub-field" },
+            "store_id":         { "type": "string", "description": "mobile-app required sub-field" },
+            "review_required":  { "type": "boolean", "description": "mobile-app required sub-field" },
+            "image_name":       { "type": "string", "description": "container-registry required sub-field" },
+            "tag_strategy":     { "type": "string", "enum": ["semver", "sha", "latest"], "description": "container-registry required sub-field" },
+            "provider":         { "type": "string", "enum": ["cloudflare-pages", "s3", "netlify", "vercel", "github-pages", "custom"], "description": "static-site required sub-field" },
+            "domain":           { "type": "string", "description": "static-site required sub-field" },
+            "group_id":         { "type": "string", "description": "maven required sub-field" },
+            "artifact_id":      { "type": "string", "description": "maven required sub-field" },
+            "tap":              { "type": "string", "description": "homebrew required sub-field" },
+            "repo":             { "type": "string", "description": "github-releases required sub-field" },
+            "adapter_name":     { "type": "string", "pattern": "^[a-z0-9-]{1,64}$", "description": "custom required sub-field — names the directory under .gaia/custom/adapters/publish-<adapter_name>/. Regex bars slashes / dots / uppercase to prevent path-traversal." }
           },
           "allOf": [
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "mobile-app"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "platform",
-                  "store_id",
-                  "review_required"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "mobile-app" } } },
+              "then": { "required": ["platform", "store_id", "review_required"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "container-registry"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "image_name",
-                  "tag_strategy"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "container-registry" } } },
+              "then": { "required": ["image_name", "tag_strategy"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "static-site"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "provider",
-                  "domain"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "static-site" } } },
+              "then": { "required": ["provider", "domain"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "maven"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "group_id",
-                  "artifact_id"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "maven" } } },
+              "then": { "required": ["group_id", "artifact_id"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "homebrew"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "tap"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "homebrew" } } },
+              "then": { "required": ["tap"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "github-releases"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "repo"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "github-releases" } } },
+              "then": { "required": ["repo"] }
             },
             {
-              "if": {
-                "properties": {
-                  "channel": {
-                    "const": "custom"
-                  }
-                }
-              },
-              "then": {
-                "required": [
-                  "adapter_name"
-                ]
-              }
+              "if":   { "properties": { "channel": { "const": "custom" } } },
+              "then": { "required": ["adapter_name"] }
             }
           ]
         }
       ]
     },
-    "health_check": {
-      "$ref": "#/definitions/healthCheck"
-    },
+    "health_check": { "$ref": "#/definitions/healthCheck" },
     "release": {
       "description": "Release version-bump configuration. version_files lists file paths (relative to project root) that /gaia-release bumps. Supported formats: JSON with a top-level \"version\" key, and plain-text files containing only a semver string.",
       "type": "object",
@@ -1455,31 +915,21 @@
         "version_files": {
           "description": "List of file paths (relative to project root) whose version string is bumped by version-bump.js.",
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "minItems": 1
         },
         "strategy": {
           "description": "How /gaia-release derives the next version. conventional-commits: auto-derive semver bump from Conventional Commits in the release range. manual: prompt for the target version (no commit-derivation). calendar: derive CalVer (YYYY.MM.PATCH) from the current date. Defaults to manual when absent.",
           "type": "string",
-          "enum": [
-            "conventional-commits",
-            "manual",
-            "calendar"
-          ],
+          "enum": ["conventional-commits", "manual", "calendar"],
           "default": "manual"
         }
       }
     },
     "parallel_execution": {
       "x-no-auto-hydration": true,
-      "description": "Concurrency budget for phase-parallel story execution. Omitting this section preserves the default budget; a bare `parallel_execution:` with no sub-keys parses as null and is treated the same as omitting it. Carries `x-no-auto-hydration` because an auto-hydrated empty stub would put a section into every project config that means exactly what its absence means, and the effective values are applied at the read site (never materialised from the schema `default` annotations), so a stub would add churn without adding behaviour. max_parallel_dev_slots caps concurrent dev agents; teammate_dispatch_ceiling caps total concurrent teammates (dev agents plus gate agents). The ceiling must leave at least 4 of headroom above the slot budget for gate agents \u2014 an arithmetic cross-field rule enforced by validate-project-config.sh, not by this schema.",
-      "type": [
-        "object",
-        "null"
-      ],
+      "description": "Concurrency budget for phase-parallel story execution. Omitting this section preserves the default budget; a bare `parallel_execution:` with no sub-keys parses as null and is treated the same as omitting it. Carries `x-no-auto-hydration` because an auto-hydrated empty stub would put a section into every project config that means exactly what its absence means, and the effective values are applied at the read site (never materialised from the schema `default` annotations), so a stub would add churn without adding behaviour. max_parallel_dev_slots caps concurrent dev agents; teammate_dispatch_ceiling caps total concurrent teammates (dev agents plus gate agents). The ceiling must leave at least 4 of headroom above the slot budget for gate agents — an arithmetic cross-field rule enforced by validate-project-config.sh, not by this schema.",
+      "type": ["object", "null"],
       "additionalProperties": false,
       "properties": {
         "max_parallel_dev_slots": {
@@ -1506,20 +956,14 @@
       }
     },
     "sprint_status_mod": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "description": "Configuration for the sprint status mod \u2014 user alias matching. Optional; when absent or a bare key (null), built-in defaults apply at the read site.",
+      "type": ["object", "null"],
+      "description": "Configuration for the sprint status mod — user alias matching. Optional; when absent or a bare key (null), built-in defaults apply at the read site.",
       "additionalProperties": false,
       "x-no-auto-hydration": true,
       "properties": {
         "user_aliases": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "description": "Names that identify the current user when matching action-item assignees (case-insensitive). When set, this list replaces the default entirely; an empty list disables matching. When absent, the default is [\"user\"] plus the git user.name."
         },
         "waiting_agent_threshold_seconds": {
@@ -1541,25 +985,16 @@
           "properties": {
             "patterns": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
+              "items": { "type": "string", "minLength": 1 },
               "description": "Regex patterns matching internal planning identifiers that must not appear in published source."
             },
             "published_paths": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              },
+              "items": { "type": "string", "minLength": 1 },
               "description": "Path prefixes (relative to repo root) that count as published source. Only files under these prefixes are scanned."
             }
           },
-          "required": [
-            "patterns",
-            "published_paths"
-          ]
+          "required": ["patterns", "published_paths"]
         }
       }
     },
@@ -1567,81 +1002,44 @@
       "x-no-auto-hydration": true,
       "description": "Shell commands executed sequentially before every push in /gaia-dev-story. Each entry runs as a command string in the story working tree. A non-zero exit (including 127 command-not-found) halts the push. Absent or empty = no-op (opt-in). TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline. Timeouts are the user's responsibility (wrap long-running commands with `timeout`).",
       "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "items": { "type": "string" }
     },
     "post_ci_smoke_commands": {
       "x-no-auto-hydration": true,
       "description": "Shell commands executed sequentially after CI completes green and before merge in /gaia-dev-story. A non-zero exit halts the merge. Absent or empty = no-op (opt-in). The smoke runs against the CI-verified commit; branch-drift detection is out of scope. TRUST BOUNDARY: these commands run unsandboxed with the user's own privileges; review them as you would any script in your CI pipeline.",
       "type": "array",
-      "items": {
-        "type": "string"
-      }
+      "items": { "type": "string" }
     }
   },
   "allOf": [
     {
-      "description": "config_phase=minimal \u2014 Phase 0 bootstrap. Only project_name + project_kind are required (in addition to the unconditional infrastructure fields).",
+      "description": "config_phase=minimal — Phase 0 bootstrap. Only project_name + project_kind are required (in addition to the unconditional infrastructure fields).",
       "if": {
-        "properties": {
-          "config_phase": {
-            "const": "minimal"
-          }
-        },
-        "required": [
-          "config_phase"
-        ]
+        "properties": { "config_phase": { "const": "minimal" } },
+        "required": ["config_phase"]
       },
       "then": {
-        "required": [
-          "project_name",
-          "project_kind"
-        ]
+        "required": ["project_name", "project_kind"]
       }
     },
     {
-      "description": "config_phase=partial \u2014 architecture-phase hydration complete. Adds stacks + platforms to the required set.",
+      "description": "config_phase=partial — architecture-phase hydration complete. Adds stacks + platforms to the required set.",
       "if": {
-        "properties": {
-          "config_phase": {
-            "const": "partial"
-          }
-        },
-        "required": [
-          "config_phase"
-        ]
+        "properties": { "config_phase": { "const": "partial" } },
+        "required": ["config_phase"]
       },
       "then": {
-        "required": [
-          "project_name",
-          "project_kind",
-          "stacks",
-          "platforms"
-        ]
+        "required": ["project_name", "project_kind", "stacks", "platforms"]
       }
     },
     {
-      "description": "config_phase=full \u2014 infrastructure-phase hydration complete. Adds environments + ci_cd to the required set. Legacy configs without config_phase are NOT routed through this branch (the `required:[config_phase]` guard ensures absence skips); gate-side code treats absence-means-full for backward compatibility.",
+      "description": "config_phase=full — infrastructure-phase hydration complete. Adds environments + ci_cd to the required set. Legacy configs without config_phase are NOT routed through this branch (the `required:[config_phase]` guard ensures absence skips); gate-side code treats absence-means-full for backward compatibility.",
       "if": {
-        "properties": {
-          "config_phase": {
-            "const": "full"
-          }
-        },
-        "required": [
-          "config_phase"
-        ]
+        "properties": { "config_phase": { "const": "full" } },
+        "required": ["config_phase"]
       },
       "then": {
-        "required": [
-          "project_name",
-          "project_kind",
-          "stacks",
-          "platforms",
-          "environments",
-          "ci_cd"
-        ]
+        "required": ["project_name", "project_kind", "stacks", "platforms", "environments", "ci_cd"]
       }
     }
   ]
