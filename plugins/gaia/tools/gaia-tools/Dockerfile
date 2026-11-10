@@ -227,7 +227,8 @@ RUN pip install --break-system-packages \
       'cyclonedx-bom==4.4.3' \
       'yamllint==1.35.1'
 
-# Sarif.Multitool for SARIF merge step.
+# Microsoft.Sarif.Multitool (dotnet tool) for SARIF merge step.
+# The tool package name is Sarif.Multitool, not Microsoft.Sarif.Multitool.
 ENV DOTNET_ROOT=/opt/dotnet \
     PATH=/opt/dotnet:${PATH}
 RUN curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o /tmp/dotnet-install.sh && \
