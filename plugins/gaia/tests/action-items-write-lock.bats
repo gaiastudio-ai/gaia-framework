@@ -600,7 +600,7 @@ _seed_file() {
     _ir_acq=1
     # Poll for B inside (marker-ordered, not timed).
     _rw=0
-    while [ ! -e "$_IR_B" ] && [ "$_rw" -lt 40 ]; do
+    while [ ! -e "$_IR_B" ] && [ "$_rw" -lt 20 ]; do
       sleep 0.05 2>/dev/null || sleep 1; _rw=$((_rw + 1))
     done
     [ -e "$_IR_B" ] && echo "OVERLAP" >> "$_IR_LOG"
