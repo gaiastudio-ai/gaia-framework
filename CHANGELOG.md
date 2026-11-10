@@ -9,6 +9,30 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Scanner-first security pipeline
+
+#### Added
+- Scanner-first evidence collection: security reviews now run configured scanner adapters (semgrep, gitleaks, osv-scanner by default) before any LLM judgment and require complete scanner evidence. The evidence lives at `{story_dir}/scanner-evidence/{run-id}/` with a stable manifest format.
+- New adapters: `osv-scanner` (dependency audit), `checkov` (infrastructure-as-code), `cppcheck` (C/C++ static analysis).
+- Updated adapters: `semgrep` now supports `.kt`, `.swift`, `.dart` extensions and docker-runner dispatch; `gitleaks` now honours `--input` file lists, runs with redaction, and maps "leaks found" to findings instead of errors.
+- `scanner-evidence.sh` entry point with three exit codes (0 complete, 1 config error, 2 incomplete) and an atomic evidence-manifest format that downstream steps read.
+- `check-scanner-pins.sh` CI check verifying every scanner in the Dockerfile is exactly pinned with sha256, every FROM line has an `@sha256:` digest, and Sarif.Multitool uses `--version`.
+- `scanner-manifest.json` listing every scanner's exact version and per-architecture sha256.
+- `review.scanner_first_enabled` config key (boolean, default true). Set to `false` to turn off scanner-first evidence and run security reviews as before. The report states when scanner-first is turned off by config.
+- `/gaia-doctor` scanner-health section showing the scanner-first setting and each scanner's status.
+- Four new entries in the tool-readiness registry (semgrep, gitleaks, checkov, cppcheck).
+- `gaia-tools` image now bundles semgrep, checkov, cppcheck, and gitleaks alongside existing tools.
+- `tool-availability-probe.sh` gains `--output` passthrough so callers can collect scanner evidence in one pass.
+
+#### Changed
+- `/gaia-review-security` Step 1c runs scanner-first evidence collection before LLM judgment. The scanner evidence is mandatory input; the reviewer must cite scanner findings.
+- `/gaia-run-all-reviews` Substep 2.2b collects scanner evidence for the round before dispatching any gate.
+- Both steps HALT on incomplete evidence, naming each adapter, its state, and a remediation hint.
+
+#### Upgrade notes
+- **Hardening default active on upgrade**: projects without a `tools:` or `review:` section get scanner-first with the default set (semgrep + osv-scanner). If a configured scanner is missing, the review HALTs with a message naming the scanner and offering remediation (install it, switch to the docker runner, change the provider, or set `review.scanner_first_enabled: false`).
+- **gitleaks bundled**: the `gaia-tools` image now includes gitleaks. No host install needed when using `brownfield.tools.runner: docker`.
+
 ### Fix-cycle cap with escalation and critical-security carve-out
 
 #### Added

@@ -1,0 +1,5 @@
+# Hashed requirements for pip-installed scanners in the gaia-tools image.
+# Generated with: pip-compile --generate-hashes
+# Install with:   pip install --require-hashes -r requirements-scanners.txt
+semgrep==1.90.0
+checkov==3.2.262

@@ -95,8 +95,11 @@ Using the helper, a typical adapter `contract.bats` is ~50 lines and contains ex
 
 | Adapter | Category | File Extensions | Project-Scope | Status |
 |---|---|---|---|---|
-| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php` | no | shipped |
+| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php .kt .swift .dart` | no | shipped |
 | [`gitleaks`](gitleaks/) | secret-scan | (project-scope) | yes | shipped |
+| [`osv-scanner`](osv-scanner/) | dep-audit | (project-scope) | yes | shipped |
+| [`checkov`](checkov/) | sast | `.tf .yaml .yml .json` | no | shipped |
+| [`cppcheck`](cppcheck/) | sast | `.c .h .cpp .cc .cxx .hpp` | no | shipped |
 | [`radon`](radon/) | linter | `.py` | no | shipped |
 | [`gocyclo`](gocyclo/) | linter | `.go` | no | shipped |
 | [`eslint-plugin-sonarjs`](eslint-plugin-sonarjs/) | linter | `.ts .tsx .js .jsx` | no | shipped |

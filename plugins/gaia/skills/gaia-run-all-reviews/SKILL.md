@@ -174,6 +174,18 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
 
 5. **When the previous SHA differs from the new round's SHA**, call `impact-assessment --story {key} --run-id {new} --from-run {old} --repo {tree}`.
 
+6. **Collect scanner-first evidence** for the round. After the commit SHA is
+   known (step 4), run:
+   ```bash
+   scripts/review-common/security/scanner-evidence.sh \
+     --story {key} --run-id {new-run-id} --repo {code-tree}
+   ```
+   HALT the round on exit 1 (caller/config error) or exit 2 (incomplete
+   evidence) — print the script's message naming each scanner, its state,
+   and the remediation hint. A later call from the security gate for the
+   same run-id and head SHA reuses the complete evidence without re-running
+   any scanner.
+
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:

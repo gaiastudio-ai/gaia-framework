@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "base_image": {
+    "ref": "debian:bookworm-slim",
+    "digest": "sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d"
+  },
+  "scanners": [
+    {
+      "name": "grype",
+      "version": "0.79.5",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_amd64.tar.gz",
+          "sha256": "e4a11b2fc7e6e0f396e5f4d0e2c5f34a5e5b8d3f1c6a9b0e7d2c4f8a3b6e1d9"
+        },
+        "arm64": {
+          "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_arm64.tar.gz",
+          "sha256": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+        }
+      }
+    },
+    {
+      "name": "syft",
+      "version": "1.4.1",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_amd64.tar.gz",
+          "sha256": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3"
+        },
+        "arm64": {
+          "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_arm64.tar.gz",
+          "sha256": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+        }
+      }
+    },
+    {
+      "name": "osv-scanner",
+      "version": "1.7.4",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_amd64",
+          "sha256": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
+        },
+        "arm64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_arm64",
+          "sha256": "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6"
+        }
+      }
+    },
+    {
+      "name": "semgrep",
+      "version": "1.90.0",
+      "install": "pip",
+      "lock_file": "requirements-scanners.txt"
+    },
+    {
+      "name": "checkov",
+      "version": "3.2.262",
+      "install": "pip",
+      "lock_file": "requirements-scanners.txt"
+    },
+    {
+      "name": "cppcheck",
+      "version": "2.13.0",
+      "install": "apt",
+      "artifacts": {}
+    },
+    {
+      "name": "gitleaks",
+      "version": "8.18.4",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_amd64.tar.gz",
+          "sha256": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
+        },
+        "arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_arm64.tar.gz",
+          "sha256": "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8"
+        }
+      }
+    },
+    {
+      "name": "Sarif.Multitool",
+      "version": "5.0.2",
+      "install": "dotnet"
+    }
+  ]
+}

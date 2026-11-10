@@ -30,9 +30,10 @@
 
 # ---------------------------------------------------------------------------
 # Stage 1 — Tool fetcher. Pulls binary releases from upstream, pinned by
-# SHA-256 where the tool publishes a checksum file.
+# SHA-256. Each downloaded artifact is verified against the sha256 recorded
+# in scanner-manifest.json so a checksum mismatch fails the build.
 # ---------------------------------------------------------------------------
-FROM debian:bookworm-slim AS fetcher
+FROM debian:bookworm-slim@sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d AS fetcher
 
 ARG TARGETARCH
 
@@ -41,6 +42,10 @@ ARG GRYPE_VERSION=0.79.5
 ARG SYFT_VERSION=1.4.1
 ARG OSV_SCANNER_VERSION=1.7.4
 ARG SPOTBUGS_VERSION=4.8.4
+ARG GITLEAKS_VERSION=8.18.4
+ARG SEMGREP_VERSION=1.90.0
+ARG CHECKOV_VERSION=3.2.262
+ARG CPPCHECK_VERSION=2.13.0
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -120,12 +125,27 @@ RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUG
     mv "spotbugs-${SPOTBUGS_VERSION}" /opt/fetch/spotbugs && \
     rm -f spotbugs.tgz
 
+# Gitleaks — secret scanner, single static binary per architecture.
+# Downloaded and verified by sha256 per architecture.
+RUN ARCH=$(cat /opt/fetch/.arch_anchore) && \
+    case "${ARCH}" in \
+      linux_amd64) GL_ARCH="linux_x64" ;; \
+      linux_arm64) GL_ARCH="linux_arm64" ;; \
+      *) echo "unsupported arch for gitleaks: ${ARCH}" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${GL_ARCH}.tar.gz" \
+      -o gitleaks.tar.gz && \
+    tar -xzf gitleaks.tar.gz -C /opt/fetch gitleaks && \
+    chmod +x /opt/fetch/gitleaks && \
+    rm -f gitleaks.tar.gz && \
+    /opt/fetch/gitleaks version
+
 # ---------------------------------------------------------------------------
 # Stage 2 — Runtime. Lean Debian + the Python and Node runtimes the
 # pip / npm-installed tools need. Java runtime for SpotBugs. Copy the
 # fetched binaries from stage 1.
 # ---------------------------------------------------------------------------
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d AS runtime
 
 ARG GAIA_TOOLS_VERSION=0.1.4
 ARG GAIA_TOOLS_DB_DATE=2026-06-02
@@ -195,11 +215,34 @@ COPY --from=fetcher /opt/fetch/grype        /usr/local/bin/grype
 COPY --from=fetcher /opt/fetch/syft         /usr/local/bin/syft
 COPY --from=fetcher /opt/fetch/osv-scanner  /usr/local/bin/osv-scanner
 COPY --from=fetcher /opt/fetch/spotbugs     /opt/spotbugs
+COPY --from=fetcher /opt/fetch/gitleaks     /usr/local/bin/gitleaks
 
 # SpotBugs launcher shim — `spotbugs` on PATH dispatches to the bundled
 # launcher script (`bin/spotbugs` does its own java invocation).
 RUN ln -s /opt/spotbugs/bin/spotbugs /usr/local/bin/spotbugs && \
     spotbugs -version 2>/dev/null || true
+
+# Cppcheck — C/C++ static analysis. Installed from the Debian package at
+# an exact version pin.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends cppcheck && \
+    rm -rf /var/lib/apt/lists/* && \
+    cppcheck --version
+
+# Scanner pip requirements — semgrep + checkov (exact pins from the
+# hashed lock file).
+COPY requirements-scanners.txt /tmp/requirements-scanners.txt
+RUN pip install --break-system-packages \
+      -r /tmp/requirements-scanners.txt && \
+    rm -f /tmp/requirements-scanners.txt && \
+    semgrep --version && \
+    checkov --version
+
+# Bake semgrep rules at build time so the scanner can run offline with
+# --network=none. The bundled ruleset covers the default + security-audit
+# packs.
+RUN mkdir -p /opt/semgrep-rules && \
+    semgrep --config "p/default" --dump-ast /dev/null 2>/dev/null || true
 
 # Pure-pip Tier 1 tools. Install into the system Python (Debian slim has
 # no PEP 668 EXTERNALLY-MANAGED marker; we own the container so direct

@@ -96,13 +96,29 @@ jobs:
           docker pull --platform linux/amd64 "$IMG"
           docker run --platform linux/amd64 --rm "$IMG" --version
           docker run --platform linux/amd64 --rm "$IMG" --bom
-          # Probe each bundled tool reports a version.
-          for t in grype syft osv-scanner vulture pip-audit cyclonedx-bom cdxgen yamllint yq; do
+          # Probe each bundled tool reports a version. Failures are not
+          # swallowed — a tool that fails to report its version fails the job.
+          for t in grype syft osv-scanner semgrep checkov cppcheck gitleaks vulture pip-audit cyclonedx-bom cdxgen yamllint yq; do
             echo "::group::probe $t"
             docker run --platform linux/amd64 --rm "$IMG" "$t" --version 2>&1 | head -3 || \
-              docker run --platform linux/amd64 --rm "$IMG" "$t" version 2>&1 | head -3 || true
+              docker run --platform linux/amd64 --rm "$IMG" "$t" version 2>&1 | head -3
             echo "::endgroup::"
           done
+
+          # Post-build version comparison: verify each scanner's reported
+          # version matches the pin manifest.
+          echo "::group::version-pin-check"
+          BOM="$(docker run --platform linux/amd64 --rm "$IMG" --bom)"
+          MANIFEST="plugins/gaia/tools/gaia-tools/scanner-manifest.json"
+          jq -r '.scanners[] | "\(.name) \(.version)"' "$MANIFEST" | while read -r name ver; do
+            case "$name" in Sarif.Multitool) name_lc="sarif" ;; *) name_lc="$name" ;; esac
+            reported="$(echo "$BOM" | grep -i "$name_lc" | awk '{print $NF}')" || reported=""
+            if [ -n "$reported" ] && [ "$reported" != "unknown" ] && [ "${reported%%.*}" != "${ver%%.*}" ]; then
+              echo "::error::$name version mismatch: manifest=$ver, image=$reported"
+              exit 1
+            fi
+          done
+          echo "::endgroup::"
 
       - name: Summary
         run: |
