@@ -330,3 +330,81 @@ SH
   local fail_count; fail_count="$(grep -c '^1$' "$rc_file" || true)"
   [ "$fail_count" -eq 0 ]
 }
+
+# --- Scanner findings register (RF-11) ---
+
+@test "scanner evidence: findings from adapter fragment reach the register" {
+  # Create a stub adapter that produces one high finding.
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in --output) OUTPUT="$2"; shift 2 ;; *) shift ;; esac
+done
+frag='{"name":"semgrep","status":"passed","findings":[{"id":"test-rule-1","severity":"high","message":"hardcoded secret at src/app.py:10","source":"semgrep"}]}'
+if [ -n "$OUTPUT" ]; then printf '%s\n' "$frag" > "$OUTPUT"; else printf '%s\n' "$frag"; fi
+exit 0
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id reg1 --repo "$REPO_DIR"
+  [ "$status" -eq 0 ]
+
+  # Check the register has an entry.
+  local reg_path="$STORY_DIR/reviews/findings-register-E999-S1.yaml"
+  [ -f "$reg_path" ]
+  local entry_count; entry_count="$(yq '.entries | length' "$reg_path" 2>/dev/null)"
+  [ "$entry_count" -ge 1 ]
+  # The entry should reference the scanner finding.
+  yq -e '.entries[0].defect | test("hardcoded secret")' "$reg_path"
+  yq -e '.entries[0].severity == "high"' "$reg_path"
+}
+
+@test "scanner evidence: re-run with same evidence does not duplicate register entries" {
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in --output) OUTPUT="$2"; shift 2 ;; *) shift ;; esac
+done
+frag='{"name":"semgrep","status":"passed","findings":[{"id":"dup-rule","severity":"medium","message":"potential issue","source":"semgrep"}]}'
+if [ -n "$OUTPUT" ]; then printf '%s\n' "$frag" > "$OUTPUT"; else printf '%s\n' "$frag"; fi
+exit 0
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
+  # First run.
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    "$SCANNER_EVIDENCE" --story E999-S1 --run-id dup1 --repo "$REPO_DIR" >/dev/null 2>&1
+
+  local reg_path="$STORY_DIR/reviews/findings-register-E999-S1.yaml"
+  local count1; count1="$(yq '.entries | length' "$reg_path" 2>/dev/null)"
+
+  # Force a re-collection by removing the manifest (simulating new head).
+  rm -f "$STORY_DIR/scanner-evidence/dup1/evidence-manifest.json"
+
+  # Second run with same evidence.
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    "$SCANNER_EVIDENCE" --story E999-S1 --run-id dup1 --repo "$REPO_DIR" >/dev/null 2>&1
+
+  local count2; count2="$(yq '.entries | length' "$reg_path" 2>/dev/null)"
+  # Entry count should not increase (dedup by run_id + sha + finding_id).
+  [ "$count1" -eq "$count2" ]
+}
+
+@test "scanner evidence: clean scan adds no register entries" {
+  # Default stubs produce zero findings.
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id clean1 --repo "$REPO_DIR"
+  [ "$status" -eq 0 ]
+
+  # Register should not exist or have zero entries.
+  local reg_path="$STORY_DIR/reviews/findings-register-E999-S1.yaml"
+  if [ -f "$reg_path" ]; then
+    local count; count="$(yq '.entries | length' "$reg_path" 2>/dev/null)"
+    [ "$count" -eq 0 ]
+  fi
+}

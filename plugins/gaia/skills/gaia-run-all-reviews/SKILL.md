@@ -182,9 +182,11 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
    ```
    HALT the round on exit 1 (caller/config error) or exit 2 (incomplete
    evidence) — print the script's message naming each scanner, its state,
-   and the remediation hint. A later call from the security gate for the
-   same run-id and head SHA reuses the complete evidence without re-running
-   any scanner.
+   and the remediation hint. On exit 0 with complete evidence, scanner
+   findings are automatically written to the findings register (idempotent,
+   keyed by run id + fragment hash + finding id). A later call from the
+   security gate for the same run-id and head SHA reuses the complete
+   evidence without re-running any scanner or duplicating register entries.
 
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 

@@ -385,5 +385,16 @@ manifest="$(jq -nc \
 _tmp="$(mktemp "$EVIDENCE_DIR/evidence-manifest.json.XXXXXX")"
 printf '%s\n' "$manifest" > "$_tmp"
 mv "$_tmp" "$EVIDENCE_DIR/evidence-manifest.json"
+
+# ---------------------------------------------------------------------------
+# Write scanner findings to the findings register (RF-11 / tasks 3.1b, 3.2).
+# Only when the evidence is complete — incomplete scans keep their HALT and
+# do not pollute the register with partial data.
+# ---------------------------------------------------------------------------
+_findings_register="$SCRIPT_DIR/scanner-findings-register.sh"
+if [ "$complete_bool" = "true" ] && [ -x "$_findings_register" ]; then
+  "$_findings_register" --story "$STORY_KEY" --manifest "$EVIDENCE_DIR/evidence-manifest.json" || true
+fi
+
 printf '%s\n' "$EVIDENCE_DIR/evidence-manifest.json"
 exit "$exit_code"

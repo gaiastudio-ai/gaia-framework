@@ -88,9 +88,11 @@ scripts/review-common/security/scanner-evidence.sh \
 ```
 
 - **Exit 0 (complete or turned off):** read the `evidence-manifest.json` and
-  each fragment before proceeding. The scanner evidence is mandatory input
-  for the review: cite scanner findings in the report, and never contradict
-  a scanner finding without stating why.
+  each fragment before proceeding. Scanner findings are automatically added
+  to the findings register (keyed by run id, fragment hash, and finding id
+  for idempotent re-runs). The scanner evidence is mandatory input for the
+  review: cite scanner findings in the report, and never contradict a
+  scanner finding without stating why.
 - **Exit 2 (incomplete):** HALT — do not proceed with LLM judgment. Print
   the script's message naming each adapter, its state, and a remediation
   hint (install the tool, set `brownfield.tools.runner: docker`, change
