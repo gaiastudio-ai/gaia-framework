@@ -498,33 +498,25 @@ SH
 # --- No base resolution exits incomplete ---
 
 @test "scanner evidence: no integration branch exits 2 with incomplete manifest" {
-  # Create a repo with no remote branches at all.
-  local bare_repo="$WORK_TMP/bare.git"
-  local clone_repo="$WORK_TMP/clone"
-  git init --bare -q "$bare_repo"
-  git clone -q "$bare_repo" "$clone_repo"
-  cd "$clone_repo"
+  # Create a standalone repo (no remote) with no matching branch names.
+  local solo_repo="$WORK_TMP/solo"
+  mkdir -p "$solo_repo"
+  cd "$solo_repo"
+  git init -q -b unusual-name
   printf 'test\n' > file.txt
   git add -A && git -c user.email=a@b -c user.name=a commit -qm init
-  git push -q origin HEAD:main
-  # Now remove the origin/HEAD symbolic ref so the script can't detect the default branch.
-  git remote set-head origin -d 2>/dev/null || true
-  # Rename origin/main to something the script won't find.
-  git branch -m main unusual-name 2>/dev/null || true
   cd - >/dev/null
 
+  # No integration_branch in config, no origin, no common branch names.
   cat > "$CONFIG_DIR/project-config.yaml" <<'YAML'
 project_name: test
 YAML
 
   PATH="$WORK_TMP/fakebin:$PATH" \
-    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id nobase1 --repo "$clone_repo"
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id nobase1 --repo "$solo_repo"
 
-  # The fallback should detect origin/main from common-branch probing.
-  # If somehow it can't, it exits 2 incomplete.
-  # Since we pushed to origin/main and the script probes for it, it should work.
-  # This test verifies the script doesn't fall back to git ls-files.
-  [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
+  # Without any resolvable integration branch, the script exits 2 (incomplete).
+  [ "$status" -eq 2 ]
 }
 
 # --- Register write failure is propagated to stderr ---
