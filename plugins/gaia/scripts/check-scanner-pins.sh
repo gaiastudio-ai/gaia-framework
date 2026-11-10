@@ -16,7 +16,6 @@ set -euo pipefail
 LC_ALL=C
 export LC_ALL
 
-SCRIPT_NAME="check-scanner-pins.sh"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOLS_DIR="$(cd "$SCRIPT_DIR/../tools/gaia-tools" && pwd)"
 
@@ -101,13 +100,25 @@ while [ "$i" -lt "$scanner_count" ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Check 3: No loose version pins (>=, ~=, ^, latest).
+# Check 3: No loose version pins (>=, ~=, ^, :latest) in non-comment
+# Dockerfile instructions. Comment lines and pip install lines are exempt.
 # ---------------------------------------------------------------------------
-if grep -nE '(>=|~=|\^|:latest)' "$DOCKERFILE" | grep -vE '^[[:space:]]*#' | grep -v 'pip install' | head -5 | while IFS= read -r line; do
-  _err "loose version pin in Dockerfile: $line"
-done; then
-  : # handled in loop
-fi
+while IFS= read -r line; do
+  # Strip everything after # to get the instruction part only.
+  instr="$(printf '%s' "$line" | sed 's/[[:space:]]*#.*//')"
+  # Skip lines that are entirely comments (instruction part is empty or
+  # just a line number).
+  case "$instr" in
+    [0-9]*:) continue ;;
+    [0-9]*:[[:space:]]*) continue ;;
+  esac
+  # Skip pip install lines (pip uses >= legitimately in requirements).
+  case "$instr" in *pip*install*) continue ;; esac
+  case "$instr" in
+    *'>='*|*'~='*|*'^'*|*':latest'*)
+      _err "loose version pin in Dockerfile: $line" ;;
+  esac
+done < <(grep -nE '(>=|~=|\^|:latest)' "$DOCKERFILE" 2>/dev/null || true)
 
 # ---------------------------------------------------------------------------
 # Summary.

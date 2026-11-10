@@ -295,7 +295,7 @@ RUN curl -fsSL "https://dot.net/v1/dotnet-install.sh" -o /tmp/dotnet-install.sh 
     rm -f /tmp/dotnet-install.sh && \
     ln -s /opt/dotnet/dotnet /usr/local/bin/dotnet && \
     dotnet --info >/dev/null 2>&1 && \
-    dotnet tool install --tool-path /usr/local/bin Sarif.Multitool && \
+    dotnet tool install --tool-path /usr/local/bin Sarif.Multitool --version 5.0.2 && \
     /usr/local/bin/sarif --version && \
     rm -rf /root/.nuget /tmp/NuGetScratch
 
