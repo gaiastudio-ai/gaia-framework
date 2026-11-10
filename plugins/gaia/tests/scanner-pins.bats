@@ -35,6 +35,14 @@ ARG SYFT_VERSION=1.4.1
 ARG OSV_SCANNER_VERSION=1.7.4
 ARG GITLEAKS_VERSION=8.18.4
 ARG CPPCHECK_VERSION=2.10
+RUN echo "ff054e389ffb40619911f6bd75b3f46610245df9b11ab72fcdc2e08b9c34a09e  grype.tar.gz" | sha256sum -c
+RUN echo "20f55117742aec388bf28bb24122236d3705e53996a27524e934569c5a0992cb  grype.tar.gz" | sha256sum -c
+RUN echo "5e4c6a0d1ca28d25e060a29c7cca0aedc50d951bfb270b45bc9a71e86ac6fbe2  syft.tar.gz" | sha256sum -c
+RUN echo "a28d63bb2bca96092a1a42cd5afdd0787633ae05998935a5e6e2aac8f2e2ec44  syft.tar.gz" | sha256sum -c
+RUN echo "0b35daf50d3a9992836e7f78f56cb21b870da58f15f75c516dfb2c2ab4789d0f  osv" | sha256sum -c
+RUN echo "fe26a8bd00e38d2b70bd049a97e03f6c27ac8fd74d5608c2c48b425cf46568ae  osv" | sha256sum -c
+RUN echo "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d  gl.tar.gz" | sha256sum -c
+RUN echo "bf5f7f466ebfade1296c8bd32cf7d3f592c2aa78836aa9980ffbe2cadca7a861  gl.tar.gz" | sha256sum -c
 RUN apt-get install -y cppcheck=2.10-2
 RUN dotnet tool install --tool-path /usr/local/bin Sarif.Multitool --version 5.0.2
 FROM debian:bookworm-slim@sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d AS runtime
@@ -74,7 +82,7 @@ REQ
   [[ "$output" == *"all pins verified"* ]]
 }
 
-# --- FROM without digest (RF-20 case a) ---
+# --- FROM without digest ---
 
 @test "scanner pins: FROM without digest fails" {
   _write_clean_fixture
@@ -84,7 +92,7 @@ REQ
   [[ "$output" == *"FROM without"*"digest"* ]] || [[ "${lines[*]}" == *"FROM without"*"digest"* ]]
 }
 
-# --- pip install with loose pin (RF-20 case b) ---
+# --- pip install with loose pin ---
 
 @test "scanner pins: pip loose pin in Dockerfile fails" {
   _write_clean_fixture
@@ -95,7 +103,7 @@ REQ
   [[ "$output" == *"loose version pin"* ]] || [[ "${lines[*]}" == *"loose version pin"* ]]
 }
 
-# --- cppcheck apt unpinned (RF-20 case c) ---
+# --- cppcheck apt unpinned ---
 
 @test "scanner pins: cppcheck apt unpinned fails" {
   _write_clean_fixture
@@ -106,7 +114,7 @@ REQ
   [ "$status" -eq 1 ]
 }
 
-# --- pip lock file deleted (RF-20 case d) ---
+# --- pip lock file deleted ---
 
 @test "scanner pins: deleted pip lock file fails" {
   _write_clean_fixture
@@ -116,7 +124,7 @@ REQ
   [[ "$output" == *"lock file not found"* ]] || [[ "${lines[*]}" == *"lock file not found"* ]]
 }
 
-# --- sha256 value is bogus (RF-20 case e) ---
+# --- sha256 value is bogus ---
 
 @test "scanner pins: bogus sha256 in manifest fails" {
   _write_clean_fixture
@@ -128,7 +136,7 @@ REQ
   [[ "$output" == *"not 64 characters"* ]] || [[ "${lines[*]}" == *"not 64 characters"* ]]
 }
 
-# --- Sarif --version differs from manifest (RF-20 case f) ---
+# --- Sarif --version differs from manifest ---
 
 @test "scanner pins: Sarif.Multitool version mismatch fails" {
   _write_clean_fixture
@@ -158,6 +166,47 @@ REQ
   run "$CHECK_SCRIPT"
   [ "$status" -eq 1 ]
   [[ "$output" == *"version mismatch"* ]] || [[ "${lines[*]}" == *"version mismatch"* ]]
+}
+
+# --- Unversioned pip install ---
+
+@test "scanner pins: unversioned pip install fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Add an unversioned pip install line.
+  printf 'RUN pip install --break-system-packages semgrep\n' >> "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unversioned pip install"* ]] || [[ "${lines[*]}" == *"unversioned pip install"* ]]
+}
+
+# --- Dockerfile sha256 differs from manifest ---
+
+@test "scanner pins: Dockerfile sha256 differs from manifest fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  local M="$WORK_TMP/plugins/gaia/tools/gaia-tools/scanner-manifest.json"
+  # Change a manifest sha256 to something different but valid length.
+  local new_sha; new_sha="$(printf 'a%.0s' {1..64})"
+  local tmp_m; tmp_m="$(jq --arg s "$new_sha" '.scanners[0].artifacts.amd64.sha256=$s' < "$M")"
+  printf '%s\n' "$tmp_m" > "$M"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not found in Dockerfile"* ]] || [[ "${lines[*]}" == *"not found in Dockerfile"* ]]
+}
+
+# --- Missing sha256sum verification ---
+
+@test "scanner pins: missing sha256sum verification fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Remove all sha256sum -c lines (simulating all verifications removed),
+  # but keep one curl download.
+  sed -i.bak '/sha256sum -c/d' "$D"
+  printf 'RUN curl -fsSL "https://example.com/tool.tgz" -o /tmp/tool.tgz\n' >> "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sha256sum"* ]] || [[ "${lines[*]}" == *"sha256sum"* ]]
 }
 
 # --- Verify the SHIPPED check script ---

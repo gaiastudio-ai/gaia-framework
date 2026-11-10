@@ -47,20 +47,37 @@ done
 [ -r "$INPUT" ] || { echo "run.sh: input file not readable: $INPUT" >&2; exit 1; }
 
 # Build the scan directory from the file list. Gitleaks scans directories,
-# so we create a temporary directory with symlinks to the listed files and
-# scan that. This respects the --input contract: only listed files are scanned.
+# so we create a temporary directory with the listed files and scan that.
+# This respects the --input contract: only listed files are scanned.
+# In container mode, files are copied (symlinks dangle inside the container).
+# In native mode, files are symlinked for efficiency.
 SCAN_TMP="$(mktemp -d -t gitleaks-scan-XXXXXX)"
 REPORT_TMP="$(mktemp -t gitleaks-report-XXXXXX.json)"
 _cleanup() { rm -rf "$SCAN_TMP" "$REPORT_TMP" 2>/dev/null || true; }
 trap _cleanup EXIT
 
+_use_copy="false"
+[ "$RUNTIME_PROFILE" = "container" ] && _use_copy="true"
+
 file_count=0
 while IFS= read -r _line; do
   [ -n "$_line" ] || continue
   if [ -f "$_line" ]; then
-    _parent="$SCAN_TMP/${_line%/*}"
+    # Use parameter expansion instead of dirname/basename to avoid
+    # treating leading-dash filenames as options.
+    case "$_line" in
+      */*) _dir_part="${_line%/*}"; _base_part="${_line##*/}" ;;
+      *)   _dir_part="."; _base_part="$_line" ;;
+    esac
+    _parent="$SCAN_TMP/$_dir_part"
     mkdir -p "$_parent" 2>/dev/null || true
-    ln -sf "$(cd "$(dirname "$_line")" && pwd)/$(basename "$_line")" "$SCAN_TMP/$_line" 2>/dev/null || true
+    if [ "$_use_copy" = "true" ]; then
+      cp -- "$_line" "$SCAN_TMP/$_line" 2>/dev/null || continue
+    else
+      # Resolve the source to an absolute path for the symlink target.
+      _abs_dir="$(cd -- "$_dir_part" 2>/dev/null && pwd)" || continue
+      ln -sf "${_abs_dir}/${_base_part}" "$SCAN_TMP/$_line" 2>/dev/null || true
+    fi
     file_count=$((file_count + 1))
   fi
 done < "$INPUT"

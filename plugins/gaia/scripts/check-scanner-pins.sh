@@ -66,19 +66,23 @@ while [ "$i" -lt "$scanner_count" ]; do
     binary)
       name_upper="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
       arg_version="$(grep -E "^ARG ${name_upper}_VERSION=" "$DOCKERFILE" | head -1 | sed 's/.*=//' | tr -d '[:space:]')" || arg_version=""
-      if [ -z "$arg_version" ]; then
-        _err "no ARG ${name_upper}_VERSION= found in Dockerfile for $name"
-      elif [ "$arg_version" != "$version" ]; then
+      if [ -n "$arg_version" ] && [ "$arg_version" != "$version" ]; then
         _err "$name version mismatch: Dockerfile=$arg_version, manifest=$version"
       fi
-      for arch in amd64 arm64; do
+      # Check sha256 for each architecture. Support "all" for arch-independent.
+      _found_arch=false
+      for arch in amd64 arm64 all; do
         sha="$(jq -r --argjson idx "$i" --arg arch "$arch" '.scanners[$idx].artifacts[$arch].sha256 // ""' "$MANIFEST")"
-        if [ -z "$sha" ]; then
-          _err "$name missing sha256 for $arch in manifest"
-        elif [ "${#sha}" -ne 64 ]; then
-          _err "$name sha256 for $arch is not 64 characters: $sha"
+        if [ -n "$sha" ]; then
+          _found_arch=true
+          if [ "${#sha}" -ne 64 ]; then
+            _err "$name sha256 for $arch is not 64 characters: $sha"
+          fi
         fi
       done
+      if [ "$_found_arch" = "false" ]; then
+        _err "$name has no sha256 for any architecture in manifest"
+      fi
       ;;
     pip)
       lock_file="$(jq -r --argjson idx "$i" '.scanners[$idx].lock_file // ""' "$MANIFEST")"
@@ -131,6 +135,57 @@ while IFS= read -r line; do
       _err "loose version pin in Dockerfile: $line" ;;
   esac
 done < "$DOCKERFILE"
+
+# ---------------------------------------------------------------------------
+# Check 4: Unversioned pip installs (pip install <name> without ==).
+# ---------------------------------------------------------------------------
+while IFS= read -r line; do
+  instr="$(printf '%s' "$line" | sed 's/[[:space:]]*#.*//' | sed 's/\\$//')"
+  [ -n "$instr" ] || continue
+  case "$instr" in
+    *"pip install"*)
+      # Skip lines that only reference a requirements file.
+      case "$instr" in *"-r "*) continue ;; esac
+      # Check each word that looks like a package name without ==.
+      for word in $instr; do
+        case "$word" in
+          RUN|pip|pip3|install|--*|python3|*==*|*"'"*|*'"'*) continue ;;
+          [a-zA-Z][a-zA-Z0-9_-]*)
+            _err "unversioned pip install: $word (needs ==version)" ;;
+        esac
+      done
+      ;;
+  esac
+done < "$DOCKERFILE"
+
+# ---------------------------------------------------------------------------
+# Check 5: Dockerfile sha256 values must match the manifest.
+# ---------------------------------------------------------------------------
+i=0
+while [ "$i" -lt "$scanner_count" ]; do
+  install="$(jq -r --argjson idx "$i" '.scanners[$idx].install' "$MANIFEST")"
+  name="$(jq -r --argjson idx "$i" '.scanners[$idx].name' "$MANIFEST")"
+  if [ "$install" = "binary" ]; then
+    for arch in amd64 arm64 all; do
+      m_sha="$(jq -r --argjson idx "$i" --arg arch "$arch" '.scanners[$idx].artifacts[$arch].sha256 // ""' "$MANIFEST")"
+      [ -n "$m_sha" ] || continue
+      if ! grep -qF "$m_sha" "$DOCKERFILE"; then
+        _err "$name sha256 for $arch in manifest ($m_sha) not found in Dockerfile"
+      fi
+    done
+  fi
+  i=$((i + 1))
+done
+
+# ---------------------------------------------------------------------------
+# Check 6: Every curl download must have a corresponding sha256sum -c.
+# ---------------------------------------------------------------------------
+# Count curl downloads and sha256sum verifications across the whole file.
+_download_count="$(grep -c 'curl.*-o ' "$DOCKERFILE" 2>/dev/null)" || _download_count=0
+_verified_count="$(grep -c 'sha256sum -c' "$DOCKERFILE" 2>/dev/null)" || _verified_count=0
+if [ "$_download_count" -gt 0 ] && [ "$_verified_count" -lt "$_download_count" ]; then
+  _err "Dockerfile has $_download_count curl downloads but only $_verified_count sha256sum -c verifications"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary.

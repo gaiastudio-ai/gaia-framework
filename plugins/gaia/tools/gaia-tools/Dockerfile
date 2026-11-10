@@ -114,6 +114,7 @@ RUN ARCH=$(cat /opt/fetch/.arch_osv) && \
 # single multi-platform .tgz, no arch split.
 RUN curl -fsSL "https://github.com/spotbugs/spotbugs/releases/download/${SPOTBUGS_VERSION}/spotbugs-${SPOTBUGS_VERSION}.tgz" \
       -o spotbugs.tgz && \
+    echo "11629b13aad39c453c23f8a8a43096b003afb55924a17424a9e1bc722190576b  spotbugs.tgz" | sha256sum -c && \
     tar -xzf spotbugs.tgz && \
     chmod -R +x "spotbugs-${SPOTBUGS_VERSION}/bin/" && \
     mv "spotbugs-${SPOTBUGS_VERSION}" /opt/fetch/spotbugs && \
@@ -183,6 +184,10 @@ RUN apt-get update && \
     esac && \
     curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_${YQ_ARCH}" \
       -o /usr/local/bin/yq && \
+    case "${ARCH}" in \
+      amd64) echo "6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3  /usr/local/bin/yq" | sha256sum -c ;; \
+      arm64) echo "8c12fcc10e14774ca6624cc282f092a526568b036fe1192258c3aecbad56d063  /usr/local/bin/yq" | sha256sum -c ;; \
+    esac && \
     chmod +x /usr/local/bin/yq && \
     yq --version
 
@@ -213,12 +218,18 @@ RUN pip install --break-system-packages --require-hashes \
     checkov --version
 
 # Bake semgrep default rules at build time for offline scanning.
-# semgrep --config auto downloads the recommended ruleset on first run;
-# cache it under /root/.semgrep so --network=none runs have rules available.
-RUN semgrep --config "p/default" --validate 2>/dev/null; \
-    mkdir -p /opt/semgrep-rules && \
-    cp -r /root/.semgrep/semgrep_rules/* /opt/semgrep-rules/ 2>/dev/null || \
-    semgrep --config "p/default" --target /dev/null --json 2>/dev/null || true
+# Fetch the p/default ruleset into /opt/semgrep-rules so the image can
+# scan offline with --config /opt/semgrep-rules/. semgrep stores
+# downloaded rules under $XDG_CONFIG_HOME/semgrep (or /root/.semgrep).
+RUN mkdir -p /opt/semgrep-rules /tmp/semgrep-bake && \
+    printf '# empty target\n' > /tmp/semgrep-bake/empty.py && \
+    semgrep --config "p/default" --json /tmp/semgrep-bake/empty.py 2>/dev/null || true && \
+    find /root/.semgrep -name '*.yaml' -o -name '*.yml' | head -1 | xargs -I{} dirname {} | \
+      xargs -I{} cp -r {}/* /opt/semgrep-rules/ 2>/dev/null || true && \
+    RULE_COUNT=$(find /opt/semgrep-rules -name '*.yaml' -o -name '*.yml' 2>/dev/null | wc -l) && \
+    echo "Baked ${RULE_COUNT} semgrep rule files" && \
+    [ "${RULE_COUNT}" -gt 0 ] || { echo "ERROR: semgrep rule bake produced no rules" >&2; exit 1; } && \
+    rm -rf /tmp/semgrep-bake
 
 # Pure-pip Tier 1 tools.
 RUN pip install --break-system-packages \

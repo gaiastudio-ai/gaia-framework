@@ -68,22 +68,26 @@ while IFS= read -r _line; do
   local_dir="${_line%/*}"
   [ "$local_dir" = "$_line" ] && local_dir="."
 
-  # Walk up from local_dir. Use an absolute path to avoid the no-op bug
-  # where ${d%/*} is the same as d for a single-component relative path.
+  # Walk up from local_dir to the repo root ("."), checking each directory
+  # for lockfiles. The loop must always reach "." even for single-component
+  # paths like "src" (where ${d%/*} == d without a slash).
   d="$local_dir"
   while true; do
     if _has_lockfile "$d"; then
       _found_root="$d"
       break
     fi
-    parent="${d%/*}"
-    # If parent equals d, we've hit the root (. or /).
-    if [ "$parent" = "$d" ]; then
+    # Already at the root — stop.
+    if [ "$d" = "." ]; then
       break
     fi
-    # Handle the case where d was a single-component path like "src".
-    [ -z "$parent" ] && parent="."
-    d="$parent"
+    parent="${d%/*}"
+    # Single-component (no slash) or empty → move to root ".".
+    if [ "$parent" = "$d" ] || [ -z "$parent" ]; then
+      d="."
+    else
+      d="$parent"
+    fi
   done
   [ -n "$_found_root" ] && break
 done < "$INPUT"

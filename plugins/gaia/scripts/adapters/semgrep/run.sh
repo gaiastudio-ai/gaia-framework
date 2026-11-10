@@ -73,9 +73,9 @@ _run_docker() {
   for t in "${TARGETS[@]}"; do
     docker_targets+=("/workspace/$t")
   done
-  local project_root="${PROJECT_ROOT:-.}"
+  local code_root; code_root="$(pwd)"
   docker run --rm --network=none \
-    -v "${project_root}:/workspace:ro" \
+    -v "${code_root}:/workspace:ro" \
     "$image" "${args[@]}" -- "${docker_targets[@]}" 2>/dev/null
 }
 

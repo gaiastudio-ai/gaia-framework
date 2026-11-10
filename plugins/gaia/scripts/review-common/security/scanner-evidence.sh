@@ -167,7 +167,7 @@ if _check_reusable; then
 fi
 
 # ---------------------------------------------------------------------------
-# Resolve the scanner set (AC3).
+# Resolve the scanner set.
 # ---------------------------------------------------------------------------
 _scanner_categories="sast secret-scan dep-audit"
 
@@ -249,15 +249,53 @@ elif [ -d "$REPO_PATH" ]; then
   # this story changed, not the whole repository.
   _story_file="$story_dir/story.md"
   if command -v git >/dev/null 2>&1 && git -C "$REPO_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    # Diff from merge base to HEAD — the story's changed files.
-    _base="$(git -C "$REPO_PATH" merge-base HEAD origin/staging 2>/dev/null)" || _base=""
-    if [ -n "$_base" ]; then
-      git -C "$REPO_PATH" diff --name-only "$_base"..HEAD 2>/dev/null > "$_file_list_tmp"
+    # Resolve the integration branch from config, then fall back to
+    # the repo's default branch. Never hard-code a branch name.
+    _integration_branch=""
+    if [ -f "$_config_file" ] && command -v yq >/dev/null 2>&1; then
+      _integration_branch="$(yq -r '.ci_cd.integration_branch // ""' "$_config_file" 2>/dev/null)" || _integration_branch=""
     fi
-    # If the diff is empty (no merge base, or HEAD==staging), fall back to
-    # tracked files — but only as a last resort.
-    if [ ! -s "$_file_list_tmp" ]; then
-      git -C "$REPO_PATH" ls-files --cached --others --exclude-standard 2>/dev/null > "$_file_list_tmp"
+    if [ -z "$_integration_branch" ]; then
+      # Detect the default branch from the remote.
+      _integration_branch="$(git -C "$REPO_PATH" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/origin/||')" || _integration_branch=""
+    fi
+    if [ -z "$_integration_branch" ]; then
+      # Last resort: check common branch names.
+      for _try_branch in main master staging; do
+        if git -C "$REPO_PATH" rev-parse --verify "origin/$_try_branch" >/dev/null 2>&1; then
+          _integration_branch="$_try_branch"
+          break
+        fi
+      done
+    fi
+    # Diff from merge base to HEAD — the story's changed files.
+    _base=""
+    if [ -n "$_integration_branch" ]; then
+      _base="$(git -C "$REPO_PATH" merge-base HEAD "origin/$_integration_branch" 2>/dev/null)" || _base=""
+    fi
+    if [ -n "$_base" ]; then
+      # Only include files that exist (--diff-filter=d excludes deletions).
+      git -C "$REPO_PATH" diff --diff-filter=d --name-only "$_base"..HEAD 2>/dev/null > "$_file_list_tmp"
+    fi
+    # If no base could be resolved, the run is incomplete — do not fall back
+    # to the whole repo, which would be a performance and correctness issue.
+    if [ -z "$_base" ] && [ ! -s "$_file_list_tmp" ]; then
+      printf '%s: cannot resolve diff base (no integration branch found). Run is incomplete.\n' "$SCRIPT_NAME" >&2
+      printf '%s: set ci_cd.integration_branch in project config or ensure origin has a default branch.\n' "$SCRIPT_NAME" >&2
+      # Write an incomplete manifest and exit 2.
+      mkdir -p "$EVIDENCE_DIR"
+      manifest="$(jq -nc \
+        --argjson version 1 \
+        --arg story "$STORY_KEY" \
+        --arg run_id "$RUN_ID" \
+        --arg head_sha "$head_sha" \
+        '{version: $version, story: $story, run_id: $run_id, head_sha: $head_sha,
+          enabled: true, complete: false, adapters: []}')"
+      _tmp="$(mktemp "$EVIDENCE_DIR/evidence-manifest.json.XXXXXX")"
+      printf '%s\n' "$manifest" > "$_tmp"
+      mv "$_tmp" "$EVIDENCE_DIR/evidence-manifest.json"
+      printf '%s\n' "$EVIDENCE_DIR/evidence-manifest.json"
+      exit 2
     fi
   else
     find "$REPO_PATH" -type f 2>/dev/null | sed "s|^${REPO_PATH}/||" > "$_file_list_tmp"
@@ -307,6 +345,20 @@ for _adapter_name in "${_scanner_set[@]}"; do
   if [ "$_state" = "not_applicable" ] && [ ! -f "$_frag_file" ]; then
     jq -nc --arg name "$_adapter_name" --arg reason "$_skip_reason" \
       '{name: $name, status: "not_applicable", reason: $reason, findings: []}' > "$_frag_file"
+  fi
+
+  # Check the fragment for not_applicable status. Adapters (e.g. osv-scanner)
+  # may write a fragment with status: not_applicable and exit 0; the probe then
+  # reports state: available. Read the fragment to pick up that status.
+  if [ -f "$_frag_file" ] && [ "$_state" = "available" ]; then
+    _frag_status="$(jq -r '.status // ""' "$_frag_file" 2>/dev/null)" || _frag_status=""
+    if [ "$_frag_status" = "not_applicable" ]; then
+      _state="not_applicable"
+      _frag_reason="$(jq -r '.reason // ""' "$_frag_file" 2>/dev/null)" || _frag_reason=""
+      if [ -n "$_frag_reason" ]; then
+        _skip_reason="$_frag_reason"
+      fi
+    fi
   fi
 
   # Compute fragment hash — only if fragment exists and is valid JSON.
@@ -387,13 +439,18 @@ printf '%s\n' "$manifest" > "$_tmp"
 mv "$_tmp" "$EVIDENCE_DIR/evidence-manifest.json"
 
 # ---------------------------------------------------------------------------
-# Write scanner findings to the findings register (RF-11 / tasks 3.1b, 3.2).
+# Write scanner findings to the findings register.
 # Only when the evidence is complete — incomplete scans keep their HALT and
-# do not pollute the register with partial data.
+# do not pollute the register with partial data. A register write failure is
+# logged but does not change the evidence exit code (the evidence itself is valid).
 # ---------------------------------------------------------------------------
 _findings_register="$SCRIPT_DIR/scanner-findings-register.sh"
 if [ "$complete_bool" = "true" ] && [ -x "$_findings_register" ]; then
-  "$_findings_register" --story "$STORY_KEY" --manifest "$EVIDENCE_DIR/evidence-manifest.json" || true
+  _reg_rc=0
+  "$_findings_register" --story "$STORY_KEY" --manifest "$EVIDENCE_DIR/evidence-manifest.json" || _reg_rc=$?
+  if [ "$_reg_rc" -ne 0 ]; then
+    printf '%s: findings register write failed (rc=%d)\n' "$SCRIPT_NAME" "$_reg_rc" >&2
+  fi
 fi
 
 printf '%s\n' "$EVIDENCE_DIR/evidence-manifest.json"

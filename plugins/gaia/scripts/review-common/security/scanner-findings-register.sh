@@ -104,15 +104,17 @@ while [ "$i" -lt "$adapter_count" ]; do
     # Build the evidence string with the scanner source.
     evidence_text="scanner-first evidence: ${adapter_name} finding ${f_id}"
 
-    "$REGISTER_WRITE" add \
+    if ! "$REGISTER_WRITE" add \
       --story "$STORY_KEY" \
       --defect "$f_msg" \
       --type "security" \
       --severity "$mapped_sev" \
       --gate "security-review" \
       --evidence "$evidence_text" \
-      --dedup-key "$dedup" \
-      2>/dev/null || true
+      --dedup-key "$dedup"; then
+      printf 'scanner-findings-register: register-write.sh failed for %s finding %s (rc=%d)\n' "$adapter_name" "$f_id" "$?" >&2
+      exit 1
+    fi
 
     added=$((added + 1))
     j=$((j + 1))

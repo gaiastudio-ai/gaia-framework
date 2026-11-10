@@ -255,6 +255,11 @@ root and emits a single `analysis-results.json`-shaped check fragment under the
   remains a fully standalone path — the standalone skill resolves its own
   rubric and emits its own verdict (independent of this sub-routine wiring).
 
+When scanner-first evidence is available, the sub-routine deduplicates its
+dependency findings against the scanner evidence: findings already reported
+by the osv-scanner adapter (matched by package name and advisory ID) are
+omitted from the sub-routine's output to avoid inflating the findings count.
+
 The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
 the sub-routine ran (skipped fragments included for transparency).
 

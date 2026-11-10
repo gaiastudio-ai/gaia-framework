@@ -442,9 +442,11 @@ main() {
     _render_block "$s" "${applicable[@]}"
   done
 
-  # Scanner-first health section (AC13, AC14).
+  # Scanner-first health section: reads the manifest, resolves the active set,
+  # probes each scanner, and shows runner and would-HALT status.
   _render_scanner_health() {
     local config_file="${PROJECT_CONFIG:-${PROJECT_ROOT_ARG}/.gaia/config/project-config.yaml}"
+    local manifest_file="${SKILL_DIR}/../../tools/gaia-tools/scanner-manifest.json"
     local enabled="on (default)"
     if [ -f "$config_file" ] && command -v yq >/dev/null 2>&1; then
       local raw; raw="$(yq -o=json '.review.scanner_first_enabled' "$config_file" 2>/dev/null)" || raw="null"
@@ -456,18 +458,62 @@ main() {
     fi
     echo ""
     echo "Scanner-first: $enabled"
-    # Probe each scanner in the default set.
-    local scanners=(semgrep osv-scanner gitleaks checkov cppcheck)
-    local scanner_status=""
-    for s in "${scanners[@]}"; do
-      if command -v "$s" >/dev/null 2>&1; then
-        local sv; sv="$("$s" --version 2>/dev/null | head -1)" || sv="unknown"
-        scanner_status="${scanner_status}  $s: present ($sv)\n"
-      else
-        scanner_status="${scanner_status}  $s: missing\n"
+
+    # Resolve the scanner set (same logic as scanner-evidence.sh).
+    local scanner_set=()
+    local _has_custom=false
+    if [ -f "$config_file" ] && command -v yq >/dev/null 2>&1; then
+      local _configured
+      _configured="$(yq -o=json '.tools // {}' "$config_file" 2>/dev/null | \
+        jq -r 'to_entries[] | select(.key != "aggregation") | .value.provider // empty' 2>/dev/null)" || _configured=""
+      if [ -n "$_configured" ]; then
+        local _scanner_cats="sast secret-scan dep-audit"
+        local _adapters_dir="${SKILL_DIR}/../../scripts/adapters"
+        while IFS= read -r _prov; do
+          [ -n "$_prov" ] || continue
+          local _cat=""
+          if [ -f "$_adapters_dir/$_prov/adapter.json" ]; then
+            _cat="$(jq -r '.category // ""' "$_adapters_dir/$_prov/adapter.json" 2>/dev/null)" || _cat=""
+          fi
+          case " $_scanner_cats " in
+            *" $_cat "*) scanner_set+=("$_prov"); _has_custom=true ;;
+          esac
+        done <<< "$_configured"
       fi
+    fi
+    if [ "${#scanner_set[@]}" -eq 0 ]; then
+      scanner_set=(semgrep osv-scanner)
+    fi
+
+    # Resolve the runtime profile.
+    local runner="native"
+    if [ -f "$config_file" ] && command -v yq >/dev/null 2>&1; then
+      runner="$(yq -r '.brownfield.tools.runner // "native"' "$config_file" 2>/dev/null)" || runner="native"
+    fi
+
+    # Probe each scanner and display in a table.
+    printf '  %-16s %-10s %-10s %s\n' "Scanner" "Status" "Runner" "Would-HALT"
+    printf '  %-16s %-10s %-10s %s\n' "-------" "------" "------" "----------"
+    for s in "${scanner_set[@]}"; do
+      local sv=""
+      local status="missing"
+      local would_halt="yes"
+      if command -v "$s" >/dev/null 2>&1; then
+        sv="$("$s" --version 2>/dev/null | head -1)" || sv="unknown"
+        status="present"
+        would_halt="no"
+      elif [ "$runner" = "docker" ]; then
+        status="docker"
+        would_halt="no"
+      fi
+      # Read version from manifest if available.
+      local m_ver=""
+      if [ -f "$manifest_file" ]; then
+        m_ver="$(jq -r --arg n "$s" '.scanners[] | select(.name == $n) | .version // ""' "$manifest_file" 2>/dev/null)" || m_ver=""
+      fi
+      local ver_display="${sv:-${m_ver:-(unknown)}}"
+      printf '  %-16s %-10s %-10s %s\n' "$s ($ver_display)" "$status" "$runner" "$would_halt"
     done
-    printf '%b' "$scanner_status"
   }
   _render_scanner_health
 

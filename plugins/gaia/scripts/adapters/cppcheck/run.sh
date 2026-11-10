@@ -75,12 +75,12 @@ _run_docker() {
   for t in "${TARGETS[@]}"; do
     docker_targets+=("/workspace/$t")
   done
-  local project_root="${PROJECT_ROOT:-.}"
+  local code_root; code_root="$(pwd)"
   local xml_tmp
   xml_tmp="$(mktemp -t cppcheck-xml-XXXXXX)"
   local cpp_rc=0
   docker run --rm --network=none \
-    -v "${project_root}:/workspace:ro" \
+    -v "${code_root}:/workspace:ro" \
     "$image" cppcheck --xml --quiet -- "${docker_targets[@]}" 2>"$xml_tmp" || cpp_rc=$?
   cat "$xml_tmp"
   rm -f "$xml_tmp"
