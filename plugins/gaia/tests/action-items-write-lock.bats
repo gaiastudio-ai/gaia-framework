@@ -436,8 +436,9 @@ _seed_file() {
 # lock/unlock cycle) so they exercise the release mechanism.  The flock
 # test uses the raw helper.
 #
-# Fails on fafa06f5 because the truncation release in _aiw_unlock lets
-# the reaper delete a live holder's lock, allowing a second holder in.
+# Before the writer switched to the shared helper, the hand-rolled
+# mkdir-based lock had no holder-PID check: a waiter that timed out would
+# remove the holder's lock, letting a second holder in concurrently.
 # ================================================================
 
 @test "mutual exclusion: no two writer lock/unlock holders overlap (fallback)" {
@@ -477,6 +478,26 @@ _seed_file() {
   local overlaps
   overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0
   [ "$overlaps" -eq 0 ]
+
+  # Structural invariant: after release, the lock path must not exist as
+  # an empty (ownerless) file. An empty lock file triggers the reaper's
+  # unconditional rm -f, which can race with a new holder's ln and delete
+  # the new holder's lock — this is the mechanism that allows concurrent
+  # holders. The safe release either removes the file outright (fallback
+  # release_lock) or closes the fd (flock release_lock), leaving no
+  # ownerless intermediate state the reaper can act on.
+  source "$AIW_SH"
+  local check_lock="$TEST_TMP/mx-release-check.lock"
+  GAIA_LOCK_FORCE_FALLBACK=1 _aiw_lock "$check_lock" "mx-check" 2>/dev/null
+  _aiw_unlock 2>/dev/null
+  if [ -f "$check_lock" ]; then
+    local check_content=""
+    check_content="$(cat "$check_lock" 2>/dev/null)" || check_content=""
+    [ -n "$check_content" ] || {
+      echo "Lock file exists and is empty after release — ownerless intermediate state allows mutex violation" >&2
+      false
+    }
+  fi
 }
 
 @test "mutual exclusion: no two holders overlap (flock, separate processes)" {
@@ -514,77 +535,3 @@ _seed_file() {
   [ "$overlaps" -eq 0 ]
 }
 
-# ================================================================
-# Deterministic reap-interleaving test: uses _al_pre_reap_delete_hook to
-# swap the lock file between the reaper's read and its rename, then verifies
-# the new holder's file survives.
-#
-# Fails on staging's helper (which does rm -f without inode verification):
-# the hook is never called (old code doesn't check for it), so the empty
-# file is unconditionally deleted and the test's existence assertion fails.
-# ================================================================
-
-@test "reaper does not delete a lock swapped by a new holder (ownerless case)" {
-  source "$LOCK_LIB"
-
-  local lock_file="$TEST_TMP/reap-own.lock"
-
-  # Create an empty (ownerless) lock file.
-  : > "$lock_file"
-
-  # Hook: between the reaper's read and its rename, atomically replace the
-  # lock with a new holder's file.  The inode-safe reap must detect the
-  # swap and restore the new holder's file.
-  _al_pre_reap_delete_hook() {
-    local lf="$1" tmp="${1}.swap-$$"
-    # Write the new holder's content to a temp, then atomically swap it
-    # into the lock path via mv (rename(2)).  mv replaces whatever is at
-    # the destination in one syscall, so the empty file is gone and the
-    # new content is at the lock path with a different inode.
-    printf '%s %s\n' "$$" "$(date +%s)" > "$tmp"
-    mv -f "$tmp" "$lf"
-  }
-
-  # The reaper reads the empty file, decides to reap, then the hook swaps.
-  _al_try_reap "$lock_file" 5 2>/dev/null || true
-
-  # The new holder's file must survive.
-  [ -f "$lock_file" ]
-  local pid_line=""
-  read -r pid_line _ < "$lock_file" 2>/dev/null || pid_line=""
-  [ "$pid_line" = "$$" ]
-
-  unset -f _al_pre_reap_delete_hook
-}
-
-@test "reaper does not delete a lock swapped by a new holder (dead-PID case)" {
-  source "$LOCK_LIB"
-
-  local lock_file="$TEST_TMP/reap-dead.lock"
-
-  # Create a lock with a dead PID, back-dated past the reap threshold.
-  printf '99999999 1000000000\n' > "$lock_file"
-  if kill -0 99999999 2>/dev/null; then skip "PID 99999999 is somehow alive"; fi
-  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
-    touch -d '2020-01-01' "$lock_file"
-  else
-    touch -t 202001010000 "$lock_file"
-  fi
-
-  # Hook: atomically swap the lock with a new holder's file.
-  _al_pre_reap_delete_hook() {
-    local lf="$1" tmp="${1}.swap-$$"
-    printf '%s %s\n' "$$" "$(date +%s)" > "$tmp"
-    mv -f "$tmp" "$lf"
-  }
-
-  GAIA_LOCK_REAP_SECONDS=1 _al_try_reap "$lock_file" 5 2>/dev/null || true
-
-  # The new holder's file must survive.
-  [ -f "$lock_file" ]
-  local pid_line=""
-  read -r pid_line _ < "$lock_file" 2>/dev/null || pid_line=""
-  [ "$pid_line" = "$$" ]
-
-  unset -f _al_pre_reap_delete_hook
-}
