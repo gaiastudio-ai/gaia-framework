@@ -359,6 +359,7 @@ core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
+core	scanner-evidence.bats
 core	scripts/review-common/qa/qa-bridge-integration.bats
 core	scripts/review-common/qa/qa-execution-evidence.bats
 core	scripts/review-common/qa/qa-tc-generation.bats
@@ -779,7 +780,6 @@ scripts-review-common	probe-state-to-check-status.bats
 scripts-review-common	regime-loading.bats
 scripts-review-common	retention-policy-check.bats
 scripts-review-common	review-all-skip-rule.bats
-scripts-review-common	scanner-evidence.bats
 scripts-review-common	scripts/review-common/action/coverage-delta.bats
 scripts-review-common	security-privacy-integration.bats
 scripts-review-common	smell-detector.bats
