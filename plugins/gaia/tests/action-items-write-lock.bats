@@ -475,9 +475,11 @@ _seed_file() {
   done
   for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
 
-  local overlaps
+  local overlaps fails
   overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0
+  fails="$(grep -c '^FAIL$' "$log" 2>/dev/null)" || fails=0
   [ "$overlaps" -eq 0 ]
+  [ "$fails" -eq 0 ]
 
   # Structural invariant: after release, the lock path must not exist as
   # an empty (ownerless) file. An empty lock file triggers the reaper's
@@ -529,6 +531,124 @@ _seed_file() {
     pids+=($!)
   done
   for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  local overlaps
+  overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0
+  [ "$overlaps" -eq 0 ]
+}
+
+# ================================================================
+# Deterministic interleaving: the release-to-acquire window.
+#
+# After a holder releases via the fallback path, the reaper in a
+# concurrent acquirer may remove the next holder's lock file.  Two
+# processes (R, B) race through _aiw_lock / _aiw_unlock; a shell-
+# function hook on rm pauses R's reaper (or a lock-steal mutation's
+# rm) at the critical instant so B acquires first.  When R resumes,
+# its rm deletes B's live lock and R re-acquires — overlap.
+#
+# Synchronisation is by marker files (polled), not by sleep timing.
+# The test catches both the empty-file reaper race (a release that
+# truncates instead of removing) and the lock-steal mutation (an rm
+# injected after acquire).
+# ================================================================
+
+@test "mutual exclusion: interleaved release-reaper detects no overlap (fallback)" {
+  local lock_file="$TEST_TMP/ir-fb.lock"
+  local log="$TEST_TMP/ir-fb.log"
+  local marker_B="$TEST_TMP/ir-fb-B"
+  local marker_R_saw="$TEST_TMP/ir-fb-Rsaw"
+  local marker_R_go="$TEST_TMP/ir-fb-Rgo"
+  : > "$log"
+
+  source "$AIW_SH"
+
+  # Phase 1: A acquires and releases.  A safe release removes the file
+  # outright; a buggy release (truncation) leaves an empty ownerless
+  # file that triggers the reaper race below.
+  GAIA_LOCK_FORCE_FALLBACK=1 _aiw_lock "$lock_file" "ir-setup" 2>/dev/null
+  _aiw_unlock 2>/dev/null
+
+  # Phase 2: R tries to acquire with a paused rm hook.  Any rm of the
+  # lock path during acquisition is paused until marker_R_go appears.
+  local _ir_lock_path="$lock_file"
+  bash -c '
+    _IR_LOCK='"'$_ir_lock_path'"'
+    _IR_SAW='"'$marker_R_saw'"'
+    _IR_GO='"'$marker_R_go'"'
+    _IR_B='"'$marker_B'"'
+    _IR_LOG='"'$log'"'
+    source "'"$AIW_SH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=8
+    _ir_acq=0
+    rm() {
+      if [ "$_ir_acq" = "0" ]; then
+        local _a
+        for _a in "$@"; do
+          if [ "$_a" = "$_IR_LOCK" ]; then
+            touch "$_IR_SAW"
+            while [ ! -e "$_IR_GO" ]; do
+              sleep 0.02 2>/dev/null || sleep 1
+            done
+            break
+          fi
+        done
+      fi
+      command rm "$@"
+    }
+    _aiw_lock "$_IR_LOCK" "R" 2>/dev/null || { echo "R_TIMEOUT" >> "$_IR_LOG"; exit 0; }
+    _ir_acq=1
+    # Poll for B inside (marker-ordered, not timed).
+    _rw=0
+    while [ ! -e "$_IR_B" ] && [ "$_rw" -lt 40 ]; do
+      sleep 0.05 2>/dev/null || sleep 1; _rw=$((_rw + 1))
+    done
+    [ -e "$_IR_B" ] && echo "OVERLAP" >> "$_IR_LOG"
+    _aiw_unlock 2>/dev/null
+  ' &
+  local rp=$!
+
+  # Wait for R to pause (its hook fired) or for R to finish (head path:
+  # file was already gone, no hook).
+  local _w=0
+  while [ ! -e "$marker_R_saw" ] && kill -0 "$rp" 2>/dev/null; do
+    sleep 0.05 2>/dev/null || sleep 1
+    _w=$(( _w + 1 ))
+    [ "$_w" -ge 60 ] && break   # ~3 s ceiling
+  done
+
+  if [ -e "$marker_R_saw" ]; then
+    # R paused — start B so it acquires before R resumes.
+    bash -c '
+      _IR_LOCK='"'$_ir_lock_path'"'
+      _IR_B='"'$marker_B'"'
+      _IR_LOG='"'$log'"'
+      source "'"$AIW_SH"'"
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=8
+      _aiw_lock "$_IR_LOCK" "B" 2>/dev/null || { echo "B_TIMEOUT" >> "$_IR_LOG"; exit 0; }
+      touch "$_IR_B"
+      echo "B_IN" >> "$_IR_LOG"
+      # Hold for 2 s — long enough for R to enter and check the marker.
+      sleep 2 2>/dev/null || sleep 2
+      command rm -f "$_IR_B"
+      _aiw_unlock 2>/dev/null
+    ' &
+    local bp=$!
+    # Wait for B to enter, then resume R.
+    local _bwait=0
+    while [ ! -e "$marker_B" ] && kill -0 "$bp" 2>/dev/null; do
+      sleep 0.05 2>/dev/null || sleep 1
+      _bwait=$(( _bwait + 1 ))
+      [ "$_bwait" -ge 60 ] && break
+    done
+    touch "$marker_R_go"
+    wait "$rp" 2>/dev/null || true
+    wait "$bp" 2>/dev/null || true
+  else
+    # R never paused — head path (no empty file, no lock-steal).
+    touch "$marker_R_go"
+    wait "$rp" 2>/dev/null || true
+  fi
 
   local overlaps
   overlaps="$(grep -c '^OVERLAP$' "$log" 2>/dev/null)" || overlaps=0

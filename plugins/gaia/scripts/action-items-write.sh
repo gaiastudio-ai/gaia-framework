@@ -57,13 +57,12 @@ _AIW_LOCK_FD=6
 # override, and maps acquire_lock exit codes to the writer's stdout protocol.
 # Returns 0 on success, 1 on failure (with status=error already printed).
 #
-# The shared helper's fallback release_lock uses $$ (the parent-shell PID)
-# for its holder check.  When several subshells of one parent contend, a
-# release in one subshell can rm -f another subshell's just-linked lock
-# because their $$ values match.  The post-link publication inode check then
-# fails (the file was removed between ln and stat).  This wrapper retries on
-# non-timeout failures within the configured timeout so a transient refusal
-# does not propagate as a hard failure.
+# The shared helper's fallback path has a transient failure mode: the
+# reaper can rm an ownerless lock file between a concurrent acquirer's
+# ln and its publication-inode stat, causing the publication check to
+# fail.  This wrapper retries on non-timeout failures within the
+# configured timeout so a transient refusal does not propagate as a
+# hard failure.
 # ---------------------------------------------------------------------------
 _aiw_lock() {
   local lock_file="$1" caller="$2"
@@ -101,9 +100,9 @@ _aiw_lock() {
       return 1
     fi
 
-    # Transient failure (e.g. fallback publication check — a concurrent
-    # release_lock rm'd the lock between our ln and stat because $$ is
-    # shared among subshells): retry within the overall timeout.
+    # Transient failure (e.g. the reaper rm'd an ownerless lock between
+    # our ln and the publication-inode stat): retry within the overall
+    # timeout.
     _now="$(date +%s)"
     _elapsed=$(( _now - _start ))
     if [ "$_elapsed" -ge "$_timeout" ]; then
