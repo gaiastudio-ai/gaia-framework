@@ -218,18 +218,23 @@ RUN pip install --break-system-packages --require-hashes \
     checkov --version
 
 # Bake semgrep default rules at build time for offline scanning.
-# Fetch the p/default ruleset into /opt/semgrep-rules so the image can
-# scan offline with --config /opt/semgrep-rules/. semgrep stores
-# downloaded rules under $XDG_CONFIG_HOME/semgrep (or /root/.semgrep).
-RUN mkdir -p /opt/semgrep-rules /tmp/semgrep-bake && \
-    printf '# empty target\n' > /tmp/semgrep-bake/empty.py && \
-    semgrep --config "p/default" --json /tmp/semgrep-bake/empty.py 2>/dev/null || true && \
-    find /root/.semgrep -name '*.yaml' -o -name '*.yml' | head -1 | xargs -I{} dirname {} | \
-      xargs -I{} cp -r {}/* /opt/semgrep-rules/ 2>/dev/null || true && \
-    RULE_COUNT=$(find /opt/semgrep-rules -name '*.yaml' -o -name '*.yml' 2>/dev/null | wc -l) && \
-    echo "Baked ${RULE_COUNT} semgrep rule files" && \
-    [ "${RULE_COUNT}" -gt 0 ] || { echo "ERROR: semgrep rule bake produced no rules" >&2; exit 1; } && \
-    rm -rf /tmp/semgrep-bake
+# Download the p/default ruleset from the Semgrep Registry API and save as
+# JSON (semgrep accepts JSON rule files). Offline scans use
+# --config /opt/semgrep-rules/.
+RUN mkdir -p /opt/semgrep-rules && \
+    python3 -c " \
+import urllib.request, json, sys; \
+data = urllib.request.urlopen('https://semgrep.dev/api/registry/rules?config=p/default', timeout=30).read(); \
+rules = json.loads(data); \
+out = rules if isinstance(rules, list) else rules.get('rules', []); \
+open('/opt/semgrep-rules/default.json','w').write(json.dumps({'rules': out})); \
+print(f'Baked {len(out)} semgrep rules'); \
+assert len(out) > 0, 'no rules fetched' \
+" && \
+    printf 'x = 1\n' > /tmp/verify.py && \
+    semgrep --config /opt/semgrep-rules/default.json --json /tmp/verify.py 2>/dev/null && \
+    rm -f /tmp/verify.py && \
+    echo "Semgrep offline scan verified"
 
 # Pure-pip Tier 1 tools.
 RUN pip install --break-system-packages \
