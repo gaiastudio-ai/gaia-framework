@@ -441,15 +441,17 @@ mv "$_tmp" "$EVIDENCE_DIR/evidence-manifest.json"
 # ---------------------------------------------------------------------------
 # Write scanner findings to the findings register.
 # Only when the evidence is complete — incomplete scans keep their HALT and
-# do not pollute the register with partial data. A register write failure is
-# logged but does not change the evidence exit code (the evidence itself is valid).
+# do not pollute the register with partial data. A register write failure
+# marks the run incomplete: a finding that never reaches the register would
+# be invisible to the verdict resolver, which is fail-open.
 # ---------------------------------------------------------------------------
 _findings_register="$SCRIPT_DIR/scanner-findings-register.sh"
 if [ "$complete_bool" = "true" ] && [ -x "$_findings_register" ]; then
   _reg_rc=0
   "$_findings_register" --story "$STORY_KEY" --manifest "$EVIDENCE_DIR/evidence-manifest.json" || _reg_rc=$?
   if [ "$_reg_rc" -ne 0 ]; then
-    printf '%s: findings register write failed (rc=%d)\n' "$SCRIPT_NAME" "$_reg_rc" >&2
+    printf '%s: findings register write failed (rc=%d) — marking run incomplete\n' "$SCRIPT_NAME" "$_reg_rc" >&2
+    exit_code=2
   fi
 fi
 

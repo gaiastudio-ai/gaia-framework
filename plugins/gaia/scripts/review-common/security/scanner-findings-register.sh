@@ -67,6 +67,27 @@ _map_severity() {
 
 added=0
 
+# Build the osv-scanner finding-ID set for cross-adapter dedup.
+# When both osv-scanner and the dep-audit sub-routine report the same
+# advisory (matched by finding id), the dep-audit duplicate is skipped.
+_osv_ids=""
+_osv_frag_path=""
+_osv_idx="$(jq -r '[.adapters | to_entries[] | select(.value.name == "osv-scanner" and .value.state == "available" and .value.fragment != null) | .key] | first // empty' "$MANIFEST_PATH" 2>/dev/null)" || _osv_idx=""
+if [ -n "$_osv_idx" ]; then
+  _osv_frag="$(jq -r --argjson idx "$_osv_idx" '.adapters[$idx].fragment' "$MANIFEST_PATH" 2>/dev/null)" || _osv_frag=""
+  if [ -n "$_osv_frag" ] && [ -f "$evidence_dir/$_osv_frag" ]; then
+    _osv_frag_path="$evidence_dir/$_osv_frag"
+    _osv_ids="$(jq -r '.findings[].id // empty' "$_osv_frag_path" 2>/dev/null | sort -u)" || _osv_ids=""
+  fi
+fi
+
+_is_osv_dup() {
+  # Returns 0 if the finding ID is already in the osv-scanner fragment.
+  local fid="$1"
+  [ -n "$_osv_ids" ] || return 1
+  printf '%s\n' "$_osv_ids" | grep -qFx "$fid"
+}
+
 # Iterate over adapters that are available and have a fragment.
 adapter_count="$(jq '.adapters | length' "$MANIFEST_PATH")"
 i=0
@@ -96,6 +117,12 @@ while [ "$i" -lt "$adapter_count" ]; do
     f_source="$(jq -r --argjson idx "$j" '.findings[$idx].source // ""' "$frag_path")"
 
     mapped_sev="$(_map_severity "$f_sev")"
+
+    # Cross-adapter dedup: skip dep-audit findings already in osv-scanner.
+    if [ "$adapter_name" != "osv-scanner" ] && _is_osv_dup "$f_id"; then
+      j=$((j + 1))
+      continue
+    fi
 
     # Dedup key: run_id + fragment hash + finding id. This ensures
     # idempotency on re-run with the same evidence.

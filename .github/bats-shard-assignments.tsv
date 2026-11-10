@@ -844,5 +844,5 @@
 1	post-ci-smoke.bats	28
 3	review-semaphore.bats	50
 3	lint-pack.bats	74
-3	scanner-evidence.bats	24
+3	scanner-evidence.bats	31
 3	scanner-pins.bats	13
