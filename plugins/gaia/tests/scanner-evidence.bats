@@ -875,6 +875,64 @@ YAML
   [ "$count" -eq 1 ]
 }
 
+# --- dep-audit sub-routine dedup against osv-scanner evidence ---
+
+@test "scanner evidence: dep-audit sub-routine drops findings already in osv fragment" {
+  # Build a scanner-evidence directory with a complete osv-scanner fragment
+  # that reports advisory GHSA-1234. Then run the real dep-audit sub-routine
+  # with findings that include GHSA-1234 (duplicate) and GHSA-5678 (unique).
+  # The duplicate must be dropped; the unique must survive.
+  local ev_dir="$WORK_TMP/evidence/run1"
+  mkdir -p "$ev_dir"
+
+  # Write the osv-scanner fragment with one finding.
+  printf '{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","severity":"high","message":"vuln in pkg","source":"osv-scanner"}]}\n' \
+    > "$ev_dir/osv-scanner.json"
+  local osv_sha; osv_sha="$(shasum -a 256 "$ev_dir/osv-scanner.json" | awk '{print $1}')"
+
+  # Write a complete manifest referencing the fragment.
+  jq -nc --arg sha "$osv_sha" \
+    '{version:1,story:"E999-S1",run_id:"run1",head_sha:"abc",enabled:true,complete:true,
+      adapters:[{name:"osv-scanner",category:"dep-audit",state:"available",
+                 failure_kind:null,skip_reason:null,fragment:"osv-scanner.json",sha256:$sha}]}' \
+    > "$ev_dir/evidence-manifest.json"
+
+  # Create a project with a manifest file so the sub-routine doesn't skip.
+  local proj="$WORK_TMP/proj"
+  mkdir -p "$proj"
+  printf '{}\n' > "$proj/package.json"
+
+  local dep_audit="$PLUGIN_DIR/scripts/review-common/security/dep-audit-subroutine.sh"
+  [ -x "$dep_audit" ]
+
+  # Run with two findings: GHSA-1234 (dup) + GHSA-5678 (unique).
+  GAIA_DEP_AUDIT_FINDINGS='[{"id":"GHSA-1234","severity":"high","message":"vuln in pkg","source":"dep-audit"},{"id":"GHSA-5678","severity":"medium","message":"other vuln","source":"dep-audit"}]' \
+    run "$dep_audit" --target "$proj" --evidence-dir "$ev_dir"
+  [ "$status" -eq 0 ]
+
+  # The output must contain GHSA-5678 but NOT GHSA-1234.
+  local findings_count; findings_count="$(printf '%s' "$output" | jq '.findings | length')"
+  [ "$findings_count" -eq 1 ]
+  printf '%s' "$output" | jq -e '.findings[0].id == "GHSA-5678"'
+  # Verify the dup is absent.
+  run bash -c "printf '%s' '$output' | jq -e '.findings[] | select(.id == \"GHSA-1234\")'"
+  [ "$status" -ne 0 ]
+}
+
+@test "scanner evidence: dep-audit sub-routine keeps all findings without evidence dir" {
+  # Without --evidence-dir, no dedup happens — all findings are kept.
+  local proj="$WORK_TMP/proj"
+  mkdir -p "$proj"
+  printf '{}\n' > "$proj/package.json"
+
+  local dep_audit="$PLUGIN_DIR/scripts/review-common/security/dep-audit-subroutine.sh"
+  GAIA_DEP_AUDIT_FINDINGS='[{"id":"GHSA-1234","severity":"high","message":"v1","source":"dep-audit"},{"id":"GHSA-5678","severity":"medium","message":"v2","source":"dep-audit"}]' \
+    run "$dep_audit" --target "$proj"
+  [ "$status" -eq 0 ]
+  local findings_count; findings_count="$(printf '%s' "$output" | jq '.findings | length')"
+  [ "$findings_count" -eq 2 ]
+}
+
 # --- Probe --output passthrough ---
 
 @test "scanner evidence: probe output is written to the fragment path" {

@@ -228,7 +228,8 @@ sub-routine — `/gaia-review-deps` is wired into `/gaia-review-security` Phase 
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/dep-audit-subroutine.sh \
-  --target <project-root>
+  --target <project-root> \
+  --evidence-dir <story_dir>/scanner-evidence/<run-id>
 ```
 
 The helper probes for dependency manifests (package.json, requirements.txt,
@@ -255,10 +256,11 @@ root and emits a single `analysis-results.json`-shaped check fragment under the
   remains a fully standalone path — the standalone skill resolves its own
   rubric and emits its own verdict (independent of this sub-routine wiring).
 
-When scanner-first evidence is available, the sub-routine deduplicates its
-dependency findings against the scanner evidence: findings already reported
-by the osv-scanner adapter (matched by package name and advisory ID) are
-omitted from the sub-routine's output to avoid inflating the findings count.
+When `--evidence-dir` points at a scanner-evidence run directory that contains
+a complete osv-scanner fragment, the sub-routine reads every finding ID from
+that fragment (`jq '.findings[].id'`) and drops any dep-audit finding whose
+`.id` field matches. This prevents the same advisory from appearing twice in
+the report — once from the scanner adapter and once from the sub-routine.
 
 The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
 the sub-routine ran (skipped fragments included for transparency).

@@ -70,7 +70,7 @@ usage() {
 $SCRIPT_NAME — dependency-audit sub-routine
 
 Usage:
-  $SCRIPT_NAME --target <project-root>
+  $SCRIPT_NAME --target <project-root> [--evidence-dir <scanner-evidence-run-dir>]
   $SCRIPT_NAME --help
 
 Probes for dependency manifests (package.json, requirements.txt, pom.xml,
@@ -78,13 +78,18 @@ pubspec.yaml, go.mod, Gemfile, Cargo.toml) under <project-root>. Emits a
 single analysis-results.json check fragment to stdout under the
 'dependency_audit' category. Failure-isolated: tool errors become WARNING
 findings; the script always exits 0 on detection paths.
+
+When --evidence-dir points at a scanner-evidence run directory with an
+osv-scanner fragment, findings whose ID matches an osv finding are dropped.
 EOF
 }
 
 TARGET=""
+EVIDENCE_DIR=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --target) [ "$#" -ge 2 ] || die "--target requires a path"; TARGET="$2"; shift 2 ;;
+    --evidence-dir) [ "$#" -ge 2 ] || die "--evidence-dir requires a path"; EVIDENCE_DIR="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -116,11 +121,42 @@ if [ "${GAIA_DEP_AUDIT_FORCE_FAIL:-0}" = "1" ]; then
   exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# Build the osv-scanner finding-ID set for cross-source dedup.
+# When --evidence-dir points at a scanner-evidence run directory that contains
+# a complete osv-scanner fragment, load its finding IDs. Any dep-audit finding
+# whose ID matches an osv finding is dropped from the output.
+# ---------------------------------------------------------------------------
+_osv_ids=""
+if [ -n "$EVIDENCE_DIR" ] && [ -f "$EVIDENCE_DIR/evidence-manifest.json" ]; then
+  _osv_frag="$(jq -r '
+    .adapters[]
+    | select(.name == "osv-scanner" and .state == "available" and .fragment != null)
+    | .fragment
+  ' "$EVIDENCE_DIR/evidence-manifest.json" 2>/dev/null)" || _osv_frag=""
+  if [ -n "$_osv_frag" ] && [ -f "$EVIDENCE_DIR/$_osv_frag" ]; then
+    _osv_ids="$(jq -r '.findings[].id // empty' "$EVIDENCE_DIR/$_osv_frag" 2>/dev/null | sort -u)" || _osv_ids=""
+  fi
+fi
+
 # Real-world invocation — at this layer we emit a passed fragment with the
 # manifest list as evidence. Concrete CVE-detection logic is delegated to the
 # existing /gaia-review-deps skill when invoked standalone. The sub-routine
 # layer is intentionally thin (Phase 3A is the evidence layer; LLM judgment
 # lives in the parent review's Phase 3B).
-printf '{"name":"dependency-audit","scope":"project","status":"passed","category":"dependency_audit","manifests":"%s","findings":[]}\n' \
-  "$manifests_found"
+#
+# When the sub-routine has findings (supplied via GAIA_DEP_AUDIT_FINDINGS for
+# test harness or future wiring), deduplicate them against the osv set.
+_raw_findings="${GAIA_DEP_AUDIT_FINDINGS:-[]}"
+if [ "$_raw_findings" != "[]" ] && [ -n "$_osv_ids" ]; then
+  _deduped="$(printf '%s' "$_raw_findings" | jq -c --arg ids "$_osv_ids" '
+    ($ids | split("\n") | map(select(. != ""))) as $osv
+    | [ .[] | select(.id as $fid | $osv | index($fid) | not) ]
+  ' 2>/dev/null)" || _deduped="$_raw_findings"
+else
+  _deduped="$_raw_findings"
+fi
+
+printf '{"name":"dependency-audit","scope":"project","status":"passed","category":"dependency_audit","manifests":"%s","findings":%s}\n' \
+  "$manifests_found" "$_deduped"
 exit 0
