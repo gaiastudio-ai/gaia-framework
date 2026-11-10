@@ -53,9 +53,17 @@ _AIW_LOCK_FD=6
 # ---------------------------------------------------------------------------
 # _aiw_lock — acquire the action-items lock via the shared helper.
 #
-# Handles the parallel-execution fail-closed gate and maps acquire_lock
-# exit codes to the writer's stdout protocol.
+# Handles the parallel-execution fail-closed gate, the forced-fallback
+# override, and maps acquire_lock exit codes to the writer's stdout protocol.
 # Returns 0 on success, 1 on failure (with status=error already printed).
+#
+# The shared helper's fallback release_lock uses $$ (the parent-shell PID)
+# for its holder check.  When several subshells of one parent contend, a
+# release in one subshell can rm -f another subshell's just-linked lock
+# because their $$ values match.  The post-link publication inode check then
+# fails (the file was removed between ln and stat).  This wrapper retries on
+# non-timeout failures within the configured timeout so a transient refusal
+# does not propagate as a hard failure.
 # ---------------------------------------------------------------------------
 _aiw_lock() {
   local lock_file="$1" caller="$2"
@@ -65,34 +73,46 @@ _aiw_lock() {
   local _old_lockdir="${lock_file%.lock}.lockdir"
   [ "${_old_lockdir}" = "${lock_file}" ] || rmdir "$_old_lockdir" 2>/dev/null || true
 
-  local _al_rc=0
-  acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" || _al_rc=$?
+  local _start _now _elapsed _al_rc
+  _start="$(date +%s)"
 
-  if [ "$_al_rc" -eq 0 ]; then
-    # Test-only hold hook: sleep inside the lock to simulate a slow
-    # critical section for race reproduction.
-    if [ -n "${GAIA_AIW_TEST_HOLD_SECONDS:-}" ]; then
-      sleep "$GAIA_AIW_TEST_HOLD_SECONDS" 2>/dev/null || sleep 1
+  while true; do
+    _al_rc=0
+    acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" || _al_rc=$?
+
+    if [ "$_al_rc" -eq 0 ]; then
+      # Test-only hold hook: sleep inside the lock to simulate a slow
+      # critical section for race reproduction.
+      if [ -n "${GAIA_AIW_TEST_HOLD_SECONDS:-}" ]; then
+        sleep "$GAIA_AIW_TEST_HOLD_SECONDS" 2>/dev/null || sleep 1
+      fi
+      return 0
     fi
-    return 0
-  fi
 
-  # Timeout: hard failure (the helper already waited the full duration).
-  if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_TIMEOUT" ]; then
-    printf 'status=error\nreason=%s: lock timeout\n' "$caller"
-    return 1
-  fi
+    # Timeout: hard failure (the helper already waited the full duration).
+    if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_TIMEOUT" ]; then
+      printf 'status=error\nreason=%s: lock timeout\n' "$caller"
+      return 1
+    fi
 
-  # Parallel-execution gate: hard failure (flock is mandatory).
-  if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
-    printf 'status=error\nreason=%s: lock unavailable (parallel execution requires flock)\n' "$caller"
-    return 1
-  fi
+    # Parallel-execution gate: hard failure (flock is mandatory).
+    if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
+      printf 'status=error\nreason=%s: lock unavailable (parallel execution requires flock)\n' "$caller"
+      return 1
+    fi
 
-  # Any other failure from the helper (permission denied, path-type
-  # rejection, etc.) — report as lock timeout to the caller.
-  printf 'status=error\nreason=%s: lock timeout\n' "$caller"
-  return 1
+    # Transient failure (e.g. fallback publication check — a concurrent
+    # release_lock rm'd the lock between our ln and stat because $$ is
+    # shared among subshells): retry within the overall timeout.
+    _now="$(date +%s)"
+    _elapsed=$(( _now - _start ))
+    if [ "$_elapsed" -ge "$_timeout" ]; then
+      printf 'status=error\nreason=%s: lock timeout\n' "$caller"
+      return 1
+    fi
+
+    sleep 0.05 2>/dev/null || sleep 1
+  done
 }
 
 # ---------------------------------------------------------------------------
