@@ -177,7 +177,7 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
 6. **Collect scanner-first evidence** for the round. After the commit SHA is
    known (step 4), run:
    ```bash
-   scripts/review-common/security/scanner-evidence.sh \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/scanner-evidence.sh \
      --story {key} --run-id {new-run-id} --repo {code-tree}
    ```
    HALT the round on exit 1 (caller/config error) or exit 2 (incomplete
@@ -191,7 +191,7 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
 7. **Build the review packet** for the round. After scanner evidence is
    complete (step 6), run:
    ```bash
-   scripts/review-packet-builder.sh \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-packet-builder.sh \
      --story {key} --run-id {new-run-id} --repo {code-tree}
    ```
    The builder assembles a deterministic, secret-scrubbed packet
@@ -201,7 +201,9 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
 
    Exit handling:
    - **Exit 0** — packet written. Pass `--packet <path>` to every gate
-     dispatch in Substep 2.3.
+     dispatch below.
+   - **Exit 1** (caller/argument error) — HALT the round. Print the
+     builder's message naming the error.
    - **Exit 3** (secret detected) — HALT the round. Print the builder's
      message (section, line, rule — never the secret value).
    - **Exit 7** (scanner evidence missing or incomplete) — HALT the
@@ -212,13 +214,15 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
      packet.
    - **Exit 6** (legacy layout or no resolvable base) — WARNING; gates
      run without a packet.
+   - **Any other non-zero exit** — HALT the round and name the exit
+     code in the message.
 
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:
 
 ```bash
-bash scripts/review-gate.sh update --story {story_key} \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} \
   --gate "{gate_name}" --verdict {PASSED|FAILED} \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
@@ -231,7 +235,7 @@ Skill-dispatch contract:
 ```
 For each short_name in run:
   1. Invoke via the Skill tool:
-       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id}"})
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id} --packet {packet_path}"})
      Canonical short-name → skill mapping (one canonical name per skill — the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
        qa-tests        → gaia:gaia-review-qa

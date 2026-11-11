@@ -156,7 +156,9 @@ _rpb_resolve_base_sha() {
 
   local base_branch=""
   local pcg_out
-  if pcg_out="$("$SCRIPT_DIR/../skills/gaia-dev-story/scripts/promotion-chain-guard.sh" 2>/dev/null)"; then
+  # Run the guard from the code tree so it can resolve its diff base
+  # when the caller's working directory is outside any git work tree.
+  if pcg_out="$(cd "$repo" && "$SCRIPT_DIR/../skills/gaia-dev-story/scripts/promotion-chain-guard.sh" 2>/dev/null)"; then
     case "$pcg_out" in
       PRESENT:*) base_branch="${pcg_out#PRESENT:}" ;;
     esac
@@ -235,9 +237,9 @@ _rpb_build_ci_section() {
 }
 
 # _rpb_build_lint_section — build the lint pack section content.
-# Args: repo, changed_files_str (newline-separated), staging_dir
+# Args: repo, base_sha, head_sha, staging_dir
 _rpb_build_lint_section() {
-  local repo="$1" changed_files="$2" staging_dir="$3"
+  local repo="$1" base_sha="$2" head_sha="$3" staging_dir="$4"
   local lint_report="$staging_dir/lint-report.json"
 
   if [ ! -x "$SCRIPT_DIR/lint-pack.sh" ]; then
@@ -245,19 +247,29 @@ _rpb_build_lint_section() {
     return 0
   fi
 
-  local files_arg=""
-  files_arg="$(printf '%s' "$changed_files" | tr '\n' ',' | sed 's/,$//')"
-
   # Use the config from the repo if present
   local config_arg=""
   if [ -f "$repo/.gaia/lint-pack.yaml" ]; then
     config_arg="--config $repo/.gaia/lint-pack.yaml"
   fi
 
-  # Run lint-pack; failures are non-fatal for the packet
+  # Run lint-pack with --diff (its native interface), from the repo dir.
+  local lint_rc=0
   # shellcheck disable=SC2086
-  bash "$SCRIPT_DIR/lint-pack.sh" --files "$files_arg" --report "$lint_report" \
-    --workdir "$repo" $config_arg >/dev/null 2>&1 || true
+  bash "$SCRIPT_DIR/lint-pack.sh" \
+    --diff "${base_sha}...${head_sha}" \
+    --report "$lint_report" \
+    --workdir "$repo" $config_arg >/dev/null 2>&1 || lint_rc=$?
+
+  case "$lint_rc" in
+    0) ;; # no findings
+    1) ;; # findings present — expected
+    *)
+      # Non-zero, non-findings rc: report the error explicitly
+      printf '{"error":"lint pack unavailable: rc %d"}\n' "$lint_rc"
+      return 0
+      ;;
+  esac
 
   if [ -f "$lint_report" ]; then
     cat "$lint_report"
@@ -270,10 +282,19 @@ _rpb_build_lint_section() {
 # Args: story_dir, run_id, output_file
 # Writes scanner content to output_file.
 # Returns: 0 = ok, 7 = halt (missing/incomplete/tampered evidence).
+#
+# The real scanner-evidence writer uses four states:
+#   available           — adapter ran and produced a fragment
+#   not_applicable      — adapter skipped (e.g. no relevant files)
+#   expected_and_missing — adapter was expected but not found
+#   ran_and_errored     — adapter ran but failed
+# Only "available" and "not_applicable" are passing states.
 _rpb_build_scanner_sections() {
   local story_dir="$1" run_id="$2" output_file="$3"
   local evidence_dir="$story_dir/scanner-evidence/$run_id"
   local manifest="$evidence_dir/evidence-manifest.json"
+  local canon_evidence_dir
+  canon_evidence_dir="$(_rpb_canonicalize "$evidence_dir")"
 
   # Missing evidence directory
   if [ ! -d "$evidence_dir" ]; then
@@ -302,9 +323,9 @@ _rpb_build_scanner_sections() {
   local complete
   complete="$(jq -r 'if .complete == true then "true" else "false" end' "$manifest" 2>/dev/null)" || complete="false"
   if [ "$complete" != "true" ]; then
-    # Report which adapters are missing
+    # Report which adapters are missing or errored
     local missing_adapters
-    missing_adapters="$(jq -r '.adapters[]? | select(.state == "expected_and_missing" or .state == "error") | "\(.category)/\(.name): \(.state)"' "$manifest" 2>/dev/null)" || true
+    missing_adapters="$(jq -r '.adapters[]? | select(.state == "expected_and_missing" or .state == "ran_and_errored") | "\(.category)/\(.name): \(.state)"' "$manifest" 2>/dev/null)" || true
     if [ -n "$missing_adapters" ]; then
       _rpb_log "scanner evidence incomplete — $missing_adapters"
     else
@@ -313,7 +334,7 @@ _rpb_build_scanner_sections() {
     return 7
   fi
 
-  # Verify fragment sha256 checksums
+  # Verify every adapter's state and fragment integrity
   local adapters_json
   adapters_json="$(jq -c '.adapters // []' "$manifest" 2>/dev/null)" || adapters_json="[]"
   local adapter_count
@@ -330,11 +351,33 @@ _rpb_build_scanner_sections() {
     a_fragment="$(printf '%s' "$adapter_json" | jq -r '.fragment // ""')"
     a_sha256="$(printf '%s' "$adapter_json" | jq -r '.sha256 // ""')"
 
-    # For completed adapters with a fragment, verify sha256
-    if [ "$a_state" = "completed" ] && [ -n "$a_fragment" ] && [ "$a_fragment" != "null" ]; then
+    # Validate state: only "available" and "not_applicable" are acceptable.
+    case "$a_state" in
+      available|not_applicable) ;;
+      expected_and_missing|ran_and_errored)
+        _rpb_log "scanner evidence halt: adapter $a_category/$a_name state=$a_state"
+        return 7
+        ;;
+      *)
+        _rpb_log "scanner evidence halt: adapter $a_category/$a_name has unknown state=$a_state"
+        return 7
+        ;;
+    esac
+
+    # For available adapters with a fragment, verify containment and sha256
+    if [ "$a_state" = "available" ] && [ -n "$a_fragment" ] && [ "$a_fragment" != "null" ]; then
       local frag_path="$evidence_dir/$a_fragment"
+
+      # Fragment path containment: must resolve inside the evidence dir
+      local canon_frag_path
+      canon_frag_path="$(_rpb_canonicalize "$frag_path")"
+      if ! _rpb_check_containment "$canon_frag_path" "$canon_evidence_dir"; then
+        _rpb_log "scanner evidence halt: fragment path $a_fragment resolves outside evidence dir for $a_category/$a_name"
+        return 7
+      fi
+
       if [ ! -f "$frag_path" ]; then
-        _rpb_log "scanner evidence: fragment missing for $a_category/$a_name: $a_fragment"
+        _rpb_log "scanner evidence halt: fragment missing for $a_category/$a_name: $a_fragment"
         return 7
       fi
       if [ -n "$a_sha256" ] && [ "$a_sha256" != "null" ]; then
@@ -345,7 +388,7 @@ _rpb_build_scanner_sections() {
           actual_sha="$(shasum -a 256 "$frag_path" | cut -d' ' -f1)"
         fi
         if [ "$actual_sha" != "$a_sha256" ]; then
-          _rpb_log "scanner evidence: sha256 mismatch for $a_category/$a_name (expected $a_sha256, got $actual_sha)"
+          _rpb_log "scanner evidence halt: sha256 mismatch for $a_category/$a_name (expected $a_sha256, got $actual_sha)"
           return 7
         fi
       fi
@@ -354,7 +397,9 @@ _rpb_build_scanner_sections() {
     i=$((i + 1))
   done
 
-  # Build sections sorted by category then name (LC_ALL=C already set)
+  # Build sections sorted by category then name (LC_ALL=C already set).
+  # Each section is built directly from the adapter JSON — never by
+  # re-splitting text on header lines (RF-5: prevents marker forgery).
   local sorted_indices
   sorted_indices="$(printf '%s' "$adapters_json" | jq -r \
     '[to_entries[] | {idx: .key, sort_key: "\(.value.category // "zzz")/\(.value.name // "zzz")"}] | sort_by(.sort_key) | .[].idx')"
@@ -371,21 +416,32 @@ _rpb_build_scanner_sections() {
       frag="$(printf '%s' "$aj" | jq -r '.fragment // ""')"
       sr="$(printf '%s' "$aj" | jq -r '.skip_reason // ""')"
 
-      printf '## Scanner: %s/%s\n\n' "$c" "$n"
-      printf 'state: %s\n' "$s"
+      # Escape the category, name, skip_reason fields so they cannot
+      # inject boundary markers or forge section headers.
+      local esc_c esc_n esc_sr
+      esc_c="$(printf '%s' "$c" | escape_boundary_markers)"
+      esc_n="$(printf '%s' "$n" | escape_boundary_markers)"
 
+      printf '## Scanner: %s/%s\n\n' "$esc_c" "$esc_n"
+
+      # Build the section body as escaped, boundary-wrapped evidence
+      local section_body=""
+      section_body="$(printf 'state: %s\n' "$s")"
       if [ "$s" = "not_applicable" ]; then
         if [ -n "$sr" ] && [ "$sr" != "null" ]; then
-          printf 'skip_reason: %s\n' "$sr"
+          esc_sr="$(printf '%s' "$sr" | escape_boundary_markers)"
+          section_body="$(printf '%s\nskip_reason: %s\n' "$section_body" "$esc_sr")"
         fi
-      elif [ "$s" = "completed" ] && [ -n "$frag" ] && [ "$frag" != "null" ]; then
+      elif [ "$s" = "available" ] && [ -n "$frag" ] && [ "$frag" != "null" ]; then
         local fpath="$evidence_dir/$frag"
         if [ -f "$fpath" ]; then
-          printf '\n'
-          cat "$fpath"
+          local frag_content
+          frag_content="$(cat "$fpath")"
+          section_body="$(printf '%s\n\n%s\n' "$section_body" "$frag_content")"
         fi
       fi
 
+      printf '%s\n' "$section_body" | _rpb_wrap_evidence
       printf '\n'
     done
   } > "$output_file"
@@ -439,11 +495,26 @@ _rpb_gitleaks_scan() {
   mkdir -p "$report_dir"
   local report_file="$report_dir/report.json"
 
-  # Copy project .gitleaks.toml if present
+  # Build a derived config that always extends the default ruleset.
+  # A project .gitleaks.toml may carry allowlist entries, but its custom
+  # [[rules]] must never replace gitleaks' built-in rules for the packet
+  # scan. We extract only the [allowlist] section and prepend the
+  # useDefault=true extension header.
   local config_args=""
   if [ -f "$repo/.gitleaks.toml" ]; then
-    cp "$repo/.gitleaks.toml" "$staging_dir/.gitleaks.toml"
-    config_args="--config $staging_dir/.gitleaks.toml"
+    local derived_cfg="$staging_dir/.gitleaks.toml"
+    {
+      printf '[extend]\n'
+      printf 'useDefault = true\n\n'
+      # Extract only [allowlist] and its entries (paths, regexes, commits).
+      # Reject [[rules]] — they would replace default detection rules.
+      awk '
+        /^\[allowlist\]/ { in_allow = 1; print; next }
+        /^\[/ { in_allow = 0 }
+        in_allow { print }
+      ' "$repo/.gitleaks.toml"
+    } > "$derived_cfg"
+    config_args="--config $derived_cfg"
   fi
 
   if command -v gitleaks >/dev/null 2>&1; then
@@ -478,23 +549,18 @@ _rpb_gitleaks_scan() {
   runner_mode="$(docker_runner_mode 2>/dev/null)" || runner_mode="native"
 
   if [ "$runner_mode" = "docker" ]; then
-    local old_project_root="${PROJECT_ROOT:-}"
-    local old_adapter_out="${ADAPTER_OUT_DIR:-}"
-    export PROJECT_ROOT="$staging_dir"
-    export ADAPTER_OUT_DIR="$report_dir"
     local docker_args="detect --no-git --source /workspace --report-format json --report-path /out/report.json --redact"
-    if [ -f "$staging_dir/.gitleaks.toml" ]; then
+    if [ -n "$config_args" ] && [ -f "$staging_dir/.gitleaks.toml" ]; then
       docker_args="$docker_args --config /workspace/.gitleaks.toml"
     fi
+    # Run in a subshell with cd to the staging dir so docker_runner_dispatch
+    # picks up $PWD as the workspace — avoids overwriting PROJECT_ROOT.
     # shellcheck disable=SC2086
-    if docker_runner_dispatch gitleaks $docker_args >/dev/null 2>&1; then
-      export PROJECT_ROOT="$old_project_root"
-      export ADAPTER_OUT_DIR="$old_adapter_out"
+    if (cd "$staging_dir" && ADAPTER_OUT_DIR="$report_dir" \
+         docker_runner_dispatch gitleaks $docker_args) >/dev/null 2>&1; then
       return 0
     else
       local drc=$?
-      export PROJECT_ROOT="$old_project_root"
-      export ADAPTER_OUT_DIR="$old_adapter_out"
       if [ -f "$report_dir/report.json" ]; then
         local fc
         fc="$(jq 'length' "$report_dir/report.json" 2>/dev/null)" || fc="0"
@@ -552,8 +618,12 @@ main() {
   canon_story_dir="$(_rpb_canonicalize "$story_dir")"
 
   # ── Resolve register and round info ──────────────────────────────
-  local register_dir="$story_dir/reviews"
-  local register_path="$register_dir/findings-register.yaml"
+  # Use the same resolver that register-write.sh uses, so the file name
+  # is always findings-register-{key}.yaml.
+  local register_path
+  register_path="$("$SCRIPT_DIR/resolve-review-report-path.sh" \
+    --key "$story_key" --type findings-register 2>/dev/null)" || \
+    _rpb_die 1 "could not resolve register path for $story_key"
   [ -f "$register_path" ] || _rpb_die 1 "findings register not found: $register_path"
 
   local round_ordinal
@@ -620,7 +690,7 @@ main() {
 
   # 4. Lint section
   local lint_content
-  lint_content="$(_rpb_build_lint_section "$repo" "$files_content" "$_RPB_STAGING_DIR")"
+  lint_content="$(_rpb_build_lint_section "$repo" "$base_sha" "$head_sha" "$_RPB_STAGING_DIR")"
 
   # 5. Scanner sections (written to a file to avoid subshell variable loss)
   local scanner_file="$_RPB_STAGING_DIR/scanner-sections.md"
@@ -670,40 +740,12 @@ main() {
     printf '%s\n' "$lint_content" | _rpb_wrap_evidence
     printf '\n'
 
-    # Scanner sections (each wrapped individually)
+    # Scanner sections — already built with headers, escaped fields, and
+    # boundary-wrapped evidence by _rpb_build_scanner_sections. Emit as-is;
+    # never re-split on header lines (that would let a forged adapter name
+    # inject headers outside the data markers).
     if [ -n "$scanner_content" ]; then
-      # Split scanner content by ## Scanner: headers and wrap each
-      local in_section=0 section_header="" section_body=""
-      while IFS= read -r line; do
-        case "$line" in
-          "## Scanner:"*)
-            # Flush previous section
-            if [ "$in_section" -eq 1 ] && [ -n "$section_header" ]; then
-              printf '%s\n\n' "$section_header"
-              printf '%s\n' "$section_body" | _rpb_wrap_evidence
-              printf '\n'
-            fi
-            section_header="$line"
-            section_body=""
-            in_section=1
-            ;;
-          *)
-            if [ "$in_section" -eq 1 ]; then
-              if [ -n "$section_body" ]; then
-                section_body="$(printf '%s\n%s' "$section_body" "$line")"
-              else
-                section_body="$line"
-              fi
-            fi
-            ;;
-        esac
-      done <<< "$scanner_content"
-      # Flush last section
-      if [ "$in_section" -eq 1 ] && [ -n "$section_header" ]; then
-        printf '%s\n\n' "$section_header"
-        printf '%s\n' "$section_body" | _rpb_wrap_evidence
-        printf '\n'
-      fi
+      printf '%s\n' "$scanner_content"
     fi
 
     # Previous round section
