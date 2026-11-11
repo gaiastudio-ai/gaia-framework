@@ -359,6 +359,7 @@ core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
+core	scanner-evidence.bats
 core	scripts/review-common/qa/qa-bridge-integration.bats
 core	scripts/review-common/qa/qa-execution-evidence.bats
 core	scripts/review-common/qa/qa-tc-generation.bats
@@ -641,6 +642,7 @@ scripts-core	run-stack-tests.bats
 scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
+scripts-core	scanner-pins.bats
 scripts-core	selective-test-driver.bats
 scripts-core	setup-root-resolution.bats
 scripts-core	sgr-velocity-003-floor-scaling.bats

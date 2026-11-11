@@ -97,6 +97,14 @@ jobs:
       - name: Lint agent frontmatter
         run: .github/scripts/lint-agent-frontmatter.sh
 
+  scanner-pin-check:
+    name: scanner-pin-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Verify scanner version pins
+        run: bash plugins/gaia/scripts/check-scanner-pins.sh
+
   # ---------------------------------------------------------------------------
   # Fast-feedback: diff-selected tests report within minutes.
   # This is NOT a substitute for the full regression suite — it gives early

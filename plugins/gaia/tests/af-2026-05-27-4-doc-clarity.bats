@@ -55,9 +55,11 @@ teardown() { common_teardown; }
 
 # ---------- F-039: security-review tool-availability note ----------
 
-@test "F-039: gaia-review-security states the no-hard-dependency on Semgrep/gitleaks + loud-skip" {
-  grep -qiF 'no hard dependency' "$P/skills/gaia-review-security/SKILL.md"
-  grep -qiE 'Static scan tool unavailable|ran LLM-pattern scan only' "$P/skills/gaia-review-security/SKILL.md"
+@test "F-039: gaia-review-security documents scanner-first evidence role and LLM-pattern fallback" {
+  # Scanner-first makes scanners mandatory when on; the LLM-pattern scan
+  # is additional coverage, or the primary check when scanner-first is off.
+  grep -qiE 'scanner-first|scanner.first' "$P/skills/gaia-review-security/SKILL.md"
+  grep -qiE 'LLM-pattern scan|LLM.pattern' "$P/skills/gaia-review-security/SKILL.md"
 }
 
 # ---------- F-035: dev-story documents GAIA_YOLO_MODE subagent export ----------
