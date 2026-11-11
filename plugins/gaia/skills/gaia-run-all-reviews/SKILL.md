@@ -188,6 +188,31 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
    security gate for the same run-id and head SHA reuses the complete
    evidence without re-running any scanner or duplicating register entries.
 
+7. **Build the review packet** for the round. After scanner evidence is
+   complete (step 6), run:
+   ```bash
+   scripts/review-packet-builder.sh \
+     --story {key} --run-id {new-run-id} --repo {code-tree}
+   ```
+   The builder assembles a deterministic, secret-scrubbed packet
+   containing the diff, file list, CI results, lint report, scanner
+   evidence sections, and previous-round summary into
+   `{story_dir}/review-packet-{N}.md`.
+
+   Exit handling:
+   - **Exit 0** — packet written. Pass `--packet <path>` to every gate
+     dispatch in Substep 2.3.
+   - **Exit 3** (secret detected) — HALT the round. Print the builder's
+     message (section, line, rule — never the secret value).
+   - **Exit 7** (scanner evidence missing or incomplete) — HALT the
+     round. Print the builder's message naming each adapter.
+   - **Exit 4** (gitleaks unavailable) — WARNING; gates run without a
+     packet (behaves as before the packet was introduced).
+   - **Exit 5** (containment refusal) — WARNING; gates run without a
+     packet.
+   - **Exit 6** (legacy layout or no resolvable base) — WARNING; gates
+     run without a packet.
+
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:

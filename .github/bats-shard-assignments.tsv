@@ -846,3 +846,4 @@
 3	lint-pack.bats	74
 3	scanner-evidence.bats	31
 3	scanner-pins.bats	13
+4	review-packet-builder.bats	19

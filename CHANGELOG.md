@@ -9,6 +9,20 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Review packet assembly
+
+#### Added
+- Deterministic review packet builder (`scripts/review-packet-builder.sh`): assembles a secret-scrubbed `review-packet-{N}.md` per orchestrated review round containing the diff, sorted file list, CI results, lint report, scanner evidence sections, and previous-round summary — all in a fixed order with boundary-marker isolation.
+- Token stripping: known CI runner tokens (`ACTIONS_RUNTIME_TOKEN`, `GITHUB_TOKEN`, `ghp_`/`ghs_`/`github_pat_` shapes, etc.) are replaced by `[REDACTED:<name>]` markers before the gitleaks scan.
+- Gitleaks secret scan on the staged packet: a detected secret halts the round (exit 3) with section, line and rule but never the secret value. The packet is never stored unscanned (fail closed).
+- Scanner evidence validation: missing, incomplete or tampered evidence halts the round (exit 7). When scanner-first is turned off by config, a single notice section is included instead.
+- Boundary-marker escaping (`<~<` for `<<`) prevents marker injection. Each evidence section carries a fixed data-not-instructions notice.
+- Containment enforcement: the packet's canonical path must resolve inside the story folder; symlinks pointing outside are refused (exit 5).
+- Byte-identical determinism: identical inputs produce identical packets (no timestamps, `LC_ALL=C` sorting, fixed section order, no model calls).
+- `/gaia-review-all` now builds the packet in the round-start sequence and passes `--packet <path>` to each review gate.
+- All six review skills accept an optional `--packet <path>` argument whose content is treated as data only.
+- Documentation: `gaia-review-all.html` describes the packet step and halt behaviour; `format-contracts.html` documents the packet layout, boundary markers, escape convention and halt codes.
+
 ### Scanner-first security pipeline
 
 #### Added
