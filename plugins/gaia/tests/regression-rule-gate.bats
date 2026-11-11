@@ -17,10 +17,10 @@ setup() {
   # Create a minimal project structure.
   mkdir -p "$TEST_DIR/.gaia/config"
   mkdir -p "$TEST_DIR/.gaia/custom/lint-rules"
-  mkdir -p "$TEST_DIR/.gaia/artifacts/implementation-artifacts/K0-R1-test/review-reports"
+  mkdir -p "$TEST_DIR/.gaia/artifacts/implementation-artifacts"
 
-  # Minimal story file.
-  cat > "$TEST_DIR/.gaia/artifacts/implementation-artifacts/K0-R1-test/story.md" <<'STORY'
+  # Minimal story file (flat layout for tier-2 resolver).
+  cat > "$TEST_DIR/.gaia/artifacts/implementation-artifacts/K0-R1-test.md" <<'STORY'
 ---
 template: 'story'
 version: 1.4.0
