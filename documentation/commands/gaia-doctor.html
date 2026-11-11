@@ -109,6 +109,7 @@
           <li><span class="step-title">Emit tier verdict</span> Computes the achievable scan tier from the present/missing tool set and reports it.</li>
           <li><span class="step-title">Install (opt-in only)</span> When <code>--install</code> is passed, prompts before each missing tool and runs the registry's install command for the detected OS. Re-probes after installation to confirm. Without <code>--install</code>, emits the install plan as copy-pasteable shell commands.</li>
           <li><span class="step-title">Review limits</span> Reports the active review-process limits. Reads <code>review.max_fix_cycles</code> and <code>review.max_concurrent_heavy_reviewers</code> from project config and shows the configured values, or the effective defaults (2 and 4 respectively) when the keys are absent.</li>
+          <li><span class="step-title">Regression-rule gate</span> Shows whether the regression-rule gate is on (default) or turned off by config (<code>review.regression_rule_gate_enabled: false</code>).</li>
           <li><span class="step-title">Scanner health</span> Shows the scanner-first setting (<code>review.scanner_first_enabled</code>, default on) and lists each scanner in the resolved set with present/missing status, resolved version, the runner (native or docker), and whether the review would HALT on a missing scanner.</li>
         </ol>
       </section>

@@ -303,6 +303,25 @@ elif [ -d "$REPO_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Build SEMGREP_EXTRA_RULE_CONFIGS from the shipped and project rule libraries.
+# ---------------------------------------------------------------------------
+_shipped_lib="$PLUGIN_SCRIPTS/lint-rules"
+_custom_dir="${GAIA_CUSTOM_DIR:-${PROJECT_ROOT}/.gaia/custom}"
+_project_lib="$_custom_dir/lint-rules"
+
+_extra_rule_configs=""
+for _lib_dir in "$_shipped_lib" "$_project_lib"; do
+  [ -d "$_lib_dir" ] || continue
+  for _rule_dir in "$_lib_dir"/*/; do
+    [ -d "$_rule_dir" ] || continue
+    if [ -f "$_rule_dir/rule.yml" ]; then
+      _extra_rule_configs="${_extra_rule_configs:+$_extra_rule_configs:}${_rule_dir}rule.yml"
+    fi
+  done
+done
+export SEMGREP_EXTRA_RULE_CONFIGS="$_extra_rule_configs"
+
+# ---------------------------------------------------------------------------
 # Collect evidence: run each adapter from the repo directory.
 # ---------------------------------------------------------------------------
 mkdir -p "$EVIDENCE_DIR"

@@ -1,0 +1,45 @@
+rules:
+  - id: hardcoded-credentials
+    pattern-either:
+      - patterns:
+          - pattern: |
+              $VAR = "..."
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: "(?i)(password|passwd|secret|api_?key|api_?secret|access_?key|auth_?token|private_?key|signing_?key|encryption_?key|db_?password)"
+          - metavariable-regex:
+              metavariable: $...ARGS
+              regex: ".*"
+      - patterns:
+          - pattern: |
+              $VAR: str = "..."
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: "(?i)(password|passwd|secret|api_?key|api_?secret|access_?key|auth_?token|private_?key|signing_?key|encryption_?key|db_?password)"
+    message: >-
+      Credential-named variable or field assigned a string literal.
+      Move secrets to environment variables, a secrets manager,
+      or a configuration file excluded from version control.
+    languages: [go, python, java, typescript, javascript, ruby]
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: MEDIUM
+      cwe:
+        - "CWE-798: Use of Hard-coded Credentials"
+    paths:
+      exclude:
+        - "*_test.go"
+        - "*_test.py"
+        - "test_*.py"
+        - "*.test.ts"
+        - "*.test.js"
+        - "*.spec.ts"
+        - "*.spec.js"
+        - "__tests__/**"
+        - "tests/**"
+        - "test/**"
+        - "**/testutil/**"
+        - "**/testhelper/**"
+        - "**/fixture*/**"
+        - "plugins/gaia/scripts/lint-rules/*/test/**"

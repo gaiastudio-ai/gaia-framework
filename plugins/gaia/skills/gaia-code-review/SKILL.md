@@ -243,6 +243,39 @@ The fork extends Phase 3B's findings with architecture and design checks; findin
 - If no design-record reference exists: on a UI project (`compliance.ui_present` is true), report design truth unavailable as a finding. On a non-UI project, record not-applicable (no finding). A project that has never configured a design source will see this check report findings for the first time when a design-record reference is added; those findings are correct behaviour, not a regression.
 - Severity of every design-fidelity finding in this block: Warning by default. Critical when the implementation contradicts an approved design token value or omits/replaces an approved component.
 
+### Phase 4b — Regression-Rule Gate
+
+Before the verdict, check whether critical/high pattern bugs have shipped
+regression rules. This phase is gated by the config key
+`review.regression_rule_gate_enabled`.
+
+```bash
+# 1. Check whether the gate is on.
+gate_status=$(${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh enabled)
+```
+
+- **`off`:** skip both checks. State in the report: "regression-rule check
+  turned off by config (`review.regression_rule_gate_enabled: false`)."
+- **`on`:** run both `story-check` and `library-check` before the verdict.
+
+```bash
+# 2. story-check: verify each pattern finding has a linked rule.
+${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh \
+  story-check --story {story_key}
+
+# 3. library-check: validate rule libraries have tests.
+${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh library-check
+```
+
+For each entry in the `story-check` `missing` array, record a blocking
+finding via `register-write.sh add` with `--dedup-key regression-rule:{entry}`
+so re-runs do not duplicate.  For each entry in the `library-check`
+`library_errors` array, do the same with `--dedup-key library-rule:{rule}`.
+
+When a reviewer confirms a critical or high finding as a repeatable pattern,
+pass `--pattern-class <slug>` on the `register-write.sh add` call so the
+gate can track it.
+
 ### Phase 5 — Verdict
 
 The verdict is computed by `verdict-resolver.sh`. The LLM never computes or overrides it.

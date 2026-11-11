@@ -54,6 +54,7 @@ _log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 
 declare -a FILES=()
 declare -a EXCLUDED_RULES=()
+declare -a RULES_DIRS=()
 DIFF_RANGE=""
 CONFIG_PATH=""
 REPORT_PATH=""
@@ -68,11 +69,12 @@ while [ $# -gt 0 ]; do
       done
       [ "${1:-}" = "--" ] && shift
       ;;
-    --diff)    DIFF_RANGE="${2:-}"; [ -z "$DIFF_RANGE" ] && _die "--diff requires a range"; shift 2 ;;
-    --config)  CONFIG_PATH="${2:-}"; [ -z "$CONFIG_PATH" ] && _die "--config requires a path"; shift 2 ;;
-    --report)  REPORT_PATH="${2:-}"; [ -z "$REPORT_PATH" ] && _die "--report requires a path"; shift 2 ;;
-    --exclude) EXCLUDED_RULES+=("${2:-}"); [ -z "${2:-}" ] && _die "--exclude requires a rule id"; shift 2 ;;
-    --workdir) WORKDIR="${2:-}"; [ -z "$WORKDIR" ] && _die "--workdir requires a directory"; shift 2 ;;
+    --diff)       DIFF_RANGE="${2:-}"; [ -z "$DIFF_RANGE" ] && _die "--diff requires a range"; shift 2 ;;
+    --config)     CONFIG_PATH="${2:-}"; [ -z "$CONFIG_PATH" ] && _die "--config requires a path"; shift 2 ;;
+    --report)     REPORT_PATH="${2:-}"; [ -z "$REPORT_PATH" ] && _die "--report requires a path"; shift 2 ;;
+    --exclude)    EXCLUDED_RULES+=("${2:-}"); [ -z "${2:-}" ] && _die "--exclude requires a rule id"; shift 2 ;;
+    --workdir)    WORKDIR="${2:-}"; [ -z "$WORKDIR" ] && _die "--workdir requires a directory"; shift 2 ;;
+    --rules-dir)  RULES_DIRS+=("${2:-}"); [ -z "${2:-}" ] && _die "--rules-dir requires a directory"; shift 2 ;;
     --help|-h) _usage ;;
     *) _die "unknown option: $1" ;;
   esac
@@ -1340,6 +1342,103 @@ _rule_bash_syntax() {
   done
 }
 
+# ---- External rule.lint loader (--rules-dir) --------------------------------
+# Load rule.lint files from external directories (shipped and project libraries).
+# Each rule.lint is a YAML file with id, message, severity, languages, pattern,
+# and optional exclude.
+
+declare -a EXTERNAL_RULES=()
+
+_load_rules_dirs() {
+  [ ${#RULES_DIRS[@]} -gt 0 ] || return 0
+  command -v yq >/dev/null 2>&1 || { _log "WARN: yq not found; --rules-dir rules skipped"; return 0; }
+  local dir
+  for dir in "${RULES_DIRS[@]}"; do
+    [ -d "$dir" ] || continue
+    local rule_dir
+    for rule_dir in "$dir"/*/; do
+      [ -d "$rule_dir" ] || continue
+      local lint_file="$rule_dir/rule.lint"
+      [ -f "$lint_file" ] || continue
+      local rule_id
+      rule_id="$(yq -r '.id // ""' "$lint_file" 2>/dev/null)" || continue
+      [ -n "$rule_id" ] || continue
+      EXTERNAL_RULES+=("$lint_file")
+    done
+  done
+}
+_load_rules_dirs
+
+_run_external_rules() {
+  [ ${#EXTERNAL_RULES[@]} -gt 0 ] || return 0
+  local lint_file
+  for lint_file in "${EXTERNAL_RULES[@]}"; do
+    local rule_id msg sev pattern exclude_pat
+    rule_id="$(yq -r '.id // ""' "$lint_file" 2>/dev/null)" || continue
+    [ -n "$rule_id" ] || continue
+    if _is_excluded "$rule_id"; then
+      _log "  external rule ${rule_id}: excluded"
+      continue
+    fi
+    msg="$(yq -r '.message // "external rule violation"' "$lint_file" 2>/dev/null)" || msg="external rule violation"
+    sev="$(yq -r '.severity // "high"' "$lint_file" 2>/dev/null)" || sev="high"
+    pattern="$(yq -r '.pattern // ""' "$lint_file" 2>/dev/null)" || pattern=""
+    exclude_pat="$(yq -r '.exclude // ""' "$lint_file" 2>/dev/null)" || exclude_pat=""
+    [ -n "$pattern" ] || continue
+
+    # Read languages as file extensions.
+    local lang_count
+    lang_count="$(yq '.languages // [] | length' "$lint_file" 2>/dev/null)" || lang_count=0
+    declare -a lang_exts=()
+    if [ "$lang_count" -gt 0 ]; then
+      local li=0
+      while [ "$li" -lt "$lang_count" ]; do
+        local ext
+        ext="$(yq -r ".languages[$li]" "$lint_file" 2>/dev/null)" || ext=""
+        [ -n "$ext" ] && lang_exts+=("$ext")
+        li=$((li + 1))
+      done
+    fi
+
+    # Filter files by language extensions.
+    declare -a target_files=()
+    local file
+    for file in "${FILES[@]}"; do
+      if [ ${#lang_exts[@]} -eq 0 ]; then
+        target_files+=("$file")
+      else
+        local ext
+        for ext in "${lang_exts[@]}"; do
+          case "$file" in
+            *"${ext}") target_files+=("$file"); break ;;
+          esac
+        done
+      fi
+    done
+    [ ${#target_files[@]} -gt 0 ] || continue
+
+    _log "  external rule ${rule_id}: running"
+    local grep_out grep_rc=0
+    grep_out="$(_grep_hits -E -e "$pattern" "${target_files[@]}" 2>/dev/null)" || grep_rc=$?
+    [ "$grep_rc" -eq 2 ] && { _log "ERROR: grep error in external rule ${rule_id}"; continue; }
+    [ -z "$grep_out" ] && continue
+
+    while IFS= read -r match_line; do
+      _split_hit "$match_line"
+      # Apply exclude pattern.
+      if [ -n "$exclude_pat" ]; then
+        if printf '%s\n' "$HIT_TEXT" | grep -qE "$exclude_pat" 2>/dev/null; then
+          continue
+        fi
+      fi
+      if _is_suppressed "$rule_id" "$HIT_TEXT"; then
+        continue
+      fi
+      _add_finding "$rule_id" "$HIT_FILE" "$HIT_LINE" "$msg" "fix the pattern flagged by rule ${rule_id}"
+    done <<< "$grep_out"
+  done
+}
+
 # ---- Rule registry and execution -------------------------------------------
 
 # Deterministic order: cross-stack rules first (alphabetical), then bash rules.
@@ -1378,6 +1477,9 @@ if _has_shell_files; then
 else
   _log "  no shell files in scope — bash rules skipped"
 fi
+
+# Run external rules loaded from --rules-dir.
+_run_external_rules
 
 # In diff mode, filter findings to only those on added lines (batch pass).
 _filter_findings_for_diff

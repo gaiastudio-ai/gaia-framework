@@ -106,6 +106,26 @@ jobs:
         run: bash plugins/gaia/scripts/check-scanner-pins.sh
 
   # ---------------------------------------------------------------------------
+  # Semgrep rule tests: validate that the shipped regression-rule library's
+  # must-fire fixtures fire and must-not-fire fixtures do not fire.
+  # Uses the pinned semgrep version from requirements-scanners.txt.
+  # ---------------------------------------------------------------------------
+  semgrep-rule-test:
+    name: semgrep-rule-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Install semgrep (pinned version)
+        run: |
+          python3 -m pip install --break-system-packages \
+            "semgrep==$(grep -oP 'semgrep==\K[0-9.]+' plugins/gaia/tools/gaia-tools/requirements-scanners.txt)" \
+            2>/dev/null || true
+      - name: Run semgrep --test on shipped rule library
+        run: |
+          semgrep --test plugins/gaia/scripts/lint-rules/
+
+  # ---------------------------------------------------------------------------
   # Fast-feedback: diff-selected tests report within minutes.
   # This is NOT a substitute for the full regression suite — it gives early
   # signal while the sharded suite runs in parallel.  The PR cannot merge

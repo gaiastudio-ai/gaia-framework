@@ -846,3 +846,4 @@
 3	lint-pack.bats	74
 3	scanner-evidence.bats	31
 3	scanner-pins.bats	13
+2	regression-rule-gate.bats	30
