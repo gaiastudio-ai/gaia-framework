@@ -561,11 +561,16 @@ _rpb_gitleaks_scan() {
     if [ -n "$config_args" ] && [ -f "$staging_dir/.gitleaks.toml" ]; then
       docker_args="$docker_args --config /workspace/.gitleaks.toml"
     fi
-    # Override PROJECT_ROOT for this call so docker mounts the staging
-    # dir, not the host project root (which is always exported in
-    # orchestrated runs).
+    # Make docker mount the staging dir instead of the project root.
+    # docker_runner_dispatch resolves the mount from
+    # ${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-$PWD}}, so unsetting
+    # both in the subshell lets $PWD (the staging dir after cd) win.
+    # Pin the config path first — docker_runner_image reads it and
+    # would otherwise lose access to project-config.yaml.
+    local _rpb_cfg="${PROJECT_CONFIG:-${CLAUDE_PROJECT_ROOT:-${PROJECT_ROOT:-$PWD}}/.gaia/config/project-config.yaml}"
     # shellcheck disable=SC2086
-    if (cd "$staging_dir" && PROJECT_ROOT="$staging_dir" ADAPTER_OUT_DIR="$report_dir" \
+    if (cd "$staging_dir" && unset PROJECT_ROOT CLAUDE_PROJECT_ROOT && \
+         PROJECT_CONFIG="$_rpb_cfg" ADAPTER_OUT_DIR="$report_dir" \
          docker_runner_dispatch gitleaks $docker_args) >/dev/null 2>&1; then
       return 0
     else
