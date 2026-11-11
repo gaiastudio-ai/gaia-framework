@@ -460,6 +460,18 @@ R
 
 # ---- story-check: malformed register ----
 
+@test "story-check: register with no entries key exits 2" {
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  # Overwrite register: valid YAML but no entries key at all.
+  printf 'schema_version: 1\n' > "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"no entries key"* ]]
+}
+
 @test "story-check: entries as map (not list) exits 2" {
   bash "$RW" add --story K0-R1 --defect "test" --type bug \
     --severity critical --gate code-review --pattern-class "test-class"
@@ -643,4 +655,84 @@ RULE
   run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("not a valid slug"))'
+}
+
+# ---- story-check: invalid rule validation ----
+
+@test "story-check: linked rule that fails semgrep validate is rejected" {
+  command -v semgrep >/dev/null 2>&1 || skip "semgrep not installed"  # lint-pack:allow-skip
+
+  # Create a project rule with invalid YAML in rule.yml.
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/bad-parse-rule/test"
+  printf 'rules:\n  - id: bad-parse-rule\n    INVALID_KEY: true\n' \
+    > "$TEST_DIR/.gaia/custom/lint-rules/bad-parse-rule/rule.yml"
+  echo "// ruleid: bad-parse-rule" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/bad-parse-rule/test/fire.go"
+  echo "// ok: bad-parse-rule" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/bad-parse-rule/test/safe.go"
+  (cd "$TEST_DIR" && git add . && git commit -q -m "add bad rule")
+
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
+    --repo "$TEST_DIR" --gate code-review="review"
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
+    --severity critical --gate code-review --pattern-class "bad-parse"
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule bad-parse-rule
+  echo "update" >> "$TEST_DIR/.gaia/custom/lint-rules/bad-parse-rule/test/fire.go"
+  (cd "$TEST_DIR" && git add . && git commit -q -m "update rule")
+
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("fails semgrep"))'
+}
+
+@test "story-check: note when semgrep absent" {
+  # Use a project rule that exists but hide semgrep from PATH.
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/no-semgrep-rule/test"
+  cat > "$TEST_DIR/.gaia/custom/lint-rules/no-semgrep-rule/rule.yml" <<'R'
+rules:
+  - id: no-semgrep-rule
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+R
+  echo "// ruleid: no-semgrep-rule" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/no-semgrep-rule/test/fire.go"
+  echo "// ok: no-semgrep-rule" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/no-semgrep-rule/test/safe.go"
+  (cd "$TEST_DIR" && git add . && git commit -q -m "add rule")
+
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
+    --repo "$TEST_DIR" --gate code-review="review"
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
+    --severity critical --gate code-review --pattern-class "no-semgrep"
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule no-semgrep-rule
+  echo "update" >> "$TEST_DIR/.gaia/custom/lint-rules/no-semgrep-rule/test/fire.go"
+  (cd "$TEST_DIR" && git add . && git commit -q -m "update rule")
+
+  # Hide semgrep from PATH — validation deferred, note is emitted.
+  PATH="/usr/bin:/bin:/usr/local/bin" run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e '.note | test("semgrep not installed")'
+}
+
+@test "library-check: rule that fails semgrep validate is reported" {
+  command -v semgrep >/dev/null 2>&1 || skip "semgrep not installed"  # lint-pack:allow-skip
+
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/broken-val/test"
+  printf 'rules:\n  - id: broken-val\n    INVALID_KEY: true\n' \
+    > "$TEST_DIR/.gaia/custom/lint-rules/broken-val/rule.yml"
+  echo "// ruleid: broken-val" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/broken-val/test/fire.go"
+  echo "// ok: broken-val" \
+    > "$TEST_DIR/.gaia/custom/lint-rules/broken-val/test/safe.go"
+
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+  run bash "$RRC" library-check
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "broken-val" and (.reason | test("validate")))'
 }

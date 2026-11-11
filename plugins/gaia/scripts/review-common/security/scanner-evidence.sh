@@ -335,6 +335,7 @@ for _lib_dir in "$_shipped_lib" "$_project_lib"; do
         if ! semgrep --config "$_rule_dir/rule.yml" --validate >/dev/null 2>&1; then
           _rule_name="$(basename "$_rule_dir")"
           printf '%s: WARN: skipping rule %s — failed semgrep --validate\n' "$SCRIPT_NAME" "$_rule_name" >&2
+          _se_parse_errors="${_se_parse_errors:+$_se_parse_errors,}\"${_rule_name}\""
           continue
         fi
       fi
@@ -465,6 +466,15 @@ if [ "$all_complete" = "false" ]; then
   exit_code=2
 fi
 
+# Build skipped_rules JSON array from rules that failed validation.
+_skipped_rules_json="[]"
+if [ -n "$_se_parse_errors" ]; then
+  _skipped_rules_json="[${_se_parse_errors}]"
+  # A skipped rule is a silent omission — do not report complete:true.
+  complete_bool="false"
+  exit_code=2
+fi
+
 manifest="$(jq -nc \
   --argjson version 1 \
   --arg story "$STORY_KEY" \
@@ -473,8 +483,10 @@ manifest="$(jq -nc \
   --argjson enabled true \
   --argjson complete "$complete_bool" \
   --argjson adapters "$adapters_json" \
+  --argjson skipped_rules "$_skipped_rules_json" \
   '{version: $version, story: $story, run_id: $run_id, head_sha: $head_sha,
-    enabled: $enabled, complete: $complete, adapters: $adapters}')"
+    enabled: $enabled, complete: $complete, adapters: $adapters,
+    skipped_rules: $skipped_rules}')"
 
 _tmp="$(mktemp "$EVIDENCE_DIR/evidence-manifest.json.XXXXXX")"
 printf '%s\n' "$manifest" > "$_tmp"

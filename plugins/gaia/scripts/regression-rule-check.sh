@@ -175,6 +175,12 @@ _validate_rule_dir() {
     if [ "$has_nofire" = "false" ]; then
       _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"no must-not-fire fixture (file with ok: annotation) in test/\"}"
     fi
+    # Validate the rule parses when semgrep is available.
+    if command -v semgrep >/dev/null 2>&1; then
+      if ! semgrep --config "$rule_dir/rule.yml" --validate >/dev/null 2>&1; then
+        _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"rule.yml fails semgrep --validate\"}"
+      fi
+    fi
   fi
 
   # For lint-pack rules (rule.lint): must have test/fire.* and test/nofire.*.
@@ -280,9 +286,9 @@ _cmd_story_check() {
   entries_json="$(yq -o=json '.entries' "$reg_path" 2>/dev/null)" || _die 2 "story-check: cannot read register entries"
   entries_type="$(yq '.entries | type' "$reg_path" 2>/dev/null)" || entries_type=""
   if [ -z "$entries_type" ] || [ "$entries_type" = "!!null" ]; then
-    # No entries key — register exists but has no findings yet; pass.
-    printf '{"version":1,"missing":[],"library_errors":[]}\n'
-    return 0
+    # No entries key — the writer always creates entries: [], so a missing
+    # key means a corrupted or hand-edited register. Fail closed (exit 2).
+    _die 2 "story-check: register has no entries key ($reg_path)"
   fi
   if [ "$entries_type" != "!!seq" ]; then
     _die 2 "story-check: entries in register is not a list (got $entries_type)"
@@ -374,6 +380,16 @@ _cmd_story_check() {
         continue
       fi
 
+      # The linked rule must parse when semgrep is available. When absent,
+      # structural checks still ran; validation deferred to CI.
+      if [ -f "$rule_dir/rule.yml" ] && command -v semgrep >/dev/null 2>&1; then
+        if ! semgrep --config "$rule_dir/rule.yml" --validate >/dev/null 2>&1; then
+          missing="${missing:+$missing,}{\"entry\":\"${entry_id}\",\"pattern_class\":\"${pattern_class}\",\"reason\":\"linked rule ${rule_id} fails semgrep --validate\"}"
+          r=$((r + 1))
+          continue
+        fi
+      fi
+
       # The rule (or its tests) must have changed since the finding's round.
       if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
         # No run_id on the entry: fail closed (round unknown).
@@ -438,7 +454,12 @@ _cmd_story_check() {
     missing_json="[${missing}]"
   fi
 
-  printf '{"version":1,"missing":%s,"library_errors":[]}\n' "$missing_json"
+  local sc_note=""
+  if ! command -v semgrep >/dev/null 2>&1; then
+    sc_note=",\"note\":\"semgrep not installed; rule validation deferred to CI\""
+  fi
+
+  printf '{"version":1,"missing":%s,"library_errors":[]%s}\n' "$missing_json" "$sc_note"
 
   if [ -n "$missing" ]; then
     return 1

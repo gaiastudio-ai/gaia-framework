@@ -996,16 +996,41 @@ YAML
   ln -s "$outside_dir" "$proj_lib/escape-dir"
   export GAIA_CUSTOM_DIR="$WORK_TMP/.gaia/custom"
 
-  # Run scanner-evidence; the symlinked dir should NOT appear in configs.
+  # Stub semgrep adapter: if SEMGREP_EXTRA_RULE_CONFIGS contains the escaped
+  # rule path, produce a marker finding. Otherwise, produce zero findings.
+  # The marker finding is the signal that containment was bypassed.
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in --output) OUTPUT="\$2"; shift 2 ;; *) shift ;; esac
+done
+frag='{"name":"semgrep","status":"passed","findings":[]}'
+if printf '%s' "\${SEMGREP_EXTRA_RULE_CONFIGS:-}" | grep -q 'escape-dir'; then
+  frag='{"name":"semgrep","status":"passed","findings":[{"id":"containment-bypass","severity":"high","message":"escaped rule was loaded","source":"semgrep"}]}'
+fi
+if [ -n "\$OUTPUT" ]; then printf '%s\n' "\$frag" > "\$OUTPUT"; else printf '%s\n' "\$frag"; fi
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
   PATH="$WORK_TMP/fakebin:$PATH" \
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id sym1 --repo "$REPO_DIR"
-  # The run may be exit 0 or 2 depending on adapter availability; the key
-  # check is that the symlinked rule was not passed as an extra config.
-  # SEMGREP_EXTRA_RULE_CONFIGS is exported inside scanner-evidence, so we
-  # cannot read it directly. Instead, verify the symlinked file is NOT in the
-  # manifest's adapter fragments (it would cause a validation error if passed).
-  # If we got here without crashing, the containment check excluded it.
   [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
+
+  # Save the manifest path before any inner assertions.
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  [ -f "$manifest_path" ]
+
+  # The manifest must show zero findings — the containment-bypass marker
+  # finding must NOT be present. A non-zero count means the escaped rule
+  # was loaded into semgrep configs, proving the containment check failed.
+  local evidence_dir; evidence_dir="$(dirname "$manifest_path")"
+  local frag; frag="$(jq -r '.adapters[] | select(.name == "semgrep") | .fragment // ""' "$manifest_path" 2>/dev/null)" || frag=""
+  [ -n "$frag" ]
+  [ -f "$evidence_dir/$frag" ]
+  local count; count="$(jq '.findings | length' "$evidence_dir/$frag" 2>/dev/null)"
+  [ "$count" -eq 0 ]
 }
 
 @test "scanner evidence: symlinked rule.yml outside library is excluded from configs" {
@@ -1018,7 +1043,63 @@ YAML
   echo "// ok: x" > "$proj_lib/filelink/test/b.go"
   export GAIA_CUSTOM_DIR="$WORK_TMP/.gaia/custom"
 
+  # Stub semgrep adapter: if SEMGREP_EXTRA_RULE_CONFIGS contains the escaped
+  # rule path, produce a marker finding to signal containment bypass.
+  cat > "$STUB_ADAPTERS/semgrep/run.sh" <<SH
+#!/usr/bin/env bash
+set -euo pipefail
+OUTPUT=""
+while [ "\$#" -gt 0 ]; do
+  case "\$1" in --output) OUTPUT="\$2"; shift 2 ;; *) shift ;; esac
+done
+frag='{"name":"semgrep","status":"passed","findings":[]}'
+if printf '%s' "\${SEMGREP_EXTRA_RULE_CONFIGS:-}" | grep -q 'filelink'; then
+  frag='{"name":"semgrep","status":"passed","findings":[{"id":"containment-bypass","severity":"high","message":"escaped rule was loaded","source":"semgrep"}]}'
+fi
+if [ -n "\$OUTPUT" ]; then printf '%s\n' "\$frag" > "\$OUTPUT"; else printf '%s\n' "\$frag"; fi
+SH
+  chmod +x "$STUB_ADAPTERS/semgrep/run.sh"
+
   PATH="$WORK_TMP/fakebin:$PATH" \
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id sym2 --repo "$REPO_DIR"
   [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
+
+  # Save the manifest path before any inner assertions.
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  [ -f "$manifest_path" ]
+
+  # The manifest must show zero findings — a non-zero count would mean the
+  # escaped rule.yml symlink was loaded, proving the file containment failed.
+  local evidence_dir; evidence_dir="$(dirname "$manifest_path")"
+  local frag; frag="$(jq -r '.adapters[] | select(.name == "semgrep") | .fragment // ""' "$manifest_path" 2>/dev/null)" || frag=""
+  [ -n "$frag" ]
+  [ -f "$evidence_dir/$frag" ]
+  local count; count="$(jq '.findings | length' "$evidence_dir/$frag" 2>/dev/null)"
+  [ "$count" -eq 0 ]
+}
+
+# --- Invalid rule recorded in skipped_rules and blocks complete ---
+
+@test "scanner evidence: invalid rule recorded in skipped_rules and marks incomplete" {
+  command -v semgrep >/dev/null 2>&1 || skip "semgrep not installed"  # lint-pack:allow-skip
+
+  local proj_lib="$WORK_TMP/.gaia/custom/lint-rules"
+  mkdir -p "$proj_lib/broken-rule/test"
+  # Write a rule that will fail semgrep --validate.
+  printf 'rules:\n  - id: broken-rule\n    INVALID_KEY: true\n' \
+    > "$proj_lib/broken-rule/rule.yml"
+  echo "// ruleid: broken-rule" > "$proj_lib/broken-rule/test/fire.go"
+  echo "// ok: broken-rule" > "$proj_lib/broken-rule/test/safe.go"
+  export GAIA_CUSTOM_DIR="$WORK_TMP/.gaia/custom"
+
+  PATH="$WORK_TMP/fakebin:$PATH" \
+    run "$SCANNER_EVIDENCE" --story E999-S1 --run-id inv1 --repo "$REPO_DIR"
+  # Must exit 2 (incomplete) because a rule was skipped.
+  [ "$status" -eq 2 ]
+  local manifest_path; manifest_path="$(echo "$output" | tail -1)"
+  [ -f "$manifest_path" ]
+  # Manifest must record complete=false and list the skipped rule.
+  jq -e '.complete == false' "$manifest_path"
+  jq -e '.skipped_rules | length > 0' "$manifest_path"
+  jq -e '.skipped_rules[] | select(. == "broken-rule")' "$manifest_path"
 }
