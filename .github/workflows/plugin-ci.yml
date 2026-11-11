@@ -209,8 +209,10 @@ jobs:
   # temp dirs, fixtures, and state files are inherently isolated.  No shared
   # /tmp/gaia-* paths between shards.
   #
-  # Timing (run 43023196751, 2026-11-11): heaviest shard finished in ~8 min
-  # with 5-way split.  The 15-minute timeout gives >40% headroom.
+  # Timing (measured 2026-11-11, 5-way split): the bats step took 418-586 s
+  # per shard (~7-10 min). Dependency setup (apt) adds roughly 3-4 min on
+  # top, so whole-job wall clock can exceed 12 min; the 15-minute timeout
+  # covers setup plus the bats step.
   # ---------------------------------------------------------------------------
   bats-shard:
     name: bats-shard-${{ matrix.shard }}
