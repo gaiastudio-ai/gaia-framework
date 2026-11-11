@@ -817,12 +817,12 @@ OUTPUT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in --output) OUTPUT="$2"; shift 2 ;; *) shift ;; esac
 done
-frag='{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","severity":"high","message":"vuln in pkg","source":"osv-scanner"}]}'
+frag='{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","package":"testpkg","severity":"high","message":"vuln in pkg","source":"osv-scanner"}]}'
 if [ -n "$OUTPUT" ]; then printf '%s\n' "$frag" > "$OUTPUT"; else printf '%s\n' "$frag"; fi
 SH
   chmod +x "$STUB_ADAPTERS/osv-scanner/run.sh"
 
-  # Create a dep-audit adapter that reports the same advisory.
+  # Create a dep-audit adapter that reports the same advisory for the same package.
   mkdir -p "$STUB_ADAPTERS/dep-audit"
   printf '{"provider":"dep-audit","category":"dep-audit","runtime-profile":"subprocess","default-timeout-seconds":10,"file-extensions":[],"scope":"project","description":"dep audit"}\n' \
     > "$STUB_ADAPTERS/dep-audit/adapter.json"
@@ -833,7 +833,7 @@ OUTPUT=""
 while [ "$#" -gt 0 ]; do
   case "$1" in --output) OUTPUT="$2"; shift 2 ;; *) shift ;; esac
 done
-frag='{"name":"dep-audit","status":"passed","findings":[{"id":"GHSA-1234","severity":"high","message":"same vuln","source":"dep-audit"}]}'
+frag='{"name":"dep-audit","status":"passed","findings":[{"id":"GHSA-1234","package":"testpkg","severity":"high","message":"same vuln","source":"dep-audit"}]}'
 if [ -n "$OUTPUT" ]; then printf '%s\n' "$frag" > "$OUTPUT"; else printf '%s\n' "$frag"; fi
 SH
   chmod +x "$STUB_ADAPTERS/dep-audit/run.sh"
@@ -885,8 +885,8 @@ YAML
   local ev_dir="$WORK_TMP/evidence/run1"
   mkdir -p "$ev_dir"
 
-  # Write the osv-scanner fragment with one finding.
-  printf '{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","severity":"high","message":"vuln in pkg","source":"osv-scanner"}]}\n' \
+  # Write the osv-scanner fragment with one finding (package + id).
+  printf '{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","package":"testpkg","severity":"high","message":"vuln in pkg","source":"osv-scanner"}]}\n' \
     > "$ev_dir/osv-scanner.json"
   local osv_sha; osv_sha="$(shasum -a 256 "$ev_dir/osv-scanner.json" | awk '{print $1}')"
 
@@ -905,8 +905,8 @@ YAML
   local dep_audit="$PLUGIN_DIR/scripts/review-common/security/dep-audit-subroutine.sh"
   [ -x "$dep_audit" ]
 
-  # Run with two findings: GHSA-1234 (dup) + GHSA-5678 (unique).
-  GAIA_DEP_AUDIT_FINDINGS='[{"id":"GHSA-1234","severity":"high","message":"vuln in pkg","source":"dep-audit"},{"id":"GHSA-5678","severity":"medium","message":"other vuln","source":"dep-audit"}]' \
+  # Run with two findings: GHSA-1234/testpkg (dup) + GHSA-5678/otherpkg (unique).
+  GAIA_DEP_AUDIT_FINDINGS='[{"id":"GHSA-1234","package":"testpkg","severity":"high","message":"vuln in pkg","source":"dep-audit"},{"id":"GHSA-5678","package":"otherpkg","severity":"medium","message":"other vuln","source":"dep-audit"}]' \
     run "$dep_audit" --target "$proj" --evidence-dir "$ev_dir"
   [ "$status" -eq 0 ]
 
@@ -915,8 +915,43 @@ YAML
   [ "$findings_count" -eq 1 ]
   printf '%s' "$output" | jq -e '.findings[0].id == "GHSA-5678"'
   # Verify the dup is absent.
-  run bash -c "printf '%s' '$output' | jq -e '.findings[] | select(.id == \"GHSA-1234\")'"
-  [ "$status" -ne 0 ]
+  local dup_ct; dup_ct="$(printf '%s' "$output" | jq '[.findings[] | select(.id == "GHSA-1234")] | length')"
+  [ "$dup_ct" -eq 0 ]
+}
+
+@test "scanner evidence: dep-audit dedup keeps same advisory for a different package" {
+  # osv reports GHSA-1234 for package alpha. Dep-audit has GHSA-1234 for
+  # alpha (dup) and GHSA-1234 for beta (distinct). The alpha entry must
+  # be dropped; the beta entry must be kept.
+  local ev_dir="$WORK_TMP/evidence/run2"
+  mkdir -p "$ev_dir"
+
+  printf '{"name":"osv-scanner","status":"passed","findings":[{"id":"GHSA-1234","package":"alpha","severity":"high","message":"vuln","source":"osv-scanner"}]}\n' \
+    > "$ev_dir/osv-scanner.json"
+  local osv_sha; osv_sha="$(shasum -a 256 "$ev_dir/osv-scanner.json" | awk '{print $1}')"
+  jq -nc --arg sha "$osv_sha" \
+    '{version:1,story:"E999-S1",run_id:"run2",head_sha:"abc",enabled:true,complete:true,
+      adapters:[{name:"osv-scanner",category:"dep-audit",state:"available",
+                 failure_kind:null,skip_reason:null,fragment:"osv-scanner.json",sha256:$sha}]}' \
+    > "$ev_dir/evidence-manifest.json"
+
+  local proj="$WORK_TMP/proj2"
+  mkdir -p "$proj"
+  printf '{}\n' > "$proj/package.json"
+
+  local dep_audit="$PLUGIN_DIR/scripts/review-common/security/dep-audit-subroutine.sh"
+  GAIA_DEP_AUDIT_FINDINGS='[{"id":"GHSA-1234","package":"alpha","severity":"high","message":"alpha dup","source":"dep-audit"},{"id":"GHSA-1234","package":"beta","severity":"high","message":"beta distinct","source":"dep-audit"},{"id":"GHSA-9999","package":"alpha","severity":"medium","message":"other","source":"dep-audit"}]' \
+    run "$dep_audit" --target "$proj" --evidence-dir "$ev_dir"
+  [ "$status" -eq 0 ]
+
+  # alpha/GHSA-1234 dropped (matches osv), beta/GHSA-1234 kept, alpha/GHSA-9999 kept.
+  local findings_count; findings_count="$(printf '%s' "$output" | jq '.findings | length')"
+  [ "$findings_count" -eq 2 ]
+  printf '%s' "$output" | jq -e '.findings[] | select(.package == "beta" and .id == "GHSA-1234")'
+  printf '%s' "$output" | jq -e '.findings[] | select(.package == "alpha" and .id == "GHSA-9999")'
+  # The dup must be gone.
+  local dup_count; dup_count="$(printf '%s' "$output" | jq '[.findings[] | select(.package == "alpha" and .id == "GHSA-1234")] | length')"
+  [ "$dup_count" -eq 0 ]
 }
 
 @test "scanner evidence: dep-audit sub-routine keeps all findings without evidence dir" {

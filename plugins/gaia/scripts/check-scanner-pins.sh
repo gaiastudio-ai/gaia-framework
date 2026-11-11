@@ -186,38 +186,126 @@ while [ "$i" -lt "$scanner_count" ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Check 6: Every curl download in the fetcher stage must have a corresponding
-# sha256sum -c for the same output file. Joins continuation lines, then
-# checks each curl -o. Runtime-stage utility downloads (dotnet, NodeSource)
-# are outside the scanner pin scope.
+# Check 6: Every curl download (in any stage) must have a corresponding
+# sha256sum -c for the same output file. Joins continuation lines for the
+# entire Dockerfile, splits each line at && to isolate commands, cuts at
+# the first pipe so a piped command's -o is not mistaken for curl's, then
+# extracts the output file from: -o <f>, -o<f>, --output <f>, -fsSLo <f>.
+#
+# Allowed exception: dotnet-install.sh — a well-known bootstrapper whose
+# integrity relies on TLS only; the .NET SDK version is pinned downstream.
+# An explicit allow entry covers only one download per curl invocation;
+# a second -o on the same line is still checked.
 # ---------------------------------------------------------------------------
 # Join continuation lines (trailing backslash) portably.
 _joined_dockerfile="$(awk '/\\$/ {sub(/\\$/,""); buf=buf $0; next} {print buf $0; buf=""}
   END {if (buf) print buf}' "$DOCKERFILE")"
-# For each curl download (with -o), verify a sha256sum -c references the same file.
-while IFS= read -r _dl_line; do
-  [ -n "$_dl_line" ] || continue
-  # Extract the -o target: the word after -o.
-  _out_file="$(printf '%s' "$_dl_line" | grep -oE -- '-o[[:space:]]+[^[:space:]]+' | head -1 | awk '{print $2}')" || _out_file=""
+
+# Extract every curl output target from the joined Dockerfile.
+# Awk splits at && to isolate commands, cuts at the first pipe to keep
+# only the curl portion, then extracts -o / --output / -<flags>o targets.
+_curl_targets="$(printf '%s\n' "$_joined_dockerfile" | awk '
+  /curl/ {
+    n = split($0, amps, "&&")
+    for (a = 1; a <= n; a++) {
+      if (amps[a] !~ /curl/) continue
+      # Cut at first pipe to isolate the curl command.
+      p = index(amps[a], "|")
+      if (p > 0) seg = substr(amps[a], 1, p - 1)
+      else        seg = amps[a]
+      m = split(seg, w, /[[:space:]]+/)
+      for (i = 1; i <= m; i++) {
+        # --output <file>
+        if (w[i] == "--output" && i < m) {
+          gsub(/"/, "", w[i+1]); gsub(/'"'"'/, "", w[i+1])
+          print w[i+1]; continue
+        }
+        # -o <file> (standalone)
+        if (w[i] == "-o" && i < m) {
+          gsub(/"/, "", w[i+1]); gsub(/'"'"'/, "", w[i+1])
+          print w[i+1]; continue
+        }
+        # -o<file> (no space, short form only)
+        if (w[i] ~ /^-o./ && substr(w[i],1,2) != "--") {
+          v = substr(w[i], 3)
+          gsub(/"/, "", v); gsub(/'"'"'/, "", v)
+          print v; continue
+        }
+        # Combined short flags ending with o, e.g. -fsSLo <file>
+        if (w[i] ~ /^-[a-zA-Z][a-zA-Z]*o$/ && substr(w[i],1,2) != "--" && i < m) {
+          gsub(/"/, "", w[i+1]); gsub(/'"'"'/, "", w[i+1])
+          print w[i+1]; continue
+        }
+      }
+    }
+  }
+')"
+
+# Verify each extracted target has a matching sha256sum -c.
+while IFS= read -r _out_file; do
   [ -n "$_out_file" ] || continue
-  # Strip quotes around the filename.
-  _out_file="$(printf '%s' "$_out_file" | tr -d '"'"'")"
-  # The basename is what sha256sum -c checks against.
   _out_base="${_out_file##*/}"
-  # Look for a sha256sum -c line that references this file (by path or basename).
-  _found=false
-  if printf '%s\n' "$_joined_dockerfile" | grep -F "$_out_base" | grep -q 'sha256sum -c' 2>/dev/null; then
-    _found=true
+
+  # Named exception: dotnet-install.sh (integrity via TLS; version
+  # pinned by --channel/--install-dir downstream).
+  case "$_out_base" in
+    dotnet-install.sh) continue ;;
+  esac
+
+  # The Dockerfile's checksum pattern is:
+  #   echo "HASH  FILE" | sha256sum -c
+  # so the verified filename appears immediately before a closing quote
+  # and the pipe to sha256sum. Use awk index() (literal match, no regex
+  # escaping) to find the basename, then require the very next character
+  # to be a quote followed by a pipe into sha256sum. This avoids false
+  # positives when a different file's sha256sum sits on the same joined
+  # line (e.g. a second curl inside an already-verified RUN).
+  # Use awk index() (literal match, no regex escaping) to find the
+  # filename, then require the very next character to be a closing quote
+  # followed by a pipe into sha256sum -c.
+  _verified=false
+  if printf '%s\n' "$_joined_dockerfile" | awk -v f="$_out_base" -v sq="'" '
+    BEGIN { ok = 0 }
+    {
+      s = $0; pos = index(s, f)
+      while (pos > 0) {
+        c = substr(s, pos + length(f), 1)
+        if (c == "\"" || c == sq) {
+          rest = substr(s, pos + length(f))
+          if (rest ~ /^.[[:space:]]*[|][[:space:]]*sha256sum[[:space:]]+-c/) { ok = 1; exit }
+        }
+        s = substr(s, pos + length(f))
+        pos = index(s, f)
+      }
+    }
+    END { exit (ok ? 0 : 1) }
+  ' 2>/dev/null; then
+    _verified=true
   fi
-  if [ "$_found" = "false" ] && printf '%s\n' "$_joined_dockerfile" | grep -F "$_out_file" | grep -q 'sha256sum -c' 2>/dev/null; then
-    _found=true
+  if [ "$_verified" = "false" ]; then
+    if printf '%s\n' "$_joined_dockerfile" | awk -v f="$_out_file" -v sq="'" '
+      BEGIN { ok = 0 }
+      {
+        s = $0; pos = index(s, f)
+        while (pos > 0) {
+          c = substr(s, pos + length(f), 1)
+          if (c == "\"" || c == sq) {
+            rest = substr(s, pos + length(f))
+            if (rest ~ /^.[[:space:]]*[|][[:space:]]*sha256sum[[:space:]]+-c/) { ok = 1; exit }
+          }
+          s = substr(s, pos + length(f))
+          pos = index(s, f)
+        }
+      }
+      END { exit (ok ? 0 : 1) }
+    ' 2>/dev/null; then
+      _verified=true
+    fi
   fi
-  if [ "$_found" = "false" ]; then
+  if [ "$_verified" = "false" ]; then
     _err "curl download to $_out_file has no sha256sum -c verification"
   fi
-done < <(awk 'BEGIN{s=0} /^FROM.*AS fetcher/{s=1; next} /^FROM/{s=0} s{print}' "$DOCKERFILE" | \
-  awk '/\\$/ {sub(/\\$/,""); buf=buf $0; next} {print buf $0; buf=""}
-    END {if (buf) print buf}' | grep 'curl.*-o ')
+done < <(printf '%s\n' "$_curl_targets")
 
 # ---------------------------------------------------------------------------
 # Summary.

@@ -257,10 +257,11 @@ root and emits a single `analysis-results.json`-shaped check fragment under the
   rubric and emits its own verdict (independent of this sub-routine wiring).
 
 When `--evidence-dir` points at a scanner-evidence run directory that contains
-a complete osv-scanner fragment, the sub-routine reads every finding ID from
-that fragment (`jq '.findings[].id'`) and drops any dep-audit finding whose
-`.id` field matches. This prevents the same advisory from appearing twice in
-the report — once from the scanner adapter and once from the sub-routine.
+a complete osv-scanner fragment, the sub-routine reads every (package, advisory)
+pair from that fragment and drops any dep-audit finding whose `.package` and
+`.id` fields both match an osv entry. An advisory that affects a different
+package is kept. This prevents the same advisory for the same package from
+appearing twice in the report while preserving distinct-package findings.
 
 The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
 the sub-routine ran (skipped fragments included for transparency).

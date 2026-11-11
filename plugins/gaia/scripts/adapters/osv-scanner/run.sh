@@ -137,12 +137,15 @@ elif [ "$rc" -eq 1 ]; then
   rc=0
 fi
 
-# Map osv-scanner JSON into findings[].
+# Map osv-scanner JSON into findings[]. Each finding carries the
+# affected package name so cross-source dedup can match on (package, id)
+# rather than advisory id alone.
 findings="$(printf '%s' "$raw" | jq -c '
-  [(.results // [])[] | (.packages // [])[] |
-   (.vulnerabilities // [])[] |
+  [(.results // [])[] | (.packages // [])[] | . as $pkg |
+   ($pkg.vulnerabilities // [])[] |
    {
      id: (.id // "unknown"),
+     package: ($pkg.package.name // ""),
      severity: (if (.database_specific.severity // "MODERATE") == "CRITICAL" then "critical"
                 elif (.database_specific.severity // "MODERATE") == "HIGH" then "high"
                 elif (.database_specific.severity // "MODERATE") == "MODERATE" then "medium"

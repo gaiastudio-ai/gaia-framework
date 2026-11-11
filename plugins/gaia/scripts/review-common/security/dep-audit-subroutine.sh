@@ -122,12 +122,13 @@ if [ "${GAIA_DEP_AUDIT_FORCE_FAIL:-0}" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Build the osv-scanner finding-ID set for cross-source dedup.
+# Build the osv-scanner (package, advisory) pair set for cross-source dedup.
 # When --evidence-dir points at a scanner-evidence run directory that contains
-# a complete osv-scanner fragment, load its finding IDs. Any dep-audit finding
-# whose ID matches an osv finding is dropped from the output.
+# a complete osv-scanner fragment, load its (package:id) pairs. A dep-audit
+# finding is dropped only when both its package name AND advisory ID match an
+# osv entry — an advisory that affects a different package is kept.
 # ---------------------------------------------------------------------------
-_osv_ids=""
+_osv_pairs=""
 if [ -n "$EVIDENCE_DIR" ] && [ -f "$EVIDENCE_DIR/evidence-manifest.json" ]; then
   _osv_frag="$(jq -r '
     .adapters[]
@@ -135,7 +136,7 @@ if [ -n "$EVIDENCE_DIR" ] && [ -f "$EVIDENCE_DIR/evidence-manifest.json" ]; then
     | .fragment
   ' "$EVIDENCE_DIR/evidence-manifest.json" 2>/dev/null)" || _osv_frag=""
   if [ -n "$_osv_frag" ] && [ -f "$EVIDENCE_DIR/$_osv_frag" ]; then
-    _osv_ids="$(jq -r '.findings[].id // empty' "$EVIDENCE_DIR/$_osv_frag" 2>/dev/null | sort -u)" || _osv_ids=""
+    _osv_pairs="$(jq -r '.findings[] | ((.package // "") + ":" + (.id // ""))' "$EVIDENCE_DIR/$_osv_frag" 2>/dev/null | sort -u)" || _osv_pairs=""
   fi
 fi
 
@@ -147,11 +148,13 @@ fi
 #
 # When the sub-routine has findings (supplied via GAIA_DEP_AUDIT_FINDINGS for
 # test harness or future wiring), deduplicate them against the osv set.
+# Dedup matches on (package, advisory-id); id-only overlap with a different
+# package is kept.
 _raw_findings="${GAIA_DEP_AUDIT_FINDINGS:-[]}"
-if [ "$_raw_findings" != "[]" ] && [ -n "$_osv_ids" ]; then
-  _deduped="$(printf '%s' "$_raw_findings" | jq -c --arg ids "$_osv_ids" '
-    ($ids | split("\n") | map(select(. != ""))) as $osv
-    | [ .[] | select(.id as $fid | $osv | index($fid) | not) ]
+if [ "$_raw_findings" != "[]" ] && [ -n "$_osv_pairs" ]; then
+  _deduped="$(printf '%s' "$_raw_findings" | jq -c --arg pairs "$_osv_pairs" '
+    ($pairs | split("\n") | map(select(. != ""))) as $osv
+    | [ .[] | select(((.package // "") + ":" + .id) as $key | $osv | index($key) | not) ]
   ' 2>/dev/null)" || _deduped="$_raw_findings"
 else
   _deduped="$_raw_findings"
