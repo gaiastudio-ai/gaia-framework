@@ -3450,7 +3450,18 @@ _rw_cmd_link_rule() {
 
   _rw_validate_key "$key"
 
-  # Validate rule-id exists in shipped or project library.
+  # Validate rule-id is a valid slug (lowercase alphanumeric with hyphens).
+  case "$rule_id" in
+    [a-z0-9]*) ;;
+    *) _rw_die 1 "link-rule: --rule must be a valid slug (lowercase alphanumeric, hyphens only): $rule_id" ;;
+  esac
+  local _lr_stripped
+  _lr_stripped="$(printf '%s' "$rule_id" | tr -d 'a-z0-9-')"
+  if [ -n "$_lr_stripped" ]; then
+    _rw_die 1 "link-rule: --rule must be a valid slug (lowercase alphanumeric, hyphens only): $rule_id"
+  fi
+
+  # Validate rule-id exists as a direct child directory in a rule library.
   local _lr_scripts_dir="$SCRIPTS_DIR"
   local _lr_shipped_lib="$_lr_scripts_dir/lint-rules"
   local _lr_custom_dir="${GAIA_CUSTOM_DIR:-}"

@@ -84,7 +84,7 @@ _validate_rule_dir() {
   local rule_id
   rule_id="$(basename "$rule_dir")"
 
-  # Path traversal guard (AC-EC4).
+  # Path traversal guard — refuse rule dirs that resolve outside their library.
   local real_rule_dir real_lib_dir
   real_rule_dir="$(cd "$rule_dir" 2>/dev/null && pwd -P)" || {
     _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"cannot resolve real path\"}"
@@ -105,18 +105,54 @@ _validate_rule_dir() {
   esac
 
   # Must have a rule file.
-  local has_rule=false
-  [ -f "$rule_dir/rule.yml" ] && has_rule=true
-  [ -f "$rule_dir/rule.lint" ] && has_rule=true
+  local has_rule=false rule_file_path=""
+  if [ -f "$rule_dir/rule.yml" ]; then
+    has_rule=true; rule_file_path="$rule_dir/rule.yml"
+  fi
+  if [ -f "$rule_dir/rule.lint" ]; then
+    has_rule=true; rule_file_path="$rule_dir/rule.lint"
+  fi
   if [ "$has_rule" = "false" ]; then
     _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"no rule.yml or rule.lint found\"}"
     return 0
+  fi
+
+  # Containment: rule file must resolve inside the library.
+  if [ -L "$rule_file_path" ]; then
+    local real_rule_file
+    real_rule_file="$(cd "$(dirname "$rule_file_path")" 2>/dev/null && pwd -P)/$(basename "$rule_file_path")"
+    # Resolve through readlink if available, otherwise use the directory-based path.
+    if command -v readlink >/dev/null 2>&1; then
+      real_rule_file="$(readlink -f "$rule_file_path" 2>/dev/null)" || real_rule_file=""
+    fi
+    if [ -n "$real_rule_file" ]; then
+      case "$real_rule_file" in
+        "$real_lib_dir"/*) ;; # inside the library
+        *)
+          _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"rule file resolves outside the ${label} library (refused)\"}"
+          return 0
+          ;;
+      esac
+    fi
   fi
 
   # Must have a test/ directory.
   if [ ! -d "$rule_dir/test" ]; then
     _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"test/ directory missing\"}"
     return 0
+  fi
+
+  # Containment: test directory must resolve inside the library.
+  local real_test_dir
+  real_test_dir="$(cd "$rule_dir/test" 2>/dev/null && pwd -P)" || real_test_dir=""
+  if [ -n "$real_test_dir" ]; then
+    case "$real_test_dir" in
+      "$real_lib_dir"/*) ;; # inside the library
+      *)
+        _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"test/ directory resolves outside the ${label} library (refused)\"}"
+        return 0
+        ;;
+    esac
   fi
 
   # For semgrep rules (rule.yml): must have at least one must-fire fixture
@@ -225,17 +261,32 @@ _cmd_story_check() {
   local reg_path
   reg_path="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key "$story_key" --type findings-register 2>/dev/null)" || _die 2 "story-check: cannot resolve register for $story_key"
   if [ ! -f "$reg_path" ]; then
-    # No register = no findings = pass.
-    printf '{"version":1,"missing":[],"library_errors":[]}\n'
-    return 0
+    _die 2 "story-check: findings register not found for $story_key (expected at $reg_path)"
+  fi
+  if [ ! -r "$reg_path" ]; then
+    _die 2 "story-check: findings register not readable for $story_key ($reg_path)"
   fi
 
   command -v yq >/dev/null 2>&1 || _die 2 "story-check: yq is required"
   command -v jq >/dev/null 2>&1 || _die 2 "story-check: jq is required"
 
-  # Read entries with pattern_class and critical/high severity.
-  local entries_json
+  # Validate YAML is parseable.
+  if ! yq '.' "$reg_path" >/dev/null 2>&1; then
+    _die 2 "story-check: findings register is not valid YAML ($reg_path)"
+  fi
+
+  # Read entries — must be a list (sequence), not a map or scalar.
+  local entries_json entries_type
   entries_json="$(yq -o=json '.entries' "$reg_path" 2>/dev/null)" || _die 2 "story-check: cannot read register entries"
+  entries_type="$(yq '.entries | type' "$reg_path" 2>/dev/null)" || entries_type=""
+  if [ -z "$entries_type" ] || [ "$entries_type" = "!!null" ]; then
+    # No entries key — register exists but has no findings yet; pass.
+    printf '{"version":1,"missing":[],"library_errors":[]}\n'
+    return 0
+  fi
+  if [ "$entries_type" != "!!seq" ]; then
+    _die 2 "story-check: entries in register is not a list (got $entries_type)"
+  fi
 
   local pattern_entries
   pattern_entries="$(printf '%s' "$entries_json" | jq -c '[.[] | select(.pattern_class != null and .pattern_class != "" and (.severity == "critical" or .severity == "high"))]' 2>/dev/null)" || _die 2 "story-check: jq filter failed"
@@ -285,10 +336,37 @@ _cmd_story_check() {
       local rule_id
       rule_id="$(printf '%s' "$rules" | jq -r --argjson idx "$r" '.[$idx]' 2>/dev/null)"
 
-      # Rule must exist in shipped or project library.
-      local rule_found=false
-      [ -d "$_SHIPPED_LIB/$rule_id" ] && rule_found=true
-      [ -d "$_PROJECT_LIB/$rule_id" ] && rule_found=true
+      # Rule id must be a valid slug and resolve to a direct child of a library.
+      local _sc_bad_slug=false
+      case "$rule_id" in
+        [a-z0-9]*) ;;
+        *) _sc_bad_slug=true ;;
+      esac
+      if [ "$_sc_bad_slug" = "false" ]; then
+        local _sc_stripped
+        _sc_stripped="$(printf '%s' "$rule_id" | tr -d 'a-z0-9-')"
+        [ -z "$_sc_stripped" ] || _sc_bad_slug=true
+      fi
+      if [ "$_sc_bad_slug" = "true" ]; then
+        missing="${missing:+$missing,}{\"entry\":\"${entry_id}\",\"pattern_class\":\"${pattern_class}\",\"reason\":\"linked rule '${rule_id}' is not a valid slug\"}"
+        r=$((r + 1))
+        continue
+      fi
+
+      # Rule must exist in shipped or project library, and resolve inside it.
+      local rule_found=false rule_dir=""
+      if [ -d "$_SHIPPED_LIB/$rule_id" ]; then
+        local _sc_real _sc_lib_real
+        _sc_real="$(cd "$_SHIPPED_LIB/$rule_id" 2>/dev/null && pwd -P)" || _sc_real=""
+        _sc_lib_real="$(cd "$_SHIPPED_LIB" 2>/dev/null && pwd -P)" || _sc_lib_real=""
+        case "$_sc_real" in "$_sc_lib_real"/*) rule_found=true; rule_dir="$_SHIPPED_LIB/$rule_id" ;; esac
+      fi
+      if [ "$rule_found" = "false" ] && [ -d "$_PROJECT_LIB/$rule_id" ]; then
+        local _sc_real _sc_lib_real
+        _sc_real="$(cd "$_PROJECT_LIB/$rule_id" 2>/dev/null && pwd -P)" || _sc_real=""
+        _sc_lib_real="$(cd "$_PROJECT_LIB" 2>/dev/null && pwd -P)" || _sc_lib_real=""
+        case "$_sc_real" in "$_sc_lib_real"/*) rule_found=true; rule_dir="$_PROJECT_LIB/$rule_id" ;; esac
+      fi
 
       if [ "$rule_found" = "false" ]; then
         missing="${missing:+$missing,}{\"entry\":\"${entry_id}\",\"pattern_class\":\"${pattern_class}\",\"reason\":\"linked rule ${rule_id} not found in any library\"}"
@@ -305,7 +383,7 @@ _cmd_story_check() {
       fi
 
       if [ "$in_git" = "false" ]; then
-        # Non-git workspace: fail closed (AC-EC5).
+        # Non-git workspace: fail closed — rule change cannot be verified.
         missing="${missing:+$missing,}{\"entry\":\"${entry_id}\",\"pattern_class\":\"${pattern_class}\",\"reason\":\"rule change could not be verified (non-git workspace)\"}"
         r=$((r + 1))
         continue

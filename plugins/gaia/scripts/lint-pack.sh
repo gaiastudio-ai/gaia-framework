@@ -38,6 +38,7 @@ Options:
   --report <path>    JSON report output path (default: temp file)
   --exclude <id>     Skip rule <id> (repeatable)
   --workdir <dir>    Working directory (default: .)
+  --rules-dir <dir>  Load rule.lint rules from <dir> (repeatable)
 
 Exit codes:
   0  No findings, or nothing to scan
@@ -1355,11 +1356,28 @@ _load_rules_dirs() {
   local dir
   for dir in "${RULES_DIRS[@]}"; do
     [ -d "$dir" ] || continue
+    # Containment: resolve the library root for symlink checking.
+    local lib_real
+    lib_real="$(cd "$dir" 2>/dev/null && pwd -P)" || continue
     local rule_dir
     for rule_dir in "$dir"/*/; do
       [ -d "$rule_dir" ] || continue
+      # Containment: rule directory must resolve inside the library.
+      local rd_real
+      rd_real="$(cd "$rule_dir" 2>/dev/null && pwd -P)" || continue
+      case "$rd_real" in "$lib_real"/*) ;; *) _log "WARN: rule dir resolves outside library, skipped: $rule_dir"; continue ;; esac
       local lint_file="$rule_dir/rule.lint"
       [ -f "$lint_file" ] || continue
+      # Containment: rule file must not be a symlink escaping the library.
+      if [ -L "$lint_file" ]; then
+        local rf_real=""
+        if command -v readlink >/dev/null 2>&1; then
+          rf_real="$(readlink -f "$lint_file" 2>/dev/null)" || rf_real=""
+        fi
+        if [ -n "$rf_real" ]; then
+          case "$rf_real" in "$lib_real"/*) ;; *) _log "WARN: rule.lint resolves outside library, skipped: $lint_file"; continue ;; esac
+        fi
+      fi
       local rule_id
       rule_id="$(yq -r '.id // ""' "$lint_file" 2>/dev/null)" || continue
       [ -n "$rule_id" ] || continue

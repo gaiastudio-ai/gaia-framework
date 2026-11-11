@@ -2,6 +2,8 @@
 # regression-rule-gate.bats — tests for regression-rule-check.sh, register-write.sh
 # --pattern-class, and register-write.sh link-rule.
 
+load 'test_helper.bash'
+
 setup() {
   export SCRIPT_DIR="${BATS_TEST_DIRNAME}/../scripts"
   export RRC="$SCRIPT_DIR/regression-rule-check.sh"
@@ -265,10 +267,10 @@ RULE
 
 # ---- story-check subcommand ----
 
-@test "story-check: no register passes" {
+@test "story-check: missing register exits 2" {
   run bash "$RRC" story-check --story K0-R1
-  [ "$status" -eq 0 ]
-  printf '%s' "$output" | jq -e '.missing | length == 0'
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not found"* ]]
 }
 
 @test "story-check: pattern finding without linked rule fails" {
@@ -433,4 +435,112 @@ R
   stored_run_id="$(yq '.entries[0].run_id' "$reg")"
   # Should be null or empty.
   [ "$stored_run_id" = "null" ] || [ -z "$stored_run_id" ]
+}
+
+# ---- story-check: malformed register ----
+
+@test "story-check: entries as map (not list) exits 2" {
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  # Overwrite entries with a map instead of a list.
+  printf 'schema_version: 1\nentries: {}\n' > "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not a list"* ]]
+}
+
+@test "story-check: unparsable YAML exits 2" {
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  printf 'garbage: [unclosed\n' > "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not valid YAML"* ]]
+}
+
+@test "story-check: unreadable register exits 2" {
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  chmod 000 "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  chmod 644 "$reg"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not readable"* ]]
+}
+
+# ---- link-rule: slug and containment validation ----
+
+@test "link-rule rejects traversal path as rule id" {
+  bash "$RW" add --story K0-R1 --defect "traversal" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  run bash "$RW" link-rule --story K0-R1 --id RF-1 --rule '../../artifacts'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"slug"* ]]
+}
+
+@test "link-rule rejects dot as rule id" {
+  bash "$RW" add --story K0-R1 --defect "dot" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  run bash "$RW" link-rule --story K0-R1 --id RF-1 --rule '.'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"slug"* ]]
+}
+
+@test "link-rule rejects dot-dot as rule id" {
+  bash "$RW" add --story K0-R1 --defect "dotdot" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  run bash "$RW" link-rule --story K0-R1 --id RF-1 --rule '..'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"slug"* ]]
+}
+
+# ---- library-check: symlink containment ----
+
+@test "library-check: symlinked rule.yml outside library is refused" {
+  local outside_dir
+  outside_dir="$(mktemp -d "$TMPDIR/outside-XXXXXX")"
+  cat > "$outside_dir/rule.yml" <<'RULE'
+rules:
+  - id: escaped-file
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+RULE
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/filelink/test"
+  ln -s "$outside_dir/rule.yml" "$TEST_DIR/.gaia/custom/lint-rules/filelink/rule.yml"
+  echo "// ruleid: escaped-file" > "$TEST_DIR/.gaia/custom/lint-rules/filelink/test/fire.go"
+  echo "// ok: escaped-file" > "$TEST_DIR/.gaia/custom/lint-rules/filelink/test/safe.go"
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+  run bash "$RRC" library-check
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "filelink" and (.reason | test("outside")))'
+}
+
+@test "library-check: symlinked test dir outside library is refused" {
+  local outside_dir
+  outside_dir="$(mktemp -d "$TMPDIR/outside-XXXXXX")"
+  mkdir -p "$outside_dir/test"
+  echo "// ruleid: test-escape" > "$outside_dir/test/fire.go"
+  echo "// ok: test-escape" > "$outside_dir/test/safe.go"
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/testlink"
+  cat > "$TEST_DIR/.gaia/custom/lint-rules/testlink/rule.yml" <<'RULE'
+rules:
+  - id: test-escape
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+RULE
+  ln -s "$outside_dir/test" "$TEST_DIR/.gaia/custom/lint-rules/testlink/test"
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+  run bash "$RRC" library-check
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "testlink" and (.reason | test("outside")))'
 }

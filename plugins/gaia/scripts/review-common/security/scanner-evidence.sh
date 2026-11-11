@@ -310,11 +310,34 @@ _custom_dir="${GAIA_CUSTOM_DIR:-${PROJECT_ROOT}/.gaia/custom}"
 _project_lib="$_custom_dir/lint-rules"
 
 _extra_rule_configs=""
+_se_parse_errors=""
 for _lib_dir in "$_shipped_lib" "$_project_lib"; do
   [ -d "$_lib_dir" ] || continue
+  _lib_real="$(cd "$_lib_dir" 2>/dev/null && pwd -P)" || continue
   for _rule_dir in "$_lib_dir"/*/; do
     [ -d "$_rule_dir" ] || continue
+    # Containment: rule directory must resolve inside its library.
+    _rule_real="$(cd "$_rule_dir" 2>/dev/null && pwd -P)" || continue
+    case "$_rule_real" in "$_lib_real"/*) ;; *) continue ;; esac
     if [ -f "$_rule_dir/rule.yml" ]; then
+      # Containment: rule file itself must not be a symlink escaping the library.
+      if [ -L "$_rule_dir/rule.yml" ]; then
+        _rf_real=""
+        if command -v readlink >/dev/null 2>&1; then
+          _rf_real="$(readlink -f "$_rule_dir/rule.yml" 2>/dev/null)" || _rf_real=""
+        fi
+        if [ -n "$_rf_real" ]; then
+          case "$_rf_real" in "$_lib_real"/*) ;; *) continue ;; esac
+        fi
+      fi
+      # Validate the rule parses before including it (skip with warning on error).
+      if command -v semgrep >/dev/null 2>&1; then
+        if ! semgrep --config "$_rule_dir/rule.yml" --validate >/dev/null 2>&1; then
+          _rule_name="$(basename "$_rule_dir")"
+          printf '%s: WARN: skipping rule %s — failed semgrep --validate\n' "$SCRIPT_NAME" "$_rule_name" >&2
+          continue
+        fi
+      fi
       _extra_rule_configs="${_extra_rule_configs:+$_extra_rule_configs:}${_rule_dir}rule.yml"
     fi
   done

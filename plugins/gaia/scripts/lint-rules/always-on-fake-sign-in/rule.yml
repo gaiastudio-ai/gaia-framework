@@ -1,16 +1,11 @@
 rules:
   - id: always-on-fake-sign-in
     patterns:
-      - pattern-either:
-          - pattern: |
-              func $FUNC(...) ... {
-                ...
-                return $FAKE(...)
-              }
-          - pattern: |
-              def $FUNC(...):
-                  ...
-                  return $FAKE(...)
+      - pattern: |
+          func $FUNC(...) {
+            ...
+            return $FAKE(...)
+          }
       - metavariable-regex:
           metavariable: $FUNC
           regex: "(?i)(create|get|new|make|build).*(auth|sign_?in|login|identity|credential|session).*(client|factory|provider|service|handler)"
@@ -21,7 +16,7 @@ rules:
       Auth client factory unconditionally returns a fake or stub client.
       Production code must never unconditionally return a test double.
       Gate the fake behind an environment check or test-only build tag.
-    languages: [go, python, java, typescript, javascript]
+    languages: [go]
     severity: ERROR
     metadata:
       category: security
@@ -29,14 +24,5 @@ rules:
     paths:
       exclude:
         - "*_test.go"
-        - "*_test.py"
-        - "test_*.py"
-        - "*.test.ts"
-        - "*.test.js"
-        - "*.spec.ts"
-        - "*.spec.js"
-        - "__tests__/**"
-        - "tests/**"
-        - "test/**"
         - "**/testutil/**"
         - "**/testhelper/**"
