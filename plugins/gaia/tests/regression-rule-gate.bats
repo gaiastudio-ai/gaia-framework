@@ -615,3 +615,32 @@ RULE
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "testlink" and (.reason | test("outside")))'
 }
+
+# ---- story-check: invalid rule ids already in register ----
+
+@test "story-check: traversal rule id in register is rejected" {
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
+    --repo "$TEST_DIR" --gate code-review="review"
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  # Manually inject a traversal rule id into the register.
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  yq -i '.entries[0].regression_rules = ["../../artifacts"]' "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("not a valid slug"))'
+}
+
+@test "story-check: dot-dot rule id in register is rejected" {
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
+    --repo "$TEST_DIR" --gate code-review="review"
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
+    --severity critical --gate code-review --pattern-class "test-class"
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  yq -i '.entries[0].regression_rules = [".."]' "$reg"
+  run bash "$RRC" story-check --story K0-R1
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("not a valid slug"))'
+}

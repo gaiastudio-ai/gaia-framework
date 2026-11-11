@@ -2283,9 +2283,9 @@ semgrep==1.90.0 \
     --hash=sha256:db68c10560e29543b54e8492f3f936e4472f1942a6236fceb09330047b10a43a \
     --hash=sha256:f81bad17c782600cff828b94083fefddc4313a7acdcff03b8340c4ae8a30614b
     # via -r tmp/req.in
-setuptools==84.2.1 \
-    --hash=sha256:3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc \
-    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
+setuptools==75.8.0 \
+    --hash=sha256:e3982f444617239225d675215d51f6ba05f845d4eec313da4418fdbb56fb27e3 \
+    --hash=sha256:c5afc8f407c626b8313a86e10311dd3f661c6cd9c09d4bf8c15c0e11f9f2b0e6
     # via opentelemetry-instrumentation
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
