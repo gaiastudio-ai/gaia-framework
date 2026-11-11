@@ -845,3 +845,5 @@
 3	review-semaphore.bats	50
 3	lint-pack.bats	74
 1	action-items-write-lock.bats	15
+3	scanner-evidence.bats	31
+3	scanner-pins.bats	13

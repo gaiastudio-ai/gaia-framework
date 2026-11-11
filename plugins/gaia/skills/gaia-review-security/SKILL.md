@@ -73,6 +73,38 @@ The anytime review variant reads `threat-model.md` **directly** with no fork-con
 - **If the file is absent:** proceed silently. Do NOT emit a warning, error, or user-visible message about the missing file — the skill must produce zero new output when threat-model.md does not exist. This is the graceful skip path: no behavioral change from current V2 (preserves AC4). The `threat_model_context` variable is unset; downstream Step 2 omits the `Related Threat` column entirely and Step 5 emits no `Threat model:` note other than "not present" if the report would otherwise be misleading.
 - If `T{N}` extraction returns zero rows (e.g., a threat-model.md without ID markers, free-form prose), treat the file as absent for cross-reference purposes — proceed without cross-reference, identical to the absent-file path. No degradation.
 
+### Step 1c — Scanner-First Evidence Collection
+
+Before any LLM judgment, run the configured security scanner adapters and
+collect their evidence into the story's evidence directory.
+
+```bash
+# When this review is part of an orchestrated round, scanner-evidence.sh
+# was already called by the orchestrator (Substep 2.2b). The security gate
+# calls it again with the same run-id and head SHA; if evidence is already
+# complete it is reused without re-running any scanner.
+scripts/review-common/security/scanner-evidence.sh \
+  --story "$STORY_KEY" --run-id "$RUN_ID" --repo "$CODE_TREE"
+```
+
+- **Exit 0 (complete or turned off):** read the `evidence-manifest.json` and
+  each fragment before proceeding. Scanner findings are automatically added
+  to the findings register (keyed by run id, fragment hash, and finding id
+  for idempotent re-runs). The scanner evidence is mandatory input for the
+  review: cite scanner findings in the report, and never contradict a
+  scanner finding without stating why.
+- **Exit 2 (incomplete):** HALT — do not proceed with LLM judgment. Print
+  the script's message naming each adapter, its state, and a remediation
+  hint (install the tool, set `brownfield.tools.runner: docker`, change
+  `tools.<category>.provider`, or turn scanner-first off with
+  `review.scanner_first_enabled: false`).
+- **Exit 1 (caller/config error):** HALT — surface the error.
+
+When the manifest says `enabled: false` (the operator set
+`review.scanner_first_enabled: false`), the review runs without mandatory
+scanner output. State in the report that scanner-first evidence was turned
+off by config.
+
 ### Step 2 — OWASP Top 10 Scan
 
 Evaluate each category — record a verdict for every one (PASS / FINDING / N/A-with-justification):
@@ -99,15 +131,14 @@ When `threat_model_context` is set (Step 1b loaded `threat-model.md`):
 
 ### Step 3 — Secrets Scan
 
-> **Tool dependency.** This anytime variant is **LLM-pattern-based
-> and has NO hard dependency on Semgrep or gitleaks** — it runs the registry/
-> regex heuristics below inline. If you DO have `semgrep` / `gitleaks` available
-> (`command -v`) and choose to run them for corroboration, surface their absence
-> prominently rather than silently skipping: emit a `severity:"warning"` finding
-> `Static scan tool unavailable — {tool}; ran LLM-pattern scan only` so the
-> report states which coverage was actually exercised. (The deterministic
-> Semgrep/gitleaks gate is the brownfield/pre-merge path, governed by the
-> `brownfield.*` config flags — not this inline variant.)
+> **Scanner-first evidence.** When scanner-first is on (the default),
+> Step 1c has already collected scanner evidence from the configured
+> adapters (semgrep, gitleaks, etc.). This step uses that evidence as
+> mandatory input: cite scanner findings, and never contradict a
+> scanner finding without stating why. The LLM-pattern scan below
+> is additional coverage on top of the scanner evidence, not a
+> replacement. When scanner-first is turned off by config, this step
+> runs the LLM-pattern scan as the primary secrets check.
 
 - Look for hardcoded secrets, API keys, credentials, database connection strings, JWT signing secrets, encryption keys, OAuth client secrets, SSH private keys.
 - Flag any literal that looks like a token (high-entropy string, base64-like pattern, etc.).
@@ -197,7 +228,8 @@ sub-routine — `/gaia-review-deps` is wired into `/gaia-review-security` Phase 
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/dep-audit-subroutine.sh \
-  --target <project-root>
+  --target <project-root> \
+  --evidence-dir <story_dir>/scanner-evidence/<run-id>
 ```
 
 The helper probes for dependency manifests (package.json, requirements.txt,
@@ -223,6 +255,13 @@ root and emits a single `analysis-results.json`-shaped check fragment under the
 - **Standalone preserved (AC5):** invoking `/gaia-review-deps` directly
   remains a fully standalone path — the standalone skill resolves its own
   rubric and emits its own verdict (independent of this sub-routine wiring).
+
+When `--evidence-dir` points at a scanner-evidence run directory that contains
+a complete osv-scanner fragment, the sub-routine reads every (package, advisory)
+pair from that fragment and drops any dep-audit finding whose `.package` and
+`.id` fields both match an osv entry. An advisory that affects a different
+package is kept. This prevents the same advisory for the same package from
+appearing twice in the report while preserving distinct-package findings.
 
 The "Dependency Audit" subsection MUST appear in the Step 5 report whenever
 the sub-routine ran (skipped fragments included for transparency).
