@@ -828,7 +828,7 @@
 3	defensive-shell-coding-sweep.bats	44
 4	review-gate-hardening.bats	28
 3	action-items-write-retro-interop.bats	56
-1	sprint-state-key-alignment.bats	50
+2	sprint-state-key-alignment.bats	50
 3	worktree-walk-up-isolation.bats	42
 2	resolve-sprint-stories-review-status.bats	5
 3	worktree-val-sentinel-path.bats	18
@@ -844,6 +844,6 @@
 1	post-ci-smoke.bats	28
 3	review-semaphore.bats	50
 3	lint-pack.bats	74
-1	action-items-write-lock.bats	15
+4	action-items-write-lock.bats	15
 3	scanner-evidence.bats	31
 3	scanner-pins.bats	13
