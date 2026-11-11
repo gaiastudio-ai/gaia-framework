@@ -136,6 +136,19 @@ jobs:
               echo "ERROR: $d has rule.yml but no test/ directory"
               exit 1
             fi
+            # semgrep --test pairs rule.yml with a same-base-name target
+            # (rule.<ext>). Without it, the rule is silently excluded from
+            # the test count and a deletion goes undetected.
+            has_target=false
+            for t in "$d"/rule.*; do
+              [ -f "$t" ] || continue
+              case "$t" in */rule.yml|*/rule.lint) continue ;; esac
+              has_target=true; break
+            done
+            if [ "$has_target" = "false" ]; then
+              echo "ERROR: $d has rule.yml but no paired test target (rule.<ext>)"
+              exit 1
+            fi
             has_fire=false; has_nofire=false
             for f in "$d/test"/*; do
               [ -f "$f" ] || continue
@@ -158,6 +171,15 @@ jobs:
           echo "$output"
           if echo "$output" | grep -q "No unit tests found"; then
             echo "ERROR: no semgrep unit tests discovered — check rule/test naming"
+            exit 1
+          fi
+
+          # Parse the N/N count from semgrep --test and fail when it differs
+          # from the number of rule directories. A missing paired target
+          # (rule.<ext>) causes semgrep to silently skip a rule, reducing N.
+          tested_count="$(echo "$output" | grep -oE '^[0-9]+/[0-9]+' | head -1 | cut -d/ -f2)"
+          if [ -n "$tested_count" ] && [ "$tested_count" -ne "$rule_dirs" ]; then
+            echo "ERROR: semgrep tested $tested_count rules but $rule_dirs rule directories exist"
             exit 1
           fi
 

@@ -155,6 +155,21 @@ _validate_rule_dir() {
     esac
   fi
 
+  # For semgrep rules (rule.yml): must have a paired test target (rule.<ext>)
+  # that semgrep --test uses alongside the test/ fixtures. Without it,
+  # semgrep silently excludes the rule from its test count.
+  if [ -f "$rule_dir/rule.yml" ]; then
+    local has_target=false t
+    for t in "$rule_dir"/rule.*; do
+      [ -f "$t" ] || continue
+      case "$t" in */rule.yml|*/rule.lint) continue ;; esac
+      has_target=true; break
+    done
+    if [ "$has_target" = "false" ]; then
+      _LIB_ERRORS="${_LIB_ERRORS:+$_LIB_ERRORS,}{\"rule\":\"${rule_id}\",\"reason\":\"no paired test target (rule.<ext>) for semgrep --test\"}"
+    fi
+  fi
+
   # For semgrep rules (rule.yml): must have at least one must-fire fixture
   # (containing "ruleid:") and one must-not-fire fixture (containing "ok:").
   if [ -f "$rule_dir/rule.yml" ]; then

@@ -1081,8 +1081,6 @@ SH
 # --- Invalid rule recorded in skipped_rules and blocks complete ---
 
 @test "scanner evidence: invalid rule recorded in skipped_rules and marks incomplete" {
-  command -v semgrep >/dev/null 2>&1 || skip "semgrep not installed"  # lint-pack:allow-skip
-
   local proj_lib="$WORK_TMP/.gaia/custom/lint-rules"
   mkdir -p "$proj_lib/broken-rule/test"
   # Write a rule that will fail semgrep --validate.
@@ -1091,6 +1089,27 @@ SH
   echo "// ruleid: broken-rule" > "$proj_lib/broken-rule/test/fire.go"
   echo "// ok: broken-rule" > "$proj_lib/broken-rule/test/safe.go"
   export GAIA_CUSTOM_DIR="$WORK_TMP/.gaia/custom"
+
+  # Replace the generic fakebin semgrep (exit 0) with one that rejects
+  # invalid rules on --validate, so this test works without real semgrep.
+  cat > "$WORK_TMP/fakebin/semgrep" <<'STUB'
+#!/usr/bin/env bash
+# Stub semgrep: --validate reads the rule file and exits 1 for invalid rules.
+config_file=""
+is_validate=false
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --validate) is_validate=true; shift ;;
+    --config)   config_file="$2"; shift 2 ;;
+    *)          shift ;;
+  esac
+done
+if [ "$is_validate" = "true" ] && [ -n "$config_file" ] && [ -f "$config_file" ]; then
+  grep -q 'INVALID_KEY' "$config_file" && exit 1
+fi
+exit 0
+STUB
+  chmod +x "$WORK_TMP/fakebin/semgrep"
 
   PATH="$WORK_TMP/fakebin:$PATH" \
     run "$SCANNER_EVIDENCE" --story E999-S1 --run-id inv1 --repo "$REPO_DIR"

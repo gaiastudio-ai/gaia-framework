@@ -112,6 +112,25 @@ teardown() {
   [ "$result" = "0" ]
 }
 
+@test "library-check: rule without paired test target fails" {
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/no-target/test"
+  cat > "$TEST_DIR/.gaia/custom/lint-rules/no-target/rule.yml" <<'RULE'
+rules:
+  - id: no-target
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+RULE
+  echo "// ruleid: no-target" > "$TEST_DIR/.gaia/custom/lint-rules/no-target/test/fire.go"
+  echo "// ok: no-target" > "$TEST_DIR/.gaia/custom/lint-rules/no-target/test/safe.go"
+  # No rule.go — only rule.yml and test/
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+  run bash "$RRC" library-check
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "no-target" and (.reason | test("paired test target")))'
+}
+
 @test "library-check: rule without test directory fails" {
   mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/bad-rule"
   cat > "$TEST_DIR/.gaia/custom/lint-rules/bad-rule/rule.yml" <<'RULE'
