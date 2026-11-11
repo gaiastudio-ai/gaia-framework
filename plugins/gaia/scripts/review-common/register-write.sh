@@ -832,7 +832,7 @@ _rw_cmd_add() {
       pc_idx="$(yq '.entries | length - 1' "$tmp")"
     fi
     export _RW_PATTERN_CLASS="$pattern_class"
-    yq -i ".entries[$pc_idx].pattern_class = strenv(_RW_PATTERN_CLASS)" "$tmp"
+    yq -i ".entries[$pc_idx].pattern_class = strenv(_RW_PATTERN_CLASS)" "$tmp"  # lint-pack:allow spliced-yq-jq
     unset _RW_PATTERN_CLASS
   fi
 
@@ -851,7 +851,7 @@ _rw_cmd_add() {
       ri_idx="$(yq '.entries | length - 1' "$tmp")"
     fi
     export _RW_ADD_RUN_ID="$_add_run_id"
-    yq -i ".entries[$ri_idx].run_id = strenv(_RW_ADD_RUN_ID)" "$tmp"
+    yq -i ".entries[$ri_idx].run_id = strenv(_RW_ADD_RUN_ID)" "$tmp"  # lint-pack:allow spliced-yq-jq
     unset _RW_ADD_RUN_ID
   fi
 
@@ -3494,15 +3494,15 @@ _rw_cmd_link_rule() {
   export _RW_LINK_RULE="$rule_id"
   # Ensure the array exists.
   local arr_type
-  arr_type="$(yq ".entries[$idx].regression_rules | type" "$tmp" 2>/dev/null)" || arr_type=""
+  arr_type="$(yq ".entries[$idx].regression_rules | type" "$tmp" 2>/dev/null)" || arr_type=""  # lint-pack:allow spliced-yq-jq
   if [ "$arr_type" != "!!seq" ]; then
-    yq -i ".entries[$idx].regression_rules = []" "$tmp"
+    yq -i ".entries[$idx].regression_rules = []" "$tmp"  # lint-pack:allow spliced-yq-jq
   fi
   # Avoid duplicates.
   local already
-  already="$(yq ".entries[$idx].regression_rules[] | select(. == strenv(_RW_LINK_RULE))" "$tmp" 2>/dev/null)" || already=""
+  already="$(yq ".entries[$idx].regression_rules[] | select(. == strenv(_RW_LINK_RULE))" "$tmp" 2>/dev/null)" || already=""  # lint-pack:allow spliced-yq-jq
   if [ -z "$already" ]; then
-    yq -i ".entries[$idx].regression_rules += [strenv(_RW_LINK_RULE)]" "$tmp"
+    yq -i ".entries[$idx].regression_rules += [strenv(_RW_LINK_RULE)]" "$tmp"  # lint-pack:allow spliced-yq-jq
   fi
   unset _RW_LINK_RULE
 

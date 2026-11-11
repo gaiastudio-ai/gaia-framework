@@ -1,4 +1,4 @@
 package config
 
 // ruleid: hardcoded-credentials
-var password = "obviously_fake_value_for_test"
+var password = "changeme_placeholder_value_x"

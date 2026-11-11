@@ -261,7 +261,7 @@ _cmd_story_check() {
   local i=0
   while [ "$i" -lt "$count" ]; do
     local entry
-    entry="$(printf '%s' "$pattern_entries" | jq -c ".[$i]" 2>/dev/null)"
+    entry="$(printf '%s' "$pattern_entries" | jq -c --argjson idx "$i" '.[$idx]' 2>/dev/null)"
     local entry_id pattern_class run_id
     entry_id="$(printf '%s' "$entry" | jq -r '.id' 2>/dev/null)"
     pattern_class="$(printf '%s' "$entry" | jq -r '.pattern_class' 2>/dev/null)"
@@ -283,7 +283,7 @@ _cmd_story_check() {
     local r=0
     while [ "$r" -lt "$rule_count" ]; do
       local rule_id
-      rule_id="$(printf '%s' "$rules" | jq -r ".[$r]" 2>/dev/null)"
+      rule_id="$(printf '%s' "$rules" | jq -r --argjson idx "$r" '.[$idx]' 2>/dev/null)"
 
       # Rule must exist in shipped or project library.
       local rule_found=false
@@ -313,7 +313,9 @@ _cmd_story_check() {
 
       # Resolve the round's commit SHA from the register.
       local round_sha=""
-      round_sha="$(yq -o=json ".rounds[] | select(.run_id == \"${run_id}\") | .commit_sha" "$reg_path" 2>/dev/null | jq -r '.' 2>/dev/null)" || round_sha=""
+      export _RRC_ROUND_RUN_ID="$run_id"
+      round_sha="$(yq -o=json '.rounds[] | select(.run_id == strenv(_RRC_ROUND_RUN_ID)) | .commit_sha' "$reg_path" 2>/dev/null | jq -r '.' 2>/dev/null)" || round_sha=""
+      unset _RRC_ROUND_RUN_ID
 
       if [ -z "$round_sha" ] || [ "$round_sha" = "null" ]; then
         missing="${missing:+$missing,}{\"entry\":\"${entry_id}\",\"pattern_class\":\"${pattern_class}\",\"reason\":\"round unknown for entry ${entry_id} (round SHA not found for ${run_id})\"}"

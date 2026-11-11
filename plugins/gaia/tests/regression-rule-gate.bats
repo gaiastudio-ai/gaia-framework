@@ -11,20 +11,20 @@ setup() {
   TEST_DIR="$(mktemp -d "$TMPDIR/rr-gate-XXXXXX")"
 
   # Ensure yq and jq are available.
-  command -v yq  >/dev/null 2>&1 || skip "yq not found"
-  command -v jq  >/dev/null 2>&1 || skip "jq not found"
+  command -v yq  >/dev/null 2>&1 || skip "yq not found"  # lint-pack:allow-skip
+  command -v jq  >/dev/null 2>&1 || skip "jq not found"  # lint-pack:allow-skip
 
   # Create a minimal project structure.
   mkdir -p "$TEST_DIR/.gaia/config"
   mkdir -p "$TEST_DIR/.gaia/custom/lint-rules"
-  mkdir -p "$TEST_DIR/.gaia/artifacts/implementation-artifacts/epic-E0/E0-S1-test/review-reports"
+  mkdir -p "$TEST_DIR/.gaia/artifacts/implementation-artifacts/K0-R1-test/review-reports"
 
   # Minimal story file.
-  cat > "$TEST_DIR/.gaia/artifacts/implementation-artifacts/epic-E0/E0-S1-test/story.md" <<'STORY'
+  cat > "$TEST_DIR/.gaia/artifacts/implementation-artifacts/K0-R1-test/story.md" <<'STORY'
 ---
 template: 'story'
 version: 1.4.0
-key: "E0-S1"
+key: "K0-R1"
 title: "Test story"
 status: review
 sprint_id: "sprint-test"
@@ -180,41 +180,41 @@ RULE
 # ---- register-write.sh --pattern-class ----
 
 @test "add --pattern-class stores pattern_class on critical finding" {
-  bash "$RW" add --story E0-S1 --defect "test pattern" --type bug \
+  bash "$RW" add --story K0-R1 --defect "test pattern" --type bug \
     --severity critical --gate code-review --pattern-class "sql-injection"
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local pc
   pc="$(yq '.entries[0].pattern_class' "$reg")"
   [ "$pc" = "sql-injection" ]
 }
 
 @test "add --pattern-class stores pattern_class on high finding" {
-  bash "$RW" add --story E0-S1 --defect "high pattern" --type bug \
+  bash "$RW" add --story K0-R1 --defect "high pattern" --type bug \
     --severity high --gate code-review --pattern-class "auth-bypass"
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local pc
   pc="$(yq '.entries[0].pattern_class' "$reg")"
   [ "$pc" = "auth-bypass" ]
 }
 
 @test "add --pattern-class rejected on medium finding" {
-  run bash "$RW" add --story E0-S1 --defect "medium" --type bug \
+  run bash "$RW" add --story K0-R1 --defect "medium" --type bug \
     --severity medium --gate code-review --pattern-class "auth-bypass"
   [ "$status" -ne 0 ]
   [[ "$output" == *"critical or high"* ]]
 }
 
 @test "add --pattern-class rejects bad slug" {
-  run bash "$RW" add --story E0-S1 --defect "bad slug" --type bug \
+  run bash "$RW" add --story K0-R1 --defect "bad slug" --type bug \
     --severity critical --gate code-review --pattern-class "../escape"
   [ "$status" -ne 0 ]
   [[ "$output" == *"slug"* ]]
 }
 
 @test "add --pattern-class rejects uppercase slug" {
-  run bash "$RW" add --story E0-S1 --defect "bad slug" --type bug \
+  run bash "$RW" add --story K0-R1 --defect "bad slug" --type bug \
     --severity critical --gate code-review --pattern-class "BadSlug"
   [ "$status" -ne 0 ]
   [[ "$output" == *"slug"* ]]
@@ -223,39 +223,39 @@ RULE
 # ---- register-write.sh link-rule ----
 
 @test "link-rule links a rule to a finding" {
-  bash "$RW" add --story E0-S1 --defect "pattern bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
     --severity critical --gate code-review --pattern-class "hardcoded-credentials"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule hardcoded-credentials
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule hardcoded-credentials
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local rules
   rules="$(yq '.entries[0].regression_rules[0]' "$reg")"
   [ "$rules" = "hardcoded-credentials" ]
 }
 
 @test "link-rule rejects unknown rule id" {
-  bash "$RW" add --story E0-S1 --defect "pattern bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
     --severity critical --gate code-review --pattern-class "test-class"
-  run bash "$RW" link-rule --story E0-S1 --id RF-1 --rule nonexistent-rule
+  run bash "$RW" link-rule --story K0-R1 --id RF-1 --rule nonexistent-rule
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
 
 @test "link-rule rejects unknown register entry" {
-  bash "$RW" add --story E0-S1 --defect "pattern bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
     --severity critical --gate code-review --pattern-class "test-class"
-  run bash "$RW" link-rule --story E0-S1 --id RF-99 --rule hardcoded-credentials
+  run bash "$RW" link-rule --story K0-R1 --id RF-99 --rule hardcoded-credentials
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
 
 @test "link-rule is idempotent (no duplicate)" {
-  bash "$RW" add --story E0-S1 --defect "pattern bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
     --severity critical --gate code-review --pattern-class "hardcoded-credentials"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule hardcoded-credentials
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule hardcoded-credentials
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule hardcoded-credentials
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule hardcoded-credentials
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local count
   count="$(yq '.entries[0].regression_rules | length' "$reg")"
   [ "$count" = "1" ]
@@ -264,18 +264,18 @@ RULE
 # ---- story-check subcommand ----
 
 @test "story-check: no register passes" {
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq -e '.missing | length == 0'
 }
 
 @test "story-check: pattern finding without linked rule fails" {
   # Create a register with a round and a pattern entry.
-  bash "$RW" record-round --story E0-S1 --run-id round-20261101T000000Z-1 \
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
     --repo "$TEST_DIR" --gate code-review="initial review"
-  bash "$RW" add --story E0-S1 --defect "hardcoded creds" --type bug \
+  bash "$RW" add --story K0-R1 --defect "hardcoded creds" --type bug \
     --severity critical --gate code-review --pattern-class "hardcoded-credentials"
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.missing[] | select(.pattern_class == "hardcoded-credentials")'
 }
@@ -297,17 +297,17 @@ R
 
   export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
 
-  bash "$RW" record-round --story E0-S1 --run-id round-20261101T000000Z-1 \
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
     --repo "$TEST_DIR" --gate code-review="initial review"
-  bash "$RW" add --story E0-S1 --defect "cred pattern" --type bug \
+  bash "$RW" add --story K0-R1 --defect "cred pattern" --type bug \
     --severity critical --gate code-review --pattern-class "test-cred"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule test-cred-rule
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule test-cred-rule
 
   # Make a change in the rule directory after the round and commit.
   echo "update" >> "$TEST_DIR/.gaia/custom/lint-rules/test-cred-rule/test/fire.go"
   (cd "$TEST_DIR" && git add . && git commit -q -m "update rule")
 
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 0 ]
   printf '%s' "$output" | jq -e '.missing | length == 0'
 }
@@ -329,14 +329,14 @@ R
 
   export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
 
-  bash "$RW" record-round --story E0-S1 --run-id round-20261101T000000Z-1 \
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
     --repo "$TEST_DIR" --gate code-review="initial review"
-  bash "$RW" add --story E0-S1 --defect "unchanged pattern" --type bug \
+  bash "$RW" add --story K0-R1 --defect "unchanged pattern" --type bug \
     --severity critical --gate code-review --pattern-class "unchanged-class"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule test-unchanged-rule
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule test-unchanged-rule
 
   # No new commit after the round — rule unchanged.
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("not updated"))'
 }
@@ -358,23 +358,23 @@ R
 
   export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
 
-  bash "$RW" record-round --story E0-S1 --run-id round-20261101T000000Z-1 \
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
     --repo "$TEST_DIR" --gate code-review="initial review"
   # Entry 1: linked.
-  bash "$RW" add --story E0-S1 --defect "cred bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "cred bug" --type bug \
     --severity critical --gate code-review --pattern-class "partial-cred"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule partial-rule
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule partial-rule
   # Make a change so the linked one passes.
   echo "update" >> "$TEST_DIR/.gaia/custom/lint-rules/partial-rule/test/fire.go"
   (cd "$TEST_DIR" && git add . && git commit -q -m "rule change")
 
   # Entry 2 and 3: unlinked.
-  bash "$RW" add --story E0-S1 --defect "auth bypass" --type bug \
+  bash "$RW" add --story K0-R1 --defect "auth bypass" --type bug \
     --severity critical --gate code-review --pattern-class "auth-bypass"
-  bash "$RW" add --story E0-S1 --defect "sql injection" --type bug \
+  bash "$RW" add --story K0-R1 --defect "sql injection" --type bug \
     --severity high --gate code-review --pattern-class "sql-injection"
 
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   local missing_count
   missing_count="$(printf '%s' "$output" | jq '.missing | length')"
@@ -383,10 +383,10 @@ R
 
 @test "story-check: entry without run_id fails closed with round unknown" {
   # Create a register entry manually without a round (simulates pre-upgrade).
-  bash "$RW" add --story E0-S1 --defect "old pattern" --type bug \
+  bash "$RW" add --story K0-R1 --defect "old pattern" --type bug \
     --severity critical --gate code-review --pattern-class "old-pattern"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule hardcoded-credentials
-  run bash "$RRC" story-check --story E0-S1
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule hardcoded-credentials
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("round unknown"))'
 }
@@ -394,16 +394,16 @@ R
 @test "story-check: non-git workspace fails closed" {
   # Remove the .git directory to simulate a non-git workspace.
   rm -rf "$TEST_DIR/.git"
-  bash "$RW" add --story E0-S1 --defect "pattern bug" --type bug \
+  bash "$RW" add --story K0-R1 --defect "pattern bug" --type bug \
     --severity critical --gate code-review --pattern-class "test-pattern"
-  bash "$RW" link-rule --story E0-S1 --id RF-1 --rule hardcoded-credentials
+  bash "$RW" link-rule --story K0-R1 --id RF-1 --rule hardcoded-credentials
   # Manually add a run_id to the entry so we reach the git check.
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   yq -i '.entries[0].run_id = "round-20261101T000000Z-1"' "$reg"
   yq -i '.rounds = [{"run_id": "round-20261101T000000Z-1", "status": "open", "selected_gates": [{"gate": "code-review"}], "commit_sha": "0000000000000000000000000000000000000000"}]' "$reg"
 
-  run bash "$RRC" story-check --story E0-S1
+  run bash "$RRC" story-check --story K0-R1
   [ "$status" -eq 1 ]
   printf '%s' "$output" | jq -e '.missing[] | select(.reason | test("non-git"))'
 }
@@ -411,22 +411,22 @@ R
 # ---- add stores run_id from current open round ----
 
 @test "add stores run_id from the open round" {
-  bash "$RW" record-round --story E0-S1 --run-id round-20261101T120000Z-1 \
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T120000Z-1 \
     --repo "$TEST_DIR" --gate code-review="review pass"
-  bash "$RW" add --story E0-S1 --defect "test" --type bug \
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
     --severity critical --gate code-review --pattern-class "test-class"
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local stored_run_id
   stored_run_id="$(yq '.entries[0].run_id' "$reg")"
   [ "$stored_run_id" = "round-20261101T120000Z-1" ]
 }
 
 @test "add without open round stores no run_id" {
-  bash "$RW" add --story E0-S1 --defect "test" --type bug \
+  bash "$RW" add --story K0-R1 --defect "test" --type bug \
     --severity critical --gate code-review --pattern-class "test-class"
   local reg
-  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key E0-S1 --type findings-register)"
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
   local stored_run_id
   stored_run_id="$(yq '.entries[0].run_id' "$reg")"
   # Should be null or empty.

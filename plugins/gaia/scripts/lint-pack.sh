@@ -1394,7 +1394,7 @@ _run_external_rules() {
       local li=0
       while [ "$li" -lt "$lang_count" ]; do
         local ext
-        ext="$(yq -r ".languages[$li]" "$lint_file" 2>/dev/null)" || ext=""
+        ext="$(yq -r ".languages[$li]" "$lint_file" 2>/dev/null)" || ext=""  # lint-pack:allow spliced-yq-jq
         [ -n "$ext" ] && lang_exts+=("$ext")
         li=$((li + 1))
       done
