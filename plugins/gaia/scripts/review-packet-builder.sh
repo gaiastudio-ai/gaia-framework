@@ -399,7 +399,7 @@ _rpb_build_scanner_sections() {
 
   # Build sections sorted by category then name (LC_ALL=C already set).
   # Each section is built directly from the adapter JSON — never by
-  # re-splitting text on header lines (RF-5: prevents marker forgery).
+  # re-splitting text on header lines (prevents marker forgery).
   local sorted_indices
   sorted_indices="$(printf '%s' "$adapters_json" | jq -r \
     '[to_entries[] | {idx: .key, sort_key: "\(.value.category // "zzz")/\(.value.name // "zzz")"}] | sort_by(.sort_key) | .[].idx')"
@@ -416,17 +416,25 @@ _rpb_build_scanner_sections() {
       frag="$(printf '%s' "$aj" | jq -r '.fragment // ""')"
       sr="$(printf '%s' "$aj" | jq -r '.skip_reason // ""')"
 
-      # Escape the category, name, skip_reason fields so they cannot
-      # inject boundary markers or forge section headers.
+      # Sanitise name and category for the header: take only the
+      # first line (truncate at any newline to stop injection),
+      # then strip to safe identifier chars. Evidence-derived text
+      # never leaks outside data markers. Full escaped values go
+      # inside the data section body.
       local esc_c esc_n esc_sr
-      esc_c="$(printf '%s' "$c" | escape_boundary_markers)"
-      esc_n="$(printf '%s' "$n" | escape_boundary_markers)"
+      local hdr_c hdr_n
+      hdr_c="$(printf '%s\n' "$c" | head -1 | tr -cd 'a-zA-Z0-9._/ -')"
+      hdr_n="$(printf '%s\n' "$n" | head -1 | tr -cd 'a-zA-Z0-9._/ -')"
 
-      printf '## Scanner: %s/%s\n\n' "$esc_c" "$esc_n"
+      printf '## Scanner: %s/%s\n\n' "$hdr_c" "$hdr_n"
 
-      # Build the section body as escaped, boundary-wrapped evidence
+      # Build the section body with boundary-escaped evidence.
+      # Include the raw (escaped) name/category here so reviewers
+      # can see the original values inside the data section.
+      esc_c="$(printf '%s' "$c" | tr '\n\r' '  ' | escape_boundary_markers)"
+      esc_n="$(printf '%s' "$n" | tr '\n\r' '  ' | escape_boundary_markers)"
       local section_body=""
-      section_body="$(printf 'state: %s\n' "$s")"
+      section_body="$(printf 'adapter: %s/%s\nstate: %s\n' "$esc_c" "$esc_n" "$s")"
       if [ "$s" = "not_applicable" ]; then
         if [ -n "$sr" ] && [ "$sr" != "null" ]; then
           esc_sr="$(printf '%s' "$sr" | escape_boundary_markers)"
@@ -531,9 +539,9 @@ _rpb_gitleaks_scan() {
         local finding_count
         finding_count="$(jq 'length' "$report_file" 2>/dev/null)" || finding_count="0"
         if [ "$finding_count" != "0" ] && [ "$finding_count" != "null" ]; then
-          # Print section, line, rule — never the secret value
+          # Print section, line, rule to stderr — never the secret value
           jq -r '.[] | "LEAK: section=\(.File // "unknown") line=\(.StartLine // "?") rule=\(.RuleID // "unknown")"' \
-            "$report_file" 2>/dev/null >&2 || true
+            "$report_file" >&2 || true
           return 3
         fi
       fi
@@ -553,10 +561,11 @@ _rpb_gitleaks_scan() {
     if [ -n "$config_args" ] && [ -f "$staging_dir/.gitleaks.toml" ]; then
       docker_args="$docker_args --config /workspace/.gitleaks.toml"
     fi
-    # Run in a subshell with cd to the staging dir so docker_runner_dispatch
-    # picks up $PWD as the workspace — avoids overwriting PROJECT_ROOT.
+    # Override PROJECT_ROOT for this call so docker mounts the staging
+    # dir, not the host project root (which is always exported in
+    # orchestrated runs).
     # shellcheck disable=SC2086
-    if (cd "$staging_dir" && ADAPTER_OUT_DIR="$report_dir" \
+    if (cd "$staging_dir" && PROJECT_ROOT="$staging_dir" ADAPTER_OUT_DIR="$report_dir" \
          docker_runner_dispatch gitleaks $docker_args) >/dev/null 2>&1; then
       return 0
     else
@@ -566,7 +575,7 @@ _rpb_gitleaks_scan() {
         fc="$(jq 'length' "$report_dir/report.json" 2>/dev/null)" || fc="0"
         if [ "$fc" != "0" ] && [ "$fc" != "null" ]; then
           jq -r '.[] | "LEAK: section=\(.File // "unknown") line=\(.StartLine // "?") rule=\(.RuleID // "unknown")"' \
-            "$report_dir/report.json" 2>/dev/null >&2 || true
+            "$report_dir/report.json" >&2 || true
           return 3
         fi
       fi

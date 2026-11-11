@@ -188,34 +188,18 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
    security gate for the same run-id and head SHA reuses the complete
    evidence without re-running any scanner or duplicating register entries.
 
-7. **Build the review packet** for the round. After scanner evidence is
-   complete (step 6), run:
+7. **Build the review packet.** After scanner evidence (step 6), run:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/review-packet-builder.sh \
      --story {key} --run-id {new-run-id} --repo {code-tree}
    ```
-   The builder assembles a deterministic, secret-scrubbed packet
-   containing the diff, file list, CI results, lint report, scanner
-   evidence sections, and previous-round summary into
-   `{story_dir}/review-packet-{N}.md`.
-
-   Exit handling:
-   - **Exit 0** — packet written. Pass `--packet <path>` to every gate
-     dispatch below.
-   - **Exit 1** (caller/argument error) — HALT the round. Print the
-     builder's message naming the error.
-   - **Exit 3** (secret detected) — HALT the round. Print the builder's
-     message (section, line, rule — never the secret value).
-   - **Exit 7** (scanner evidence missing or incomplete) — HALT the
-     round. Print the builder's message naming each adapter.
-   - **Exit 4** (gitleaks unavailable) — WARNING; gates run without a
-     packet (behaves as before the packet was introduced).
-   - **Exit 5** (containment refusal) — WARNING; gates run without a
-     packet.
-   - **Exit 6** (legacy layout or no resolvable base) — WARNING; gates
-     run without a packet.
-   - **Any other non-zero exit** — HALT the round and name the exit
-     code in the message.
+   Assembles diff, files, CI, lint, scanner evidence and prior-round
+   summary into `{story_dir}/review-packet-{N}.md`. Exit codes:
+   **0** packet written, pass `--packet <path>` to gates;
+   **1/3/7** HALT (caller error / secret detected / incomplete evidence);
+   **4/5/6** WARNING, gates run without packet;
+   any other non-zero, HALT. Print the builder's stderr on halt
+   (section + rule on a secret hit; never the secret value).
 
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 
