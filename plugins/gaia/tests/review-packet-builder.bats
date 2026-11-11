@@ -1039,6 +1039,106 @@ STUB
   [[ "$output" == *"legacy"* ]]
 }
 
+@test "failed CI check includes bounded tail of job log inside data markers" {
+  # gh stub: pr checks returns one FAILURE with a GitHub Actions link,
+  # and run view --job returns a log.
+  local log_lines=""
+  local i=1
+  while [ "$i" -le 100 ]; do
+    log_lines="${log_lines}log line $i of 100
+"
+    i=$((i + 1))
+  done
+
+  cat > "$STUBS/gh" <<STUB
+#!/usr/bin/env bash
+if [ "\${1:-}" = "pr" ] && [ "\${2:-}" = "checks" ]; then
+  printf '[{"name":"build","state":"FAILURE","bucket":"fail","link":"https://github.com/o/r/actions/runs/999/job/42"},{"name":"lint","state":"SUCCESS","bucket":"pass","link":"https://ci/2"}]\n'
+  exit 0
+fi
+if [ "\${1:-}" = "pr" ] && [ "\${2:-}" = "list" ]; then
+  printf '[{"number":1}]\n'
+  exit 0
+fi
+if [ "\${1:-}" = "run" ] && [ "\${2:-}" = "view" ]; then
+  # Return 100 lines of log
+  printf '%s' '$log_lines'
+  exit 0
+fi
+exit 0
+STUB
+  chmod +x "$STUBS/gh"
+
+  _run_builder
+  [ "$status" -eq 0 ]
+
+  local packet="$STORY_FOLDER/review-packet-1.md"
+  [ -f "$packet" ]
+
+  # The failed job log tail must be present in the packet
+  grep -q 'failed-job-log build' "$packet"
+
+  # Must be bounded to _RPB_CI_LOG_TAIL (80) lines — the 100-line log
+  # should be truncated. Lines 1-20 should be absent, lines 21-100 present.
+  grep -q 'log line 100 of 100' "$packet"
+  ! grep -q 'log line 1 of 100' "$packet"
+
+  # Must be inside the data markers
+  local tail_line
+  tail_line="$(grep -n 'failed-job-log build' "$packet" | head -1 | cut -d: -f1)"
+  [ -n "$tail_line" ]
+  local preceding_open
+  preceding_open="$(head -n "$tail_line" "$packet" | grep -c '<<<REVIEW_PACKET_EVIDENCE_BOUNDARY>>>')" || preceding_open=0
+  local preceding_close
+  preceding_close="$(head -n "$tail_line" "$packet" | grep -c '<<<END_REVIEW_PACKET_EVIDENCE_BOUNDARY>>>')" || preceding_close=0
+  # Inside a data section: more opens than closes
+  [ "$preceding_open" -gt "$preceding_close" ]
+
+  # Passing check 'lint' must NOT have a log tail
+  ! grep -q 'failed-job-log lint' "$packet"
+}
+
+@test "CI log fetch failure produces fixed unavailable line" {
+  # gh stub: pr checks returns one FAILURE, run view fails
+  cat > "$STUBS/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "checks" ]; then
+  printf '[{"name":"build","state":"FAILURE","bucket":"fail","link":"https://github.com/o/r/actions/runs/999/job/42"}]\n'
+  exit 0
+fi
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "list" ]; then
+  printf '[{"number":1}]\n'
+  exit 0
+fi
+if [ "${1:-}" = "run" ] && [ "${2:-}" = "view" ]; then
+  exit 1
+fi
+exit 0
+STUB
+  chmod +x "$STUBS/gh"
+
+  _run_builder
+  [ "$status" -eq 0 ]
+
+  local packet="$STORY_FOLDER/review-packet-1.md"
+  [ -f "$packet" ]
+
+  # Must contain the fixed unavailable line
+  grep -q 'failed-job-log build: log unavailable' "$packet"
+}
+
+@test "passing CI checks produce no job log tail" {
+  # Default gh stub returns all SUCCESS — no failed checks
+  _run_builder
+  [ "$status" -eq 0 ]
+
+  local packet="$STORY_FOLDER/review-packet-1.md"
+  [ -f "$packet" ]
+
+  # No failed-job-log lines
+  ! grep -q 'failed-job-log' "$packet"
+}
+
 # ── Integration tests (with real writers, not stubs) ────────────────
 
 # Helper: build a minimal integration fixture using the real register-write.sh
@@ -1240,6 +1340,153 @@ JSON
   # The lint section must contain findings — the bad file should
   # trigger the spliced-yq-jq rule.
   grep -q 'spliced-yq-jq\|"findings"' "$packet"
+}
+
+@test "integration: real scanner-evidence.sh with adapter stubs produces correct packet sections" {
+  local story_key="E900-S4" run_id="round-20261111T000000Z-5"
+  _setup_integration_fixture "$story_key" "$run_id" "scanner-real"
+
+  # Create stub scanner binaries. semgrep stub writes valid SARIF-like JSON.
+  local tool_stubs="$TEST_TMP/tool-stubs-scanner"
+  mkdir -p "$tool_stubs"
+
+  cat > "$tool_stubs/semgrep" <<'TOOLSTUB'
+#!/usr/bin/env bash
+# Stub semgrep: produce minimal valid JSON output
+printf '{"results": [{"check_id":"test-rule","path":"code.py","start":{"line":1},"extra":{"severity":"WARNING","message":"test finding"}}], "errors": []}\n'
+exit 0
+TOOLSTUB
+  chmod +x "$tool_stubs/semgrep"
+
+  cat > "$tool_stubs/osv-scanner" <<'TOOLSTUB'
+#!/usr/bin/env bash
+# Stub osv-scanner: produce minimal valid JSON output
+printf '{"results": []}\n'
+exit 0
+TOOLSTUB
+  chmod +x "$tool_stubs/osv-scanner"
+
+  # Add a .py file to the repo so semgrep's extension filter matches
+  printf 'x = 1\n' > "$INT_REPO/code.py"
+  git -C "$INT_REPO" add code.py
+  git -C "$INT_REPO" commit -q -m "add py"
+  INT_HEAD="$(git -C "$INT_REPO" rev-parse HEAD)"
+
+  # Record a fresh round with the new head
+  local run_id2="round-20261111T000000Z-6"
+  bash "$SCRIPTS_DIR/review-common/register-write.sh" \
+    record-round --story "$story_key" --run-id "$run_id2" \
+    --repo "$INT_REPO" \
+    --gate "code-review=scanner integration test" 2>/dev/null
+
+  # Build a file list for scanner-evidence.sh so it does not need an
+  # origin remote to compute the diff. The file list contains the .py
+  # file the semgrep adapter's extension filter matches.
+  local file_list="$TEST_TMP/scanner-file-list.txt"
+  printf 'code.py\n' > "$file_list"
+
+  # Run the REAL scanner-evidence.sh with our stub tools on PATH and
+  # an explicit file list so it does not need origin/staging.
+  local scan_rc=0
+  PATH="$tool_stubs:$PATH" \
+    bash "$SCRIPTS_DIR/review-common/security/scanner-evidence.sh" \
+    --story "$story_key" --run-id "$run_id2" --repo "$INT_REPO" \
+    --file-list "$file_list" \
+    2>/dev/null || scan_rc=$?
+  # scanner-evidence.sh exits 0 (complete) or 2 (incomplete)
+  [ "$scan_rc" -eq 0 ] || [ "$scan_rc" -eq 2 ]
+
+  # Verify the real manifest was written
+  local manifest="$INT_STORY_DIR/scanner-evidence/$run_id2/evidence-manifest.json"
+  [ -f "$manifest" ]
+
+  local complete
+  complete="$(jq -r '.complete' "$manifest")"
+
+  # The evidence MUST be complete: the stub tools exit 0 and produce
+  # valid JSON. If incomplete, report why and fail.
+  if [ "$complete" != "true" ]; then
+    printf 'manifest content:\n' >&2
+    jq . "$manifest" >&2
+    fail "scanner-evidence.sh produced incomplete evidence with adapter stubs"
+  fi
+
+  # Write scanner evidence for the first round too (disabled, so the
+  # builder's round 2 base resolution succeeds).
+  mkdir -p "$INT_STORY_DIR/scanner-evidence/$run_id"
+  cat > "$INT_STORY_DIR/scanner-evidence/$run_id/evidence-manifest.json" <<'JSON'
+{
+  "enabled": false,
+  "complete": true,
+  "adapters": []
+}
+JSON
+
+  # Build the packet with REAL resolvers and the REAL manifest
+  local run_dir="$TEST_TMP/run-scripts-scanner-real"
+  mkdir -p "$run_dir/lib" "$run_dir/../skills/gaia-dev-story/scripts"
+  cp "$SCRIPT" "$run_dir/review-packet-builder.sh"
+  chmod +x "$run_dir/review-packet-builder.sh"
+  for lib in escape-boundary-markers.sh gaia-paths.sh docker-runner.sh; do
+    [ -f "$SCRIPTS_DIR/lib/$lib" ] && cp "$SCRIPTS_DIR/lib/$lib" "$run_dir/lib/$lib"
+  done
+  cp "$SCRIPTS_DIR/resolve-story-file.sh" "$run_dir/resolve-story-file.sh"
+  cp "$SCRIPTS_DIR/resolve-review-report-path.sh" "$run_dir/resolve-review-report-path.sh"
+  chmod +x "$run_dir/resolve-story-file.sh" "$run_dir/resolve-review-report-path.sh"
+  cp "$LINT_STUB/lint-pack.sh" "$run_dir/lint-pack.sh"
+  chmod +x "$run_dir/lint-pack.sh"
+  cp "$PCG_STUB_DIR/promotion-chain-guard.sh" "$run_dir/../skills/gaia-dev-story/scripts/promotion-chain-guard.sh"
+  chmod +x "$run_dir/../skills/gaia-dev-story/scripts/promotion-chain-guard.sh"
+
+  run bash "$run_dir/review-packet-builder.sh" \
+    --story "$story_key" --run-id "$run_id2" --repo "$INT_REPO"
+  [ "$status" -eq 0 ]
+
+  local packet="$INT_STORY_DIR/review-packet-2.md"
+  [ -f "$packet" ]
+
+  # Assert packet scanner sections contain the real manifest's adapter states.
+  # The real manifest was produced by scanner-evidence.sh, not hand-written.
+  local adapter_count
+  adapter_count="$(jq '.adapters | length' "$manifest")"
+  [ "$adapter_count" -gt 0 ]
+
+  # Each adapter from the manifest must have a scanner section in the packet
+  local a_idx=0
+  while [ "$a_idx" -lt "$adapter_count" ]; do
+    local a_cat a_name a_state
+    a_cat="$(jq -r --argjson i "$a_idx" '.adapters[$i].category' "$manifest")"
+    a_name="$(jq -r --argjson i "$a_idx" '.adapters[$i].name' "$manifest")"
+    a_state="$(jq -r --argjson i "$a_idx" '.adapters[$i].state' "$manifest")"
+    # Scanner section header present
+    grep -q "## Scanner: $a_cat/$a_name" "$packet"
+    # State present inside the data section
+    grep -q "state: $a_state" "$packet"
+    # For available adapters, fragment content must be present.
+    # Use a value unique to the fragment body so the assertion cannot
+    # be satisfied by an unrelated section (e.g. lint findings JSON).
+    if [ "$a_state" = "available" ]; then
+      local a_frag
+      a_frag="$(jq -r --argjson i "$a_idx" '.adapters[$i].fragment // ""' "$manifest")"
+      if [ -n "$a_frag" ] && [ "$a_frag" != "null" ]; then
+        local frag_file="$INT_STORY_DIR/scanner-evidence/$run_id2/$a_frag"
+        if [ -f "$frag_file" ]; then
+          # The semgrep stub emits "test-rule" as a check_id. That
+          # string appears only inside the fragment, never in the
+          # adapter state or other packet sections.
+          local frag_marker
+          frag_marker="$(jq -r '
+            (.findings // [])[] | .id // empty
+          ' "$frag_file" 2>/dev/null | head -1)" || frag_marker=""
+          if [ -n "$frag_marker" ]; then
+            grep -q "$frag_marker" "$packet" || \
+              fail "fragment content '$frag_marker' not in packet for $a_cat/$a_name"
+          fi
+        fi
+      fi
+    fi
+    a_idx=$((a_idx + 1))
+  done
 }
 
 @test "builder runs from a non-git working directory" {

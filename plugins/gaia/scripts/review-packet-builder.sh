@@ -233,6 +233,41 @@ _rpb_build_ci_section() {
 
   # Sort by name (LC_ALL=C) and format
   printf '%s' "$checks_json" | jq -r 'sort_by(.name) | .[] | "\(.name) \(.state) \(.bucket // "—") \(.link // "—")"' 2>/dev/null || true
+
+  # For each failed check, fetch the job log tail.
+  local failed_checks
+  failed_checks="$(printf '%s' "$checks_json" | jq -r \
+    'sort_by(.name) | .[] | select(.bucket == "fail" or .state == "FAILURE" or .state == "ERROR") | "\(.name)\t\(.link // "")"' \
+    2>/dev/null)" || failed_checks=""
+
+  if [ -n "$failed_checks" ]; then
+    while IFS=$'\t' read -r _fc_name _fc_link; do
+      [ -n "$_fc_name" ] || continue
+      local job_id=""
+      # Extract job id from GitHub Actions link (…/job/<id>)
+      case "$_fc_link" in
+        */job/[0-9]*)
+          job_id="${_fc_link##*/job/}"
+          # Strip any non-digit suffix (query params, anchors)
+          job_id="${job_id%%[!0-9]*}"
+          ;;
+      esac
+      if [ -n "$job_id" ]; then
+        local log_text=""
+        log_text="$(gh run view --job "$job_id" --log-failed 2>/dev/null \
+          | tail -n "$_RPB_CI_LOG_TAIL")" || log_text=""
+        if [ -n "$log_text" ]; then
+          printf 'failed-job-log %s (last %d lines):\n' "$_fc_name" "$_RPB_CI_LOG_TAIL"
+          printf '%s\n' "$log_text"
+        else
+          printf 'failed-job-log %s: log unavailable\n' "$_fc_name"
+        fi
+      else
+        printf 'failed-job-log %s: log unavailable\n' "$_fc_name"
+      fi
+    done <<< "$failed_checks"
+  fi
+
   printf 'coverage: not recorded\n'
 }
 
