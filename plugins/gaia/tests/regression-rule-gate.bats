@@ -53,6 +53,8 @@ CONFIG
   (
     cd "$TEST_DIR"
     git init -q
+    git config user.email "test@test.local"
+    git config user.name "Test"
     git add .
     git commit -q -m "init" --allow-empty
   )
