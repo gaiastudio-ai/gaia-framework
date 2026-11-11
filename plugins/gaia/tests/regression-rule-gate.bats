@@ -149,6 +149,27 @@ FIX
   printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "no-fire" and (.reason | test("must-fire")))'
 }
 
+@test "library-check: rule with deleted must-not-fire fixture fails" {
+  mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/no-nofire/test"
+  cat > "$TEST_DIR/.gaia/custom/lint-rules/no-nofire/rule.yml" <<'RULE'
+rules:
+  - id: no-nofire
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+RULE
+  # Only create a ruleid: fixture, no ok: fixture.
+  cat > "$TEST_DIR/.gaia/custom/lint-rules/no-nofire/test/fire.go" <<'FIX'
+// ruleid: no-nofire
+func bad() {}
+FIX
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+  run bash "$RRC" library-check
+  [ "$status" -eq 1 ]
+  printf '%s' "$output" | jq -e '.library_errors[] | select(.rule == "no-nofire" and (.reason | test("must-not-fire")))'
+}
+
 @test "library-check: project rule with symlink outside library is refused" {
   mkdir -p "$TEST_DIR/outside"
   cat > "$TEST_DIR/outside/rule.yml" <<'RULE'
@@ -475,6 +496,56 @@ R
 }
 
 # ---- link-rule: slug and containment validation ----
+
+@test "link-rule: concurrent calls do not corrupt the register" {
+  # Create several rules and findings to force concurrent writes.
+  local i
+  for i in 1 2 3 4; do
+    mkdir -p "$TEST_DIR/.gaia/custom/lint-rules/conc-rule-$i/test"
+    cat > "$TEST_DIR/.gaia/custom/lint-rules/conc-rule-$i/rule.yml" <<RULE
+rules:
+  - id: conc-rule-$i
+    pattern: "bad"
+    message: "bad"
+    languages: [go]
+    severity: ERROR
+RULE
+    echo "// ruleid: conc-rule-$i" > "$TEST_DIR/.gaia/custom/lint-rules/conc-rule-$i/test/fire.go"
+    echo "// ok: conc-rule-$i" > "$TEST_DIR/.gaia/custom/lint-rules/conc-rule-$i/test/safe.go"
+  done
+  (cd "$TEST_DIR" && git add . && git commit -q -m "add conc rules")
+  export GAIA_CUSTOM_DIR="$TEST_DIR/.gaia/custom"
+
+  bash "$RW" record-round --story K0-R1 --run-id round-20261101T000000Z-1 \
+    --repo "$TEST_DIR" --gate code-review="review"
+  for i in 1 2 3 4; do
+    bash "$RW" add --story K0-R1 --defect "conc$i" --type bug \
+      --severity critical --gate code-review --pattern-class "conc-class-$i"
+  done
+
+  # Run four link-rule calls concurrently — each writes a different rule.
+  local pids=()
+  for i in 1 2 3 4; do
+    bash "$RW" link-rule --story K0-R1 --id "RF-$i" --rule "conc-rule-$i" &
+    pids+=($!)
+  done
+  local pid
+  for pid in "${pids[@]}"; do
+    wait "$pid"
+  done
+
+  # The register must still be valid YAML with all entries linked.
+  local reg
+  reg="$("$SCRIPT_DIR/resolve-review-report-path.sh" --key K0-R1 --type findings-register)"
+  yq '.' "$reg" >/dev/null 2>&1
+  local total_linked=0
+  for i in 1 2 3 4; do
+    local r
+    r="$(yq ".entries[] | select(.id == \"RF-$i\") | .regression_rules[0]" "$reg")"  # lint-pack:allow spliced-yq-jq
+    [ "$r" = "conc-rule-$i" ] && total_linked=$((total_linked + 1))
+  done
+  [ "$total_linked" -eq 4 ]
+}
 
 @test "link-rule rejects traversal path as rule id" {
   bash "$RW" add --story K0-R1 --defect "traversal" --type bug \
