@@ -1651,6 +1651,12 @@ scripts/calc.sh
     _mk_project P1
     mkdir -p "$T/plugin"
     cp -R "$PLUGIN/scripts" "$T/plugin/scripts"
+    # Remove all mutation adapters except bash so the test exercises
+    # exactly the "only adapter is broken" condition.
+    local _d
+    for _d in "$T/plugin/scripts/adapters"/mutation-*/; do
+      case "$(basename "$_d")" in mutation-bash) ;; *) rm -rf "$_d" ;; esac
+    done
     bash_adapter="$T/plugin/scripts/adapters/mutation-bash"
     case "$mode" in
       malformed)              printf '{ not json' > "$bash_adapter/mutation-adapter.json" ;;
