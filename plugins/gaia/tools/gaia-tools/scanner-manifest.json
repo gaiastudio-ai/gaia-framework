@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "base_image": {
+    "ref": "debian:bookworm-slim",
+    "digest": "sha256:4b50eb66f977b4062683ff434ef18ac191da862dbe966961bc11990cf5791a8d"
+  },
+  "scanners": [
+    {
+      "name": "grype",
+      "version": "0.79.5",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_amd64.tar.gz",
+          "sha256": "ff054e389ffb40619911f6bd75b3f46610245df9b11ab72fcdc2e08b9c34a09e"
+        },
+        "arm64": {
+          "url": "https://github.com/anchore/grype/releases/download/v0.79.5/grype_0.79.5_linux_arm64.tar.gz",
+          "sha256": "20f55117742aec388bf28bb24122236d3705e53996a27524e934569c5a0992cb"
+        }
+      }
+    },
+    {
+      "name": "syft",
+      "version": "1.4.1",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_amd64.tar.gz",
+          "sha256": "5e4c6a0d1ca28d25e060a29c7cca0aedc50d951bfb270b45bc9a71e86ac6fbe2"
+        },
+        "arm64": {
+          "url": "https://github.com/anchore/syft/releases/download/v1.4.1/syft_1.4.1_linux_arm64.tar.gz",
+          "sha256": "a28d63bb2bca96092a1a42cd5afdd0787633ae05998935a5e6e2aac8f2e2ec44"
+        }
+      }
+    },
+    {
+      "name": "osv-scanner",
+      "version": "1.7.4",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_amd64",
+          "sha256": "0b35daf50d3a9992836e7f78f56cb21b870da58f15f75c516dfb2c2ab4789d0f"
+        },
+        "arm64": {
+          "url": "https://github.com/google/osv-scanner/releases/download/v1.7.4/osv-scanner_linux_arm64",
+          "sha256": "fe26a8bd00e38d2b70bd049a97e03f6c27ac8fd74d5608c2c48b425cf46568ae"
+        }
+      }
+    },
+    {
+      "name": "semgrep",
+      "version": "1.90.0",
+      "install": "pip",
+      "lock_file": "requirements-scanners.txt"
+    },
+    {
+      "name": "checkov",
+      "version": "3.2.262",
+      "install": "pip",
+      "lock_file": "requirements-scanners.txt"
+    },
+    {
+      "name": "cppcheck",
+      "version": "2.10",
+      "install": "apt",
+      "apt_pin": "2.10-2",
+      "artifacts": {}
+    },
+    {
+      "name": "gitleaks",
+      "version": "8.18.4",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz",
+          "sha256": "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
+        },
+        "arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_arm64.tar.gz",
+          "sha256": "bf5f7f466ebfade1296c8bd32cf7d3f592c2aa78836aa9980ffbe2cadca7a861"
+        }
+      }
+    },
+    {
+      "name": "spotbugs",
+      "version": "4.8.4",
+      "install": "binary",
+      "artifacts": {
+        "all": {
+          "url": "https://github.com/spotbugs/spotbugs/releases/download/4.8.4/spotbugs-4.8.4.tgz",
+          "sha256": "11629b13aad39c453c23f8a8a43096b003afb55924a17424a9e1bc722190576b"
+        }
+      }
+    },
+    {
+      "name": "yq",
+      "version": "4.44.1",
+      "install": "binary",
+      "artifacts": {
+        "amd64": {
+          "url": "https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64",
+          "sha256": "6dc2d0cd4e0caca5aeffd0d784a48263591080e4a0895abe69f3a76eb50d1ba3"
+        },
+        "arm64": {
+          "url": "https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_arm64",
+          "sha256": "8c12fcc10e14774ca6624cc282f092a526568b036fe1192258c3aecbad56d063"
+        }
+      }
+    },
+    {
+      "name": "Sarif.Multitool",
+      "version": "5.0.2",
+      "install": "dotnet"
+    }
+  ]
+}

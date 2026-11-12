@@ -1,0 +1,9 @@
+{
+  "provider": "cppcheck",
+  "category": "sast",
+  "version-range": ">=2.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"],
+  "description": "Cppcheck static-analysis scanner for C and C++ source files."
+}

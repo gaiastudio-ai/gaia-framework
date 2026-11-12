@@ -4,7 +4,8 @@
 # Shared dispatcher used by Tier 2 brownfield adapters when
 # brownfield.tools.runner == "docker". Wraps `docker run` with the
 # canonical volume-mount + output layout the gaia-tools image expects
-# so individual adapters (grype, syft, spotbugs, mobsf, …) don't each
+# so individual adapters (grype, syft, osv-scanner, spotbugs, semgrep,
+# checkov, cppcheck, gitleaks, mobsf, …) don't each
 # re-implement the same plumbing.
 #
 # Mount contract:

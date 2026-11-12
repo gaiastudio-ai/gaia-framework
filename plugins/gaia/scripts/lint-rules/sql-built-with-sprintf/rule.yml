@@ -1,0 +1,24 @@
+rules:
+  - id: sql-built-with-sprintf
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $QUERY = fmt.Sprintf($FMT, ...)
+              ...
+              $DB.$METHOD($QUERY, ...)
+          - pattern: |
+              $DB.$METHOD(fmt.Sprintf($FMT, ...), ...)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: "(Query|QueryRow|QueryContext|Exec|ExecContext|Prepare|PrepareContext)"
+    message: >-
+      SQL query built with fmt.Sprintf and passed to a database call.
+      Use parameterised queries ($1, ?) instead of string formatting
+      to prevent SQL injection.
+    languages: [go]
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe:
+        - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"

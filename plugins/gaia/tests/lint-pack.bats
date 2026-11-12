@@ -1931,3 +1931,59 @@ YAML
   [ "$status" -eq 1 ]
   jq -e '.findings | length == 1 and .[0].rule == "sed-inplace" and .[0].file == "b.sh"' "$REPORT"
 }
+
+# --- Containment: --rules-dir refuses symlinked rules outside library ---
+
+@test "--rules-dir: symlinked rule dir outside library is skipped" {
+  local outside; outside="$(mktemp -d "$BATS_TEST_TMPDIR/outside-XXXXXX")"
+  cat > "$outside/rule.lint" <<'LINT'
+id: escape-dir
+message: "escaped dir"
+severity: high
+languages: [".sh"]
+pattern: "ESCAPED"
+LINT
+  local lib="$BATS_TEST_TMPDIR/rules"
+  mkdir -p "$lib"
+  ln -s "$outside" "$lib/escape-dir"
+  printf 'ESCAPED\n' > "$WORKDIR/target.sh"
+  run bash "$SCRIPT" --files target.sh --rules-dir "$lib" --report "$REPORT" --workdir "$WORKDIR"
+  # The symlinked rule should NOT fire because it resolves outside the library.
+  [ "$status" -eq 0 ]
+  jq -e '.findings | length == 0' "$REPORT"
+}
+
+@test "--rules-dir: symlinked rule.lint file outside library is skipped" {
+  local outside; outside="$(mktemp -d "$BATS_TEST_TMPDIR/outside-XXXXXX")"
+  cat > "$outside/rule.lint" <<'LINT'
+id: escape-file
+message: "escaped file"
+severity: high
+languages: [".sh"]
+pattern: "ESCAPED"
+LINT
+  local lib="$BATS_TEST_TMPDIR/rules2"
+  mkdir -p "$lib/escape-file"
+  ln -s "$outside/rule.lint" "$lib/escape-file/rule.lint"
+  printf 'ESCAPED\n' > "$WORKDIR/target.sh"
+  run bash "$SCRIPT" --files target.sh --rules-dir "$lib" --report "$REPORT" --workdir "$WORKDIR"
+  # The symlinked rule file should NOT fire.
+  [ "$status" -eq 0 ]
+  jq -e '.findings | length == 0' "$REPORT"
+}
+
+@test "--rules-dir: rule inside library fires normally" {
+  local lib="$BATS_TEST_TMPDIR/rules3"
+  mkdir -p "$lib/normal-rule"
+  cat > "$lib/normal-rule/rule.lint" <<'LINT'
+id: normal-rule
+message: "normal rule fired"
+severity: high
+languages: [".sh"]
+pattern: "FLAGGED_TOKEN"
+LINT
+  printf 'FLAGGED_TOKEN\n' > "$WORKDIR/target.sh"
+  run bash "$SCRIPT" --files target.sh --rules-dir "$lib" --report "$REPORT" --workdir "$WORKDIR"
+  [ "$status" -eq 1 ]
+  jq -e '.findings | length == 1 and .[0].rule == "normal-rule"' "$REPORT"
+}

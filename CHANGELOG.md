@@ -9,6 +9,69 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Regression-rule gate and seed library
+
+#### Added
+- Regression-rule gate: code and security reviews enforce that every confirmed critical/high pattern bug ships a regression rule with tests. The gate runs two checks (`story-check` and `library-check`) before the verdict and records blocking findings for any missing or stale rule.
+- New `regression-rule-check.sh` script with `enabled`, `story-check`, and `library-check` subcommands.
+- New `register-write.sh` subcommands: `--pattern-class <slug>` on `add` (stores a pattern class marker on critical/high findings), and `link-rule` (links a regression rule to a register entry). Both are the sole writers under the register lock.
+- Seed rule library at `plugins/gaia/scripts/lint-rules/` with three semgrep rules: `always-on-fake-sign-in`, `sql-built-with-sprintf`, and `hardcoded-credentials`, each with must-fire and must-not-fire test fixtures.
+- CI step: `semgrep --test` validates the shipped rule library on every pull request.
+- `review.regression_rule_gate_enabled` config key (boolean, default true). Set to `false` to turn off the gate and run reviews as before. The report states when the gate is turned off by config.
+- `/gaia-doctor` shows the regression-rule gate status (on / turned off by config).
+- Scanner-evidence step passes library `rule.yml` files to semgrep as extra configs and excludes library test fixtures from scanning.
+- Lint pack gains `--rules-dir` option to load external `rule.lint` files from the shipped and project libraries.
+- `CODEOWNERS` entry for `plugins/gaia/scripts/lint-rules/`.
+
+#### Upgrade notes
+- **Hardening default active on upgrade**: the regression-rule gate is ON by default. If a critical/high pattern finding in a reviewed story's register has no linked rule, the review records a blocking finding and the gate verdict is FAILED. To turn it off, set `review.regression_rule_gate_enabled: false` in `project-config.yaml`.
+
+### Action-items writer lock hardening
+
+#### Changed
+- The action-items writer (`action-items-write.sh`) now acquires its lock
+  through the shared lock helper (`scripts/lib/acquire-lock.sh`) instead of
+  hand-rolled mkdir/flock loops. Both `aiw_append_entry` and `aiw_resolve`
+  use the same lock path and timeout. Two behaviour changes:
+  - **Fail-closed under parallel execution:** when `GAIA_PARALLEL_EXECUTION=1`
+    is active and flock is absent (or `GAIA_LOCK_FORCE_FALLBACK=1` is set),
+    the writer now exits with `status=error` and
+    `reason=<function>: lock unavailable (parallel execution requires flock)`
+    instead of silently falling through to the fallback path.
+  - **Flock-path timeout:** the flock path now respects
+    `GAIA_AIW_LOCK_TIMEOUT` (default 120 s) instead of blocking indefinitely.
+    A dead holder's fallback lock is reaped only after 360 s at the default
+    timeout.
+- `aiw_write` now computes the next id and the dedup check inside the lock,
+  so concurrent appends never produce duplicate ids or slip past the dedup
+  check.
+- `aiw_resolve` creates its temp file only after the lock is held, so a
+  timeout leaves no leftover temp files.
+
+### Scanner-first security pipeline
+
+#### Added
+- Scanner-first evidence collection: security reviews now run configured scanner adapters (semgrep + osv-scanner by default) before any LLM judgment and require complete scanner evidence. The evidence lives at `{story_dir}/scanner-evidence/{run-id}/` with a stable manifest format.
+- New adapters: `osv-scanner` (dependency audit), `checkov` (infrastructure-as-code), `cppcheck` (C/C++ static analysis).
+- Updated adapters: `semgrep` now supports `.kt`, `.swift`, `.dart` extensions and docker-runner dispatch; `gitleaks` now honours `--input` file lists, runs with redaction, and maps "leaks found" to findings instead of errors.
+- `scanner-evidence.sh` entry point with three exit codes (0 complete, 1 config error, 2 incomplete) and an atomic evidence-manifest format that downstream steps read.
+- `check-scanner-pins.sh` CI check verifying every scanner in the Dockerfile is exactly pinned with sha256, every FROM line has an `@sha256:` digest, and Sarif.Multitool uses `--version`.
+- `scanner-manifest.json` listing every scanner's exact version and per-architecture sha256.
+- `review.scanner_first_enabled` config key (boolean, default true). Set to `false` to turn off scanner-first evidence and run security reviews as before. The report states when scanner-first is turned off by config.
+- `/gaia-doctor` scanner-health section showing the scanner-first setting and each scanner's status.
+- Four new entries in the tool-readiness registry (semgrep, gitleaks, checkov, cppcheck).
+- `gaia-tools` image now bundles semgrep, checkov, cppcheck, and gitleaks alongside existing tools.
+- `tool-availability-probe.sh` gains `--output` passthrough so callers can collect scanner evidence in one pass.
+
+#### Changed
+- `/gaia-review-security` Step 1c runs scanner-first evidence collection before LLM judgment. The scanner evidence is mandatory input; the reviewer must cite scanner findings.
+- `/gaia-run-all-reviews` Substep 2.2b collects scanner evidence for the round before dispatching any gate.
+- Both steps HALT on incomplete evidence, naming each adapter, its state, and a remediation hint.
+
+#### Upgrade notes
+- **Hardening default active on upgrade**: projects without a `tools:` or `review:` section get scanner-first with the default set (semgrep + osv-scanner). If a configured scanner is missing, the review HALTs with a message naming the scanner and offering remediation (install it, switch to the docker runner, change the provider, or set `review.scanner_first_enabled: false`).
+- **gitleaks bundled**: the `gaia-tools` image now includes gitleaks. No host install needed when using `brownfield.tools.runner: docker`.
+
 ### Fix-cycle cap with escalation and critical-security carve-out
 
 #### Added
