@@ -56,6 +56,17 @@ _run_native() {
   else
     args+=(--config "p/default")
   fi
+  # Load regression-rule library rule.yml files as extra configs.
+  if [ -n "${SEMGREP_EXTRA_RULE_CONFIGS:-}" ]; then
+    local IFS=':'
+    local _extra_cfg
+    for _extra_cfg in $SEMGREP_EXTRA_RULE_CONFIGS; do
+      [ -f "$_extra_cfg" ] && args+=(--config "$_extra_cfg")
+    done
+  fi
+  # Exclude library test fixtures from scanning (they contain must-fire
+  # patterns that would produce false findings on the framework itself).
+  args+=(--exclude "plugins/gaia/scripts/lint-rules/*/test/*")
   semgrep "${args[@]}" -- "${TARGETS[@]}" 2>/dev/null
 }
 

@@ -105,6 +105,23 @@ Review limits:
 
 This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.
 
+### Step 7b — Regression-rule gate
+
+Report whether the regression-rule gate is on or turned off by config:
+
+```bash
+gate_status=$(${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh enabled)
+```
+
+Display the result:
+
+```
+Regression-rule gate:           on                    (when absent or true)
+Regression-rule gate:           turned off by config  (when false)
+```
+
+This section is always emitted — it is a read-only diagnostic.
+
 ### Step 8 — Review gate bypass audit
 
 ```bash

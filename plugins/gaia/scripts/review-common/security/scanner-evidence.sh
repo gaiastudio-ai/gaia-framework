@@ -303,6 +303,49 @@ elif [ -d "$REPO_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Build SEMGREP_EXTRA_RULE_CONFIGS from the shipped and project rule libraries.
+# ---------------------------------------------------------------------------
+_shipped_lib="$PLUGIN_SCRIPTS/lint-rules"
+_custom_dir="${GAIA_CUSTOM_DIR:-${PROJECT_ROOT}/.gaia/custom}"
+_project_lib="$_custom_dir/lint-rules"
+
+_extra_rule_configs=""
+_se_parse_errors=""
+for _lib_dir in "$_shipped_lib" "$_project_lib"; do
+  [ -d "$_lib_dir" ] || continue
+  _lib_real="$(cd "$_lib_dir" 2>/dev/null && pwd -P)" || continue
+  for _rule_dir in "$_lib_dir"/*/; do
+    [ -d "$_rule_dir" ] || continue
+    # Containment: rule directory must resolve inside its library.
+    _rule_real="$(cd "$_rule_dir" 2>/dev/null && pwd -P)" || continue
+    case "$_rule_real" in "$_lib_real"/*) ;; *) continue ;; esac
+    if [ -f "$_rule_dir/rule.yml" ]; then
+      # Containment: rule file itself must not be a symlink escaping the library.
+      if [ -L "$_rule_dir/rule.yml" ]; then
+        _rf_real=""
+        if command -v readlink >/dev/null 2>&1; then
+          _rf_real="$(readlink -f "$_rule_dir/rule.yml" 2>/dev/null)" || _rf_real=""
+        fi
+        if [ -n "$_rf_real" ]; then
+          case "$_rf_real" in "$_lib_real"/*) ;; *) continue ;; esac
+        fi
+      fi
+      # Validate the rule parses before including it (skip with warning on error).
+      if command -v semgrep >/dev/null 2>&1; then
+        if ! semgrep --config "$_rule_dir/rule.yml" --validate >/dev/null 2>&1; then
+          _rule_name="$(basename "$_rule_dir")"
+          printf '%s: WARN: skipping rule %s — failed semgrep --validate\n' "$SCRIPT_NAME" "$_rule_name" >&2
+          _se_parse_errors="${_se_parse_errors:+$_se_parse_errors,}\"${_rule_name}\""
+          continue
+        fi
+      fi
+      _extra_rule_configs="${_extra_rule_configs:+$_extra_rule_configs:}${_rule_dir}rule.yml"
+    fi
+  done
+done
+export SEMGREP_EXTRA_RULE_CONFIGS="$_extra_rule_configs"
+
+# ---------------------------------------------------------------------------
 # Collect evidence: run each adapter from the repo directory.
 # ---------------------------------------------------------------------------
 mkdir -p "$EVIDENCE_DIR"
@@ -423,6 +466,15 @@ if [ "$all_complete" = "false" ]; then
   exit_code=2
 fi
 
+# Build skipped_rules JSON array from rules that failed validation.
+_skipped_rules_json="[]"
+if [ -n "$_se_parse_errors" ]; then
+  _skipped_rules_json="[${_se_parse_errors}]"
+  # A skipped rule is a silent omission — do not report complete:true.
+  complete_bool="false"
+  exit_code=2
+fi
+
 manifest="$(jq -nc \
   --argjson version 1 \
   --arg story "$STORY_KEY" \
@@ -431,8 +483,10 @@ manifest="$(jq -nc \
   --argjson enabled true \
   --argjson complete "$complete_bool" \
   --argjson adapters "$adapters_json" \
+  --argjson skipped_rules "$_skipped_rules_json" \
   '{version: $version, story: $story, run_id: $run_id, head_sha: $head_sha,
-    enabled: $enabled, complete: $complete, adapters: $adapters}')"
+    enabled: $enabled, complete: $complete, adapters: $adapters,
+    skipped_rules: $skipped_rules}')"
 
 _tmp="$(mktemp "$EVIDENCE_DIR/evidence-manifest.json.XXXXXX")"
 printf '%s\n' "$manifest" > "$_tmp"

@@ -902,6 +902,10 @@ v_review_max_concurrent_heavy_reviewers=$(merge_nested_key review max_concurrent
 # The point-of-use default of true lives in scanner-evidence.sh, not here.
 v_review_scanner_first_enabled=$(merge_nested_key review scanner_first_enabled)
 
+# review.regression_rule_gate_enabled — surfaced only when explicitly configured.
+# The point-of-use default of true lives in regression-rule-check.sh enabled, not here.
+v_review_regression_rule_gate_enabled=$(merge_nested_key review regression_rule_gate_enabled)
+
 # brownfield deterministic-tools master flag + per-tool override.
 # Depth-2 nested keys (the resolver supports up to depth-3 but only
 # ASCII-underscore segments, so the per-tool override uses the flat
@@ -1646,6 +1650,8 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_review_max_concurrent_heavy_reviewers" ;;
     review.scanner_first_enabled)
       printf '%s\n' "$v_review_scanner_first_enabled" ;;
+    review.regression_rule_gate_enabled)
+      printf '%s\n' "$v_review_regression_rule_gate_enabled" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
@@ -1772,6 +1778,7 @@ emit_all_body() {
   [ -n "$v_review_max_fix_cycles" ]              && emit_pair_shell review.max_fix_cycles            "$v_review_max_fix_cycles"
   [ -n "$v_review_max_concurrent_heavy_reviewers" ] && emit_pair_shell review.max_concurrent_heavy_reviewers "$v_review_max_concurrent_heavy_reviewers"
   [ -n "$v_review_scanner_first_enabled" ]       && emit_pair_shell review.scanner_first_enabled     "$v_review_scanner_first_enabled"
+  [ -n "$v_review_regression_rule_gate_enabled" ] && emit_pair_shell review.regression_rule_gate_enabled "$v_review_regression_rule_gate_enabled"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller
   # when a command-substitution body returns non-zero (the chain above is
   # `[ -n ... ] && emit ...`, which exits 1 when the variable is empty).
