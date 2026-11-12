@@ -35,6 +35,11 @@
 # plugins/gaia/scripts/gen-ci-config.sh; a CI lint fails on drift.
 !/.gaia/ci-config.yaml
 
+# EXCEPTION: the flaky-tests quarantine list IS tracked. Contains plain stack
+# IDs retried by run-with-retry.sh. Sits beside ci-config.yaml (one-line
+# re-include, no subdirectory creation needed).
+!/.gaia/flaky-tests.txt
+
 # EXCEPTION: the lint-pack configuration IS tracked. It configures the
 # leaked-identifier rule for the framework's own preflight gate. User
 # projects create their own .gaia/lint-pack.yaml to opt in.

@@ -78,6 +78,7 @@ core	audit-v2-migration.bats
 core	backup-integrity.bats
 core	bash-dev-wiring.bats
 core	bats-component-tagger.bats
+core	bats-shard-retry.bats
 core	brain-capstone.bats
 core	brain-freshness-hooks.bats
 core	brain-reindex-perf.bats
@@ -326,6 +327,7 @@ core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats
 core	plugin-ci-hardware-tag-skip.bats
+core	plugin-ci-path-filter-parity.bats
 core	plugin-ci-workflow.bats
 core	plugin-version-lockstep.bats
 core	plugin-version-resolution.bats
