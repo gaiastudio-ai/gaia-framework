@@ -97,7 +97,6 @@ core	changelog-retirement.bats
 core	check-status-discipline.bats
 core	checkpoint.bats
 core	ci-fast-feedback-cap.bats
-core	ci-junit-ingestion.bats
 core	ci-regen-helpers-coverage.bats
 core	ci-skip-shim-parity.bats
 core	class-b-mixed-state-triage.bats
@@ -333,7 +332,6 @@ core	post-ci-smoke.bats
 core	product-brief-post-complete-gate.bats
 core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
-core	qa-ci-evidence.bats
 core	quality-gates.bats
 core	reconcile-cross-stack.bats
 core	regression-rule-gate.bats
@@ -431,7 +429,6 @@ core	val-bridge-anti-pattern.bats
 core	val-bridge-migration.bats
 core	val-gate-fail-closed.bats
 core	validate-epic-registry.bats
-core	validate-junit-sha.bats
 core	validate-shard-assignments.bats
 core	validate-traceability-consistency.bats
 core	vcp-adv-02-adversarial-step4-contract.bats
@@ -516,6 +513,7 @@ scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats
 scripts-core	check-story-layout-sync.bats
 scripts-core	ci-config-slice.bats
+scripts-core	ci-junit-ingestion.bats
 scripts-core	cluster-1/platforms-device-targets.bats
 scripts-core	cluster-1/project-kind.bats
 scripts-core	cluster-1/resolve-config-artifact-paths.bats
@@ -637,6 +635,7 @@ scripts-core	plugin-cache-recovery.bats
 scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	project-config-slice.bats
+scripts-core	qa-ci-evidence.bats
 scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config-cwd-independence.bats
@@ -691,6 +690,7 @@ scripts-core	val-sidecar-write-jq-cleanliness.bats
 scripts-core	val-validate-plan.bats
 scripts-core	validate-gate-traceability-strategy.bats
 scripts-core	validate-gate.bats
+scripts-core	validate-junit-sha.bats
 scripts-core	vcp-cpt-02.bats
 scripts-core	vcp-cpt-09-phase2.bats
 scripts-core	vcp-cpt-09-phase3-solutioning.bats
