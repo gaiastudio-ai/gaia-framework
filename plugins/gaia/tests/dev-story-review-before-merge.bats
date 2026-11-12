@@ -1905,22 +1905,27 @@ _status_of() {
   [ ! -e "$TMP/gh-calls.log" ]
 }
 
-@test "a resolver failure refuses done rather than reading as default" {
+@test "a resolver failure allows done when the key is not confirmed true" {
+  # Coverage: AC10. With the key absent or unreadable the project never opted in,
+  # so the guard does not fire and the transition proceeds as today.
   _done_fixture
   _add_chain
   printf 'dev_story: [\n' > "$TMP/root/.gaia/config/project-config.yaml"
   run "$TRANSITION" "$FX_KEY" --to done
-  [ "$status" -eq 9 ]
-  [[ "$output" == *"$FX_KEY"* ]]
-  [ "$(_status_of)" = "review" ]
+  [ "$status" -eq 0 ]
+  [ ! -e "$TMP/gh-calls.log" ]
+  [ "$(_status_of)" = "done" ]
 }
 
-@test "a non-boolean value refuses done" {
+@test "a non-boolean value allows done when the key is not confirmed true" {
+  # Coverage: AC10. A non-boolean value means the project has not opted in to
+  # pre-push mode, so the guard does not fire.
   _done_fixture
   _add_chain
   _set_key maybe
   run "$TRANSITION" "$FX_KEY" --to done
-  [ "$status" -eq 9 ]
+  [ "$status" -eq 0 ]
+  [ ! -e "$TMP/gh-calls.log" ]
 }
 
 @test "the operator bypass allows done with no verifier call" {
@@ -1931,12 +1936,14 @@ _status_of() {
   [ ! -e "$TMP/gh-calls.log" ]
 }
 
-@test "--reconcile-only stays exempt" {
+@test "--reconcile-only --to done from review goes through the merge guard" {
   _done_fixture
   _add_chain
   GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
-  [ "$status" -ne 9 ]
-  [ ! -e "$TMP/gh-calls.log" ]
+  # A real review->done via --reconcile-only goes through the merge guard and
+  # is refused when the PR is not verified merged (exit 9).
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
 }
 
 @test "transition exit code 9 is documented in the tool header" {
@@ -2084,4 +2091,330 @@ _status_of() {
     [ "$status" -eq 0 ]
     [ "$output" = "default" ]
   done
+}
+
+# ---------- Firewall decoy tests ----------
+
+@test "firewall: a nested script is not hidden by a same-named sibling" {
+  local root="$TMP/fw-nested"
+  mkdir -p "$root/skills/gaia-sprint-plan/scripts/sub"
+  mkdir -p "$root/scripts/lib"
+  # SKILL.md references t.sh
+  printf 'name: gaia-sprint-plan\nsteps:\n  - plan\n' \
+    > "$root/skills/gaia-sprint-plan/SKILL.md"
+  printf 'scripts: t.sh\n' >> "$root/skills/gaia-sprint-plan/SKILL.md"
+  # t.sh invokes sub/evil.sh
+  printf '#!/usr/bin/env bash\nbash sub/evil.sh\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/t.sh"
+  # sub/evil.sh reads the board
+  printf '#!/usr/bin/env bash\ncat discovery-board.yaml\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/sub/evil.sh"
+  # Benign evil.sh at the same level as t.sh (a decoy)
+  printf '#!/usr/bin/env bash\nexit 0\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/evil.sh"
+  local guard="$PLUGIN_ROOT/scripts/discovery-firewall-guard.sh"
+  run "$guard" --surface-root "$root"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"discovery-board"* ]]
+}
+
+@test "firewall: a same-named file at the surface root does not hide a sibling board reference" {
+  local root="$TMP/fw-root-decoy"
+  mkdir -p "$root/skills/gaia-sprint-plan/scripts/sub"
+  mkdir -p "$root/scripts/lib"
+  # SKILL.md references helper.sh
+  printf 'name: gaia-sprint-plan\nsteps:\n  - plan\n' \
+    > "$root/skills/gaia-sprint-plan/SKILL.md"
+  printf 'scripts: helper.sh\n' >> "$root/skills/gaia-sprint-plan/SKILL.md"
+  # helper.sh invokes sub/reader.sh
+  printf '#!/usr/bin/env bash\nbash sub/reader.sh\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/helper.sh"
+  # sub/reader.sh reads the board
+  printf '#!/usr/bin/env bash\ncat discovery-board.yaml\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/sub/reader.sh"
+  # Decoy reader.sh at scripts/ level
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/reader.sh"
+  local guard="$PLUGIN_ROOT/scripts/discovery-firewall-guard.sh"
+  run "$guard" --surface-root "$root"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"discovery-board"* ]]
+}
+
+# ---------- Reconcile-only merge guard ----------
+
+@test "--reconcile-only --to done does not bypass the merge guard for a pre-push story" {
+  _done_fixture
+  _add_chain
+  # Story is in review, all rows PASSED, but gh stub says not merged.
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+@test "plain --reconcile-only replays review without moving to done" {
+  _done_fixture
+  _add_chain
+  # --reconcile-only without --to replays the current status (review).
+  run "$TRANSITION" "$FX_KEY" --reconcile-only
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+# ---------- Merge guard with failing gh ----------
+
+@test "merge guard refuses when gh fails and an unrelated commit names the key" {
+  _done_fixture
+  _add_chain
+  # Add a commit on staging that mentions E900-S1 in its message.
+  git -C "$TMP/root/repo" checkout -q staging 2>/dev/null || git -C "$TMP/root/repo" checkout -b staging -q
+  git -C "$TMP/root/repo" commit -q --allow-empty -m "docs: note that E900-S1 is planned"
+  git -C "$TMP/root/repo" checkout -q "feat/${FX_KEY}-fixture" 2>/dev/null || git -C "$TMP/root/repo" checkout -q -
+  # Replace gh stub with one that exits 1 (simulating API failure).
+  printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/gh"
+  run "$REVIEW_ORDER" merge-guard --story-key "$FX_KEY"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"not verified merged"* ]] || [[ "$output" == *"could not be verified"* ]]
+}
+
+# ---------- YAML key spelling variants ----------
+
+@test "each YAML boolean spelling of the key reads as its configured value or fails closed" {
+  # true and false are the allowed values; YAML alternate casings (True, False)
+  # are passed through as string literals by the resolver and fail closed in
+  # mode, which is the intended behaviour (they are refused, not silently
+  # accepted as the opposite).
+  local spelling expected_exit expected_out
+  for triple in "true:0:pre-push" "false:0:default" "True:1:invalid" "False:1:invalid"; do
+    spelling="${triple%%:*}"
+    local rest="${triple#*:}"
+    expected_exit="${rest%%:*}"
+    expected_out="${rest##*:}"
+    mkdir -p "$TMP/sp-$spelling/.gaia/config"
+    cat > "$TMP/sp-$spelling/.gaia/config/project-config.yaml" <<YAML
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: $spelling
+YAML
+    run env CLAUDE_PROJECT_ROOT="$TMP/sp-$spelling" "$REVIEW_ORDER" mode
+    [ "$status" -eq "$expected_exit" ] || { printf 'spelling %s gave exit %s not %s: %s\n' "$spelling" "$status" "$expected_exit" "$output" >&2; return 1; }
+    [[ "$output" == *"$expected_out"* ]] || { printf 'spelling %s output %s does not contain %s\n' "$spelling" "$output" "$expected_out" >&2; return 1; }
+  done
+}
+
+@test "a comment after a one-line flow mapping does not turn the key on" {
+  mkdir -p "$TMP/.gaia/config"
+  cat > "$TMP/.gaia/config/project-config.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story: {review_before_merge: false} # old
+YAML
+  run env CLAUDE_PROJECT_ROOT="$TMP" "$REVIEW_ORDER" mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "default" ]
+}
+
+# ---------- check-layout from a non-git root ----------
+
+@test "check-layout refuses from a non-git root when the code path is a git work tree" {
+  _nongit_root_fixture
+  printf 'ci_cd:\n  promotion_chain:\n    - id: staging\n      branch: staging\n' \
+    >> "$TMP/root/.gaia/config/project-config.yaml"
+  git -C "$TMP/root/repo" branch staging 2>/dev/null || true
+  cd "$TMP/root"
+  run env -u GAIA_WORKTREE_MODE PROJECT_PATH="$TMP/root/repo" \
+    CLAUDE_PROJECT_ROOT="$TMP/root" "$REVIEW_ORDER" check-layout --worktree-mode-only
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"worktree mode is off"* ]]
+}
+
+# ---------- find-worktree config-path fallback ----------
+
+@test "find-worktree falls back to the code path from config at a non-git root" {
+  _nongit_root_fixture
+  # Create a linked worktree on a story branch.
+  local key="E900-S2"
+  local wt="$TMP/root/wt-$key"
+  git -C "$TMP/root/repo" worktree add -q -b "feat/$key-slug" "$wt" HEAD 2>/dev/null
+  cd "$TMP/root"
+  # PROJECT_PATH unset: the helper should discover the repo from config.
+  run env -u PROJECT_PATH CLAUDE_PROJECT_ROOT="$TMP/root" \
+    "$REVIEW_ORDER" find-worktree --story-key "$key"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$wt"* ]]
+  git -C "$TMP/root/repo" worktree remove -f "$wt" 2>/dev/null || true
+}
+
+# ---------- Step 9a stop keeps the worktree ----------
+
+@test "a stop at step 9a keeps the worktree for resume" {
+  _nongit_root_fixture
+  local key="E900-S3"
+  local wt="$TMP/root/wt-$key"
+  git -C "$TMP/root/repo" worktree add -q -b "feat/$key-slug" "$wt" HEAD 2>/dev/null
+  # Worktree still exists after a simulated stop (no teardown trap fires).
+  [ -d "$wt" ]
+  run env PROJECT_PATH="$TMP/root/repo" CLAUDE_PROJECT_ROOT="$TMP/root" \
+    "$REVIEW_ORDER" find-worktree --story-key "$key"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$wt"* ]]
+  git -C "$TMP/root/repo" worktree remove -f "$wt" 2>/dev/null || true
+}
+
+# ---------- Commit fence excludes secrets ----------
+
+@test "the step 9a commit fence excludes untracked secrets" {
+  _make_repo "$TMP/fence-repo"
+  cd "$TMP/fence-repo"
+  # Simulate untracked secret files and a normal file.
+  printf 'SECRET=xyz\n' > .env
+  printf 'OTHER=abc\n' > .env.local
+  printf 'hello\n' > code.sh
+  printf '%s\n' '-----BEGIN RSA PRIVATE KEY-----' > server.pem
+  printf '%s\n' 'hello key' > token.key
+  # Run the fence from the SKILL.md (the git add -A with exclusions).
+  git add -A -- ':!.env' ':!.env.*' ':!*.pem' ':!*.key'
+  local staged
+  staged="$(git diff --cached --name-only)"
+  [[ "$staged" == *"code.sh"* ]]
+  [[ "$staged" != *".env"* ]]
+  [[ "$staged" != *"server.pem"* ]]
+  [[ "$staged" != *"token.key"* ]]
+}
+
+# ---------- Doctor per-story checks text ----------
+
+@test "doctor reports the per-story layout checks line in pre-push mode" {
+  /usr/bin/grep -q 'Per-story.*checks.*run at.*/gaia-dev-story.*time' "$DOCTOR_MD" || \
+    /usr/bin/grep -q 'per-story.*checks.*run at.*/gaia-dev-story.*time' "$DOCTOR_MD" || \
+    /usr/bin/grep -qi 'per-story layout checks' "$DOCTOR_MD"
+}
+
+# ---------- Default-mode done: no merge guard ----------
+
+@test "default-mode review to done makes no merge-guard call" {
+  _done_fixture
+  _add_chain
+  _drop_key
+  # Key absent: default mode. Transition should succeed without the guard.
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+  # No gh calls were made (the guard never ran).
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+# ---------- assert-reviewed-head refuses when git status fails ----------
+
+@test "assert-reviewed-head refuses when git status fails" {
+  _make_repo "$TMP/arh-repo"
+  local sha story
+  sha="$(git -C "$TMP/arh-repo" rev-parse HEAD)"
+  story="$TMP/arh-story.md"
+  _write_bound_story "$story" "$sha"
+  # Create a git shim that makes 'status' fail but passes everything else.
+  mkdir -p "$TMP/arh-bin"
+  local real_git
+  real_git="$(command -v git)"
+  cat > "$TMP/arh-bin/git" <<SHIM
+#!/bin/sh
+for arg in "\$@"; do
+  case "\$arg" in
+    status)
+      printf 'fatal: cannot read working tree state\n' >&2
+      exit 128
+      ;;
+  esac
+done
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$TMP/arh-bin/git"
+  run env PATH="$TMP/arh-bin:$PATH" PROJECT_PATH="$TMP/arh-repo" \
+    "$REVIEW_ORDER" assert-reviewed-head --story "$story"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot read working tree"* ]]
+}
+
+# ---------- skip-check --bind-head respects Review Gate section boundary ----------
+
+@test "skip-check --bind-head reads rows only inside the Review Gate section" {
+  # Create a story file with a Review Gate section and an extra table outside it.
+  # The outside-section row has an all-zeros SHA that would put "Code Review" in
+  # the run partition if the parser read it.
+  local key="SB-S1"
+  _make_repo "$TMP/sc-repo"
+  local sha
+  sha="$(git -C "$TMP/sc-repo" rev-parse HEAD)"
+  # Place the story where the gate writer can find it via IMPLEMENTATION_ARTIFACTS.
+  local impl="$TMP/sc-impl"
+  mkdir -p "$impl"
+  local story="$impl/${key}-fixture.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "${key}"
+status: review
+---
+# Story
+
+Some table outside the gate with a matching shape:
+
+| Code Review | PASSED | — | 0000000000000000000000000000000000000000 |
+
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | — | ${sha} |
+| QA Tests | PASSED | — | ${sha} |
+| Security Review | PASSED | — | ${sha} |
+| Test Automation | PASSED | — | ${sha} |
+| Test Review | PASSED | — | ${sha} |
+| Performance Review | PASSED | — | ${sha} |
+
+## Findings
+STORY
+  export PROJECT_PATH="$TMP/sc-repo"
+  export IMPLEMENTATION_ARTIFACTS="$impl"
+  export REVIEW_GATE_PROOF_OF_EXECUTION=off
+  # Initialize the gate status via the real writer.
+  local gate_sh="$PLUGIN_ROOT/scripts/review-gate.sh"
+  for gate in "Code Review" "QA Tests" "Security Review" "Test Automation" "Test Review" "Performance Review"; do
+    "$gate_sh" update --story "$key" --gate "$gate" --verdict PASSED >/dev/null
+  done
+  # With --bind-head matching all in-section rows, all six should skip.
+  # If the outside-section row (bound to all-zeros) were read, one would run.
+  run "$SKIP_CHECK" --story "$key" --bind-head "$sha"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"run":[]'* ]]
+}
+
+# ---------- find-worktree after teardown ----------
+
+@test "find-worktree returns 1 after the worktree is torn down" {
+  _nongit_root_fixture
+  local key="E900-S4"
+  local wt="$TMP/root/wt-$key"
+  git -C "$TMP/root/repo" worktree add -q -b "feat/$key-slug" "$wt" HEAD 2>/dev/null
+  # Verify it is found before teardown.
+  run env PROJECT_PATH="$TMP/root/repo" CLAUDE_PROJECT_ROOT="$TMP/root" \
+    "$REVIEW_ORDER" find-worktree --story-key "$key"
+  [ "$status" -eq 0 ]
+  # Remove the worktree (simulating teardown).
+  git -C "$TMP/root/repo" worktree remove -f "$wt" 2>/dev/null
+  # Now it must not be found.
+  run env PROJECT_PATH="$TMP/root/repo" CLAUDE_PROJECT_ROOT="$TMP/root" \
+    "$REVIEW_ORDER" find-worktree --story-key "$key"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no worktree"* ]]
 }

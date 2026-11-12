@@ -181,8 +181,19 @@ _resolve_script_ref() {
     printf '%s' "$candidate"
     return 0
   fi
-  # 4. Try beside the referencing file (a skill script calling its sibling).
+  # 4. Try the full relative path from the referencing file's directory.
   if [ -n "${2:-}" ]; then
+    candidate="$(dirname "$2")/$ref"
+    if [ -f "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+  # 5. Try basename-only beside the referencing file (a skill script calling its
+  #    sibling). Only when the reference is a bare basename — a reference with a
+  #    directory component (sub/evil.sh) must not resolve to the basename alone
+  #    (evil.sh) in a sibling position, which would hide the real target.
+  if [ -n "${2:-}" ] && [ "$ref" = "$bn" ]; then
     candidate="$(dirname "$2")/$bn"
     if [ -f "$candidate" ]; then
       printf '%s' "$candidate"
@@ -236,16 +247,21 @@ while [ "$changed" -eq 1 ]; do
         fi
         # Check the _seen set for any path ending in this basename.
         # bash 3.2-safe: iterate the newline-delimited _seen_paths string.
+        # Only match by basename when the reference is a bare basename — a
+        # reference with a directory component (sub/evil.sh) is a distinct
+        # file from evil.sh and must not be elided by a basename collision.
         already_seen=0
-        while IFS= read -r seen_path; do
-          [ -n "$seen_path" ] || continue
-          if [ "$(basename "$seen_path")" = "$bn_check" ]; then
-            already_seen=1
-            break
-          fi
-        done <<EOF
+        if [ "$ref" = "$bn_check" ]; then
+          while IFS= read -r seen_path; do
+            [ -n "$seen_path" ] || continue
+            if [ "$(basename "$seen_path")" = "$bn_check" ]; then
+              already_seen=1
+              break
+            fi
+          done <<EOF
 $_seen_paths
 EOF
+        fi
         if [ "$already_seen" -eq 1 ]; then
           continue
         fi

@@ -105,12 +105,13 @@ Review limits:
   review_ordering:                default           (when absent or false)
 ```
 
-When the mode is `pre-push`, also run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, with `GAIA_WORKTREE_MODE` as this session has it. Exit 1 means the opt-in cannot run in this layout: `/gaia-dev-story` halts instead of falling back to the default order. Emit a warning naming the layout and both remedies: enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false. Exit 0 or 3 emits nothing. When `mode` itself exits non-zero, warn with its stderr: the value is not a boolean or the config cannot be resolved.
+When the mode is `pre-push`, also run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, with `GAIA_WORKTREE_MODE` as this session has it. Exit 1 means the opt-in cannot run in this layout: `/gaia-dev-story` halts instead of falling back to the default order. Emit a warning naming the layout and both remedies: enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false. After the warning, state that per-story layout checks (non-linked code path, story file inside the code tree) run at `/gaia-dev-story` time. Exit 0 or 3 emits nothing. When `mode` itself exits non-zero, warn with its stderr: the value is not a boolean or the config cannot be resolved.
 
 ```
 Review limits:
   review_ordering:                pre-push review
   WARNING: review_before_merge cannot run in this layout: worktree mode is off
+           Per-story checks (non-linked code path, story file inside the code tree) run at /gaia-dev-story time.
 ```
 
 This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.

@@ -347,7 +347,22 @@ cmd_check_layout() {
     _die_usage "check-layout: --story <file> or --worktree-mode-only is required"
   fi
 
+  # Resolve the code path. When PROJECT_PATH is unset and the doctor calls
+  # --worktree-mode-only from a non-git root, fall back to the config's
+  # project_path so the worktree-mode check can still fire.
   local git_dir="${PROJECT_PATH:-.}" base
+  if [ "$mode_only" -eq 1 ] && [ -z "${PROJECT_PATH:-}" ]; then
+    local _cfg_pairs _cfg_path _cfg_root
+    _cfg_pairs="$(_resolve 2>/dev/null)" || true
+    _cfg_path="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_path='\\(.*\\)'\$/\\1/p")"
+    _cfg_root="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_root='\\(.*\\)'\$/\\1/p")"
+    if [ -n "$_cfg_path" ]; then
+      case "$_cfg_path" in
+        /*) git_dir="$_cfg_path" ;;
+        *)  git_dir="${_cfg_root:-.}/$_cfg_path" ;;
+      esac
+    fi
+  fi
   _require_git_work_tree "$git_dir"
   base="$(_promotion_base "$git_dir")" || _die "cannot read the promotion chain from $git_dir"
   [ -n "$base" ] || exit 0
@@ -381,7 +396,7 @@ cmd_check_layout() {
 
 _validate_story_key() {
   case "$1" in
-    ""|-*|*[!A-Za-z0-9-]*) _die "invalid story key: $1" ;;
+    ""|-*|*[!A-Za-z0-9_-]*) _die "invalid story key: $1" ;;
   esac
 }
 
@@ -438,6 +453,24 @@ EOF
   return 1
 }
 
+_worktree_from_config_path() {
+  # Fallback: when PROJECT_PATH is unset (e.g. running from a non-git root),
+  # resolve the code path from config and try git worktree list there.
+  local key="$1"
+  [ -z "${PROJECT_PATH:-}" ] || return 1
+  local _cfg_pairs _cfg_path _cfg_root _resolved
+  _cfg_pairs="$(_resolve 2>/dev/null)" || return 1
+  _cfg_path="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_path='\\(.*\\)'\$/\\1/p")"
+  _cfg_root="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_root='\\(.*\\)'\$/\\1/p")"
+  [ -n "$_cfg_path" ] || return 1
+  case "$_cfg_path" in
+    /*) _resolved="$_cfg_path" ;;
+    *)  _resolved="${_cfg_root:-.}/$_cfg_path" ;;
+  esac
+  [ -d "$_resolved" ] || return 1
+  PROJECT_PATH="$_resolved" _worktree_from_git "$key"
+}
+
 cmd_find_worktree() {
   local key=""
   while [ $# -gt 0 ]; do
@@ -451,6 +484,7 @@ cmd_find_worktree() {
   [ -n "$key" ] || _die_usage "find-worktree: --story-key <key> is required"
   _validate_story_key "$key"
   _worktree_from_checkpoints "$key" || _worktree_from_git "$key" \
+    || _worktree_from_config_path "$key" \
     || _die "no worktree on a feat/$key- branch for story $key"
 }
 
@@ -475,13 +509,19 @@ cmd_merge_guard() {
     esac
   done
   [ -n "$key" ] || _die_usage "merge-guard: --story-key <key> is required"
-  _validate_story_key "$key"
 
   [ "${GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE:-0}" != "1" ] || exit 0
 
   local mode
-  mode="$(cmd_mode)" || _merge_refusal "$key" "the review ordering could not be read from project config"
+  mode="$(cmd_mode 2>/dev/null)" || mode=""
+  # The guard engages only when mode is known to be pre-push. A resolver
+  # failure or an unreadable config cannot confirm opt-in, so the guard
+  # allows the transition — the user never opted in.
   [ "$mode" = "pre-push" ] || exit 0
+
+  # Validate after the mode check so default-mode users with non-standard keys
+  # are never refused (they exit 0 above and no verifier or network call runs).
+  _validate_story_key "$key"
 
   # The code path comes from config: a transition may run from a non-git root.
   local pairs code_path root
@@ -498,7 +538,7 @@ cmd_merge_guard() {
   local base target rc=0
   base="$(_promotion_base "$code_path")" || _merge_refusal "$key" "the promotion chain could not be read"
   target="${base:---no-chain}"
-  PROJECT_PATH="$code_path" "$SCRIPT_DIR/verify-pr-merged.sh" "$key" "$target" >/dev/null 2>&1 || rc=$?
+  PROJECT_PATH="$code_path" "$SCRIPT_DIR/verify-pr-merged.sh" --strict "$key" "$target" >/dev/null 2>&1 || rc=$?
   case "$rc" in
     0|3) exit 0 ;;
     2) _merge_refusal "$key" "its PR is not verified merged; finish push and merge with /gaia-dev-story $key" ;;

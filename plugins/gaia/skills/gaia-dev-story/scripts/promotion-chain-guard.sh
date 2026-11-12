@@ -35,12 +35,17 @@ PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
 
 SCRIPT_NAME="gaia-dev-story/promotion-chain-guard.sh"
 
-# Non-git CWD guard: skip-with-warning when CWD is outside any git
-# work tree, so /gaia-dev-story Steps 10-13 degrade gracefully instead of HALT.
+# Non-git CWD guard: skip-with-warning when the effective code path is
+# outside any git work tree, so /gaia-dev-story Steps 10-13 degrade
+# gracefully instead of HALT. Check PROJECT_PATH first, then CWD.
 # shellcheck source=../../../scripts/lib/non-git-cwd-guard.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../../../scripts/lib/non-git-cwd-guard.sh"
-non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+if [ -n "${PROJECT_PATH:-}" ] && [ -d "$PROJECT_PATH" ]; then
+  (cd "$PROJECT_PATH" && non_git_cwd_skip "$SCRIPT_NAME") || exit 0
+else
+  non_git_cwd_skip "$SCRIPT_NAME" || exit 0
+fi
 
 emit_absent() {
   printf '%s: ABSENT: ci_cd.promotion_chain not configured. Run /gaia-ci-edit to add a promotion chain.\n' \

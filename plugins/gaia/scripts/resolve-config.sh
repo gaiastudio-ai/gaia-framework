@@ -186,7 +186,7 @@ parse_yaml_nested_key() {
     /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:/ {
       if (in_parent) { in_parent=0 }
     }
-    $0 ~ "^"P"[[:space:]]*:[[:space:]]*$" { in_parent=1; next }
+    $0 ~ "^"P"[[:space:]]*:[[:space:]]*(#.*)?$" { in_parent=1; next }
     # Flow-style parent on one line: `parent: {child: value, other: value}`.
     # Only keys of this mapping match; a nested mapping is one opaque value.
     $0 ~ "^"P"[[:space:]]*:[[:space:]]*[{]" {
@@ -294,7 +294,7 @@ parse_yaml_nested_inline_list() {
     /^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*:/ {
       if (in_parent) { in_parent=0 }
     }
-    $0 ~ "^"P"[[:space:]]*:[[:space:]]*$" { in_parent=1; next }
+    $0 ~ "^"P"[[:space:]]*:[[:space:]]*(#.*)?$" { in_parent=1; next }
     in_parent && $0 ~ "^[[:space:]]+"C"[[:space:]]*:[[:space:]]*\\[" {
       line=$0
       sub(/^[^\[]*\[/, "", line)

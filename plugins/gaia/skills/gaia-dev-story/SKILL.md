@@ -766,10 +766,11 @@ Then execute the following sequence:
    in the worktree. Do NOT push yet. A clean tree skips this item: a resumed run
    arrives with its commit already made, and `git commit` would fail with nothing
    to commit. In a non-git workspace there is nothing to commit; skip this item.
+   Stage tracked changes and new files but exclude secrets and stray fixtures:
    ```bash
    if [ -n "$(git -C "${PROJECT_PATH:-.}" status --porcelain)" ]; then
      _msg="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh" {story_file})"
-     git -C "${PROJECT_PATH:-.}" add -A
+     git -C "${PROJECT_PATH:-.}" add -A -- ':!.env' ':!.env.*' ':!*.pem' ':!*.key' ':!*.tmp'
      git -C "${PROJECT_PATH:-.}" commit -qF - <<<"$_msg"
    fi
    ```
