@@ -424,6 +424,7 @@ core	val-bridge-anti-pattern.bats
 core	val-bridge-migration.bats
 core	val-gate-fail-closed.bats
 core	validate-epic-registry.bats
+core	validate-shard-assignments.bats
 core	validate-traceability-consistency.bats
 core	vcp-adv-02-adversarial-step4-contract.bats
 core	vcp-arch-01-03-create-arch-tech-stack-pause.bats
