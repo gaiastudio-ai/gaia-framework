@@ -42,7 +42,7 @@ cancellation).
 
 For the promotion-time full-suite run via `selective-tests.yml`,
 `run-with-retry.sh --retry-limit 1` provides the retry, and a
-quarantine list at `.gaia/config/flaky-tests.txt` marks stacks for
+quarantine list at `.gaia/flaky-tests.txt` marks stacks for
 retry eligibility.
 
 ## TL;DR
