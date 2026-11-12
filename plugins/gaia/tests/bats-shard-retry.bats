@@ -21,6 +21,23 @@ setup() {
 }
 teardown() { common_teardown; }
 
+# _clean_bats_env — run a command with all BATS_* env vars stripped so a
+# nested bats invocation does not inherit the outer runner's test-selection
+# state (BATS_TEST_NAME, BATS_TEST_NUMBER, etc.). Without this, CI's outer
+# bats sets these vars and the inner bats tries to find a test function by
+# that name in the fixture file, fails, and exits non-zero.
+_clean_bats_env() {
+  env -u BATS_TEST_NAME -u BATS_TEST_NUMBER -u BATS_SUITE_TEST_NUMBER \
+      -u BATS_TEST_DESCRIPTION -u BATS_TEST_FILENAME \
+      -u BATS_TEST_DIRNAME -u BATS_TEST_NAMES \
+      -u BATS_TEST_PATTERN -u BATS_TEST_TMPDIR \
+      -u BATS_RUN_TMPDIR -u BATS_FILE_TMPDIR \
+      -u BATS_SUITE_TMPDIR -u BATS_TEST_RETRIES \
+      -u BATS_TEST_COMPLETED -u BATS_TEST_SKIPPED \
+      -u BATS_ERROR_STATUS -u BATS_ERROR_STACK_TRACE \
+      "$@"
+}
+
 @test "retry script exists and is executable" {
   [ -f "$RETRY_SCRIPT" ]
   [ -x "$RETRY_SCRIPT" ]
@@ -41,7 +58,8 @@ teardown() { common_teardown; }
 }
 EOF
 
-  run bash "$RETRY_SCRIPT" --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/flaky.bats"
+  run _clean_bats_env bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/flaky.bats"
   [ "$status" -eq 0 ]
   # Summary should mention the retry
   grep -qi "retry" "$SUMMARY_FILE"
@@ -55,7 +73,8 @@ EOF
 }
 EOF
 
-  run bash "$RETRY_SCRIPT" --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/always-fail.bats"
+  run _clean_bats_env bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/always-fail.bats"
   [ "$status" -ne 0 ]
   # Summary should indicate the retry happened and failed
   grep -qi "retry" "$SUMMARY_FILE"
@@ -69,7 +88,8 @@ EOF
 }
 EOF
 
-  run bash "$RETRY_SCRIPT" --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/passing.bats"
+  run _clean_bats_env bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/passing.bats"
   [ "$status" -eq 0 ]
   # Summary should NOT mention any retry
   ! grep -qi "retrying" "$SUMMARY_FILE"
@@ -77,22 +97,21 @@ EOF
 
 @test "signal-kill exit codes are never retried" {
   # The retry script should not retry when bats exits >= 128.
-  # We simulate this by wrapping a failing bats run that returns 130.
-  # Since bats itself catches test-level exits and returns 1, we need
-  # to test the script's handling of signal exits directly.
-  cat > "$TEST_TMP/wrapper.sh" <<'WRAPPER'
+  # We simulate this by replacing bats with a wrapper that exits 130.
+  cat > "$TEST_TMP/passing.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "always passes" {
+  true
+}
+EOF
+  mkdir -p "$TEST_TMP/bin"
+  cat > "$TEST_TMP/bin/bats" <<'WRAPPER'
 #!/usr/bin/env bash
 exit 130
 WRAPPER
-  chmod +x "$TEST_TMP/wrapper.sh"
+  chmod +x "$TEST_TMP/bin/bats"
 
-  # Test the script's behavior with a mock that exits 130.
-  # We can't easily make bats exit 130, so test the logic by replacing
-  # bats with our wrapper via PATH manipulation.
-  mkdir -p "$TEST_TMP/bin"
-  cp "$TEST_TMP/wrapper.sh" "$TEST_TMP/bin/bats"
-
-  run env PATH="$TEST_TMP/bin:$PATH" bash "$RETRY_SCRIPT" \
+  run _clean_bats_env env PATH="$TEST_TMP/bin:$PATH" bash "$RETRY_SCRIPT" \
     --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/passing.bats"
   [ "$status" -eq 130 ]
   # Should NOT have retried — no retry message in summary
