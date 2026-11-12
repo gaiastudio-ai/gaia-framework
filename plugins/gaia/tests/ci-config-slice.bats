@@ -118,9 +118,10 @@ teardown() { common_teardown; }
     [ -n "$c" ] && [ -f "$c" ] && { canonical="$c"; break; }
   done
   [ -n "$canonical" ] || skip "canonical project-config not reachable (expected in CI)"
-  # The committed slice is generated with --strip-prefix gaia-public/ so its
-  # globs are checkout-root-relative; regenerate the same way for the diff.
-  diff <(bash "$GEN" --config "$canonical" --strip-prefix "gaia-public/" 2>/dev/null) "$COMMITTED"
+  # The committed slice is generated with --strip-prefix gaia-public/ and
+  # --repository gaiastudio-ai/gaia-framework to drop foreign-repo stacks;
+  # regenerate the same way for the diff.
+  diff <(bash "$GEN" --config "$canonical" --strip-prefix "gaia-public/" --repository "gaiastudio-ai/gaia-framework" 2>/dev/null) "$COMMITTED"
 }
 
 @test "committed slice globs are checkout-root-relative (no gaia-public/ prefix)" {
@@ -135,4 +136,62 @@ teardown() { common_teardown; }
   [ "$status" -eq 0 ]
   # api/** -> ** (the prefix is stripped from the front of each glob)
   [ "$(printf '%s' "$output" | yq '.stacks[0].paths[0]')" = "**" ]
+}
+
+@test "--repository drops foreign-repo stacks and keeps local stacks" {
+  # Build a synthetic canonical config with one local stack (no repository field),
+  # one explicitly local stack (repository matches), and one foreign stack (with
+  # a gaia-cloud/ path and a health-check URL).
+  cat > "$TEST_TMP/multi-repo.yaml" <<'YAML'
+stacks:
+  - name: local-implicit
+    language: bash
+    paths: ["src/**"]
+    test_cmd: "bats tests/"
+  - name: local-explicit
+    language: bash
+    paths: ["lib/**"]
+    test_cmd: "bats tests/"
+    repository: "acme/my-repo"
+  - name: cloud-foreign
+    language: bash
+    paths: ["gaia-cloud/plugins/**"]
+    test_cmd: "curl https://cloud.example.com/health && bats gaia-cloud/tests/"
+    repository: "acme/other-repo"
+ci_cd:
+  promotion_chain:
+    - { id: staging, branch: staging }
+YAML
+
+  run --separate-stderr bash "$GEN" --config "$TEST_TMP/multi-repo.yaml" --repository "acme/my-repo"
+  [ "$status" -eq 0 ]
+
+  # local-implicit (no repository field) is kept
+  [ "$(printf '%s' "$output" | yq '.stacks[] | select(.name == "local-implicit") | .name')" = "local-implicit" ]
+  # local-explicit (repository matches) is kept
+  [ "$(printf '%s' "$output" | yq '.stacks[] | select(.name == "local-explicit") | .name')" = "local-explicit" ]
+  # cloud-foreign (different repository) is dropped
+  [ "$(printf '%s' "$output" | yq '.stacks[] | select(.name == "cloud-foreign") | .name')" = "" ]
+  # no gaia-cloud/ path in the output
+  ! printf '%s' "$output" | grep -q 'gaia-cloud/'
+  # no health-check URL in the output
+  ! printf '%s' "$output" | grep -q 'health'
+}
+
+@test "--repository without flag keeps all stacks" {
+  cat > "$TEST_TMP/multi-repo2.yaml" <<'YAML'
+stacks:
+  - name: local
+    language: bash
+    paths: ["src/**"]
+  - name: foreign
+    language: bash
+    paths: ["other/**"]
+    repository: "acme/other-repo"
+YAML
+
+  run --separate-stderr bash "$GEN" --config "$TEST_TMP/multi-repo2.yaml"
+  [ "$status" -eq 0 ]
+  # Both stacks present when --repository is not passed
+  [ "$(printf '%s' "$output" | yq '.stacks | length')" = "2" ]
 }

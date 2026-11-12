@@ -21,8 +21,10 @@ on:
       - '.github/bats-file-timing.tsv'
       - '.github/scripts/**'
       - 'profiling/**'
-      - 'scripts/audit-v2-migration.sh'
+      - 'scripts/**'
       - 'tests/**'
+      - '.husky/**'
+      - 'commitlint.config.mjs'
 
 # Cancel superseded runs on the same PR branch.  Each PR branch gets its own
 # concurrency group so a force-push cancels only the stale run for THAT branch,
@@ -366,8 +368,15 @@ jobs:
           # records per-file wall-clock timing in report.xml, which is
           # parsed below into the per-file profiling TSV that
           # rebalance-shards.sh --timing consumes.
+          #
+          # bats-shard-retry.sh wraps bats: on failure it identifies the
+          # failed test files from the JUnit XML and re-runs only those
+          # once. A file that fails again still fails the shard. Retries
+          # are logged by name in the job summary. Timeout/signal kills
+          # (exit >= 128) are never retried.
           mkdir -p profiling/junit
-          bats --jobs "$BATS_JOBS" --no-parallelize-within-files \
+          .github/scripts/bats-shard-retry.sh -- \
+            --jobs "$BATS_JOBS" --no-parallelize-within-files \
             --filter-tags '!hardware-dependent' \
             --report-formatter junit -o profiling/junit \
             "${FILES[@]}"

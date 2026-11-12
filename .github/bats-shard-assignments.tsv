@@ -3,7 +3,6 @@
 # Each file is assigned to exactly one shard. Rebalance with:
 #   .github/scripts/rebalance-shards.sh [--timing profiling/bats-timing.tsv]
 #
-# shard	file	tests
 1	E77-S5-plugin-code-sub-rubric.bats	2
 1	E79-S4-csp-readers.bats	1
 1	E93-S6-sprint-state-set-shape.bats	1
@@ -195,6 +194,7 @@
 2	af-2026-06-03-3-adversarial-sidecar.bats	1
 2	atdd-gate.bats	1
 2	audit-v2-migration.bats	1
+2	bats-shard-retry.bats	5
 2	brain-c2-unlinked-predicate.bats	3
 2	brain-freshness-hooks.bats	3
 2	brain-knowledge-refresh.bats	7
@@ -289,6 +289,7 @@
 2	pixel-diff-ac2-thresholds-and-masking.bats	1
 2	pixel-diff-ac3-baseline-approval.bats	1
 2	placeholder-test-detector.bats	2
+2	plugin-ci-path-filter-parity.bats	4
 2	probe-state-to-check-status.bats	1
 2	publish-adapters.bats	3
 2	reconcile-cross-stack.bats	1

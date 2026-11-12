@@ -2,9 +2,48 @@
 
 > **Why this file exists.** The `bats-tests` gate in `plugin-ci.yml` is the
 > framework's primary integration gate. The full suite (~13000 tests across
-> ~842 top-level .bats files) is split into 5 parallel shards to keep
+> ~846 top-level .bats files) is split into 5 parallel shards to keep
 > CI wall-clock under 12 minutes per shard. This runbook tells contributors
 > how the sharding works, how to add new tests, and when to rebalance.
+
+## PR-vs-promotion split
+
+Feature-to-staging PRs gate on **plugin-ci.yml** only: the 5 bats shards
+(covering every top-level .bats file), the `bats-tests` rollup gate
+(public-function coverage check, plugin validate, plugin mod tests), the
+skills-bats-tests job, the component-subdir-tests job, and the various
+lints. This keeps the critical-path wall clock around **15 minutes**.
+
+The `selective-tests.yml` workflow still runs on feature PRs, but its
+`test (gaia-core)` job detects that it is not a promotion and emits a
+skip message instead of running the full suite — the shards already
+provide identical top-level-file coverage.
+
+Staging-to-main **promotion PRs** additionally run the full core suite
+with the public-function coverage gate via `selective-tests.yml`. The
+promotion detection mechanism (`is_promotion` plan-job output, derived
+from the promotion-chain config) triggers the full suite. Expected
+wall clock: **15 min (plugin-ci) + full suite** (varies with runner
+core count; `BATS_JOBS` defaults to `nproc`, capped at 8).
+
+A `workflow_dispatch` trigger on `selective-tests.yml` with
+`force_full_suite=true` simulates a promotion run for measurement on
+any branch.
+
+## Shard-level retry
+
+Each bats shard wraps its `bats` invocation with
+`.github/scripts/bats-shard-retry.sh`. When a shard fails, the script
+identifies the failed test files from the JUnit XML and re-runs only
+those once. A file that fails again still fails the shard. Every retry
+is logged by test name in the job summary. The script never retries
+when the failure is a signal kill (exit >= 128, indicating a timeout or
+cancellation).
+
+For the promotion-time full-suite run via `selective-tests.yml`,
+`run-with-retry.sh --retry-limit 1` provides the retry, and a
+quarantine list at `.gaia/config/flaky-tests.txt` marks stacks for
+retry eligibility.
 
 ## TL;DR
 
