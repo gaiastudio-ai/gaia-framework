@@ -36,7 +36,7 @@ _path_matches_filter() {
     -e 's/\([^.]\)\*/\1[^\/]*/g' \
     -e 's/^\*/[^\/]*/g')"
   regex="^${regex}$"
-  printf '%s' "$path" | grep -qE "$regex"
+  grep -qE "$regex" <<< "$path"
 }
 
 @test "plugin-ci.yml path filter exists" {

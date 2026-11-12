@@ -2,11 +2,8 @@
 # bats-shard-retry.bats — tests for the shard-level retry logic in
 # .github/scripts/bats-shard-retry.sh.
 #
-# Covers three scenarios:
-#   1. pass-on-retry: a test file fails first, passes on retry
-#   2. fail-twice: a test file fails both times, shard fails
-#   3. nothing-failed: all files pass on first attempt, no retry
-# Plus a signal-kill guard: exit >= 128 is never retried.
+# Tests use mock bats scripts instead of real nested bats invocations
+# to avoid env-var conflicts between the outer and inner bats runtimes.
 
 load 'test_helper.bash'
 
@@ -18,24 +15,72 @@ setup() {
   RETRY_SCRIPT="$REPO_ROOT/.github/scripts/bats-shard-retry.sh"
   SUMMARY_FILE="$TEST_TMP/summary.md"
   : > "$SUMMARY_FILE"
+
+  # Create a mock bats directory. The retry script calls `bats` as a command;
+  # we prepend a mock to PATH so the inner invocation uses our stub.
+  mkdir -p "$TEST_TMP/mockbin"
 }
 teardown() { common_teardown; }
 
-# _clean_bats_env — run a command with all BATS_* env vars stripped so a
-# nested bats invocation does not inherit the outer runner's test-selection
-# state (BATS_TEST_NAME, BATS_TEST_NUMBER, etc.). Without this, CI's outer
-# bats sets these vars and the inner bats tries to find a test function by
-# that name in the fixture file, fails, and exits non-zero.
-_clean_bats_env() {
-  env -u BATS_TEST_NAME -u BATS_TEST_NUMBER -u BATS_SUITE_TEST_NUMBER \
-      -u BATS_TEST_DESCRIPTION -u BATS_TEST_FILENAME \
-      -u BATS_TEST_DIRNAME -u BATS_TEST_NAMES \
-      -u BATS_TEST_PATTERN -u BATS_TEST_TMPDIR \
-      -u BATS_RUN_TMPDIR -u BATS_FILE_TMPDIR \
-      -u BATS_SUITE_TMPDIR -u BATS_TEST_RETRIES \
-      -u BATS_TEST_COMPLETED -u BATS_TEST_SKIPPED \
-      -u BATS_ERROR_STATUS -u BATS_ERROR_STACK_TRACE \
-      "$@"
+# _mock_bats_pass — creates a mock bats that always exits 0
+_mock_bats_pass() {
+  cat > "$TEST_TMP/mockbin/bats" <<'MOCK'
+#!/usr/bin/env bash
+# Mock bats: print TAP and exit 0
+count=0
+for f in "$@"; do
+  case "$f" in *.bats) count=$((count + 1)) ;; esac
+done
+echo "1..$count"
+i=0
+for f in "$@"; do
+  case "$f" in
+    *.bats) i=$((i + 1)); echo "ok $i $(basename "$f")" ;;
+  esac
+done
+exit 0
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
+}
+
+# _mock_bats_fail — creates a mock bats that fails on first call, passes on second
+_mock_bats_fail_then_pass() {
+  local marker="$TEST_TMP/bats-call-marker"
+  cat > "$TEST_TMP/mockbin/bats" <<MOCK
+#!/usr/bin/env bash
+# Mock bats: fail on first call, pass on second
+if [ ! -f "$marker" ]; then
+  touch "$marker"
+  echo "1..1"
+  echo "not ok 1 flaky test"
+  exit 1
+fi
+echo "1..1"
+echo "ok 1 flaky test"
+exit 0
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
+}
+
+# _mock_bats_always_fail — creates a mock bats that always fails
+_mock_bats_always_fail() {
+  cat > "$TEST_TMP/mockbin/bats" <<'MOCK'
+#!/usr/bin/env bash
+echo "1..1"
+echo "not ok 1 always fails"
+exit 1
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
+}
+
+# _mock_bats_signal — creates a mock bats that exits with a signal code
+_mock_bats_signal() {
+  local code="${1:-130}"
+  cat > "$TEST_TMP/mockbin/bats" <<MOCK
+#!/usr/bin/env bash
+exit $code
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
 }
 
 @test "retry script exists and is executable" {
@@ -43,77 +88,50 @@ _clean_bats_env() {
   [ -x "$RETRY_SCRIPT" ]
 }
 
-@test "pass-on-retry: file fails first then passes on retry" {
-  # Create a bats file that fails on first run, passes on second.
-  # Uses a marker file to track attempts.
-  local marker="$TEST_TMP/attempt-marker"
-  cat > "$TEST_TMP/flaky.bats" <<EOF
-#!/usr/bin/env bats
-@test "flaky test" {
-  if [ ! -f "$marker" ]; then
-    touch "$marker"
-    false
-  fi
-  true
-}
+@test "pass-on-retry: test fails first then passes on retry" {
+  _mock_bats_fail_then_pass
+  cat > "$TEST_TMP/flaky.bats" <<'EOF'
+placeholder
 EOF
 
-  run _clean_bats_env bash "$RETRY_SCRIPT" \
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
     --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/flaky.bats"
   [ "$status" -eq 0 ]
-  # Summary should mention the retry
   grep -qi "retry" "$SUMMARY_FILE"
 }
 
-@test "fail-twice: file fails on both attempts" {
+@test "fail-twice: test fails on both attempts" {
+  _mock_bats_always_fail
   cat > "$TEST_TMP/always-fail.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always fails" {
-  false
-}
+placeholder
 EOF
 
-  run _clean_bats_env bash "$RETRY_SCRIPT" \
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
     --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/always-fail.bats"
   [ "$status" -ne 0 ]
-  # Summary should indicate the retry happened and failed
   grep -qi "retry" "$SUMMARY_FILE"
 }
 
 @test "nothing-failed: all tests pass on first attempt" {
+  _mock_bats_pass
   cat > "$TEST_TMP/passing.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always passes" {
-  true
-}
+placeholder
 EOF
 
-  run _clean_bats_env bash "$RETRY_SCRIPT" \
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
     --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/passing.bats"
   [ "$status" -eq 0 ]
-  # Summary should NOT mention any retry
   ! grep -qi "retrying" "$SUMMARY_FILE"
 }
 
 @test "signal-kill exit codes are never retried" {
-  # The retry script should not retry when bats exits >= 128.
-  # We simulate this by replacing bats with a wrapper that exits 130.
-  cat > "$TEST_TMP/passing.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always passes" {
-  true
-}
+  _mock_bats_signal 130
+  cat > "$TEST_TMP/signal.bats" <<'EOF'
+placeholder
 EOF
-  mkdir -p "$TEST_TMP/bin"
-  cat > "$TEST_TMP/bin/bats" <<'WRAPPER'
-#!/usr/bin/env bash
-exit 130
-WRAPPER
-  chmod +x "$TEST_TMP/bin/bats"
 
-  run _clean_bats_env env PATH="$TEST_TMP/bin:$PATH" bash "$RETRY_SCRIPT" \
-    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/passing.bats"
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/signal.bats"
   [ "$status" -eq 130 ]
-  # Should NOT have retried — no retry message in summary
   ! grep -qi "retrying" "$SUMMARY_FILE"
 }

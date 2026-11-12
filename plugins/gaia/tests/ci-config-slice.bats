@@ -173,9 +173,9 @@ YAML
   # cloud-foreign (different repository) is dropped
   [ "$(printf '%s' "$output" | yq '.stacks[] | select(.name == "cloud-foreign") | .name')" = "" ]
   # no gaia-cloud/ path in the output
-  ! printf '%s' "$output" | grep -q 'gaia-cloud/'
+  [[ "$output" != *'gaia-cloud/'* ]]
   # no health-check URL in the output
-  ! printf '%s' "$output" | grep -q 'health'
+  [[ "$output" != *'health'* ]]
 }
 
 @test "--repository without flag keeps all stacks" {
