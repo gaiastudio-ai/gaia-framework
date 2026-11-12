@@ -9,6 +9,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Regression-rule gate and seed library
+
+#### Added
+- Regression-rule gate: code and security reviews enforce that every confirmed critical/high pattern bug ships a regression rule with tests. The gate runs two checks (`story-check` and `library-check`) before the verdict and records blocking findings for any missing or stale rule.
+- New `regression-rule-check.sh` script with `enabled`, `story-check`, and `library-check` subcommands.
+- New `register-write.sh` subcommands: `--pattern-class <slug>` on `add` (stores a pattern class marker on critical/high findings), and `link-rule` (links a regression rule to a register entry). Both are the sole writers under the register lock.
+- Seed rule library at `plugins/gaia/scripts/lint-rules/` with three semgrep rules: `always-on-fake-sign-in`, `sql-built-with-sprintf`, and `hardcoded-credentials`, each with must-fire and must-not-fire test fixtures.
+- CI step: `semgrep --test` validates the shipped rule library on every pull request.
+- `review.regression_rule_gate_enabled` config key (boolean, default true). Set to `false` to turn off the gate and run reviews as before. The report states when the gate is turned off by config.
+- `/gaia-doctor` shows the regression-rule gate status (on / turned off by config).
+- Scanner-evidence step passes library `rule.yml` files to semgrep as extra configs and excludes library test fixtures from scanning.
+- Lint pack gains `--rules-dir` option to load external `rule.lint` files from the shipped and project libraries.
+- `CODEOWNERS` entry for `plugins/gaia/scripts/lint-rules/`.
+
+#### Upgrade notes
+- **Hardening default active on upgrade**: the regression-rule gate is ON by default. If a critical/high pattern finding in a reviewed story's register has no linked rule, the review records a blocking finding and the gate verdict is FAILED. To turn it off, set `review.regression_rule_gate_enabled: false` in `project-config.yaml`.
+
 ### Scanner-first security pipeline
 
 #### Added

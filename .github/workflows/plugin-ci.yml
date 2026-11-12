@@ -106,6 +106,93 @@ jobs:
         run: bash plugins/gaia/scripts/check-scanner-pins.sh
 
   # ---------------------------------------------------------------------------
+  # Semgrep rule tests: validate that the shipped regression-rule library's
+  # must-fire fixtures fire and must-not-fire fixtures do not fire.
+  # Uses the pinned semgrep version from requirements-scanners.txt.
+  # ---------------------------------------------------------------------------
+  semgrep-rule-test:
+    name: semgrep-rule-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Install semgrep from hash-locked requirements
+        run: |
+          python3 -m pip install --require-hashes \
+            -r plugins/gaia/tools/gaia-tools/requirements-scanners.txt
+      - name: Run semgrep --test on shipped rule library
+        run: |
+          lib="plugins/gaia/scripts/lint-rules"
+          # Every rule directory must have a rule.yml and a test/ with fixtures.
+          rule_dirs=0
+          for d in "$lib"/*/; do
+            [ -f "$d/rule.yml" ] || continue
+            rule_dirs=$((rule_dirs + 1))
+            if [ ! -d "$d/test" ]; then
+              echo "ERROR: $d has rule.yml but no test/ directory"
+              exit 1
+            fi
+            # semgrep --test pairs rule.yml with a same-base-name target
+            # (rule.<ext>). Without it, the rule is silently excluded from
+            # the test count and a deletion goes undetected.
+            has_target=false
+            for t in "$d"/rule.*; do
+              [ -f "$t" ] || continue
+              case "$t" in */rule.yml|*/rule.lint) continue ;; esac
+              has_target=true; break
+            done
+            if [ "$has_target" = "false" ]; then
+              echo "ERROR: $d has rule.yml but no paired test target (rule.<ext>)"
+              exit 1
+            fi
+            has_fire=false; has_nofire=false
+            for f in "$d/test"/*; do
+              [ -f "$f" ] || continue
+              grep -q 'ruleid:' "$f" 2>/dev/null && has_fire=true
+              grep -q 'ok:' "$f" 2>/dev/null && has_nofire=true
+            done
+            if [ "$has_fire" = "false" ] || [ "$has_nofire" = "false" ]; then
+              echo "ERROR: $d/test/ missing must-fire or must-not-fire fixture"
+              exit 1
+            fi
+          done
+          if [ "$rule_dirs" -eq 0 ]; then
+            echo "ERROR: no rule directories found in $lib"
+            exit 1
+          fi
+          echo "Verified $rule_dirs rule directories have test fixtures."
+
+          # Run semgrep --test and validate all rules are tested.
+          output="$(semgrep --test "$lib" 2>&1)"
+          echo "$output"
+          if echo "$output" | grep -q "No unit tests found"; then
+            echo "ERROR: no semgrep unit tests discovered — check rule/test naming"
+            exit 1
+          fi
+
+          # Parse the N/N count from semgrep --test and fail when it differs
+          # from the number of rule directories. A missing paired target
+          # (rule.<ext>) causes semgrep to silently skip a rule, reducing N.
+          tested_count="$(echo "$output" | grep -oE '^[0-9]+/[0-9]+' | head -1 | cut -d/ -f2)"
+          if [ -n "$tested_count" ] && [ "$tested_count" -ne "$rule_dirs" ]; then
+            echo "ERROR: semgrep tested $tested_count rules but $rule_dirs rule directories exist"
+            exit 1
+          fi
+
+          # Validate each rule also passes semgrep --validate.
+          for d in "$lib"/*/; do
+            [ -f "$d/rule.yml" ] || continue
+            if ! semgrep --config "$d/rule.yml" --validate >/dev/null 2>&1; then
+              echo "ERROR: $d/rule.yml fails semgrep --validate"
+              exit 1
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
   # Fast-feedback: diff-selected tests report within minutes.
   # This is NOT a substitute for the full regression suite — it gives early
   # signal while the sharded suite runs in parallel.  The PR cannot merge

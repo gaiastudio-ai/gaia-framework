@@ -365,6 +365,46 @@ fi
 - **`defectdojo_api_token` holds the NAME of an environment variable, NEVER a literal secret.** The config value is resolved as a name, then dereferenced via `${!name}` to read the token from the named env var at run time; a pasted literal is not a valid var name so the deref yields empty and the export fail-closes. The value is never persisted in config. (This is the same invariant — and the same `${!var}` structural safeguard — as `brownfield.defectdojo_api_token`; never paste a literal token into the config.)
 - **Token blast-radius note:** promoting the aggregation knobs to the standard gate makes the DefectDojo token reachable from a normal security review (not just brownfield runs), but it does NOT widen the token's blast radius beyond reading the named env var — the config only ever holds the env-var name, the value never lands in config or in any artifact, and the export adapter is the same audited code path the brownfield scan already uses.
 
+### Step 5c — Regression-Rule Gate
+
+Before the verdict, check whether critical/high pattern bugs have shipped
+regression rules. This step is gated by the config key
+`review.regression_rule_gate_enabled`.
+
+```bash
+# 1. Check whether the gate is on.
+gate_status=$(${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh enabled)
+```
+
+- **`off`:** skip both checks. State in the report: "regression-rule check
+  turned off by config (`review.regression_rule_gate_enabled: false`)."
+- **`on`:** run both `story-check` and `library-check` before the verdict,
+  and run the lint pack with `--rules-dir` so project `rule.lint` rules fire.
+
+```bash
+# 2. story-check: verify each pattern finding has a linked rule.
+${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh \
+  story-check --story {story_key}
+
+# 3. library-check: validate rule libraries have tests.
+${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh library-check
+
+# 4. Run lint-pack with shipped and project rule.lint rules.
+${CLAUDE_PLUGIN_ROOT}/scripts/lint-pack.sh \
+  --diff "origin/{base_branch}...HEAD" \
+  --rules-dir "${CLAUDE_PLUGIN_ROOT}/scripts/lint-rules" \
+  --rules-dir "${GAIA_CUSTOM_DIR:-${PROJECT_ROOT}/.gaia/custom}/lint-rules"
+```
+
+For each entry in the `story-check` `missing` array, record a blocking
+finding via `register-write.sh add` with `--dedup-key regression-rule:{entry}`
+so re-runs do not duplicate.  For each entry in the `library-check`
+`library_errors` array, do the same with `--dedup-key library-rule:{rule}`.
+
+When a reviewer confirms a critical or high finding as a repeatable pattern,
+pass `--pattern-class <slug>` on the `register-write.sh add` call so the
+gate can track it.
+
 ### Step 6 — Optional Review Gate Integration
 
 This step is **optional** and **opt-in**. It bridges anytime reviews into the story workflow for teams that want findings persisted into the six-row Review Gate table. It does NOT replace the pre-merge `/gaia-security-review` gate.

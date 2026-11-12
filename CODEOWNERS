@@ -8,3 +8,6 @@
 # explicitly code-reviewed.
 plugins/gaia/schemas/brain-reliance-map.schema.json @jlouage
 plugins/gaia/scripts/brain/validate-reliance-map.sh @jlouage
+
+# Regression-rule seed library — code-owner review required.
+plugins/gaia/scripts/lint-rules/ @jlouage
