@@ -1,4 +1,0 @@
-# Flaky test quarantine — stack IDs retried once at promotion time.
-# Each line is a stack ID matched by run-with-retry.sh --flaky-list-file.
-# Remove an entry when its root-cause fix lands.
-gaia-core

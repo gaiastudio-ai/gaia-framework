@@ -36,13 +36,9 @@
 !/.gaia/ci-config.yaml
 
 # EXCEPTION: the flaky-tests quarantine list IS tracked. Contains plain stack
-# IDs retried once at promotion time by run-with-retry.sh. A single negation
-# !/.gaia/config/flaky-tests.txt alone is not enough — git cannot re-include a
-# file under an excluded parent. The three-line form: re-include the parent dir,
-# re-ignore its contents, then whitelist only flaky-tests.txt.
-!/.gaia/config/
-/.gaia/config/*
-!/.gaia/config/flaky-tests.txt
+# IDs retried by run-with-retry.sh. Sits beside ci-config.yaml (one-line
+# re-include, no subdirectory creation needed).
+!/.gaia/flaky-tests.txt
 
 # EXCEPTION: the lint-pack configuration IS tracked. It configures the
 # leaked-identifier rule for the framework's own preflight gate. User

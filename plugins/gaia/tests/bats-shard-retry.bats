@@ -135,3 +135,56 @@ EOF
   [ "$status" -eq 130 ]
   ! grep -qi "retrying" "$SUMMARY_FILE"
 }
+
+# --- Promotion-path tests (BATS_RETRY_SCRIPT wiring in run-with-coverage.sh) ---
+
+@test "BATS_RETRY_SCRIPT: run-with-coverage.sh uses the retry script when set" {
+  # Verify that run-with-coverage.sh references BATS_RETRY_SCRIPT and
+  # conditionally calls it instead of bare bats.
+  local rwc="$REPO_ROOT/plugins/gaia/tests/run-with-coverage.sh"
+  [ -f "$rwc" ]
+  grep -q 'BATS_RETRY_SCRIPT' "$rwc"
+  grep -q 'bats-shard-retry' "$rwc"
+}
+
+@test "promotion per-file retry: fail-then-pass via BATS_RETRY_SCRIPT" {
+  _mock_bats_fail_then_pass
+  : > "$SUMMARY_FILE"
+  cat > "$TEST_TMP/flaky.bats" <<'EOF'
+placeholder
+EOF
+
+  run env PATH="$TEST_TMP/mockbin:$PATH" \
+    GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
+    bash "$RETRY_SCRIPT" -- "$TEST_TMP/flaky.bats"
+  [ "$status" -eq 0 ]
+  grep -qi "retry" "$SUMMARY_FILE"
+}
+
+@test "promotion per-file retry: fail-twice via BATS_RETRY_SCRIPT" {
+  _mock_bats_always_fail
+  : > "$SUMMARY_FILE"
+  cat > "$TEST_TMP/always-fail.bats" <<'EOF'
+placeholder
+EOF
+
+  run env PATH="$TEST_TMP/mockbin:$PATH" \
+    GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
+    bash "$RETRY_SCRIPT" -- "$TEST_TMP/always-fail.bats"
+  [ "$status" -ne 0 ]
+  grep -qi "retry" "$SUMMARY_FILE"
+}
+
+@test "promotion per-file retry: none-fail via BATS_RETRY_SCRIPT" {
+  _mock_bats_pass
+  : > "$SUMMARY_FILE"
+  cat > "$TEST_TMP/passing.bats" <<'EOF'
+placeholder
+EOF
+
+  run env PATH="$TEST_TMP/mockbin:$PATH" \
+    GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
+    bash "$RETRY_SCRIPT" -- "$TEST_TMP/passing.bats"
+  [ "$status" -eq 0 ]
+  ! grep -qi "retrying" "$SUMMARY_FILE"
+}

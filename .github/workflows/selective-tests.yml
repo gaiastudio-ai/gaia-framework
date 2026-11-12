@@ -253,8 +253,7 @@ jobs:
           [[ -n "$config_path" ]] || config_path=".gaia/config/project-config.yaml"
           plugins/gaia/scripts/run-with-retry.sh \
             --test-id "${{ matrix.stack }}" \
-            --retry-limit 1 \
-            --flaky-list-file .gaia/config/flaky-tests.txt \
+            --flaky-list-file .gaia/flaky-tests.txt \
             -- plugins/gaia/scripts/run-stack-tests.sh \
               --config "$config_path" \
               "${{ matrix.stack }}"

@@ -131,7 +131,16 @@ else
   bold "  serial run (GNU parallel unavailable or BATS_JOBS<=1)"
 fi
 
-if ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
+# BATS_RETRY_SCRIPT: when set to the path of bats-shard-retry.sh, failed test
+# files are re-run once instead of failing immediately. A file that fails twice
+# still fails the suite. This avoids a whole-suite re-run for known flakes.
+if [ -n "${BATS_RETRY_SCRIPT:-}" ] && [ -x "${BATS_RETRY_SCRIPT}" ]; then
+  bold "  per-file retry via ${BATS_RETRY_SCRIPT}"
+  if ! "$BATS_RETRY_SCRIPT" -- "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
+    red "bats suite failed (after per-file retry)"
+    exit 1
+  fi
+elif ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
   red "bats suite failed"
   exit 1
 fi
