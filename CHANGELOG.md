@@ -9,6 +9,37 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 
 ## [Unreleased]
 
+### Stale-lock reaper safety hardening
+
+#### Changed
+- The shared lock helper's stale-lock reaper (`_al_try_reap`) now uses a
+  shadow hard-link mechanism with an inode-guarded delete. A lock file is
+  never deleted unless the reaper can prove the file it inspected is the
+  same file still at the lock path at deletion time. This closes three
+  bugs where the bare `rm -f` could delete a live holder's lock.
+- The reaper reads PID and epoch from the shadow link (a private hard
+  link the reaper controls), not from the live lock path. A failed read
+  (file unlinked between existence check and read) no longer leads to
+  deletion.
+- An unreadable non-empty lock file (permissions or I/O error) is now
+  treated as indeterminate and not reaped, rather than treated as
+  ownerless. This prevents the reaper from removing a live holder's lock
+  when the content cannot be read.
+- Mixed-mode detection: when flock is available, the reaper probes for an
+  active flock holder (`flock -n` on fd 222) before reaping an ownerless
+  (empty/PID-less) file. A fallback acquirer no longer removes a file
+  that a flock process still holds.
+- Reverse mixed-mode guard: the flock acquisition path now checks for a
+  live fallback holder's PID in the file after acquiring the kernel lock.
+  A flock acquirer no longer bypasses a fallback holder.
+- The `.lock-tmp.*` residue sweeper in the directory-reclaim path also
+  cleans `.lock-reap.*` shadow residue left by a crashed reaper.
+
+#### Added
+- `_al_reap_window_hook` test-only function hook: fires between the
+  shadow pin and the final inode comparison in `_al_try_reap`, letting
+  tests inject a deterministic replacement of the lock file.
+
 ### Regression-rule gate and seed library
 
 #### Added
