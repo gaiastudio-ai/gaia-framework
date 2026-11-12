@@ -371,6 +371,11 @@
           "type": "boolean",
           "default": true,
           "description": "When true (the default), the security review collects scanner evidence before any gate runs. Only boolean false turns scanner-first off; the string \"false\" does not. Absent key means on."
+        },
+        "regression_rule_gate_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (the default), the code and security reviews enforce the regression-rule gate: every critical/high pattern finding must ship a linked regression rule with tests. Only boolean false turns the gate off; the string \"false\" does not. Absent key means on. The single source of the effective default is regression-rule-check.sh enabled."
         }
       }
     },
