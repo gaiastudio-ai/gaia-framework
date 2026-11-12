@@ -875,4 +875,9 @@ main() {
   printf '%s\n' "$packet_path"
 }
 
-main "$@"
+# CLI entry: when executed directly, run main; when sourced, expose
+# functions only (allows store-ci-evidence.sh to reuse _rpb_strip_tokens
+# and _rpb_gitleaks_scan).
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+  main "$@"
+fi

@@ -251,3 +251,309 @@ print("valid")
   [ -f "$evidence_dir/run-records.json" ]
   [ -f "$cache_dir/qa-abc.json" ]
 }
+
+# ── store-ci-evidence.sh tests ──────────────────────────────────────
+#
+# These tests call the REAL writer — no hand-built evidence JSON.
+
+# _setup_store_env — prepare a story folder and evidence dir for the writer.
+# Sets: STORE_SCRIPT, STORY_DIR, EVIDENCE_SRC, FAKE_REPO
+_setup_store_env() {
+  STORE_SCRIPT="$SCRIPTS_DIR/store-ci-evidence.sh"
+  [ -f "$STORE_SCRIPT" ] || fail "store-ci-evidence.sh not found at $STORE_SCRIPT"
+
+  # Fake story directory (resolve-story-file.sh will be bypassed via env)
+  STORY_DIR="$TEST_TMP/story-folder"
+  mkdir -p "$STORY_DIR"
+
+  # Evidence source dir with JUnit XML and run records
+  EVIDENCE_SRC="$TEST_TMP/evidence-src"
+  mkdir -p "$EVIDENCE_SRC"
+
+  # Fake git repo for gitleaks repo arg
+  FAKE_REPO="$TEST_TMP/fake-repo"
+  mkdir -p "$FAKE_REPO"
+  git -C "$FAKE_REPO" init -q 2>/dev/null || true
+  git -C "$FAKE_REPO" config user.email "test@test.com"
+  git -C "$FAKE_REPO" config user.name "Test"
+  printf 'x\n' > "$FAKE_REPO/x.txt"
+  git -C "$FAKE_REPO" add x.txt
+  git -C "$FAKE_REPO" commit -q -m "init"
+}
+
+# _write_junit_with_sysout — write a JUnit XML containing system-out with a
+# runtime-assembled token.
+# Args: path [tests] [failures] [skipped]
+_write_junit_with_sysout() {
+  local path="$1"
+  local tests="${2:-10}" failures="${3:-0}" skipped="${4:-0}"
+  cat > "$path" <<'XMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="10" failures="0" skipped="2">
+  <testsuite name="Suite1" tests="6" failures="0" skipped="1">
+    <testcase name="test-pass" classname="Suite1" time="0.1"/>
+    <testcase name="test-skipped" classname="Suite1" time="0.0">
+      <skipped message="not ready"/>
+    </testcase>
+    <system-out>GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsT runtime-token-here</system-out>
+    <system-err>debug stderr line</system-err>
+  </testsuite>
+  <testsuite name="Suite2" tests="4" failures="0" skipped="1">
+    <testcase name="test-ok" classname="Suite2" time="0.2"/>
+    <testcase name="test-skip2" classname="Suite2" time="0.0">
+      <skipped message="env missing"/>
+    </testcase>
+    <system-out>CI_JOB_TOKEN=secret456 another token</system-out>
+  </testsuite>
+</testsuites>
+XMLEOF
+}
+
+# _write_run_records — write a run-records.json matching the evidence dir.
+# Args: out_path, head_sha
+_write_run_records() {
+  local out_path="$1" head_sha="$2"
+  jq -n \
+    --arg sha "$head_sha" \
+    '{
+      runs: [{
+        url: "https://github.com/org/repo/actions/runs/42",
+        head_sha: $sha,
+        attempt: 1,
+        conclusion: "success",
+        duration_seconds: 120
+      }],
+      wall_clock_seconds: 120
+    }' > "$out_path"
+}
+
+@test "store-ci-evidence: token in system-out is absent from stored evidence" {
+  _setup_store_env
+  local head_sha
+  head_sha="$(git -C "$FAKE_REPO" rev-parse HEAD)"
+
+  _write_junit_with_sysout "$EVIDENCE_SRC/run-42-results.xml"
+  _write_run_records "$EVIDENCE_SRC/run-records.json" "$head_sha"
+
+  run bash "$STORE_SCRIPT" \
+    --story-key "TEST-S1" \
+    --evidence-dir "$EVIDENCE_SRC" \
+    --story-dir "$STORY_DIR" \
+    --repo "$FAKE_REPO"
+  [ "$status" -eq 0 ]
+
+  # ci-evidence/ must exist
+  [ -d "$STORY_DIR/ci-evidence" ]
+
+  # No token content anywhere under ci-evidence/
+  local token_hits
+  token_hits="$(grep -rl 'ghp_aBcDeFgHiJkLmNoPqRsT\|secret456\|runtime-token-here\|debug stderr' "$STORY_DIR/ci-evidence/" 2>/dev/null || true)"
+  [ -z "$token_hits" ]
+
+  # system-out and system-err element content must be gone from XML copies
+  local sysout_hits
+  sysout_hits="$(grep -rl '<system-out>[^<]' "$STORY_DIR/ci-evidence/" 2>/dev/null || true)"
+  [ -z "$sysout_hits" ]
+}
+
+@test "store-ci-evidence: secret finding halts and writes nothing" {
+  _setup_store_env
+  local head_sha
+  head_sha="$(git -C "$FAKE_REPO" rev-parse HEAD)"
+
+  _write_junit_with_sysout "$EVIDENCE_SRC/run-42-results.xml"
+  _write_run_records "$EVIDENCE_SRC/run-records.json" "$head_sha"
+
+  # Stub gitleaks to report a finding (exit 1 = finding detected).
+  # Parse --report-path from the arguments to write the report file
+  # where _rpb_gitleaks_scan expects it.
+  local stub_bin="$TEST_TMP/bin-gitleaks"
+  mkdir -p "$stub_bin"
+  cat > "$stub_bin/gitleaks" <<'GLEOF'
+#!/usr/bin/env bash
+# Stub: always report a secret finding
+report=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --report-path) report="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -n "$report" ]; then
+  mkdir -p "$(dirname "$report")" 2>/dev/null || true
+  printf '[{"File":"test.xml","StartLine":1,"RuleID":"generic-api-key"}]\n' > "$report"
+fi
+exit 1
+GLEOF
+  chmod +x "$stub_bin/gitleaks"
+
+  run env PATH="$stub_bin:$PATH" \
+    bash "$STORE_SCRIPT" \
+      --story-key "TEST-S1" \
+      --evidence-dir "$EVIDENCE_SRC" \
+      --story-dir "$STORY_DIR" \
+      --repo "$FAKE_REPO"
+  [ "$status" -ne 0 ]
+
+  # Nothing written to story folder
+  [ ! -d "$STORY_DIR/ci-evidence" ] || [ -z "$(ls -A "$STORY_DIR/ci-evidence" 2>/dev/null)" ]
+  [ ! -f "$STORY_DIR/ci-evidence/ci-junit-evidence.json" ]
+}
+
+@test "store-ci-evidence: quotes newlines and markup in names produce valid JSON" {
+  _setup_store_env
+  local head_sha
+  head_sha="$(git -C "$FAKE_REPO" rev-parse HEAD)"
+
+  # Create JUnit with tricky names
+  cat > "$EVIDENCE_SRC/run-42-results.xml" <<'XMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="3" failures="0" skipped="1">
+  <testsuite name="&lt;Tricky&gt; &amp; Suite" tests="3" failures="0" skipped="1">
+    <testcase name='test with "quotes" and
+newlines' classname="Tricky" time="0.1"/>
+    <testcase name="test-ok" classname="Tricky" time="0.1"/>
+    <testcase name="test &lt;markup&gt; skip" classname="Tricky" time="0.0">
+      <skipped message="reason with &quot;quotes&quot; and &lt;tags&gt;"/>
+    </testcase>
+  </testsuite>
+</testsuites>
+XMLEOF
+  _write_run_records "$EVIDENCE_SRC/run-records.json" "$head_sha"
+
+  run bash "$STORE_SCRIPT" \
+    --story-key "TEST-S1" \
+    --evidence-dir "$EVIDENCE_SRC" \
+    --story-dir "$STORY_DIR" \
+    --repo "$FAKE_REPO"
+  [ "$status" -eq 0 ]
+
+  # ci-junit-evidence.json must be valid JSON
+  local evi="$STORY_DIR/ci-evidence/ci-junit-evidence.json"
+  [ -f "$evi" ]
+  run jq '.' "$evi"
+  [ "$status" -eq 0 ]
+
+  # Skipped entry must have the reason preserved
+  run jq -r '.skipped[0].reason' "$evi"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"quotes"* ]]
+}
+
+@test "store-ci-evidence: skipped and flaky entries are listed" {
+  _setup_store_env
+  local head_sha
+  head_sha="$(git -C "$FAKE_REPO" rev-parse HEAD)"
+
+  # Create JUnit with skipped and flaky tests
+  cat > "$EVIDENCE_SRC/run-42-results.xml" <<'XMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="5" failures="0" skipped="2">
+  <testsuite name="MySuite" tests="5" failures="0" skipped="2">
+    <testcase name="test-pass" classname="MySuite" time="0.1"/>
+    <testcase name="test-skip1" classname="MySuite" time="0.0">
+      <skipped message="pending feature"/>
+    </testcase>
+    <testcase name="test-skip2" classname="MySuite" time="0.0">
+      <skipped message="env not configured"/>
+    </testcase>
+    <testcase name="test-flaky1" classname="MySuite" time="0.3">
+      <flakyFailure message="intermittent"/>
+    </testcase>
+    <testcase name="test-flaky2" classname="MySuite" time="0.2">
+      <rerunFailure message="retry passed"/>
+    </testcase>
+  </testsuite>
+</testsuites>
+XMLEOF
+  _write_run_records "$EVIDENCE_SRC/run-records.json" "$head_sha"
+
+  run bash "$STORE_SCRIPT" \
+    --story-key "TEST-S1" \
+    --evidence-dir "$EVIDENCE_SRC" \
+    --story-dir "$STORY_DIR" \
+    --repo "$FAKE_REPO"
+  [ "$status" -eq 0 ]
+
+  local evi="$STORY_DIR/ci-evidence/ci-junit-evidence.json"
+  [ -f "$evi" ]
+
+  # Two skipped entries
+  local skip_count
+  skip_count="$(jq '.skipped | length' "$evi")"
+  [ "$skip_count" -eq 2 ]
+
+  # Skipped reasons present
+  run jq -r '.skipped[0].reason' "$evi"
+  [[ "$output" == "pending feature" ]]
+
+  # Two flaky entries
+  local flaky_count
+  flaky_count="$(jq '.flaky | length' "$evi")"
+  [ "$flaky_count" -eq 2 ]
+
+  # Flaky kinds recorded
+  run jq -r '.flaky[0].kind' "$evi"
+  [[ "$output" == "flakyFailure" ]]
+  run jq -r '.flaky[1].kind' "$evi"
+  [[ "$output" == "rerunFailure" ]]
+
+  # Totals
+  run jq '.totals.skipped' "$evi"
+  [ "$output" = "2" ]
+  run jq '.totals.tests' "$evi"
+  [ "$output" = "5" ]
+}
+
+@test "store-ci-evidence: end-to-end AC8 — writer output feeds review-packet-builder CI section" {
+  _setup_store_env
+  local head_sha
+  head_sha="$(git -C "$FAKE_REPO" rev-parse HEAD)"
+
+  _write_junit_with_sysout "$EVIDENCE_SRC/run-42-results.xml"
+  _write_run_records "$EVIDENCE_SRC/run-records.json" "$head_sha"
+
+  run bash "$STORE_SCRIPT" \
+    --story-key "TEST-S1" \
+    --evidence-dir "$EVIDENCE_SRC" \
+    --story-dir "$STORY_DIR" \
+    --repo "$FAKE_REPO"
+  [ "$status" -eq 0 ]
+
+  local evi="$STORY_DIR/ci-evidence/ci-junit-evidence.json"
+  [ -f "$evi" ]
+
+  # Verify the evidence has the fields the review-packet-builder reads
+  # (see review-packet-builder.sh ~line 741: jq reads .head_sha, .runs[].url,
+  #  .totals.{tests,passed,failed,skipped})
+  run jq -r '.head_sha' "$evi"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$output" != "null" ]
+
+  run jq -r '.runs[0].url' "$evi"
+  [ "$status" -eq 0 ]
+  [[ "$output" == https://* ]]
+
+  run jq '.totals.tests' "$evi"
+  [ "$status" -eq 0 ]
+  [ "$output" -gt 0 ]
+
+  run jq '.totals.skipped' "$evi"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 0 ]
+
+  # Simulate what review-packet-builder does: build a CI section string
+  local short_sha
+  short_sha="$(jq -r '.head_sha[:7]' "$evi")"
+  local run_url
+  run_url="$(jq -r '.runs[0].url' "$evi")"
+  local totals
+  totals="$(jq -r '"tests=\(.totals.tests) passed=\(.totals.passed) failed=\(.totals.failed) skipped=\(.totals.skipped)"' "$evi")"
+
+  [ -n "$short_sha" ]
+  [ -n "$run_url" ]
+  [[ "$totals" == *"tests="* ]]
+  [[ "$totals" == *"passed="* ]]
+  [[ "$totals" == *"skipped="* ]]
+}
