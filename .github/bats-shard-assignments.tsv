@@ -7,6 +7,7 @@
 1	E77-S5-plugin-code-sub-rubric.bats	2
 1	E79-S4-csp-readers.bats	1
 1	E93-S6-sprint-state-set-shape.bats	1
+1	action-items-write-lock.bats	15
 1	af-2026-05-21-15-trace-threat-model-canonical.bats	1
 1	af-2026-05-21-18-test-cluster-canonical.bats	1
 1	af-2026-05-21-19-test-cluster-scripts-canonical.bats	1
