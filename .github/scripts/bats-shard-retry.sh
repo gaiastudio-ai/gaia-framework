@@ -144,9 +144,17 @@ for ts in tree.iter('testsuite'):
 " "$JUNIT/report.xml" 2>/dev/null || true)
 fi
 
-# If we could not identify specific failures, retry all files
+# If we could not identify specific failures, do NOT retry the entire suite.
+# A blind retry-all doubles the CI wall-clock for no benefit. Log a warning
+# and exit with the first-pass status so the failure is visible immediately.
 if [ ${#FAILED_FILES[@]} -eq 0 ]; then
-  FAILED_FILES=("${TEST_FILES[@]}")
+  printf 'bats-shard-retry.sh: no JUnit report found — cannot identify failed files; skipping retry\n' >&2
+  _log_summary ""
+  _log_summary "### Shard retry skipped"
+  _log_summary ""
+  _log_summary "No JUnit XML report available — cannot identify which files failed."
+  _log_summary "Exiting with the first-pass status ($first_exit)."
+  exit "$first_exit"
 fi
 
 # Log the retry

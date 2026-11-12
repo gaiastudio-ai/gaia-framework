@@ -40,10 +40,13 @@ is logged by test name in the job summary. The script never retries
 when the failure is a signal kill (exit >= 128, indicating a timeout or
 cancellation).
 
-For the promotion-time full-suite run via `selective-tests.yml`,
-`run-with-retry.sh --retry-limit 1` provides the retry, and a
-quarantine list at `.gaia/flaky-tests.txt` marks stacks for
-retry eligibility.
+For the promotion-time full-suite run via `selective-tests.yml`, the
+coverage wrapper (`run-with-coverage.sh`) passes `--report-formatter
+junit` to bats and hands the JUnit output directory to
+`bats-shard-retry.sh`. The retry script parses `report.xml` to
+identify which files failed and re-runs only those files once. A
+quarantine list at `.gaia/flaky-tests.txt` marks stacks for retry
+eligibility at the `run-with-retry.sh` level.
 
 ## TL;DR
 

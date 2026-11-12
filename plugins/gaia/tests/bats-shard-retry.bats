@@ -43,14 +43,45 @@ MOCK
   chmod +x "$TEST_TMP/mockbin/bats"
 }
 
-# _mock_bats_fail — creates a mock bats that fails on first call, passes on second
+# _mock_bats_fail — creates a mock bats that fails on first call, passes on second.
+# Writes JUnit XML on the first call so the retry script can identify which
+# file failed.
 _mock_bats_fail_then_pass() {
   local marker="$TEST_TMP/bats-call-marker"
   cat > "$TEST_TMP/mockbin/bats" <<MOCK
 #!/usr/bin/env bash
-# Mock bats: fail on first call, pass on second
+# Find the output dir from -o / --output flag
+_odir=""
+_prev=""
+for _a in "\$@"; do
+  if [ "\$_prev" = "-o" ] || [ "\$_prev" = "--output" ]; then
+    _odir="\$_a"; break
+  fi
+  _prev="\$_a"
+done
 if [ ! -f "$marker" ]; then
   touch "$marker"
+  # Write JUnit XML so the retry script can identify failed files.
+  if [ -n "\$_odir" ]; then
+    mkdir -p "\$_odir"
+    # Identify the .bats file(s) passed as arguments.
+    for _f in "\$@"; do
+      case "\$_f" in *.bats)
+        cat > "\$_odir/report.xml" <<JXML
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="\$(basename "\$_f")" tests="1" failures="1" errors="0">
+    <testcase name="flaky test">
+      <failure>Expected true, got false</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+JXML
+        break
+        ;;
+      esac
+    done
+  fi
   echo "1..1"
   echo "not ok 1 flaky test"
   exit 1
@@ -62,10 +93,39 @@ MOCK
   chmod +x "$TEST_TMP/mockbin/bats"
 }
 
-# _mock_bats_always_fail — creates a mock bats that always fails
+# _mock_bats_always_fail — creates a mock bats that always fails. Writes
+# JUnit XML so the retry script can identify failed files.
 _mock_bats_always_fail() {
   cat > "$TEST_TMP/mockbin/bats" <<'MOCK'
 #!/usr/bin/env bash
+# Find the output dir from -o / --output flag
+_odir=""
+_prev=""
+for _a in "$@"; do
+  if [ "$_prev" = "-o" ] || [ "$_prev" = "--output" ]; then
+    _odir="$_a"; break
+  fi
+  _prev="$_a"
+done
+if [ -n "$_odir" ]; then
+  mkdir -p "$_odir"
+  for _f in "$@"; do
+    case "$_f" in *.bats)
+      cat > "$_odir/report.xml" <<JXML
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="$(basename "$_f")" tests="1" failures="1" errors="0">
+    <testcase name="always fails">
+      <failure>always fails</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+JXML
+      break
+      ;;
+    esac
+  done
+fi
 echo "1..1"
 echo "not ok 1 always fails"
 exit 1
@@ -90,24 +150,30 @@ MOCK
 
 @test "pass-on-retry: test fails first then passes on retry" {
   _mock_bats_fail_then_pass
+  local jdir="$TEST_TMP/junit-retry"
+  mkdir -p "$jdir"
   cat > "$TEST_TMP/flaky.bats" <<'EOF'
 placeholder
 EOF
 
   run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
-    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/flaky.bats"
+    --summary-file "$SUMMARY_FILE" --junit-dir "$jdir" \
+    -- --output "$jdir" "$TEST_TMP/flaky.bats"
   [ "$status" -eq 0 ]
   grep -qi "retry" "$SUMMARY_FILE"
 }
 
 @test "fail-twice: test fails on both attempts" {
   _mock_bats_always_fail
+  local jdir="$TEST_TMP/junit-fail-twice"
+  mkdir -p "$jdir"
   cat > "$TEST_TMP/always-fail.bats" <<'EOF'
 placeholder
 EOF
 
   run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
-    --summary-file "$SUMMARY_FILE" -- "$TEST_TMP/always-fail.bats"
+    --summary-file "$SUMMARY_FILE" --junit-dir "$jdir" \
+    -- --output "$jdir" "$TEST_TMP/always-fail.bats"
   [ "$status" -ne 0 ]
   grep -qi "retry" "$SUMMARY_FILE"
 }
@@ -136,6 +202,98 @@ EOF
   ! grep -qi "retrying" "$SUMMARY_FILE"
 }
 
+# --- JUnit-directed retry: only the failed file is retried ---
+
+# _mock_bats_junit_one_fail — writes JUnit XML reporting flaky.bats as failed,
+# then exits non-zero on first call and 0 on second.
+_mock_bats_junit_one_fail() {
+  local marker="$TEST_TMP/bats-junit-marker"
+  cat > "$TEST_TMP/mockbin/bats" <<MOCK
+#!/usr/bin/env bash
+# Find the output dir from -o / --output flag
+junit_dir=""
+prev=""
+for arg in "\$@"; do
+  if [ "\$prev" = "-o" ] || [ "\$prev" = "--output" ]; then
+    junit_dir="\$arg"; break
+  fi
+  prev="\$arg"
+done
+if [ ! -f "$marker" ]; then
+  touch "$marker"
+  # First call: write JUnit XML marking flaky.bats as failed
+  if [ -n "\$junit_dir" ]; then
+    mkdir -p "\$junit_dir"
+    cat > "\$junit_dir/report.xml" <<'JXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="pass.bats" tests="1" failures="0" errors="0">
+    <testcase name="always passes" />
+  </testsuite>
+  <testsuite name="flaky.bats" tests="1" failures="1" errors="0">
+    <testcase name="flaky test">
+      <failure>Expected true, got false</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
+JXML
+  fi
+  exit 1
+fi
+# Second call (retry): pass
+exit 0
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
+}
+
+# _mock_bats_fail_no_junit — fails without writing any JUnit output.
+_mock_bats_fail_no_junit() {
+  cat > "$TEST_TMP/mockbin/bats" <<'MOCK'
+#!/usr/bin/env bash
+echo "1..1"
+echo "not ok 1 some failure"
+exit 1
+MOCK
+  chmod +x "$TEST_TMP/mockbin/bats"
+}
+
+@test "junit-directed retry: only the failed file is retried, not the passing file" {
+  _mock_bats_junit_one_fail
+  local jdir="$TEST_TMP/junit-out"
+  mkdir -p "$jdir"
+  cat > "$TEST_TMP/pass.bats" <<'EOF'
+placeholder
+EOF
+  cat > "$TEST_TMP/flaky.bats" <<'EOF'
+placeholder
+EOF
+
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" --junit-dir "$jdir" \
+    -- --output "$jdir" "$TEST_TMP/pass.bats" "$TEST_TMP/flaky.bats"
+  [ "$status" -eq 0 ]
+  # The summary should mention retrying 1 file (flaky.bats), not 2
+  grep -q 'Retrying 1 failed file' "$SUMMARY_FILE"
+  grep -q 'flaky.bats' "$SUMMARY_FILE"
+  ! grep -q 'pass.bats' "$SUMMARY_FILE"
+}
+
+@test "no-report fallback: no retry attempted, original status returned" {
+  _mock_bats_fail_no_junit
+  cat > "$TEST_TMP/some.bats" <<'EOF'
+placeholder
+EOF
+
+  run env PATH="$TEST_TMP/mockbin:$PATH" bash "$RETRY_SCRIPT" \
+    --summary-file "$SUMMARY_FILE" \
+    -- "$TEST_TMP/some.bats"
+  [ "$status" -eq 1 ]
+  # The script must NOT have retried — no "Retrying" in the summary
+  ! grep -qi 'retrying' "$SUMMARY_FILE"
+  # It should have logged the skip
+  grep -q 'retry skipped' "$SUMMARY_FILE" || [[ "$output" == *"skipping retry"* ]]
+}
+
 # --- Promotion-path tests (BATS_RETRY_SCRIPT wiring in run-with-coverage.sh) ---
 
 @test "BATS_RETRY_SCRIPT: run-with-coverage.sh uses the retry script when set" {
@@ -150,13 +308,16 @@ EOF
 @test "promotion per-file retry: fail-then-pass via BATS_RETRY_SCRIPT" {
   _mock_bats_fail_then_pass
   : > "$SUMMARY_FILE"
+  local jdir="$TEST_TMP/junit-promo-flaky"
+  mkdir -p "$jdir"
   cat > "$TEST_TMP/flaky.bats" <<'EOF'
 placeholder
 EOF
 
   run env PATH="$TEST_TMP/mockbin:$PATH" \
     GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
-    bash "$RETRY_SCRIPT" -- "$TEST_TMP/flaky.bats"
+    bash "$RETRY_SCRIPT" --junit-dir "$jdir" \
+    -- --output "$jdir" "$TEST_TMP/flaky.bats"
   [ "$status" -eq 0 ]
   grep -qi "retry" "$SUMMARY_FILE"
 }
@@ -164,13 +325,16 @@ EOF
 @test "promotion per-file retry: fail-twice via BATS_RETRY_SCRIPT" {
   _mock_bats_always_fail
   : > "$SUMMARY_FILE"
+  local jdir="$TEST_TMP/junit-promo-fail"
+  mkdir -p "$jdir"
   cat > "$TEST_TMP/always-fail.bats" <<'EOF'
 placeholder
 EOF
 
   run env PATH="$TEST_TMP/mockbin:$PATH" \
     GITHUB_STEP_SUMMARY="$SUMMARY_FILE" \
-    bash "$RETRY_SCRIPT" -- "$TEST_TMP/always-fail.bats"
+    bash "$RETRY_SCRIPT" --junit-dir "$jdir" \
+    -- --output "$jdir" "$TEST_TMP/always-fail.bats"
   [ "$status" -ne 0 ]
   grep -qi "retry" "$SUMMARY_FILE"
 }
