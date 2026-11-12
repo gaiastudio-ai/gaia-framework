@@ -229,21 +229,13 @@ DRIVER
   # Build a temp tests dir with one passing file and one flaky file.
   local tdir="$TEST_TMP/integration-pass"
   mkdir -p "$tdir"
-  cat > "$tdir/pass.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always passes" { true; }
-EOF
+  # Fixture test lines are built from a split token: a literal test keyword
+  # at line start would be counted by this file's own bats preprocessor.
+  local kw='@''test'
+  printf '#!/usr/bin/env bats\n%s "always passes" { true; }\n' "$kw" > "$tdir/pass.bats"
   local marker="$TEST_TMP/flaky-marker"
-  cat > "$tdir/flaky.bats" <<EOF
-#!/usr/bin/env bats
-@test "flaky" {
-  if [ ! -f "$marker" ]; then
-    touch "$marker"
-    false
-  fi
-  true
-}
-EOF
+  printf '#!/usr/bin/env bats\n%s "flaky" {\n  if [ ! -f "%s" ]; then\n    touch "%s"\n    false\n  fi\n  true\n}\n' \
+    "$kw" "$marker" "$marker" > "$tdir/flaky.bats"
   # Dummy script dir so the coverage check (step 3) finds no scripts and
   # doesn't fail on an unrelated public-function assertion.
   mkdir -p "$tdir/scripts_stub"
@@ -265,14 +257,9 @@ EOF
   [ "${CI:-}" = "true" ] && skip "nested-bats integration unreliable on CI runners"
   local tdir="$TEST_TMP/integration-fail"
   mkdir -p "$tdir"
-  cat > "$tdir/pass.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always passes" { true; }
-EOF
-  cat > "$tdir/always-fail.bats" <<'EOF'
-#!/usr/bin/env bats
-@test "always fails" { false; }
-EOF
+  local kw='@''test'
+  printf '#!/usr/bin/env bats\n%s "always passes" { true; }\n' "$kw" > "$tdir/pass.bats"
+  printf '#!/usr/bin/env bats\n%s "always fails" { false; }\n' "$kw" > "$tdir/always-fail.bats"
   mkdir -p "$tdir/scripts_stub"
   local summary="$TEST_TMP/integration-fail-summary.md"
   : > "$summary"
