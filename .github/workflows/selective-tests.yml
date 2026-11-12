@@ -143,6 +143,11 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" > changed-files.txt
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # workflow_dispatch has no base SHA; when force_full_suite is set
+            # the promotion-push path short-circuits to ["*"] anyway, so an
+            # empty changed-files list is fine (all stacks are forced).
+            : > changed-files.txt
           else
             git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" > changed-files.txt
           fi
