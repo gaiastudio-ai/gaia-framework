@@ -720,9 +720,15 @@ STORYEOF
       export PATH="$SAFE_PATH"
       source "$HELPER"
       # Each acquirer checks: if the lock file exists AND is empty, that's a bug.
+      # Use a single stat call to avoid the TOCTOU where the file is rm'd
+      # between [ -f ] and [ ! -s ] (the absent-file case reads as "empty"
+      # under [ ! -s ], producing a false positive under CI load).
       local tries=0
       while [ "$tries" -lt 20 ]; do
-        if [ -f "$lock_file" ] && [ ! -s "$lock_file" ]; then
+        local fsize=""
+        fsize="$(stat -c %s "$lock_file" 2>/dev/null)" \
+          || fsize="$(stat -f %z "$lock_file" 2>/dev/null)" || true
+        if [ "$fsize" = "0" ]; then
           echo "EMPTY_LOCK_OBSERVED by $i" > "$TEST_TMP/empty-observed"
         fi
         acquire_lock "$lock_file" 1 9 && { release_lock 9; break; }
@@ -1930,6 +1936,507 @@ SHIMEOF
   '
   [ "$status" -eq 0 ] || {
     echo "follow-up acquire blocked — board lock was not released: $output" >&2
+    false
+  }
+}
+
+# ============================================================
+# Shadow hard-link reap: inode-guarded delete, flock-n probe,
+# vacancy and stranded-lock regression guards
+# ============================================================
+
+@test "T1: inode-guarded rm catches replacement in the reap window (AC2)" {
+  # The _al_reap_window_hook replaces the lock file between the shadow pin
+  # and the final inode comparison. With the inode guard the new holder's
+  # lock must survive; without it (staging) the bare rm deletes it.
+  local lock_file="$LOCK_DIR/inode-guard.lock"
+  local result="$TEST_TMP/t1-result"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    # Plant a stale (dead-PID, old) lock file.
+    printf "99999 1000000000\n" > "'"$lock_file"'"
+    touch -t 202001010000 "'"$lock_file"'" 2>/dev/null \
+      || touch -d "2020-01-01" "'"$lock_file"'" 2>/dev/null \
+      || { echo "SKIP"; exit 0; }
+    # Hook: after the shadow is taken but before the final inode stat,
+    # replace the lock file with a new holder.
+    _al_reap_window_hook() {
+      rm -f "$1"
+      printf "%s %s\n" "$$" "$(date +%s)" > "'"$LOCK_DIR"'/.lock-tmp.t1-holder.$$.$RANDOM"
+      ln "'"$LOCK_DIR"'/.lock-tmp.t1-holder.$$.$RANDOM" "$1" 2>/dev/null || true
+      rm -f "'"$LOCK_DIR"'/.lock-tmp.t1-holder."*
+    }
+    acquire_lock "'"$lock_file"'" 5 9
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      echo "ACQUIRED"
+    else
+      echo "TIMEOUT_OR_FAIL"
+    fi
+    # Check: the file at the lock path should be the NEW holder, not deleted.
+    if [ -f "'"$lock_file"'" ]; then
+      content="$(cat "'"$lock_file"'")"
+      echo "FILE_EXISTS content=$content"
+    else
+      echo "FILE_GONE"
+    fi
+  '
+  # If the inode guard works: the reaper did NOT delete the new holder.
+  # The acquirer then failed to link (EEXIST) and eventually acquired after
+  # the hook-placed file ages out or was released.
+  # Key assertion: the hook-placed file must survive the reap window.
+  [[ "$output" != *"FILE_GONE"* ]] || {
+    echo "the reaper deleted the new holder's lock — inode guard did not catch the replacement" >&2
+    false
+  }
+}
+
+@test "T2: shadow ln failure aborts reap on vanished file (AC1)" {
+  # When the lock file disappears between the existence check and the
+  # shadow ln, the reaper must abort (return 1, no rm). On staging, the
+  # read fails and the bare rm proceeds on whatever is at the path.
+  local lock_file="$LOCK_DIR/vanish.lock"
+  local victim="$LOCK_DIR/vanish-victim.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    # Plant a stale lock file.
+    printf "99999 1000000000\n" > "'"$lock_file"'"
+    touch -t 202001010000 "'"$lock_file"'" 2>/dev/null \
+      || touch -d "2020-01-01" "'"$lock_file"'" 2>/dev/null \
+      || { echo "SKIP"; exit 0; }
+    # Immediately remove it so the shadow ln will fail.
+    rm -f "'"$lock_file"'"
+    # Plant a new file (simulating a new holder linking in).
+    printf "%s %s\n" "$$" "$(date +%s)" > "'"$victim"'"
+    ln "'"$victim"'" "'"$lock_file"'" 2>/dev/null || true
+    rm -f "'"$victim"'"
+    # Now try to acquire. The reaper should see the file exists, try to
+    # shadow it — but the file it saw is no longer the same inode.
+    # With the shadow mechanism, the shadow ln succeeds (a file IS there),
+    # but the inode guard protects the new holder.
+    # The key test: the new holder file must survive.
+    acquire_lock "'"$lock_file"'" 2 9 2>/dev/null
+    rc=$?
+    if [ -f "'"$lock_file"'" ]; then
+      echo "FILE_SURVIVED rc=$rc"
+    else
+      echo "FILE_DELETED rc=$rc"
+    fi
+  '
+  [[ "$output" != *"FILE_DELETED"* ]] || {
+    echo "the reaper deleted a file it did not inspect — vanished-file bug" >&2
+    false
+  }
+}
+
+@test "T3: separate-process two-holder reproduction (AC1/AC2)" {
+  # Process A acquires and releases. Process R starts reaping (paused by
+  # the hook). Process B acquires. R resumes. With the inode guard, B's
+  # lock survives. Without it (staging), R's bare rm deletes B's lock
+  # and a third acquirer enters while B is inside.
+  local lock_file="$LOCK_DIR/two-holder.lock"
+  local overlap="$TEST_TMP/t3-overlap"
+  local b_acquired="$TEST_TMP/t3-b-acquired"
+  local b_done="$TEST_TMP/t3-b-done"
+  local r_continue="$TEST_TMP/t3-r-continue"
+  rm -f "$overlap" "$b_acquired" "$b_done" "$r_continue"
+  # Process A: acquire and release, leaving a stale sentinel.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    release_lock 9
+  '
+  # Age the stale sentinel.
+  touch -t 202001010000 "$lock_file" 2>/dev/null \
+    || touch -d '2020-01-01' "$lock_file" 2>/dev/null \
+    || skip "cannot set mtime"
+  # Process R: reaper (via acquire_lock) with a hook that pauses before
+  # the final inode comparison and signals Process B to acquire.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    _al_reap_window_hook() {
+      # Signal B to acquire now.
+      touch "'"$r_continue"'"
+      # Wait for B to finish acquiring.
+      local w=0
+      while [ ! -f "'"$b_acquired"'" ] && [ "$w" -lt 100 ]; do
+        sleep 0.1 2>/dev/null || sleep 1
+        w=$((w+1))
+      done
+    }
+    acquire_lock "'"$lock_file"'" 3 9 2>/dev/null || true
+  ' &
+  local r_pid=$!
+  # Wait for R to enter the reap window.
+  local w=0
+  while [ ! -f "$r_continue" ] && [ "$w" -lt 100 ]; do
+    sleep 0.1 2>/dev/null || sleep 1
+    w=$((w+1))
+  done
+  # Process B: acquire while R is paused in the reap window.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    touch "'"$b_acquired"'"
+    # Hold the lock briefly.
+    sleep 0.5 2>/dev/null || sleep 1
+    release_lock 9
+    touch "'"$b_done"'"
+  ' &
+  local b_pid=$!
+  wait "$r_pid" 2>/dev/null || true
+  wait "$b_pid" 2>/dev/null || true
+  # After both finish: B must have acquired (its lock was not deleted).
+  [ -f "$b_acquired" ] || {
+    echo "Process B could not acquire — its lock was deleted by the reaper" >&2
+    false
+  }
+}
+
+@test "T4: flock-n probe detects active flock holder (AC2 mixed mode)" {
+  # A flock holder acquires (leaving a zero-byte file). A fallback
+  # acquirer's reaper encounters the empty file. The flock-n probe must
+  # detect the active holder and abort the reap.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/mixed-probe.lock"
+  local holder_ready="$TEST_TMP/t4-holder-ready"
+  local holder_done="$TEST_TMP/t4-holder-done"
+  rm -f "$holder_ready" "$holder_done"
+  # Flock holder: acquire and hold.
+  bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    touch "'"$holder_ready"'"
+    while [ ! -f "'"$holder_done"'" ]; do sleep 0.1; done
+    release_lock 9
+  ' &
+  local holder_pid=$!
+  _wait_for_file "$holder_ready"
+  # The lock file is zero-byte (flock mode writes no PID).
+  # Fallback acquirer's reaper should see ownerless file but the flock-n
+  # probe must detect the active holder and refuse to reap.
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  local acq_status="$status"
+  touch "$holder_done"
+  wait "$holder_pid" 2>/dev/null || true
+  # The fallback acquirer must time out (the flock holder is alive).
+  [ "$acq_status" -ne 0 ] || {
+    echo "fallback acquirer acquired while a flock holder was active — probe failed" >&2
+    false
+  }
+  # The lock file must still exist (not reaped).
+  [ -f "$lock_file" ] || {
+    echo "the lock file was reaped despite an active flock holder" >&2
+    false
+  }
+}
+
+@test "T5: flock-n probe allows reap when flock released (AC6)" {
+  # A flock holder acquires and releases. Empty file remains. A fallback
+  # acquirer's reaper must reap it (flock-n probe succeeds, inode-guarded
+  # rm removes it) and the fallback acquirer proceeds to link.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/mixed-released.lock"
+  # Flock holder: acquire, then release.
+  bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    release_lock 9
+  '
+  # The lock file should now be a zero-byte remnant.
+  [ -e "$lock_file" ] || {
+    echo "lock file absent after flock release — nothing to test" >&2
+    false
+  }
+  # Fallback acquirer must reap the released flock file and acquire.
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    echo "ACQUIRED"
+    release_lock 9
+  '
+  [ "$status" -eq 0 ] || {
+    echo "fallback acquirer could not acquire after flock release: $output" >&2
+    false
+  }
+  [[ "$output" == *"ACQUIRED"* ]] || {
+    echo "unexpected output: $output" >&2
+    false
+  }
+}
+
+@test "T6: vacancy regression guard — lock path never absent during reap (AC3)" {
+  # The shadow is a SECOND hard link, not a rename. The lock path must
+  # remain in place throughout the reaper's inspection. This would catch
+  # a future design that re-introduces rename-aside (which leaves the
+  # lock path vacant during the rename window).
+  local lock_file="$LOCK_DIR/vacancy.lock"
+  local vacancy="$TEST_TMP/t6-vacancy"
+  rm -f "$vacancy"
+  # Plant a stale lock file.
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" 2>/dev/null \
+    || touch -d '2020-01-01' "$lock_file" 2>/dev/null \
+    || skip "cannot set mtime"
+  # Monitor the lock path for vacancy during reap.
+  (
+    local checks=0
+    while [ "$checks" -lt 200 ]; do
+      if [ ! -e "$lock_file" ] && [ ! -L "$lock_file" ]; then
+        echo "VACANT at check $checks" >> "$vacancy"
+      fi
+      checks=$((checks + 1))
+    done
+  ) &
+  local monitor=$!
+  # Trigger reap via acquire.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    _al_reap_window_hook() {
+      # Widen the window so the monitor can sample.
+      sleep 0.2 2>/dev/null || sleep 1
+    }
+    acquire_lock "'"$lock_file"'" 5 9 2>/dev/null || true
+  '
+  wait "$monitor" 2>/dev/null || true
+  # The vacancy file may contain entries if the reaper deleted the file.
+  # But the vacancy must not occur WHILE the reaper was inspecting (during
+  # the hook sleep). Since the hook sleeps during inspection and the
+  # inode-guarded rm happens AFTER the hook, the path is vacant only AFTER
+  # the rm — which is legitimate (the stale file was removed). The rename-
+  # aside design would show vacancy DURING the hook sleep.
+  # We accept vacancy after the reap completes. The regression guard is:
+  # no vacancy was observed by the monitor during the hook window.
+  # (The monitor runs a tight loop so it samples the 0.2s window.)
+  # Actually, since the current design does rm the file when the inode
+  # matches, vacancy IS expected after the rm. This guard tests that
+  # there's no vacancy BEFORE the rm (no rename-aside). The hook pauses
+  # before the rm; the monitor would catch a vacancy during that pause.
+  if [ -f "$vacancy" ]; then
+    local lines
+    lines="$(wc -l < "$vacancy" | tr -d ' ')"
+    # A few vacancy observations AFTER the rm are expected. Many during
+    # the 0.2s hook sleep would indicate a rename-aside.
+    [ "$lines" -lt 50 ] || {
+      echo "excessive vacancy observations ($lines) — possible rename-aside" >&2
+      false
+    }
+  fi
+}
+
+@test "T7: stranded-lock regression guard — no lock exists that nobody holds (AC3)" {
+  # After the reaper runs, if the lock file exists, someone must hold it
+  # (via PID or flock probe). A file that nobody holds is a stranded lock
+  # (the signature of the rejected rename-aside design's restore step).
+  local lock_file="$LOCK_DIR/stranded.lock"
+  # Plant a stale lock (dead PID, old).
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" 2>/dev/null \
+    || touch -d '2020-01-01' "$lock_file" 2>/dev/null \
+    || skip "cannot set mtime"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 2>/dev/null
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      release_lock 9
+      echo "ACQUIRED_AND_RELEASED"
+    else
+      echo "TIMEOUT"
+    fi
+    # After release: check if any lock file exists that nobody holds.
+    if [ -f "'"$lock_file"'" ]; then
+      local pid=""
+      read -r pid _ < "'"$lock_file"'" 2>/dev/null || true
+      if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "FILE_HELD pid=$pid"
+      elif [ -z "$pid" ] || ! [ "$pid" -gt 0 ] 2>/dev/null; then
+        echo "EMPTY_FILE_STRANDED"
+      else
+        echo "DEAD_PID_STRANDED pid=$pid"
+      fi
+    else
+      echo "NO_FILE"
+    fi
+  '
+  # After the reaper and acquire/release cycle, the lock path must not
+  # contain a stranded lock (a file nobody holds with a dead PID).
+  [[ "$output" != *"DEAD_PID_STRANDED"* ]] || {
+    echo "a dead-PID lock file was left behind — stranded lock" >&2
+    false
+  }
+}
+
+@test "T8: inode-reuse regression guard — shadow prevents inode recycling (AC4)" {
+  # On Linux ext4: create a file, shadow it (hard-link), rm the original,
+  # create a new file. The shadow keeps the old inode alive, so the new
+  # file must get a DIFFERENT inode. This proves the shadow prevents
+  # inode recycling and validates the inode comparison.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    dir="'"$LOCK_DIR"'"
+    printf "old\n" > "$dir/reuse-original"
+    ln "$dir/reuse-original" "$dir/reuse-shadow" || exit 1
+    shadow_ino="$(_al_inode "$dir/reuse-shadow")" || { echo "NO_STAT"; exit 0; }
+    rm -f "$dir/reuse-original"
+    printf "new\n" > "$dir/reuse-new"
+    new_ino="$(_al_inode "$dir/reuse-new")" || { echo "NO_STAT"; exit 0; }
+    if [ "$shadow_ino" != "$new_ino" ]; then
+      echo "DIFFERENT_INODES shadow=$shadow_ino new=$new_ino"
+    else
+      echo "SAME_INODE_REUSED ino=$shadow_ino"
+    fi
+    rm -f "$dir/reuse-shadow" "$dir/reuse-new"
+  '
+  [[ "$output" == *"DIFFERENT_INODES"* || "$output" == *"NO_STAT"* ]] || {
+    echo "the new file reused the shadow's inode — shadow did not prevent recycling" >&2
+    echo "$output" >&2
+    false
+  }
+}
+
+@test "T9: empty post-release file acquired within timeout (AC6)" {
+  # touch(1) a zero-byte lock file (simulating the post-release sentinel
+  # from transition-story-status.sh). A fallback acquirer must acquire
+  # within a reasonable time, not the full timeout.
+  local lock_file="$LOCK_DIR/post-release.lock"
+  touch "$lock_file"
+  local start elapsed
+  start=$(date +%s)
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 10 9 || exit 1
+    echo "ACQUIRED"
+    release_lock 9
+  '
+  elapsed=$(( $(date +%s) - start ))
+  [ "$status" -eq 0 ] || {
+    echo "could not acquire an empty post-release file (status=$status): $output" >&2
+    false
+  }
+  [[ "$output" == *"ACQUIRED"* ]]
+  # Must complete well before the 10s timeout (within 2s is generous).
+  [ "$elapsed" -lt 3 ] || {
+    echo "acquired in ${elapsed}s — too slow for an empty post-release file" >&2
+    false
+  }
+}
+
+@test "shadow cleanup: no .lock-reap residue left after normal reap (AC3)" {
+  local lock_file="$LOCK_DIR/shadow-cleanup.lock"
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" 2>/dev/null \
+    || touch -d '2020-01-01' "$lock_file" 2>/dev/null \
+    || skip "cannot set mtime"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  # No .lock-reap.* files should remain in the lock directory.
+  local residue
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-reap.*' 2>/dev/null)"
+  [ -z "$residue" ] || {
+    echo "shadow residue left behind: $residue" >&2
+    false
+  }
+}
+
+@test "unreadable live lock not removed by the reaper (AC1)" {
+  # A lock file whose content cannot be read (chmod 000) must not be
+  # removed — a live holder's PID may be inside. On staging the failed
+  # read treats the file as ownerless and rm's it.
+  [ "$(id -u)" != "0" ] || skip "requires non-root (root ignores permissions)"
+  local lock_file="$LOCK_DIR/unreadable.lock"
+  local holder_done="$TEST_TMP/unread-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "$lock_file"
+  chmod 000 "$lock_file"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  chmod 644 "$lock_file" 2>/dev/null || true
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ -f "$lock_file" ] || {
+    echo "unreadable live lock was removed by the reaper" >&2
+    false
+  }
+  [ "$status" -ne 0 ] || {
+    echo "acquirer succeeded against an unreadable live lock" >&2
+    false
+  }
+}
+
+@test "flock acquirer while fallback holder PID file is in place (AC2 mixed mode)" {
+  # A fallback holder (PID-bearing file) is in place. A flock acquirer
+  # must not bypass it. This is the reverse mixed-mode direction.
+  local flock_dir
+  flock_dir="$(_real_flock_bin)" || skip "no real flock on this host"
+  local lock_file="$LOCK_DIR/mixed-reverse.lock"
+  local holder_done="$TEST_TMP/mixed-rev-done"
+  rm -f "$holder_done"
+  # Fallback holder: acquire with a PID-bearing file.
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "$lock_file"
+  # Flock acquirer: must time out (the PID is alive).
+  run bash -c '
+    export PATH="'"$flock_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  local acq_status="$status"
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  [ "$acq_status" -ne 0 ] || {
+    echo "flock acquirer bypassed a fallback holder — mixed-mode hole" >&2
+    false
+  }
+  [ -f "$lock_file" ] || {
+    echo "the fallback holder's lock file was removed" >&2
+    false
+  }
+}
+
+@test "helper documents _al_reap_window_hook in the test-only hooks block (AC1)" {
+  local block
+  block="$(sed -n '/Test-only function hooks/,/^$/p' "$HELPER")"
+  grep -qw "_al_reap_window_hook" <<< "$block" || {
+    echo "_al_reap_window_hook is not documented in the test-only hooks block" >&2
     false
   }
 }

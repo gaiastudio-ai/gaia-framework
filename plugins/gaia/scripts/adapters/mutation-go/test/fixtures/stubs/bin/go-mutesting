@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Stub go-mutesting — simulates the real tool for CI testing.
+#
+# Replicates the exec-hook protocol of the pinned go-mutesting version:
+# for each recorded mutation site, backs up the original file, writes
+# the mutated content in place, sets MUTATE_ORIGINAL and MUTATE_CHANGED,
+# invokes the configured --exec command, reads its exit code
+# (0=killed, 1=survived, 2=skip), restores the original, and prints
+# the result line.
+#
+# Recorded mutations:
+#   1. calc/calc.go line 6: "a > 0" → "a < 0" (expression/comparison)
+#   2. calc/calc.go line 7: "a + b" → "a - b" (expression/arithmetic)
+#
+# POSIX discipline: bash 3.2, no local -A, no mapfile.
+
+set -euo pipefail
+
+_stub_exec_cmd=""
+_stub_files=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --exec)                   shift; _stub_exec_cmd="${1:-}"; shift ;;
+    --disable-not-compiling)  shift ;;
+    -*)                       shift ;;
+    *)                        _stub_files+=("$1"); shift ;;
+  esac
+done
+
+if [ -z "$_stub_exec_cmd" ]; then
+  printf 'go-mutesting: --exec is required\n' >&2
+  exit 1
+fi
+
+# --- Recorded mutations ---
+# Each mutation: file-relative-suffix, line, original-pattern,
+# replacement-pattern, operator-name.
+_MUTATIONS=(
+  "calc/calc.go|6|a > 0|a < 0|expression/comparison"
+  "calc/calc.go|7|a + b|a - b|expression/arithmetic"
+)
+
+for _stub_file in "${_stub_files[@]}"; do
+  [ -f "$_stub_file" ] || continue
+
+  # Resolve the file relative to its directory for matching
+  _stub_basename=$(basename "$_stub_file")
+  _stub_dir=$(dirname "$_stub_file")
+
+  for _mut in "${_MUTATIONS[@]}"; do
+    IFS='|' read -r _m_suffix _m_line _m_orig _m_repl _m_op <<< "$_mut"
+
+    # Check if this file matches the mutation target
+    case "$_stub_file" in
+      *"$_m_suffix") ;;
+      *) continue ;;
+    esac
+
+    # Check if the pattern exists in the file
+    _stub_line_content=$(sed -n "${_m_line}p" "$_stub_file")
+    case "$_stub_line_content" in
+      *"$_m_orig"*) ;;
+      *) continue ;;
+    esac
+
+    # Back up the original
+    _stub_backup=$(mktemp "${TMPDIR:-/tmp}/gaia-stub-orig-XXXXXX")
+    cp "$_stub_file" "$_stub_backup"
+
+    # Apply mutation in place (like real go-mutesting does)
+    _stub_tmp=$(mktemp "${TMPDIR:-/tmp}/gaia-stub-mut-XXXXXX")
+    sed "${_m_line}s/${_m_orig}/${_m_repl}/" "$_stub_file" > "$_stub_tmp"
+    mv "$_stub_tmp" "$_stub_file"
+
+    # Invoke the exec command with the go-mutesting protocol
+    _stub_rc=0
+    MUTATE_ORIGINAL="$_stub_backup" MUTATE_CHANGED="$_stub_file" \
+      bash -c "$_stub_exec_cmd" || _stub_rc=$?
+
+    # Restore original
+    cp "$_stub_backup" "$_stub_file"
+    rm -f "$_stub_backup"
+
+    # Print result in go-mutesting output format
+    case "$_stub_rc" in
+      0) printf 'PASS "%s:%s: %s"\n' "$_stub_file" "$_m_line" "$_m_op" ;;
+      1) printf 'FAIL "%s:%s: %s"\n' "$_stub_file" "$_m_line" "$_m_op" ;;
+      2) printf 'SKIP "%s:%s: %s"\n' "$_stub_file" "$_m_line" "$_m_op" ;;
+      *) printf 'SKIP "%s:%s: %s"\n' "$_stub_file" "$_m_line" "$_m_op" ;;
+    esac
+  done
+done
+
+exit 0

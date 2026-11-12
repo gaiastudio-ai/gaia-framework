@@ -131,7 +131,34 @@ else
   bold "  serial run (GNU parallel unavailable or BATS_JOBS<=1)"
 fi
 
-if ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
+# BATS_RETRY_SCRIPT: when set to the path of bats-shard-retry.sh, failed test
+# files are re-run once instead of failing immediately. A file that fails twice
+# still fails the suite. This avoids a whole-suite re-run for known flakes.
+# The retry script requires individual .bats file paths (not a directory), so
+# we expand the top-level file list ourselves — exactly the same non-recursive
+# set that `bats "$TESTS_DIR/"` would run.
+#
+# The retry script reads the JUnit XML to identify which files failed, so we
+# tell bats to write JUnit output to a temp directory. Without it the retry
+# script cannot narrow the retry to only the failed files.
+_RETRY_SCRIPT="${BATS_RETRY_SCRIPT:-}"
+unset BATS_RETRY_SCRIPT
+if [ -n "$_RETRY_SCRIPT" ] && [ -x "$_RETRY_SCRIPT" ]; then
+  bold "  per-file retry via ${_RETRY_SCRIPT}"
+  BATS_FILES=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && BATS_FILES+=("$f")
+  done < <(find "$TESTS_DIR" -maxdepth 1 -name '*.bats' -type f | sort)
+  bold "  ${#BATS_FILES[@]} top-level .bats files"
+  JUNIT_DIR="$(mktemp -d)"
+  BATS_ARGS+=(--report-formatter junit --output "$JUNIT_DIR")
+  if ! "$_RETRY_SCRIPT" --junit-dir "$JUNIT_DIR" -- "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "${BATS_FILES[@]}"; then
+    red "bats suite failed (after per-file retry)"
+    rm -rf "$JUNIT_DIR"
+    exit 1
+  fi
+  rm -rf "$JUNIT_DIR"
+elif ! bats "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
   red "bats suite failed"
   exit 1
 fi

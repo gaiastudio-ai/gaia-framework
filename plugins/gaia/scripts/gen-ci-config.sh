@@ -40,6 +40,10 @@ export LC_ALL
 #                   canonical config uses project-root-relative globs like
 #                   `gaia-public/plugins/**` but CI checks out `gaia-public/` as
 #                   the root, pass --strip-prefix gaia-public/). Optional.
+#   --repository    keep only stacks that belong to this repository. A stack with
+#                   no `repository:` field is considered local. A stack whose
+#                   `repository:` matches the --repository value is also local.
+#                   All other stacks are foreign and dropped from the slice.
 #   --help          show help
 #
 # Exit: 0 ok | 1 usage/IO error.
@@ -48,9 +52,11 @@ usage() {
   cat <<'EOF'
 gen-ci-config.sh — emit a tracked, CI-scoped config slice (stacks + promotion_chain + test_policy)
 
-  --config <path>   canonical project-config.yaml (required)
-  --out <path>      output file (default: stdout)
-  --help            show this help
+  --config <path>      canonical project-config.yaml (required)
+  --out <path>         output file (default: stdout)
+  --strip-prefix <p>   strip leading path prefix from stack globs
+  --repository <repo>  keep only stacks local to this repository
+  --help               show this help
 
 The emitted slice carries ONLY CI-matrix inputs — no secrets, no local paths,
 no environments/release/distribution. Safe to commit at a sanctioned tracked
@@ -61,6 +67,7 @@ EOF
 CONFIG=""
 OUT=""
 STRIP_PREFIX=""
+REPOSITORY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --config)  CONFIG="${2:-}"; shift 2 ;;
@@ -69,6 +76,8 @@ while [ $# -gt 0 ]; do
     --out=*)   OUT="${1#--out=}"; shift ;;
     --strip-prefix) STRIP_PREFIX="${2:-}"; shift 2 ;;
     --strip-prefix=*) STRIP_PREFIX="${1#--strip-prefix=}"; shift ;;
+    --repository) REPOSITORY="${2:-}"; shift 2 ;;
+    --repository=*) REPOSITORY="${1#--repository=}"; shift ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'gen-ci-config.sh: unknown argument: %s\n' "$1" >&2; usage >&2; exit 1 ;;
   esac
@@ -98,6 +107,17 @@ if [ -n "$STRIP_PREFIX" ]; then
   SLICE="$(printf '%s\n' "$SLICE" | STRIP="$STRIP_PREFIX" yq '
     (.stacks[].paths) |= map(sub("^" + strenv(STRIP), ""))
     | (.stacks[] | select(has("path")) | .path) |= sub("^" + strenv(STRIP), "")
+  ')"
+fi
+
+# Filter out foreign-repository stacks. A stack with no `repository` field is
+# local. A stack whose `repository` matches --repository is also local. All
+# others are foreign and dropped so the slice contains only this repo's stacks.
+if [ -n "$REPOSITORY" ]; then
+  SLICE="$(printf '%s\n' "$SLICE" | REPO="$REPOSITORY" yq '
+    .stacks |= map(select(
+      (.repository == null) or (.repository == strenv(REPO))
+    ))
   ')"
 fi
 

@@ -17,6 +17,13 @@ setup() {
   common_setup
   WRAPPER="$BATS_TEST_DIRNAME/run-with-coverage.sh"
 
+  # Strip BATS_RETRY_SCRIPT so the wrapper does not enter the retry-script
+  # code path when these tests exercise it. In CI, the outer wrapper unsets
+  # the var before spawning bats; but a developer may export it in their
+  # shell, and each bats subprocess would inherit it. Unsetting here keeps
+  # the fake-bats-based coverage tests deterministic.
+  unset BATS_RETRY_SCRIPT
+
   # Fixture layout mirrors the real plugins/gaia/ layout so the wrapper's
   # REPO_ROOT derivation still works, but env-var overrides for SCRIPTS_DIR
   # and TESTS_DIR let us point at a fresh tmpdir per test.
@@ -203,6 +210,49 @@ EOF
   # into a conditional branch or after Step 1.
   line_num="${output%%:*}"
   [ "$line_num" -le 60 ]
+}
+
+# ---------------------------------------------------------------------------
+# Regression: BATS_RETRY_SCRIPT must not leak into the wrapper when tests run.
+# When the variable is inherited from the outer environment, the wrapper must
+# capture it and unset it so nested bats processes (and their tests) do not
+# see it. This test explicitly re-exports the variable to prove the wrapper
+# still passes — the setup() unset prevents the other tests from tripping
+# on the retry-script code path; this test verifies the wrapper's own
+# sanitisation.
+# ---------------------------------------------------------------------------
+@test "wrapper unsets BATS_RETRY_SCRIPT so nested bats processes do not inherit it" {
+  cat > "$FIXTURE_SCRIPTS/simple.sh" <<'EOF'
+#!/usr/bin/env bash
+do_thing() { :; }
+EOF
+  cat > "$FIXTURE_TESTS/simple.bats" <<'EOF'
+#!/usr/bin/env bats
+# Fixture references do_thing for coverage.
+EOF
+
+  # Point BATS_RETRY_SCRIPT at a script that captures the variable and fails
+  # if it is still set when bats runs.
+  local probe="$TEST_TMP/retry-probe.sh"
+  cat > "$probe" <<'PROBE'
+#!/usr/bin/env bash
+set -euo pipefail
+# This script is invoked in place of bats-shard-retry.sh. It checks whether
+# the wrapper leaked BATS_RETRY_SCRIPT into its environment.
+if [ -n "${BATS_RETRY_SCRIPT:-}" ]; then
+  printf 'LEAK: BATS_RETRY_SCRIPT is still set: %s\n' "$BATS_RETRY_SCRIPT" >&2
+  exit 99
+fi
+# Skip the actual retry logic — we only needed the env check.
+exit 0
+PROBE
+  chmod +x "$probe"
+
+  # Re-export BATS_RETRY_SCRIPT for this one test only.
+  BATS_RETRY_SCRIPT="$probe" run bash "$WRAPPER"
+  [ "$status" -eq 0 ]
+  # The probe must not have printed a LEAK line.
+  [[ "$output" != *"LEAK:"* ]]
 }
 
 # ---------------------------------------------------------------------------
