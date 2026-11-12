@@ -546,6 +546,7 @@
 4	brain-update-index.bats	2
 4	check-monolith-shard-sync.bats	3
 4	check-status-discipline.bats	1
+4	ci-junit-ingestion.bats	14
 4	ci-regen-helpers-coverage.bats	1
 4	class-b-mixed-state-triage.bats	1
 4	clean-room-gate.bats	4
@@ -639,6 +640,7 @@
 4	project-config-slice.bats	1
 4	promotion-trigger.bats	2
 4	publish-gate-release-commit.bats	3
+4	qa-ci-evidence.bats	8
 4	release-strategy.bats	1
 4	resolve-env-kind.bats	1
 4	resolve-sprint-stories-review-status.bats	1
@@ -839,6 +841,7 @@
 5	transition-story-status-untriaged-findings.bats	5
 5	triage-findings-fallback.bats	1
 5	validate-gate-traceability-strategy.bats	2
+5	validate-junit-sha.bats	13
 5	vcp-adv-02-adversarial-step4-contract.bats	1
 5	vcp-chk-03-market-research-positive.bats	1
 5	vcp-chk-09-product-brief-positive.bats	1

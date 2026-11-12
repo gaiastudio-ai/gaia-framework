@@ -516,6 +516,7 @@ scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats
 scripts-core	check-story-layout-sync.bats
 scripts-core	ci-config-slice.bats
+scripts-core	ci-junit-ingestion.bats
 scripts-core	cluster-1/platforms-device-targets.bats
 scripts-core	cluster-1/project-kind.bats
 scripts-core	cluster-1/resolve-config-artifact-paths.bats
@@ -637,6 +638,7 @@ scripts-core	plugin-cache-recovery.bats
 scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	project-config-slice.bats
+scripts-core	qa-ci-evidence.bats
 scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config-cwd-independence.bats
@@ -691,6 +693,7 @@ scripts-core	val-sidecar-write-jq-cleanliness.bats
 scripts-core	val-validate-plan.bats
 scripts-core	validate-gate-traceability-strategy.bats
 scripts-core	validate-gate.bats
+scripts-core	validate-junit-sha.bats
 scripts-core	vcp-cpt-02.bats
 scripts-core	vcp-cpt-09-phase2.bats
 scripts-core	vcp-cpt-09-phase3-solutioning.bats

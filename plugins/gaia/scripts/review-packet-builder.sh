@@ -733,9 +733,38 @@ main() {
   local files_content
   files_content="$(git -C "$repo" diff --name-only "$base_sha" "$head_sha" 2>/dev/null | LC_ALL=C sort)" || files_content=""
 
-  # 3. CI section
+  # 3. CI section (includes CI JUnit evidence summary when present)
   local ci_content
   ci_content="$(_rpb_build_ci_section "$repo" "$head_sha")"
+
+  # Append CI JUnit evidence summary if present for this round's head SHA
+  local ci_junit_file="$story_dir/ci-evidence/ci-junit-evidence.json"
+  if [ -f "$ci_junit_file" ]; then
+    local evi_sha
+    evi_sha="$(jq -r '.head_sha // ""' "$ci_junit_file" 2>/dev/null)" || evi_sha=""
+    if [ -n "$evi_sha" ] && [ "$evi_sha" != "null" ]; then
+      local short_evi_sha="${evi_sha:0:7}"
+      local evi_runs evi_totals
+      evi_runs="$(jq -r '.runs[]?.url // empty' "$ci_junit_file" 2>/dev/null)" || evi_runs=""
+      evi_totals="$(jq -r '"tests=\(.totals.tests // 0) passed=\(.totals.passed // 0) failed=\(.totals.failed // 0) skipped=\(.totals.skipped // 0)"' "$ci_junit_file" 2>/dev/null)" || evi_totals=""
+      local evi_skipped_count
+      evi_skipped_count="$(jq '.totals.skipped // 0' "$ci_junit_file" 2>/dev/null)" || evi_skipped_count=0
+
+      ci_content="$(printf '%s\n\nCI JUnit evidence (SHA %s):\n' "$ci_content" "$short_evi_sha")"
+      if [ -n "$evi_runs" ]; then
+        while IFS= read -r evi_url; do
+          [ -n "$evi_url" ] || continue
+          ci_content="$(printf '%s  run: %s\n' "$ci_content" "$evi_url")"
+        done <<< "$evi_runs"
+      fi
+      if [ -n "$evi_totals" ]; then
+        ci_content="$(printf '%s  totals: %s\n' "$ci_content" "$evi_totals")"
+      fi
+      if [ "$evi_skipped_count" -gt 0 ]; then
+        ci_content="$(printf '%s  skipped_count: %s\n' "$ci_content" "$evi_skipped_count")"
+      fi
+    fi
+  fi
 
   # 4. Lint section
   local lint_content
@@ -846,4 +875,9 @@ main() {
   printf '%s\n' "$packet_path"
 }
 
-main "$@"
+# CLI entry: when executed directly, run main; when sourced, expose
+# functions only (allows store-ci-evidence.sh to reuse _rpb_strip_tokens
+# and _rpb_gitleaks_scan).
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+  main "$@"
+fi

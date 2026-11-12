@@ -40,6 +40,37 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
   shadow pin and the final inode comparison in `_al_try_reap`, letting
   tests inject a deterministic replacement of the lock file.
 
+### CI JUnit ingestion and SHA-pinned validation
+
+#### Added
+- CI JUnit evidence ingestion: the QA review gate now fetches JUnit artifacts
+  from completed CI runs for the review commit, validates that every run's head
+  SHA matches the code tree HEAD, and produces CI-derived execution evidence
+  without running local test tiers.
+- New `scripts/ci-junit-fetch.sh` — downloads JUnit artifacts from GitHub
+  Actions runs for a given commit, filters to valid JUnit XML, and writes
+  per-run metadata (URL, SHA, attempt, duration).
+- New `scripts/validate-junit-sha.sh` — recomputes HEAD at validation time,
+  compares against every run record and any XML-embedded commit property, and
+  requires HTTPS run links. Rejects with `junit_sha_mismatch`,
+  `junit_run_link_missing`, or `junit_parse_error`.
+- `schemas/execution-evidence.schema.json` gains an optional `ci_source` block
+  (provider, run URLs, head SHA, attempt) and the `tier` field now accepts `ci`.
+- `/gaia-check-dod` shows CI run links and the pinned SHA as read-only
+  information next to the CI checklist item when `ci-junit-evidence.json` is
+  present.
+- Review packet CI section includes the CI JUnit evidence summary (run links,
+  SHA, totals, skipped count) when present for the round's head commit.
+- New bats suites: `ci-junit-ingestion.bats`, `validate-junit-sha.bats`,
+  `qa-ci-evidence.bats`.
+
+#### Upgrade notes
+- **Hardening default active on upgrade**: SHA-pinned CI JUnit evidence is ON
+  by default with no configuration needed. Projects whose CI publishes JUnit
+  artifacts named with `junit` (case-insensitive) get automatic CI evidence
+  ingestion. Projects without CI or without JUnit artifacts keep today's local
+  test runs unchanged.
+
 ### Regression-rule gate and seed library
 
 #### Added

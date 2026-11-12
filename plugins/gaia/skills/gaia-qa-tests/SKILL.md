@@ -194,9 +194,28 @@ Phase 3A also emits a rendered `.md` companion alongside `analysis-results.json`
 
 ### Phase 3A.1 — Project-config-driven test execution
 
-After the test-discovery / AC-coverage analyzer completes, the skill MAY run the configured test suites and capture execution evidence. This step sits between Phase 3A and Phase 3B because the resulting `execution-evidence.json` feeds the verdict-resolver alongside `analysis-results.json` (per source-report section 5.2 ordering).
+After the test-discovery / AC-coverage analyzer completes, the skill tries CI JUnit evidence first (when available) and falls back to local test execution.
 
-**Driver script.** Phase 3A.1 is fully scripted via:
+**CI JUnit evidence path.** Before running local tiers, Phase 3A.1 checks whether CI JUnit evidence can be used for the review round's head commit:
+
+1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/ci-junit-fetch.sh --repo {code_tree} --out {private_tmp}`.
+   - Exit 0: evidence fetched. Proceed to validation.
+   - Exit 2: unavailable (reason on stdout). Record the reason and fall through to the local-tier path below. Reasons include: no CI platform configured, unsupported provider, `gh` not installed or not authenticated, no completed runs for HEAD, no JUnit artifacts on the runs.
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/validate-junit-sha.sh --repo {code_tree} --evidence {private_tmp}`.
+   - Exit 0 (accepted): build `execution-evidence.json` from the JUnit results (per-suite pass/fail counts, `context: "ci_pre_merge"`, `tier: "ci"`, `wall_clock_seconds` set to the CI run duration summed over the cited runs, and a `ci_source` block with provider, run URLs, head SHA, and attempt). Do NOT run local tiers. The QA report cites each run link and the SHA.
+     After building `execution-evidence.json`, store the evidence in the story folder:
+     ```bash
+     ${CLAUDE_PLUGIN_ROOT}/scripts/store-ci-evidence.sh \
+       --story-key {story_key} \
+       --evidence-dir {private_tmp} \
+       --repo {code_tree}
+     ```
+     This copies the JUnit XML (with `<system-out>`/`<system-err>` content removed), runs the review packet builder's token-stripping and gitleaks scan, and writes `ci-junit-evidence.json`. On a secret finding (exit 3), the evidence is not stored and the gate records a blocked finding. On any other non-zero exit, log a warning but do not block the gate — the evidence simply remains unstored.
+   - Exit 3 (rejected): the gate does not pass on that evidence. Record the rejection reason (`junit_sha_mismatch`, `junit_run_link_missing`, or `junit_parse_error`) as a blocked finding with the action "push the head commit and let CI finish". Never fall back to cached or earlier results.
+
+**Cache bypass rule.** The Phase 3A.1 result cache (`.cache/{cache_key}.json`) MUST NOT short-circuit the CI evidence branch: when CI evidence was fetched or rejected for this HEAD, the cache is bypassed and the CI result takes precedence.
+
+**Local-tier fallback.** When CI evidence is unavailable (exit 2 above), the local-tier runner executes as today:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
@@ -206,7 +225,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/qa-test-runner.sh \
   --story-file {story_file_path}
 ```
 
-The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`.
+The runner emits `.gaia/state/review/qa-tests/{story_key}/execution-evidence.json` validating against `plugins/gaia/schemas/execution-evidence.schema.json`. The QA report states which unavailability reason applied.
 
 ### Phase 3A.2 — Mutation-score check
 
