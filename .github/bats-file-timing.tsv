@@ -567,6 +567,7 @@ mutation-adapter-contract.bats	14
 mutation-bash-adapter.bats	31
 mutation-end-to-end.bats	504
 mutation-evidence-check.bats	2
+mutation-go-adapter.bats	15
 mutation-runner.bats	98
 never-built-commands.bats	1
 never-run-subdir-guard.bats	1

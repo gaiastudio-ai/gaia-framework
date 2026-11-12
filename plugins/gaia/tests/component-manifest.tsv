@@ -15,6 +15,7 @@ core	adapters/dead-code-python.bats
 core	adapters/grype-trust-boundary.bats
 core	adapters/mutation-adapter-contract.bats
 core	adapters/mutation-end-to-end.bats
+core	adapters/mutation-go-adapter.bats
 core	adapters/mutation-runner.bats
 core	add-feature-step8.bats
 core	advisory-manual-test-gate.bats
