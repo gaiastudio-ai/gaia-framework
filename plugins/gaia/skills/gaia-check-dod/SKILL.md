@@ -52,6 +52,12 @@ This skill is the native Claude Code conversion of the legacy check-dod workflow
   - Any unchecked: `INCOMPLETE` -- "{M} of {N} items unchecked."
 - List each unchecked item explicitly so the developer knows what remains.
 
+### Step 3b -- CI Evidence Citation (read-only)
+
+When the story folder contains `ci-evidence/ci-junit-evidence.json`, read its `runs[].url` and `head_sha` fields and include them as read-only information next to the CI checklist item (under `### Code Quality & CI`). Format: `CI run: <url> (SHA <short_sha>)`. This citation is informational only — it does not change the DoD verdict.
+
+When `ci-junit-evidence.json` is absent, skip this step silently.
+
 ### Step 4 -- Report Results
 
 - Print a structured report:
@@ -67,6 +73,7 @@ This skill is the native Claude Code conversion of the legacy check-dod workflow
   ### Unchecked
   - [ ] item description ...
   ```
+- When CI evidence was found in Step 3b, append a `### CI Evidence` section showing each run link and the pinned SHA.
 - Exit with code 0 for COMPLETE, non-zero for INCOMPLETE.
 
 ## Finalize

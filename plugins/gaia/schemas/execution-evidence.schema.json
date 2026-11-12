@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gaiastudio.ai/schemas/execution-evidence.schema.json",
   "title": "GAIA execution-evidence.json — qa-review test execution evidence",
-  "description": "Test execution evidence captured by /gaia-review-qa via review-common/qa-test-runner.sh and consumed by verdict-resolver.sh through --execution-evidence. Records per-suite outcome, timing, and the resolved tier/context so a downstream verdict can apply the precedence rules.",
+  "description": "Test execution evidence captured by /gaia-review-qa via review-common/qa-test-runner.sh (local tiers) or ci-junit-fetch.sh (CI-derived evidence) and consumed by verdict-resolver.sh through --execution-evidence. Records per-suite outcome, timing, and the resolved tier/context so a downstream verdict can apply the precedence rules.",
   "type": "object",
   "additionalProperties": false,
   "required": ["suites", "tier", "context", "wall_clock_seconds"],
@@ -63,7 +63,7 @@
       }
     },
     "tier": {
-      "description": "The single tier name when one tier ran, the literal 'multi' when more than one tier ran, or 'none' when execution was skipped.",
+      "description": "The single tier name when one tier ran, the literal 'multi' when more than one tier ran, 'ci' when evidence was derived from CI JUnit artifacts, or 'none' when execution was skipped.",
       "type": "string",
       "minLength": 1
     },
@@ -73,7 +73,7 @@
       "enum": ["local", "ci_pre_merge", "ci_post_merge", "deployment", "post_deploy"]
     },
     "wall_clock_seconds": {
-      "description": "Total wall-clock time spent inside qa-test-runner.sh (seconds, fractional).",
+      "description": "Total wall-clock time spent inside qa-test-runner.sh (seconds, fractional) for local tiers, or the summed CI run duration when evidence is CI-derived.",
       "type": "number",
       "minimum": 0
     },
@@ -96,6 +96,40 @@
         "error_reason": { "type": "string" },
         "skip_reason": { "type": "string" },
         "findings": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "ci_source": {
+      "description": "Present when evidence was derived from CI JUnit artifacts. Records the CI provider, the run URLs, the pinned head SHA, and per-run attempt counts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "runs", "head_sha"],
+      "properties": {
+        "provider": {
+          "description": "CI provider identifier (e.g. github-actions).",
+          "type": "string",
+          "minLength": 1
+        },
+        "runs": {
+          "description": "Per-run records from the CI provider.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url", "head_sha", "attempt"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "head_sha": { "type": "string", "minLength": 7 },
+              "attempt": { "type": "number", "minimum": 1 },
+              "conclusion": { "type": "string" }
+            }
+          },
+          "minItems": 1
+        },
+        "head_sha": {
+          "description": "The validated head SHA that all runs and XML properties must match.",
+          "type": "string",
+          "minLength": 7
+        }
       }
     },
     "diagnostics": {
