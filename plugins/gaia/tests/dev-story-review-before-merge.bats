@@ -1520,8 +1520,8 @@ _commit_fence() {
   [ "$status" -eq 0 ]
   [ "$(git -C "$TMP/wt" rev-parse HEAD)" = "$before" ]
 
-  # A dirty tree still gets its commit.
-  printf 'change\n' > "$TMP/wt/new.txt"
+  # A tracked modification still gets its commit.
+  printf 'change\n' > "$TMP/wt/file.txt"
   CLAUDE_PLUGIN_ROOT="$TMP/plugin" PROJECT_PATH="$TMP/wt" run bash -e "$TMP/commit.sh"
   [ "$status" -eq 0 ]
   [ "$(git -C "$TMP/wt" rev-parse HEAD)" != "$before" ]
@@ -2417,4 +2417,84 @@ STORY
     "$REVIEW_ORDER" find-worktree --story-key "$key"
   [ "$status" -eq 1 ]
   [[ "$output" == *"no worktree"* ]]
+}
+
+# ---------- RF-104: resolver failure + opt-in key ----------
+
+@test "opted-in project with resolver failure refuses review to done" {
+  # Coverage: AC10. When the key is true but the resolver fails (malformed
+  # config), the guard refuses because the opt-in is confirmed.
+  _done_fixture
+  _add_chain
+  # Break the config after the dev_story block so the resolver fails,
+  # but the raw key read still finds review_before_merge: true.
+  printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+@test "key-absent project with resolver failure allows review to done" {
+  # Coverage: AC10. When the key is absent and the resolver fails, the
+  # guard allows: the user never opted in.
+  _done_fixture
+  _add_chain
+  _drop_key
+  printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+}
+
+# ---------- RF-85: Step 3a teardown trap disarmed in pre-push mode ----------
+
+@test "step 3a teardown trap is disarmed when review mode is pre-push" {
+  # Coverage: AC4. The SKILL.md prescribes skipping the teardown trap when
+  # the review mode is pre-push, so a stop at Step 9a keeps the worktree.
+  local fence
+  fence="$(sed -n '/Install the teardown trap/,/worktree_teardown_trap/p' "$SKILL_MD")"
+  # The fence must condition the trap on the review mode being default.
+  [[ "$fence" == *'_review_mode'* ]] || [[ "$fence" == *'review_mode'* ]]
+  [[ "$fence" == *'pre-push'* ]]
+  [[ "$fence" == *'Default mode only'* ]] || [[ "$fence" == *'default mode'* ]]
+}
+
+# ---------- RF-94: Step 9a commit fence uses allow-list ----------
+
+@test "step 9a commit fence does not use git add -A" {
+  # Coverage: stray-files finding. The commit fence must not stage untracked
+  # files with git add -A; it should use 'add -u' and halt on strays.
+  local item2
+  item2="$(_item "Commit.")"
+  _lacks "$item2" "add -A"
+  _has "$item2" "add -u"
+}
+
+@test "step 9a commit fence halts on untracked files outside the allow-list" {
+  # Coverage: stray-files finding. The fence must HALT if untracked, non-
+  # ignored files exist, naming them rather than committing them silently.
+  local item2
+  item2="$(_item "Commit.")"
+  _has "$item2" "HALT"
+  _has "$item2" "untracked"
+  _has "$item2" "ls-files --others"
+}
+
+# ---------- RF-99: check-layout from a non-git root with resolver failure ----------
+
+@test "check-layout from a non-git root reads project_path when the resolver fails" {
+  # Coverage: AC-EC8. From a non-git root with PROJECT_PATH unset and a
+  # malformed config that the resolver rejects, check-layout reads
+  # project_path directly from the file and detects worktree mode is off.
+  _nongit_root_fixture
+  printf 'ci_cd:\n  promotion_chain:\n    - id: staging\n      branch: staging\n' \
+    >> "$TMP/root/.gaia/config/project-config.yaml"
+  # Break the config so the resolver fails.
+  printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+  git -C "$TMP/root/repo" branch staging 2>/dev/null || true
+  cd "$TMP/root"
+  run env -u GAIA_WORKTREE_MODE -u PROJECT_PATH \
+    CLAUDE_PROJECT_ROOT="$TMP/root" "$REVIEW_ORDER" check-layout --worktree-mode-only
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"worktree mode is off"* ]]
 }

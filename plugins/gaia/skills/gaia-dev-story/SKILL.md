@@ -374,10 +374,13 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-dev-story 3 \
   worktree_path="$PROJECT_PATH" story_key={story_key}
 ```
 
-**Install the teardown trap, pinned to the captured path:**
+**Install the teardown trap, pinned to the captured path.** When the pre-push review opt-in is active (the `review-order.sh mode` read earlier printed `pre-push`), do NOT install this trap: a stop or halt at Step 9a must keep the worktree so the story is resumable. The existing pre-merge teardown at Step 13 handles removal after a successful merge. In default mode (no opt-in), install the trap as before:
 
 ```bash
-trap 'worktree_teardown_trap "$PRIMARY_CODE_TREE" "$STORY_WORKTREE_PATH"' EXIT INT TERM
+# Default mode only — skip when the review ordering mode is pre-push.
+if [ "${_review_mode:-default}" != "pre-push" ]; then
+  trap 'worktree_teardown_trap "$PRIMARY_CODE_TREE" "$STORY_WORKTREE_PATH"' EXIT INT TERM
+fi
 ```
 
 Both arguments MUST be the captured variables. A trap that read a live `PROJECT_PATH` would, after the restore below, aim removal at the primary checkout instead of the story's worktree. The handler fires twice for a signal (once for the signal, once for the EXIT that follows) and is silent on the second pass. Nothing fires on a kill or an out-of-memory stop — the next story start prunes that orphan, which is why reaping is scoped to worktree-mode runs. An operator running with the mode off can inspect leftovers with `git worktree list` and clear them with `git worktree prune`.
@@ -766,11 +769,23 @@ Then execute the following sequence:
    in the worktree. Do NOT push yet. A clean tree skips this item: a resumed run
    arrives with its commit already made, and `git commit` would fail with nothing
    to commit. In a non-git workspace there is nothing to commit; skip this item.
-   Stage tracked changes and new files but exclude secrets and stray fixtures:
+   Stage only tracked modifications and files named in the story's File List.
+   HALT and name any untracked file outside that set rather than committing it:
    ```bash
    if [ -n "$(git -C "${PROJECT_PATH:-.}" status --porcelain)" ]; then
+     # Stage tracked modifications (modified and deleted files).
+     git -C "${PROJECT_PATH:-.}" add -u
+     # Check for untracked files. HALT if any exist: they are not in the
+     # allow-list and must not be committed silently. Secret-pattern
+     # exclusions stay as defence in depth.
+     _untracked="$(git -C "${PROJECT_PATH:-.}" ls-files --others --exclude-standard \
+       -- ':!.env' ':!.env.*' ':!*.pem' ':!*.key' ':!*.tmp')"
+     if [ -n "$_untracked" ]; then
+       printf 'HALT: untracked files found that are not in the File List:\n%s\n' "$_untracked" >&2
+       printf 'Add them to .gitignore, remove them, or add them to the story File List and stage them.\n' >&2
+       exit 1
+     fi
      _msg="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/commit-msg.sh" {story_file})"
-     git -C "${PROJECT_PATH:-.}" add -A -- ':!.env' ':!.env.*' ':!*.pem' ':!*.key' ':!*.tmp'
      git -C "${PROJECT_PATH:-.}" commit -qF - <<<"$_msg"
    fi
    ```

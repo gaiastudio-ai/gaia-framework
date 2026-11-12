@@ -121,6 +121,54 @@ _resolve() {
   CLAUDE_PROJECT_ROOT="$anchor" "$PLUGIN_ROOT/scripts/resolve-config.sh" "$@"
 }
 
+# Read the raw review_before_merge value from the shared config file without
+# the full resolver.  Returns:
+#   0 + prints "true"   — the key is set to true
+#   0 + prints "false"  — the key is explicitly false
+#   0 + prints ""       — the key is absent (no dev_story block or no key)
+#   1                   — the config file cannot be found or parsed
+# This intentionally avoids the resolver so a resolver failure does not mask
+# an explicit opt-in.
+_raw_key_from_config() {
+  local cfg
+  cfg="$(_discover_shared_config)" || return 1
+  [ -n "$cfg" ] || return 1
+  [ -f "$cfg" ] || return 1
+
+  # A lightweight awk parser that finds the first review_before_merge value
+  # under a top-level dev_story mapping.  It handles:
+  #   dev_story:\n  review_before_merge: <val>
+  #   dev_story: {review_before_merge: <val>}
+  # It does NOT handle aliases, multi-line flow mappings, or anchors.  For a
+  # single boolean key this is sufficient, and it avoids shelling out to yq/jq.
+  local val
+  val="$(awk '
+    /^dev_story:/ {
+      # Flow mapping on the same line?
+      if (index($0, "review_before_merge:") > 0) {
+        s = $0
+        sub(/.*review_before_merge:[[:space:]]*/, "", s)
+        sub(/[,}].*/, "", s)
+        sub(/[[:space:]]*#.*/, "", s)
+        gsub(/[[:space:]]/, "", s)
+        print s
+        exit
+      }
+      in_dev = 1
+      next
+    }
+    in_dev && /^[^[:space:]#]/ { exit }
+    in_dev && /^[[:space:]]+review_before_merge:/ {
+      sub(/^[[:space:]]*review_before_merge:[[:space:]]*/, "")
+      sub(/[[:space:]]*#.*/, "")
+      gsub(/[[:space:]]/, "")
+      print
+      exit
+    }
+  ' "$cfg" 2>/dev/null)" || return 1
+  printf '%s\n' "$val"
+}
+
 # ---------- Subcommand: mode ----------
 # Reads dev_story.review_before_merge from project config.
 # Prints "pre-push" for true, "default" for false or empty, and also "default"
@@ -356,6 +404,28 @@ cmd_check_layout() {
     _cfg_pairs="$(_resolve 2>/dev/null)" || true
     _cfg_path="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_path='\\(.*\\)'\$/\\1/p")"
     _cfg_root="$(printf '%s\n' "$_cfg_pairs" | sed -n "s/^project_root='\\(.*\\)'\$/\\1/p")"
+    # When the full resolver fails (malformed config), read the code path
+    # directly from the shared config file so the worktree-mode check can
+    # still fire from a non-git project root.
+    if [ -z "$_cfg_path" ]; then
+      local _raw_cfg
+      _raw_cfg="$(_discover_shared_config)" || true
+      if [ -n "$_raw_cfg" ] && [ -f "$_raw_cfg" ]; then
+        _cfg_path="$(awk '/^project_path:/ { sub(/^project_path:[[:space:]]*/, ""); gsub(/["'"'"']/, ""); sub(/[[:space:]]*#.*/, ""); print; exit }' "$_raw_cfg" 2>/dev/null)" || true
+        _cfg_root="$(awk '/^project_root:/ { sub(/^project_root:[[:space:]]*/, ""); gsub(/["'"'"']/, ""); sub(/[[:space:]]*#.*/, ""); print; exit }' "$_raw_cfg" 2>/dev/null)" || true
+        # Resolve relative config root against the config file's directory.
+        if [ -n "$_cfg_root" ]; then
+          case "$_cfg_root" in
+            /*) ;;
+            .) _cfg_root="$(cd "$(dirname "$(dirname "$(dirname "$_raw_cfg")")")" 2>/dev/null && pwd -P)" || true ;;
+            *) _cfg_root="$(cd "$(dirname "$(dirname "$(dirname "$_raw_cfg")")")/$_cfg_root" 2>/dev/null && pwd -P)" || true ;;
+          esac
+        else
+          # Default root: two levels above .gaia/config/project-config.yaml
+          _cfg_root="$(cd "$(dirname "$(dirname "$(dirname "$_raw_cfg")")")" 2>/dev/null && pwd -P)" || true
+        fi
+      fi
+    fi
     if [ -n "$_cfg_path" ]; then
       case "$_cfg_path" in
         /*) git_dir="$_cfg_path" ;;
@@ -514,10 +584,38 @@ cmd_merge_guard() {
 
   local mode
   mode="$(cmd_mode 2>/dev/null)" || mode=""
-  # The guard engages only when mode is known to be pre-push. A resolver
-  # failure or an unreadable config cannot confirm opt-in, so the guard
-  # allows the transition — the user never opted in.
-  [ "$mode" = "pre-push" ] || exit 0
+  if [ "$mode" = "pre-push" ]; then
+    : # Guard engages below.
+  elif [ -n "$mode" ]; then
+    # Mode resolved to something other than pre-push (e.g. "default").
+    exit 0
+  else
+    # Mode could not be resolved (resolver failure). Check whether the key
+    # is set to true directly from the shared config, bypassing the resolver.
+    # Key true -> refuse: the user opted in, but the resolver failed, so the
+    #   guard cannot verify the merge. Fail closed for opted-in projects.
+    # Key absent or false -> allow: the user never opted in.
+    # Key unreadable -> refuse: the opt-in cannot be ruled out.
+    local raw_val
+    if raw_val="$(_raw_key_from_config)"; then
+      case "$raw_val" in
+        true)
+          _merge_refusal "$key" \
+            "the project has opted in to pre-push review but the config resolver failed; fix the config or set the key to false"
+          ;;
+        *)
+          # Key absent, false, or any non-true value — the user never opted
+          # in. A non-boolean value is invalid, but readable and not true, so
+          # the opt-in can be ruled out. Allow.
+          exit 0
+          ;;
+      esac
+    else
+      # Config file cannot be found or parsed — cannot rule out an opt-in.
+      _merge_refusal "$key" \
+        "the config file could not be read to check the review ordering opt-in"
+    fi
+  fi
 
   # Validate after the mode check so default-mode users with non-standard keys
   # are never refused (they exit 0 above and no verifier or network call runs).
