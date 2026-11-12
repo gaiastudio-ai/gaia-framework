@@ -276,7 +276,7 @@
 2	knowledge-paths-guard.bats	1
 2	lib-env-allowlist.bats	1
 2	lib-exec-with-timeout.bats	5
-2	lock-helper.bats	56
+2	lock-helper.bats	80
 2	lock-sprint-state.bats	29
 2	meeting-dispatch-envelope-assertion.bats	1
 2	meeting-notes-cost-breakdown-yaml.bats	1
