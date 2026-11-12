@@ -188,3 +188,95 @@ EOF
   [ "$status" -eq 0 ]
   ! grep -qi "retrying" "$SUMMARY_FILE"
 }
+
+# --- Integration: real run-with-coverage.sh -> bats-shard-retry.sh hand-off ---
+# These tests run the real scripts against a temp dir with real .bats files.
+# They must run outside the outer bats env to avoid BATS_* var leaks, so each
+# test builds a standalone driver script and invokes it via env -u.
+
+_build_integration_driver() {
+  # Args: $1=driver path, $2=tests dir, $3=summary path, $4=scripts dir
+  # Strips BATS test-state vars but preserves BATS_ROOT (installation path)
+  # so the nested bats can find its own libraries.
+  local covdir
+  covdir="$(mktemp -d)"
+  cat > "$1" <<DRIVER
+#!/usr/bin/env bash
+set -euo pipefail
+# Strip BATS test-state vars but keep installation vars.
+while IFS='=' read -r name _; do
+  case "\$name" in
+    BATS_ROOT|BATS_LIB_PATH|BATS_LIBDIR) ;;
+    BATS_*) unset "\$name" ;;
+  esac
+done < <(env)
+export BATS_RETRY_SCRIPT="$4/bats-shard-retry.sh"
+export TESTS_DIR_OVERRIDE="$2"
+export SCRIPTS_DIR_OVERRIDE="$2"
+export COVERAGE_DIR="$covdir"
+export GITHUB_STEP_SUMMARY="$3"
+export LC_ALL=C
+exec bash "$REPO_ROOT/plugins/gaia/tests/run-with-coverage.sh"
+DRIVER
+  chmod +x "$1"
+}
+
+@test "integration: run-with-coverage.sh + retry script passes with flaky file" {
+  # Build a temp tests dir with one passing file and one flaky file.
+  local tdir="$TEST_TMP/integration-pass"
+  mkdir -p "$tdir"
+  cat > "$tdir/pass.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "always passes" { true; }
+EOF
+  local marker="$TEST_TMP/flaky-marker"
+  cat > "$tdir/flaky.bats" <<EOF
+#!/usr/bin/env bats
+@test "flaky" {
+  if [ ! -f "$marker" ]; then
+    touch "$marker"
+    false
+  fi
+  true
+}
+EOF
+  # Dummy script dir so the coverage check (step 3) finds no scripts and
+  # doesn't fail on an unrelated public-function assertion.
+  mkdir -p "$tdir/scripts_stub"
+  local summary="$TEST_TMP/integration-summary.md"
+  : > "$summary"
+  local driver="$TEST_TMP/integration-driver.sh"
+  _build_integration_driver "$driver" "$tdir" "$summary" \
+    "$REPO_ROOT/.github/scripts"
+
+  run "$driver"
+  echo "status=$status"
+  echo "output=$output"
+  [ "$status" -eq 0 ]
+  # The flaky file should have been retried
+  grep -qi "retrying.*flaky" "$summary" || grep -qi "flaky.bats" "$summary"
+}
+
+@test "integration: run-with-coverage.sh + retry script fails on double failure" {
+  local tdir="$TEST_TMP/integration-fail"
+  mkdir -p "$tdir"
+  cat > "$tdir/pass.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "always passes" { true; }
+EOF
+  cat > "$tdir/always-fail.bats" <<'EOF'
+#!/usr/bin/env bats
+@test "always fails" { false; }
+EOF
+  mkdir -p "$tdir/scripts_stub"
+  local summary="$TEST_TMP/integration-fail-summary.md"
+  : > "$summary"
+  local driver="$TEST_TMP/integration-fail-driver.sh"
+  _build_integration_driver "$driver" "$tdir" "$summary" \
+    "$REPO_ROOT/.github/scripts"
+
+  run "$driver"
+  [ "$status" -ne 0 ]
+  # The always-fail file should have been retried and still failed
+  grep -qi "retry" "$summary"
+}

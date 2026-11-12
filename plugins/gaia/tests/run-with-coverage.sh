@@ -134,9 +134,17 @@ fi
 # BATS_RETRY_SCRIPT: when set to the path of bats-shard-retry.sh, failed test
 # files are re-run once instead of failing immediately. A file that fails twice
 # still fails the suite. This avoids a whole-suite re-run for known flakes.
+# The retry script requires individual .bats file paths (not a directory), so
+# we expand the top-level file list ourselves — exactly the same non-recursive
+# set that `bats "$TESTS_DIR/"` would run.
 if [ -n "${BATS_RETRY_SCRIPT:-}" ] && [ -x "${BATS_RETRY_SCRIPT}" ]; then
   bold "  per-file retry via ${BATS_RETRY_SCRIPT}"
-  if ! "$BATS_RETRY_SCRIPT" -- "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "$TESTS_DIR/"; then
+  BATS_FILES=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && BATS_FILES+=("$f")
+  done < <(find "$TESTS_DIR" -maxdepth 1 -name '*.bats' -type f | sort)
+  bold "  ${#BATS_FILES[@]} top-level .bats files"
+  if ! "$BATS_RETRY_SCRIPT" -- "${BATS_ARGS[@]+"${BATS_ARGS[@]}"}" "${BATS_FILES[@]}"; then
     red "bats suite failed (after per-file retry)"
     exit 1
   fi
