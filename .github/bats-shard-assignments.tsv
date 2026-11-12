@@ -302,6 +302,7 @@
 2	resolve-story-file.bats	1
 2	retention-policy-check.bats	1
 2	review-gate-hardening.bats	5
+2	review-packet-builder.bats	35
 2	sarif-multitool-merge.bats	3
 2	scaffold-story-ampersand-escape.bats	1
 2	schema-awareness-check.bats	1

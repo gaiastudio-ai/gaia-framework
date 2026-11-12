@@ -13,6 +13,9 @@ core	adapters/dead-code-go.bats
 core	adapters/dead-code-jvm.bats
 core	adapters/dead-code-python.bats
 core	adapters/grype-trust-boundary.bats
+core	adapters/mutation-adapter-contract.bats
+core	adapters/mutation-end-to-end.bats
+core	adapters/mutation-runner.bats
 core	add-feature-step8.bats
 core	advisory-manual-test-gate.bats
 core	advisory-manual-test-opt-in.bats
@@ -343,6 +346,7 @@ core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
 core	review-gate-commit-bound.bats
+core	review-packet-builder.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
 core	review-parity/gaia-qa-tests/action-skill-contract.bats
@@ -489,6 +493,7 @@ scripts-core	E77-S4-rubric-loader-regression.bats
 scripts-core	E77-S5-plugin-code-sub-rubric.bats
 scripts-core	E77-S6-plugin-security-sub-rubric.bats
 scripts-core	E93-S6-sprint-review-rubric-sgr-velocity-003-calibration.bats
+scripts-core	adapters/mutation-bash-adapter.bats
 scripts-core	af-2026-05-10-5-baseline.bats
 scripts-core	af-2026-05-21-7-greenfield-bootstrap.bats
 scripts-core	af-2026-05-22-1-adversarial-reviewer-agent.bats
@@ -772,6 +777,7 @@ scripts-lib	worktree-lifecycle.bats
 scripts-lib	worktree-reap-safety.bats
 scripts-lib	worktree-val-sentinel-path.bats
 scripts-lib	write-val-envelope.bats
+scripts-review-common	adapters/mutation-evidence-check.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
 scripts-review-common	data-handling-lint.bats

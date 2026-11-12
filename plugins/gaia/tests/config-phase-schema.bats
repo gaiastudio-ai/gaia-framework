@@ -520,3 +520,109 @@ YAML
 @test "schema trust-boundary note in post_ci_smoke_commands description" {
   /usr/bin/grep -A5 '"post_ci_smoke_commands"' "$SCHEMA" | /usr/bin/grep -qi "trust boundary"
 }
+
+# ---------- mutation_thresholds schema validation ----------
+
+@test "mutation_thresholds schema accepts P0-P3 integers and rejects P99 and non-integers" {
+  have_python_yaml || skip "python3 + PyYAML not available" # lint-pack:allow skip-in-red-test — tool-availability guard, not a red-phase skip
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available" # lint-pack:allow skip-in-red-test — tool-availability guard, not a red-phase skip
+
+  # Valid: full object
+  cat > "${TMP}/mt-valid-full.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P0: 80
+    P1: 60
+    P2: 0
+    P3: 0
+YAML
+  run validate_fixture "${TMP}/mt-valid-full.yaml"
+  [ "$status" -eq 0 ] || { echo "full valid rejected: $output"; return 1; }
+
+  # Valid: partial object (P0 only)
+  cat > "${TMP}/mt-valid-partial.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P0: 80
+YAML
+  run validate_fixture "${TMP}/mt-valid-partial.yaml"
+  [ "$status" -eq 0 ] || { echo "partial valid rejected: $output"; return 1; }
+
+  # Rejected: P99 (additionalProperties: false)
+  cat > "${TMP}/mt-reject-p99.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P99: 50
+YAML
+  run validate_fixture "${TMP}/mt-reject-p99.yaml"
+  [ "$status" -ne 0 ]
+
+  # Rejected: 101 (maximum: 100)
+  cat > "${TMP}/mt-reject-101.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P0: 101
+YAML
+  run validate_fixture "${TMP}/mt-reject-101.yaml"
+  [ "$status" -ne 0 ]
+
+  # Rejected: 2.5 (integer required, not number)
+  cat > "${TMP}/mt-reject-float.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P0: 2.5
+YAML
+  run validate_fixture "${TMP}/mt-reject-float.yaml"
+  [ "$status" -ne 0 ]
+
+  # Rejected: string value
+  cat > "${TMP}/mt-reject-string.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+test_execution:
+  mutation_thresholds:
+    P0: "eighty"
+YAML
+  run validate_fixture "${TMP}/mt-reject-string.yaml"
+  [ "$status" -ne 0 ]
+}

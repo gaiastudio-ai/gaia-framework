@@ -177,7 +177,7 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
 6. **Collect scanner-first evidence** for the round. After the commit SHA is
    known (step 4), run:
    ```bash
-   scripts/review-common/security/scanner-evidence.sh \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-common/security/scanner-evidence.sh \
      --story {key} --run-id {new-run-id} --repo {code-tree}
    ```
    HALT the round on exit 1 (caller/config error) or exit 2 (incomplete
@@ -188,12 +188,25 @@ The script emits a single line of JSON: `{"skip":[...],"run":[...]}`. If `--forc
    security gate for the same run-id and head SHA reuses the complete
    evidence without re-running any scanner or duplicating register entries.
 
+7. **Build the review packet.** After scanner evidence (step 6), run:
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/review-packet-builder.sh \
+     --story {key} --run-id {new-run-id} --repo {code-tree}
+   ```
+   Assembles diff, files, CI, lint, scanner evidence and prior-round
+   summary into `{story_dir}/review-packet-{N}.md`. Exit codes:
+   **0** packet written, pass `--packet <path>` to gates;
+   **1/3/7** HALT (caller error / secret detected / incomplete evidence);
+   **4/5/6** WARNING, gates run without packet;
+   any other non-zero, HALT. Print the builder's stderr on halt
+   (section + rule on a secret hit; never the secret value).
+
 HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-info` exit 1 at round start (no previous round — proceed with all gates selected).
 
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:
 
 ```bash
-bash scripts/review-gate.sh update --story {story_key} \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} \
   --gate "{gate_name}" --verdict {PASSED|FAILED} \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
@@ -206,7 +219,7 @@ Skill-dispatch contract:
 ```
 For each short_name in run:
   1. Invoke via the Skill tool:
-       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id}"})
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id} --packet {packet_path}"})
      Canonical short-name → skill mapping (one canonical name per skill — the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
        qa-tests        → gaia:gaia-review-qa
