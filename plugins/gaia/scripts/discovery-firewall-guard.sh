@@ -247,21 +247,16 @@ while [ "$changed" -eq 1 ]; do
         fi
         # Check the _seen set for any path ending in this basename.
         # bash 3.2-safe: iterate the newline-delimited _seen_paths string.
-        # Only match by basename when the reference is a bare basename — a
-        # reference with a directory component (sub/evil.sh) is a distinct
-        # file from evil.sh and must not be elided by a basename collision.
         already_seen=0
-        if [ "$ref" = "$bn_check" ]; then
-          while IFS= read -r seen_path; do
-            [ -n "$seen_path" ] || continue
-            if [ "$(basename "$seen_path")" = "$bn_check" ]; then
-              already_seen=1
-              break
-            fi
-          done <<EOF
+        while IFS= read -r seen_path; do
+          [ -n "$seen_path" ] || continue
+          if [ "$(basename "$seen_path")" = "$bn_check" ]; then
+            already_seen=1
+            break
+          fi
+        done <<EOF
 $_seen_paths
 EOF
-        fi
         if [ "$already_seen" -eq 1 ]; then
           continue
         fi
