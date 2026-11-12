@@ -209,7 +209,32 @@ teardown() {
 }
 
 @test "ci-junit-fetch: gh not installed exits 2" {
-  run env PATH="/usr/bin:/bin" \
+  # Shadow gh with a script that makes 'command -v gh' fail by
+  # renaming the real gh out of the way in the PATH lookup.
+  local no_gh_bin="$TEST_TMP/no-gh-bin"
+  mkdir -p "$no_gh_bin"
+  # Create a gh that pretends to not exist by using 'command -v'
+  # failing.  The script checks 'command -v gh' so we intercept
+  # that by ensuring no gh is found on PATH. Use a PATH that
+  # drops the directory containing gh.
+  local gh_path
+  gh_path="$(command -v gh 2>/dev/null)" || true
+  local filtered_path=""
+  local IFS_bak="$IFS"
+  IFS=":"
+  for p in $PATH; do
+    if [ -n "$gh_path" ] && [ -x "$p/gh" ]; then
+      continue
+    fi
+    if [ -n "$filtered_path" ]; then
+      filtered_path="$filtered_path:$p"
+    else
+      filtered_path="$p"
+    fi
+  done
+  IFS="$IFS_bak"
+
+  run env PATH="$filtered_path" \
     PROJECT_ROOT="$CONFIG_ROOT" CLAUDE_PROJECT_ROOT="$CONFIG_ROOT" \
     bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
   [ "$status" -eq 2 ]
