@@ -529,12 +529,6 @@ YAML
 
   # Valid: full object
   cat > "${TMP}/mt-valid-full.yaml" <<'YAML'
-# ---------- dev_story.review_before_merge schema cases ----------
-
-@test "schema accepts dev_story.review_before_merge as boolean true" {
-  have_python_yaml || skip "python3 + PyYAML not available"
-  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
-  cat > "${TMP}/config-rbm-true.yaml" <<'YAML'
 project_root: /tmp/test
 project_path: /tmp/test/src
 memory_path: /tmp/test/memory
@@ -554,17 +548,6 @@ YAML
 
   # Valid: partial object (P0 only)
   cat > "${TMP}/mt-valid-partial.yaml" <<'YAML'
-dev_story:
-  review_before_merge: true
-YAML
-  run validate_fixture "${TMP}/config-rbm-true.yaml"
-  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
-}
-
-@test "schema accepts dev_story.review_before_merge as boolean false" {
-  have_python_yaml || skip "python3 + PyYAML not available"
-  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
-  cat > "${TMP}/config-rbm-false.yaml" <<'YAML'
 project_root: /tmp/test
 project_path: /tmp/test/src
 memory_path: /tmp/test/memory
@@ -581,17 +564,6 @@ YAML
 
   # Rejected: P99 (additionalProperties: false)
   cat > "${TMP}/mt-reject-p99.yaml" <<'YAML'
-dev_story:
-  review_before_merge: false
-YAML
-  run validate_fixture "${TMP}/config-rbm-false.yaml"
-  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
-}
-
-@test "schema rejects dev_story.review_before_merge as string yes" {
-  have_python_yaml || skip "python3 + PyYAML not available"
-  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
-  cat > "${TMP}/config-rbm-string.yaml" <<'YAML'
 project_root: /tmp/test
 project_path: /tmp/test/src
 memory_path: /tmp/test/memory
@@ -652,6 +624,58 @@ test_execution:
     P0: "eighty"
 YAML
   run validate_fixture "${TMP}/mt-reject-string.yaml"
+  [ "$status" -ne 0 ]
+}
+
+# ---------- dev_story.review_before_merge schema cases ----------
+
+@test "schema accepts dev_story.review_before_merge as boolean true" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-true.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: true
+YAML
+  run validate_fixture "${TMP}/config-rbm-true.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema accepts dev_story.review_before_merge as boolean false" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-false.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: false
+YAML
+  run validate_fixture "${TMP}/config-rbm-false.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema rejects dev_story.review_before_merge as string yes" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-string.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
 dev_story:
   review_before_merge: "yes"
 YAML
