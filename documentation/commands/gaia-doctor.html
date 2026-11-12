@@ -111,6 +111,7 @@
           <li><span class="step-title">Review limits</span> Reports the active review-process limits. Reads <code>review.max_fix_cycles</code> and <code>review.max_concurrent_heavy_reviewers</code> from project config and shows the configured values, or the effective defaults (2 and 4 respectively) when the keys are absent.</li>
           <li><span class="step-title">Regression-rule gate</span> Shows whether the regression-rule gate is on (default) or turned off by config (<code>review.regression_rule_gate_enabled: false</code>).</li>
           <li><span class="step-title">Scanner health</span> Shows the scanner-first setting (<code>review.scanner_first_enabled</code>, default on) and lists each scanner in the resolved set with present/missing status, resolved version, the runner (native or docker), and whether the review would HALT on a missing scanner.</li>
+          <li><span class="step-title">Mutation testing</span> Reports the configured mutation-testing score thresholds (or that mutation testing is off when <code>test_execution.mutation_thresholds</code> is absent), whether each installed mutation adapter's tool is available, and a warning when leftover <code>gaia-mutation-</code> temp directories exist.</li>
         </ol>
       </section>
 

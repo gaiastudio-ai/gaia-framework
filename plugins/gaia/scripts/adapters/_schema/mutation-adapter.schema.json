@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gaiastudio.ai/schemas/mutation-adapter.schema.json",
+  "title": "Mutation Adapter manifest",
+  "description": "Canonical metadata schema for mutation adapters under plugins/gaia/scripts/adapters/mutation-{stack}/mutation-adapter.json. Separate from the tool-adapter adapter.json contract so that tool-adapter discovery (list-adapters.sh, adapter.schema.json) is unaffected.",
+  "type": "object",
+  "required": [
+    "provider",
+    "stack",
+    "file-extensions",
+    "default-timeout-seconds",
+    "mutant-format",
+    "description"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Binary name of the language interpreter or mutation tool. Resolved via command -v for availability checks."
+    },
+    "stack": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stack identifier this adapter covers (e.g., bash, python, go, java)."
+    },
+    "file-extensions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^\\." },
+      "minItems": 1,
+      "description": "File extension allow-list for mutant generation. Each entry starts with a dot."
+    },
+    "default-timeout-seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Default wall-clock timeout for a single mutant execution."
+    },
+    "version-range": {
+      "type": "string",
+      "description": "Semver range for the provider. Informational; not enforced at runtime."
+    },
+    "mutant-format": {
+      "type": "string",
+      "enum": ["patch", "tool-native"],
+      "description": "How mutants are expressed. 'patch' = unified-diff files applicable with patch -p1. 'tool-native' = JSON batch descriptor for tools whose mutants cannot be expressed as source patches."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line human description of the adapter."
+    }
+  }
+}
