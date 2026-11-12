@@ -366,6 +366,16 @@
           "minimum": 1,
           "default": 4,
           "description": "Maximum number of concurrently running heavy reviewers (those that spawn test suites, mutation runs, or property-test subprocesses) system-wide. Prevents parallel reviews from overloading the machine. Default 4 when absent (supplied by the slot helper at point of use). Independent of parallel_execution.max_parallel_dev_slots."
+        },
+        "scanner_first_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (the default), the security review collects scanner evidence before any gate runs. Only boolean false turns scanner-first off; the string \"false\" does not. Absent key means on."
+        },
+        "regression_rule_gate_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (the default), the code and security reviews enforce the regression-rule gate: every critical/high pattern finding must ship a linked regression rule with tests. Only boolean false turns the gate off; the string \"false\" does not. Absent key means on. The single source of the effective default is regression-rule-check.sh enabled."
         }
       }
     },
@@ -523,6 +533,17 @@
             "placement":       { "$ref": "#/definitions/testPlacement" },
             "command":         { "type": "string", "minLength": 1 },
             "timeout_seconds": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "mutation_thresholds": {
+          "description": "Opt-in mutation-testing score thresholds per story priority. When present, the mutation runner gates stories whose score falls below their priority's threshold. When absent, mutation testing is off and no behaviour changes on upgrade. Missing priorities default at the point of use (P0: 80, P1: 60, P2: 0, P3: 0).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "P0": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P1": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P2": { "type": "integer", "minimum": 0, "maximum": 100 },
+            "P3": { "type": "integer", "minimum": 0, "maximum": 100 }
           }
         }
       }
@@ -968,6 +989,32 @@
         "waiting_agent_threshold_seconds": {
           "deprecated": true,
           "description": "Deprecated and ignored. Kept for back-compatibility so existing configs pass schema validation. Will be removed in a future version."
+        }
+      }
+    },
+    "lint_pack": {
+      "x-no-auto-hydration": true,
+      "description": "Configuration for the deterministic lint pack. The lint pack is opt-in: it runs when listed in preflight_commands or called directly. Only the leaked_identifiers sub-key is read by the pack; all other rules are unconditional.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "leaked_identifiers": {
+          "description": "Configures the leaked-identifier rule. When absent, the rule is off and reported as skipped. Patterns are POSIX extended regexes passed to grep -E; published_paths are path prefixes relative to the repository root.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patterns": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Regex patterns matching internal planning identifiers that must not appear in published source."
+            },
+            "published_paths": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Path prefixes (relative to repo root) that count as published source. Only files under these prefixes are scanned."
+            }
+          },
+          "required": ["patterns", "published_paths"]
         }
       }
     },

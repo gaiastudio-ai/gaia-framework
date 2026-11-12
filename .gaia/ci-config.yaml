@@ -24,7 +24,7 @@ stacks:
       - scripts/**
       - .husky/**
       - commitlint.config.mjs
-    test_cmd: "BATS_FILTER_TAGS='!hardware-dependent' BATS_JOBS=2 bash plugins/gaia/tests/run-with-coverage.sh"
+    test_cmd: "if [ \"${GAIA_IS_PROMOTION:-}\" = \"true\" ]; then BATS_RETRY_SCRIPT=.github/scripts/bats-shard-retry.sh BATS_FILTER_TAGS='!hardware-dependent' bash plugins/gaia/tests/run-with-coverage.sh; else echo 'Covered by plugin-ci.yml bats shards -- skipping full suite on feature PR'; fi"
     cross_refs:
       - gaia-scripts-lib
       - gaia-skills

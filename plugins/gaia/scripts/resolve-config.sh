@@ -926,6 +926,14 @@ v_review_max_fix_cycles=$(merge_nested_key review max_fix_cycles)
 # The point-of-use default of 4 lives in the slot helper, not here.
 v_review_max_concurrent_heavy_reviewers=$(merge_nested_key review max_concurrent_heavy_reviewers)
 
+# review.scanner_first_enabled — surfaced only when explicitly configured.
+# The point-of-use default of true lives in scanner-evidence.sh, not here.
+v_review_scanner_first_enabled=$(merge_nested_key review scanner_first_enabled)
+
+# review.regression_rule_gate_enabled — surfaced only when explicitly configured.
+# The point-of-use default of true lives in regression-rule-check.sh enabled, not here.
+v_review_regression_rule_gate_enabled=$(merge_nested_key review regression_rule_gate_enabled)
+
 # brownfield deterministic-tools master flag + per-tool override.
 # Depth-2 nested keys (the resolver supports up to depth-3 but only
 # ASCII-underscore segments, so the per-tool override uses the flat
@@ -1097,6 +1105,19 @@ v_tools_aggregation_defectdojo_engagement_id=$(merge_doubly_nested_key tools agg
 v_test_execution_tier_1_placement=$(merge_doubly_nested_key test_execution tier_1 placement)
 v_test_execution_tier_2_placement=$(merge_doubly_nested_key test_execution tier_2 placement)
 v_test_execution_tier_3_placement=$(merge_doubly_nested_key test_execution tier_3 placement)
+
+# test_execution.mutation_thresholds — opt-in mutation-testing score
+# thresholds, carried as one JSON value ({} counts as present). A key that is
+# present but cannot be read fails loudly instead of reading as "off".
+v_test_execution_mutation_thresholds=""
+if [ -n "${SHARED_PATH:-}" ] && [ -f "$SHARED_PATH" ]; then
+  # shellcheck source=lib/mutation-config.sh
+  . "$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null && pwd)/lib/mutation-config.sh"
+  v_test_execution_mutation_thresholds="$(mutation_read_thresholds "$SHARED_PATH")" || {
+    printf 'resolve-config.sh: could not read test_execution.mutation_thresholds (see the yq message above)\n' >&2
+    exit 1
+  }
+fi
 
 # severity.{Critical,High,Medium,Low,Info}
 v_severity_Critical=$(merge_nested_key severity Critical)
@@ -1566,6 +1587,9 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_test_execution_tier_2_placement" ;;
     test_execution.tier_3.placement)
       printf '%s\n' "$v_test_execution_tier_3_placement" ;;
+    # Mutation testing thresholds (JSON-encoded object or empty when absent).
+    test_execution.mutation_thresholds)
+      printf '%s\n' "$v_test_execution_mutation_thresholds" ;;
     # Bridge toggle key (consumers treat empty as `false`).
     test_execution_bridge.bridge_enabled)
       printf '%s\n' "$v_test_execution_bridge_bridge_enabled" ;;
@@ -1670,6 +1694,10 @@ if [ -n "$FIELD" ]; then
       printf '%s\n' "$v_review_max_fix_cycles" ;;
     review.max_concurrent_heavy_reviewers)
       printf '%s\n' "$v_review_max_concurrent_heavy_reviewers" ;;
+    review.scanner_first_enabled)
+      printf '%s\n' "$v_review_scanner_first_enabled" ;;
+    review.regression_rule_gate_enabled)
+      printf '%s\n' "$v_review_regression_rule_gate_enabled" ;;
     # Synthetic key mirroring positional dispatch (see above).
     project_config_path)
       printf '%s\n' "${v_project_root}/config/project-config.yaml" ;;
@@ -1782,6 +1810,7 @@ emit_all_body() {
   [ -n "$v_test_execution_tier_1_placement" ]   && emit_pair_shell test_execution.tier_1.placement  "$v_test_execution_tier_1_placement"
   [ -n "$v_test_execution_tier_2_placement" ]   && emit_pair_shell test_execution.tier_2.placement  "$v_test_execution_tier_2_placement"
   [ -n "$v_test_execution_tier_3_placement" ]   && emit_pair_shell test_execution.tier_3.placement  "$v_test_execution_tier_3_placement"
+  [ -n "$v_test_execution_mutation_thresholds" ] && emit_pair_shell test_execution.mutation_thresholds "$v_test_execution_mutation_thresholds"
   [ -n "$v_severity_Critical" ]                 && emit_pair_shell severity.Critical                "$v_severity_Critical"
   [ -n "$v_severity_High" ]                     && emit_pair_shell severity.High                    "$v_severity_High"
   [ -n "$v_severity_Medium" ]                   && emit_pair_shell severity.Medium                  "$v_severity_Medium"
@@ -1796,6 +1825,8 @@ emit_all_body() {
   [ -n "$v_dev_story_review_before_merge" ]       && emit_pair_shell dev_story.review_before_merge    "$v_dev_story_review_before_merge"
   [ -n "$v_review_max_fix_cycles" ]              && emit_pair_shell review.max_fix_cycles            "$v_review_max_fix_cycles"
   [ -n "$v_review_max_concurrent_heavy_reviewers" ] && emit_pair_shell review.max_concurrent_heavy_reviewers "$v_review_max_concurrent_heavy_reviewers"
+  [ -n "$v_review_scanner_first_enabled" ]       && emit_pair_shell review.scanner_first_enabled     "$v_review_scanner_first_enabled"
+  [ -n "$v_review_regression_rule_gate_enabled" ] && emit_pair_shell review.regression_rule_gate_enabled "$v_review_regression_rule_gate_enabled"
   # Guarantee the function exits with status 0 — `set -e` aborts the caller
   # when a command-substitution body returns non-zero (the chain above is
   # `[ -n ... ] && emit ...`, which exits 1 when the variable is empty).
@@ -1924,11 +1955,13 @@ else
     fi
     if [ -n "$v_test_execution_tier_1_placement" ] \
        || [ -n "$v_test_execution_tier_2_placement" ] \
-       || [ -n "$v_test_execution_tier_3_placement" ]; then
+       || [ -n "$v_test_execution_tier_3_placement" ] \
+       || [ -n "$v_test_execution_mutation_thresholds" ]; then
       te_obj='{}'
       [ -n "$v_test_execution_tier_1_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_1_placement" '. + {tier_1: {placement: $v}}')
       [ -n "$v_test_execution_tier_2_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_2_placement" '. + {tier_2: {placement: $v}}')
       [ -n "$v_test_execution_tier_3_placement" ] && te_obj=$(printf '%s' "$te_obj" | jq --arg v "$v_test_execution_tier_3_placement" '. + {tier_3: {placement: $v}}')
+      [ -n "$v_test_execution_mutation_thresholds" ] && te_obj=$(printf '%s' "$te_obj" | jq --argjson v "$v_test_execution_mutation_thresholds" '. + {mutation_thresholds: $v}')
       new_sections_jq=$(printf '%s' "$new_sections_jq" | jq --argjson v "$te_obj" '. + {test_execution: $v}')
     fi
     if [ -n "$v_severity_Critical" ] || [ -n "$v_severity_High" ] \

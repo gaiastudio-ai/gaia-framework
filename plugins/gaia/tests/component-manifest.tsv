@@ -4,6 +4,7 @@ core	E78-S6-plugin-versioning-rubric.bats
 core	E79-S4-csp-readers.bats
 core	a11y-three-phase-reorganization.bats
 core	action-items-canonical-path.bats
+core	action-items-write-lock.bats
 core	action-items-write-retro-interop.bats
 core	action-skill-contract.bats
 core	adapter-schema-contract.bats
@@ -12,6 +13,10 @@ core	adapters/dead-code-go.bats
 core	adapters/dead-code-jvm.bats
 core	adapters/dead-code-python.bats
 core	adapters/grype-trust-boundary.bats
+core	adapters/mutation-adapter-contract.bats
+core	adapters/mutation-end-to-end.bats
+core	adapters/mutation-go-adapter.bats
+core	adapters/mutation-runner.bats
 core	add-feature-step8.bats
 core	advisory-manual-test-gate.bats
 core	advisory-manual-test-opt-in.bats
@@ -73,6 +78,7 @@ core	audit-v2-migration.bats
 core	backup-integrity.bats
 core	bash-dev-wiring.bats
 core	bats-component-tagger.bats
+core	bats-shard-retry.bats
 core	brain-capstone.bats
 core	brain-freshness-hooks.bats
 core	brain-reindex-perf.bats
@@ -284,6 +290,7 @@ core	issue-1396-test-strategy-artifact-home.bats
 core	issue-1405-epic-key-normalization.bats
 core	lifecycle-immutability.bats
 core	lint-bats-script-refs.bats
+core	lint-pack.bats
 core	lock-helper.bats
 core	lock-review-gate-ledger.bats
 core	lock-sprint-state.bats
@@ -321,6 +328,7 @@ core	pixel-diff-ac1-capture-and-diff.bats
 core	pixel-diff-unit.bats
 core	placeholder-test-detector.bats
 core	plugin-ci-hardware-tag-skip.bats
+core	plugin-ci-path-filter-parity.bats
 core	plugin-ci-workflow.bats
 core	plugin-version-lockstep.bats
 core	plugin-version-resolution.bats
@@ -330,6 +338,7 @@ core	product-brief-pre-start-gate.bats
 core	promotion-trigger.bats
 core	quality-gates.bats
 core	reconcile-cross-stack.bats
+core	regression-rule-gate.bats
 core	republish-on-stale.bats
 core	resolve-config-e68-s1-coverage-stub.bats
 core	resolve-file-to-stack.bats
@@ -339,6 +348,7 @@ core	retirement-fixture-traceability.bats
 core	retirement-sweep-clean.bats
 core	retro-finalize-sentinel.bats
 core	review-gate-commit-bound.bats
+core	review-packet-builder.bats
 core	review-parity/gaia-atdd/action-skill-contract.bats
 core	review-parity/gaia-code-review/evidence-judgment-parity.bats
 core	review-parity/gaia-qa-tests/action-skill-contract.bats
@@ -359,6 +369,7 @@ core	round-wiring.bats
 core	run-with-coverage.bats
 core	sbom-completeness-check.bats
 core	scaffold-story-ampersand-escape.bats
+core	scanner-evidence.bats
 core	scripts/review-common/qa/qa-bridge-integration.bats
 core	scripts/review-common/qa/qa-execution-evidence.bats
 core	scripts/review-common/qa/qa-tc-generation.bats
@@ -422,6 +433,7 @@ core	val-bridge-anti-pattern.bats
 core	val-bridge-migration.bats
 core	val-gate-fail-closed.bats
 core	validate-epic-registry.bats
+core	validate-shard-assignments.bats
 core	validate-traceability-consistency.bats
 core	vcp-adv-02-adversarial-step4-contract.bats
 core	vcp-arch-01-03-create-arch-tech-stack-pause.bats
@@ -483,6 +495,7 @@ scripts-core	E77-S4-rubric-loader-regression.bats
 scripts-core	E77-S5-plugin-code-sub-rubric.bats
 scripts-core	E77-S6-plugin-security-sub-rubric.bats
 scripts-core	E93-S6-sprint-review-rubric-sgr-velocity-003-calibration.bats
+scripts-core	adapters/mutation-bash-adapter.bats
 scripts-core	af-2026-05-10-5-baseline.bats
 scripts-core	af-2026-05-21-7-greenfield-bootstrap.bats
 scripts-core	af-2026-05-22-1-adversarial-reviewer-agent.bats
@@ -504,6 +517,7 @@ scripts-core	check-monolith-shard-sync.bats
 scripts-core	check-orchestration-class.bats
 scripts-core	check-story-layout-sync.bats
 scripts-core	ci-config-slice.bats
+scripts-core	ci-junit-ingestion.bats
 scripts-core	cluster-1/platforms-device-targets.bats
 scripts-core	cluster-1/project-kind.bats
 scripts-core	cluster-1/resolve-config-artifact-paths.bats
@@ -625,6 +639,7 @@ scripts-core	plugin-cache-recovery.bats
 scripts-core	pre-warm-script.bats
 scripts-core	probe-verdict-resolver-integration.bats
 scripts-core	project-config-slice.bats
+scripts-core	qa-ci-evidence.bats
 scripts-core	reconcile-stale-graph.bats
 scripts-core	resolve-affected-set.bats
 scripts-core	resolve-config-cwd-independence.bats
@@ -641,6 +656,7 @@ scripts-core	run-stack-tests.bats
 scripts-core	run-tests.bats
 scripts-core	run-with-retry.bats
 scripts-core	sarif-multitool-merge.bats
+scripts-core	scanner-pins.bats
 scripts-core	selective-test-driver.bats
 scripts-core	setup-root-resolution.bats
 scripts-core	sgr-velocity-003-floor-scaling.bats
@@ -678,6 +694,7 @@ scripts-core	val-sidecar-write-jq-cleanliness.bats
 scripts-core	val-validate-plan.bats
 scripts-core	validate-gate-traceability-strategy.bats
 scripts-core	validate-gate.bats
+scripts-core	validate-junit-sha.bats
 scripts-core	vcp-cpt-02.bats
 scripts-core	vcp-cpt-09-phase2.bats
 scripts-core	vcp-cpt-09-phase3-solutioning.bats
@@ -765,6 +782,7 @@ scripts-lib	worktree-lifecycle.bats
 scripts-lib	worktree-reap-safety.bats
 scripts-lib	worktree-val-sentinel-path.bats
 scripts-lib	write-val-envelope.bats
+scripts-review-common	adapters/mutation-evidence-check.bats
 scripts-review-common	agent-overlay.bats
 scripts-review-common	composite-verdict-aggregator.bats
 scripts-review-common	data-handling-lint.bats

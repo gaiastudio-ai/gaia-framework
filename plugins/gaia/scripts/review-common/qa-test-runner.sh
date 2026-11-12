@@ -548,6 +548,43 @@ json_str() {
   '
 }
 
+# Adds the mutation-score check to the evidence document, which is what carries
+# it to verdict-resolver.sh. Read-only: QA consumes the score and never produces
+# mutants. With the thresholds key absent nothing is added.
+attach_mutation_check() {
+  local lib_dir check thresholds priority code_tree commit out story
+  lib_dir="$(cd "$(dirname "$0")/../lib" && pwd -P)"
+  check="$(cd "$(dirname "$0")" && pwd -P)/mutation-evidence-check.sh"
+  # shellcheck source=../lib/mutation-config.sh
+  . "$lib_dir/mutation-config.sh"
+  if ! thresholds="$(mutation_read_thresholds "$CONFIG" 2>&1)"; then
+    err "$thresholds"
+    out="$("$check" --story-key "$STORY_KEY" --config-error "$thresholds")"
+  else
+    [ -n "$thresholds" ] || return 0
+    story="$STORY_FILE"
+    if [ -z "$story" ]; then
+      story="$("$lib_dir/../resolve-story-file.sh" "$STORY_KEY" 2>/dev/null || true)"
+    fi
+    priority=""
+    if [ -n "$story" ] && [ -f "$story" ]; then
+      priority="$(mutation_story_priority "$story")"
+    fi
+    code_tree="${PROJECT_PATH:-$(pwd)}"
+    commit="$(git -C "$code_tree" rev-parse HEAD 2>/dev/null || echo unknown)"
+    out="$("$check" \
+      --story-key "$STORY_KEY" \
+      --evidence "$(mutation_evidence_path "$STORY_KEY")" \
+      --commit "$commit" \
+      --priority "$priority" \
+      --thresholds "$thresholds")" \
+      || out="$(jq -n '{"name":"mutation-score","status":"errored","error_reason":"mutation-evidence-check.sh failed","findings":[]}')"
+  fi
+  info "mutation-score check: $(printf '%s' "$out" | jq -r '.status')"
+  local tmp="$EVIDENCE.tmp.$$"
+  jq --argjson c "$out" '. + {mutation_check: $c}' "$EVIDENCE" > "$tmp" && mv "$tmp" "$EVIDENCE"
+}
+
 emit_skipped_evidence() {
   local reason="$1"
   cat > "$EVIDENCE" <<EOF
@@ -582,6 +619,7 @@ if [ -z "$TIER1_PLACEMENT" ] && [ -z "$TIER2_PLACEMENT" ] && [ -z "$TIER3_PLACEM
   fi
   info "test_execution not configured; skipping test execution"
   emit_skipped_evidence "test_execution not configured; skipping test execution"
+  attach_mutation_check
   exit 0
 fi
 
@@ -604,6 +642,7 @@ done
 if [ "${#ACTIVE_TIERS[@]}" -eq 0 ]; then
   info "no test tier matches context '$CONTEXT'; skipping"
   emit_skipped_evidence "no test tier matches context '$CONTEXT'"
+  attach_mutation_check
   exit 0
 fi
 
@@ -647,6 +686,7 @@ if [ "$BRIDGE_ENABLED" = "true" ] && [ -n "$BRIDGE_PATH" ]; then
   "diagnostics": []
 }
 EOF
+    attach_mutation_check
     exit 0
   fi
 fi
@@ -851,4 +891,5 @@ cat > "$EVIDENCE" <<EOF
 }
 EOF
 
+attach_mutation_check
 exit 0

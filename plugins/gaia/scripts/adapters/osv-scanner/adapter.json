@@ -1,0 +1,10 @@
+{
+  "provider": "osv-scanner",
+  "category": "dep-audit",
+  "version-range": ">=1.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [],
+  "scope": "project",
+  "description": "OSV-Scanner dependency-audit scanner — queries the OSV.dev database for known vulnerabilities in project lockfiles. Project-scoped: scans the repo root for lockfiles regardless of file extension."
+}

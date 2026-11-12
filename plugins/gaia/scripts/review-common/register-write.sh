@@ -27,6 +27,7 @@
 #   record-escalation  Record escalation state on a round before asking the user
 #   sign-off-finding   Record a critical-security sign-off on a finding entry
 #   record-accept-override  Record an accept-override decision on a round
+#   link-rule      Link a regression rule to a register entry
 #   --help         Show usage
 #
 # Exit codes: 0 success, 1 caller/validation error, 2 malformed register.
@@ -703,6 +704,7 @@ _rw_cmd_add() {
   local key="" defect="" ftype="" severity="" gate="" evidence="" impact=""
   local reproduction="" material=false blocking="" blocking_rationale=""
   local requirement_or_risk="" dedup_key="" owasp_category=""
+  local pattern_class=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -720,6 +722,7 @@ _rw_cmd_add() {
       --blocking-rationale) [ "$#" -ge 2 ] || _rw_die 1 "--blocking-rationale requires a value"; blocking_rationale="$2"; shift 2 ;;
       --requirement-or-risk) [ "$#" -ge 2 ] || _rw_die 1 "--requirement-or-risk requires a value"; requirement_or_risk="$2"; shift 2 ;;
       --dedup-key) [ "$#" -ge 2 ] || _rw_die 1 "--dedup-key requires a value"; dedup_key="$2"; shift 2 ;;
+      --pattern-class) [ "$#" -ge 2 ] || _rw_die 1 "--pattern-class requires a value"; pattern_class="$2"; shift 2 ;;
       *) _rw_die 1 "add: unknown argument: $1" ;;
     esac
   done
@@ -736,6 +739,17 @@ _rw_cmd_add() {
   severity="$(_rw_normalise_severity "$severity")"
   _rw_validate_severity "$severity"
   _rw_validate_type "$ftype"
+
+  # --pattern-class validation: slug format, critical/high only.
+  if [ -n "$pattern_class" ]; then
+    if ! [[ "$pattern_class" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+      _rw_die 1 "add: --pattern-class slug must match ^[a-z0-9][a-z0-9-]*\$: $pattern_class"
+    fi
+    case "$severity" in
+      critical|high) ;;
+      *) _rw_die 1 "add: --pattern-class is only accepted on critical or high findings (got $severity)" ;;
+    esac
+  fi
 
   # material flag forces blocking.
   if [ "$material" = "true" ]; then
@@ -807,6 +821,38 @@ _rw_cmd_add() {
     _rw_new_entry "$tmp" "$key" "$defect" "$ftype" "$severity" "$gate" \
       "$evidence" "$impact" "$reproduction" "$material" "$blocking" \
       "$blocking_rationale" "$requirement_or_risk" "$dedup_key"
+  fi
+
+  # Store pattern_class on the entry when provided.
+  if [ -n "$pattern_class" ]; then
+    local pc_idx
+    if [ "$match_idx" != "-1" ] && [ "$match_idx" != "null" ]; then
+      pc_idx="$match_idx"
+    else
+      pc_idx="$(yq '.entries | length - 1' "$tmp")"
+    fi
+    export _RW_PATTERN_CLASS="$pattern_class"
+    yq -i ".entries[$pc_idx].pattern_class = strenv(_RW_PATTERN_CLASS)" "$tmp"  # lint-pack:allow spliced-yq-jq
+    unset _RW_PATTERN_CLASS
+  fi
+
+  # Store the current open round's run_id on the entry for story-check tracing.
+  local _add_run_id=""
+  local _rounds_type
+  _rounds_type="$(yq '.rounds | type' "$tmp" 2>/dev/null)" || _rounds_type=""
+  if [ "$_rounds_type" = "!!seq" ]; then
+    _add_run_id="$(yq '.rounds[] | select(.status == "open") | .run_id' "$tmp" 2>/dev/null)" || _add_run_id=""
+  fi
+  if [ -n "$_add_run_id" ] && [ "$_add_run_id" != "null" ]; then
+    local ri_idx
+    if [ "$match_idx" != "-1" ] && [ "$match_idx" != "null" ]; then
+      ri_idx="$match_idx"
+    else
+      ri_idx="$(yq '.entries | length - 1' "$tmp")"
+    fi
+    export _RW_ADD_RUN_ID="$_add_run_id"
+    yq -i ".entries[$ri_idx].run_id = strenv(_RW_ADD_RUN_ID)" "$tmp"  # lint-pack:allow spliced-yq-jq
+    unset _RW_ADD_RUN_ID
   fi
 
   _rw_commit_register "$tmp" "$reg_path"
@@ -3383,6 +3429,98 @@ _rw_cmd_record_accept_override() {
 }
 
 # ---------------------------------------------------------------------------
+# Subcommand: link-rule
+# ---------------------------------------------------------------------------
+
+_rw_cmd_link_rule() {
+  local key="" entry_id="" rule_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --story) [ "$#" -ge 2 ] || _rw_die 1 "--story requires a value"; key="$2"; shift 2 ;;
+      --id)    [ "$#" -ge 2 ] || _rw_die 1 "--id requires a value"; entry_id="$2"; shift 2 ;;
+      --rule)  [ "$#" -ge 2 ] || _rw_die 1 "--rule requires a value"; rule_id="$2"; shift 2 ;;
+      *) _rw_die 1 "link-rule: unknown argument: $1" ;;
+    esac
+  done
+
+  [ -n "$key" ]      || _rw_die 1 "link-rule: --story is required"
+  [ -n "$entry_id" ] || _rw_die 1 "link-rule: --id is required"
+  [ -n "$rule_id" ]  || _rw_die 1 "link-rule: --rule is required"
+
+  _rw_validate_key "$key"
+
+  # Validate rule-id is a valid slug (lowercase alphanumeric with hyphens).
+  case "$rule_id" in
+    [a-z0-9]*) ;;
+    *) _rw_die 1 "link-rule: --rule must be a valid slug (lowercase alphanumeric, hyphens only): $rule_id" ;;
+  esac
+  local _lr_stripped
+  _lr_stripped="$(printf '%s' "$rule_id" | tr -d 'a-z0-9-')"
+  if [ -n "$_lr_stripped" ]; then
+    _rw_die 1 "link-rule: --rule must be a valid slug (lowercase alphanumeric, hyphens only): $rule_id"
+  fi
+
+  # Validate rule-id exists as a direct child directory in a rule library.
+  local _lr_scripts_dir="$SCRIPTS_DIR"
+  local _lr_shipped_lib="$_lr_scripts_dir/lint-rules"
+  local _lr_custom_dir="${GAIA_CUSTOM_DIR:-}"
+  if [ -z "$_lr_custom_dir" ]; then
+    local _lr_project_root="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-$(pwd)}}}"
+    _lr_custom_dir="${_lr_project_root}/.gaia/custom"
+  fi
+  local _lr_project_lib="$_lr_custom_dir/lint-rules"
+  local rule_found=false
+  [ -d "$_lr_shipped_lib/$rule_id" ] && rule_found=true
+  [ -d "$_lr_project_lib/$rule_id" ] && rule_found=true
+  if [ "$rule_found" = "false" ]; then
+    _rw_die 1 "link-rule: rule '$rule_id' not found in shipped or project library"
+  fi
+
+  local reg_path
+  reg_path="$(_rw_resolve_path "$key")"
+
+  if [ ! -f "$reg_path" ]; then
+    _rw_die 1 "link-rule: no register found for story $key"
+  fi
+
+  # Acquire lock.
+  acquire_lock "${reg_path}.lock" 15 8
+  _RW_CLEANUP_FD="8"
+
+  _rw_validate_structure "$reg_path"
+
+  local tmp
+  tmp="$(_rw_atomic_start "$reg_path")"
+  _RW_CLEANUP_TMP="$tmp"
+
+  # Find the entry by id.
+  local idx
+  idx="$(_rw_find_entry_idx "$tmp" "id" "$entry_id")"
+  if [ "$idx" = "-1" ] || [ "$idx" = "null" ]; then
+    _rw_abort_and_die 1 "link-rule: entry '$entry_id' not found in register"
+  fi
+
+  # Append rule to the entry's regression_rules list (create if absent).
+  export _RW_LINK_RULE="$rule_id"
+  # Ensure the array exists.
+  local arr_type
+  arr_type="$(yq ".entries[$idx].regression_rules | type" "$tmp" 2>/dev/null)" || arr_type=""  # lint-pack:allow spliced-yq-jq
+  if [ "$arr_type" != "!!seq" ]; then
+    yq -i ".entries[$idx].regression_rules = []" "$tmp"  # lint-pack:allow spliced-yq-jq
+  fi
+  # Avoid duplicates.
+  local already
+  already="$(yq ".entries[$idx].regression_rules[] | select(. == strenv(_RW_LINK_RULE))" "$tmp" 2>/dev/null)" || already=""  # lint-pack:allow spliced-yq-jq
+  if [ -z "$already" ]; then
+    yq -i ".entries[$idx].regression_rules += [strenv(_RW_LINK_RULE)]" "$tmp"  # lint-pack:allow spliced-yq-jq
+  fi
+  unset _RW_LINK_RULE
+
+  _rw_commit_register "$tmp" "$reg_path"
+}
+
+# ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
 
@@ -3394,7 +3532,7 @@ Usage:
   register-write.sh add --story <key> --defect <text> --type <type> --severity <sev>
       --gate <gate> [--evidence <text>] [--impact <text>] [--reproduction <text>]
       [--owasp-category <cat>] [--material] [--blocking --blocking-rationale <text>]
-      [--requirement-or-risk <text>] [--dedup-key <key>]
+      [--requirement-or-risk <text>] [--dedup-key <key>] [--pattern-class <slug>]
   register-write.sh merge --story <key> --source-id <RF-n> --target-id <RF-n>
   register-write.sh resolve-severity --story <key> --id <RF-n>
       --severity <sev> --blocking <true|false> --rationale <text>
@@ -3430,6 +3568,7 @@ Usage:
   register-write.sh sign-off-finding --story <key> --finding-id <RF-n>
       --risk-accepted-by <user> --owasp-category <cat> --impact <text>
       --round <N> --timestamp <iso>
+  register-write.sh link-rule --story <key> --id <RF-n> --rule <rule-id>
   register-write.sh record-accept-override --story <key> --run-id <id>
       --decision <text> --user <name> --round <N> --timestamp <iso>
       [--signed-off-findings <id1,id2,...>]
@@ -3469,6 +3608,7 @@ case "${1:-}" in
   resolve-escalation) shift; _rw_cmd_resolve_escalation "$@" ;;
   sign-off-finding) shift; _rw_cmd_sign_off_finding "$@" ;;
   record-accept-override) shift; _rw_cmd_record_accept_override "$@" ;;
+  link-rule) shift; _rw_cmd_link_rule "$@" ;;
   -h|--help) _rw_usage; exit 0 ;;
   "") _rw_die 1 "missing subcommand; use --help" ;;
   *) _rw_die 1 "unknown subcommand: $1" ;;

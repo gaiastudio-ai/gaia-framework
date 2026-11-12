@@ -115,6 +115,23 @@ Review limits:
 
 This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.
 
+### Step 7b — Regression-rule gate
+
+Report whether the regression-rule gate is on or turned off by config:
+
+```bash
+gate_status=$(${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh enabled)
+```
+
+Display the result:
+
+```
+Regression-rule gate:           on                    (when absent or true)
+Regression-rule gate:           turned off by config  (when false)
+```
+
+This section is always emitted — it is a read-only diagnostic.
+
 ### Step 8 — Review gate bypass audit
 
 ```bash
@@ -132,6 +149,14 @@ Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/projec
 - If yq is not installed and a key is present, print a warning: `yq not installed — cannot read <key>`.
 
 This is a read-only listing. It never executes the commands.
+
+### Step 9 — Mutation testing
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/mutation-runner.sh --doctor` (passing `--config` when the project config path is known). The output reports:
+
+- The configured mutation-testing score thresholds (or that mutation testing is off when `test_execution.mutation_thresholds` is absent).
+- Whether each installed mutation adapter's tool is available.
+- A warning when leftover `gaia-mutation-` temp directories exist under the temp root.
 
 ## Finalize
 

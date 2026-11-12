@@ -95,8 +95,11 @@ Using the helper, a typical adapter `contract.bats` is ~50 lines and contains ex
 
 | Adapter | Category | File Extensions | Project-Scope | Status |
 |---|---|---|---|---|
-| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php` | no | shipped |
+| [`semgrep`](semgrep/) | sast | `.py .js .ts .tsx .jsx .go .java .rb .php .kt .swift .dart` | no | shipped |
 | [`gitleaks`](gitleaks/) | secret-scan | (project-scope) | yes | shipped |
+| [`osv-scanner`](osv-scanner/) | dep-audit | (project-scope) | yes | shipped |
+| [`checkov`](checkov/) | sast | `.tf .yaml .yml .json` | no | shipped |
+| [`cppcheck`](cppcheck/) | sast | `.c .h .cpp .cc .cxx .hpp` | no | shipped |
 | [`radon`](radon/) | linter | `.py` | no | shipped |
 | [`gocyclo`](gocyclo/) | linter | `.go` | no | shipped |
 | [`eslint-plugin-sonarjs`](eslint-plugin-sonarjs/) | linter | `.ts .tsx .js .jsx` | no | shipped |
@@ -147,3 +150,24 @@ backwards compatibility (additive change).
 Refs:
 
 - `plugins/gaia/scripts/check-monolith-shard-sync.sh` — advisory drift detector.
+
+## Mutation Adapter Family
+
+Mutation adapters live alongside tool adapters in subdirectories named `mutation-{stack}/` (e.g., `mutation-bash/`). They share the same directory tree but use a separate contract and manifest file:
+
+```
+plugins/gaia/scripts/adapters/mutation-{stack}/
+├── mutation-adapter.json     # Manifest (separate from adapter.json)
+├── generate.sh               # Mutant production entry point
+├── run.sh                    # Single-mutant execution entry point
+└── test/
+    └── fixtures/             # Per-adapter test fixtures
+```
+
+The separate manifest (`mutation-adapter.json` validated against `_schema/mutation-adapter.schema.json`) ensures that tool-adapter discovery (`list-adapters.sh`, which only lists directories with `adapter.json`) and its category enum remain unchanged. The mutation runner (`scripts/mutation-runner.sh`) discovers mutation adapters by scanning for `mutation-adapter.json` files.
+
+The execution contract (`_schema/mutation-run-contract.md`) defines two entry points:
+- `generate.sh --source-dir --files-from --out-dir` — produces one patch file per mutant
+- `run.sh --source-dir --patch-file --test-command --output --timeout` — executes one mutant, or with a zero-byte patch proves the covering tests are green before scoring
+
+Both are dispatched by the mutation runner, never by review consumers directly.

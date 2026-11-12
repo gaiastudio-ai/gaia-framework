@@ -349,9 +349,16 @@ This warning is shown once per session.
             runner executes each command listed in
             <code>preflight_commands</code> sequentially and halts on the
             first non-zero exit. When the key is absent or empty, the gate
-            is a silent no-op. <em>Trust boundary:</em> these commands run
-            unsandboxed with the user's own privileges; review them as you
-            would any script in your CI pipeline.
+            is a silent no-op. A common preflight command is the
+            <strong>deterministic lint pack</strong>
+            (<code>scripts/lint-pack.sh</code>), which catches leaked
+            identifiers, spliced <code>yq</code>/<code>jq</code> values,
+            hardcoded credentials, bash-4-only constructs, and other known
+            bug types. See the <a href="../recipes.html#lint-pack">lint
+            pack recipe</a> for configuration details. <em>Trust
+            boundary:</em> these commands run unsandboxed with the user's
+            own privileges; review them as you would any script in your CI
+            pipeline.
           </li>
           <li>
             <span class="step-title">Create pull request</span>

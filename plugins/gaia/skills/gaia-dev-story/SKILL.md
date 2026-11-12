@@ -929,6 +929,24 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/run-configured-command
 
 Exit 0 = all commands passed (or none configured) — proceed to push. Exit 1 = a command failed — HALT the push. The runner names the failing command and its exit code on stderr. When no `preflight_commands` key exists in project config, the gate is a silent no-op. The commands run unsandboxed with the user's own privileges from the project config; timeouts are the user's responsibility (wrap with `timeout`).
 
+**Lint pack (opt-in preflight command).** The deterministic lint pack (`scripts/lint-pack.sh`) catches known mechanical bug types — leaked internal identifiers, spliced `yq`/`jq` values, hardcoded credentials, bash-4-only constructs, `sed -i ''`, `|| skip` in red tests, and syntax errors. To enable it, add it to `preflight_commands` in project config. Use `--diff` mode so only lines added in the current branch are checked, avoiding false positives on pre-existing content. A syntax error is still reported wherever bash finds it in a changed file, and a file git treats as binary is checked whole, because git gives no line data for it. Replace `<base-branch>` with your project's base branch (e.g. `main` or `staging`).
+
+For projects that contain the plugin source tree (e.g. the framework repository itself):
+
+```yaml
+preflight_commands:
+  - 'set --; [ -f .gaia/lint-pack.yaml ] && set -- --config .gaia/lint-pack.yaml; bash plugins/gaia/scripts/lint-pack.sh "$@" --diff "origin/<base-branch>...HEAD"'
+```
+
+For user projects where the lint pack is installed via the plugin cache, use a runtime discovery pattern:
+
+```yaml
+preflight_commands:
+  - 'p=""; for f in "$HOME"/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/*/scripts/lint-pack.sh; do p="$f"; done; [ -f "$p" ] || { echo "lint-pack: plugin not installed" >&2; exit 1; }; set --; [ -f .gaia/lint-pack.yaml ] && set -- --config .gaia/lint-pack.yaml; bash "$p" "$@" --diff "origin/<base-branch>...HEAD"'
+```
+
+The leaked-identifier rule is configured through the `lint_pack.leaked_identifiers` key in project config or via a `.gaia/lint-pack.yaml`, which these commands pass with `--config` only when it exists. Without configuration, the rule is off and reported as skipped. All other rules are unconditional. Pass `--exclude <rule-id>` to suppress a rule; pass `--report <path>` to control the JSON report location (default: a temp file, never inside the working tree). See the recipes page for full usage.
+
 - **Pre-push guards (pre-push mode only).** Immediately before `git-push.sh`, run `review-order.sh ancestor-check --base "$PR_BASE"`, then `review-order.sh assert-reviewed-head --story {story_path}`. Exit 1 from either = HALT before push, and never rebase automatically. A re-entry at the push step skips Step 9a, so these are its only checks. In default mode neither runs.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh` to push the current branch to `origin`. The shared helper (a) refuses to push from `main` / `staging` (delegating to `lib/dev-story-security-invariants.sh::assert_branch_not_protected` when present), (b) retries ONCE on transient network errors (e.g., `Could not resolve host`, `Operation timed out`) with a 5-second backoff, and (c) fails LOUDLY on auth / permission errors with no retry. DO NOT inline `git push` here — the helper is the single source of truth. The helper acts on `${PROJECT_PATH:-.}`, so in worktree mode it pushes the story worktree's branch; with the variable unset it uses the current directory exactly as before.
 - Run `${CLAUDE_PLUGIN_ROOT}/scripts/transition-story-status.sh {story_key} --to review` after all gates pass.
