@@ -39,6 +39,29 @@ _list_adapters() {
   done
 }
 
+# _assert_all_exercised <count> — every adapter that ships fixtures must have
+# been driven end to end; a silently skipped adapter fails the contract.
+_assert_all_exercised() {
+  local want=0 d
+  while IFS= read -r d; do
+    [ -d "${d%/}/test/fixtures" ] && want=$((want + 1))
+  done < <(_list_adapters)
+  [ "$want" -gt 0 ] || { echo "FAIL: no adapters with fixtures found"; return 1; }
+  [ "$1" -eq "$want" ] || { echo "FAIL: exercised $1 of $want adapters"; return 1; }
+}
+
+# _adapter_path <adapter_dir> — PATH for calling an adapter. An adapter that
+# ships tool stubs under test/fixtures/stubs/bin gets them first on PATH, so
+# the contract exercises it even where the real mutation tool is absent.
+_adapter_path() {
+  local stubs="${1%/}/test/fixtures/stubs/bin"
+  if [ -d "$stubs" ]; then
+    printf '%s:%s' "$stubs" "$PATH"
+  else
+    printf '%s' "$PATH"
+  fi
+}
+
 # ---------- Contract: manifest validates ----------
 
 @test "every mutation adapter has a valid manifest with required fields" {
@@ -67,6 +90,7 @@ _list_adapters() {
 # ---------- Contract: five-flag CLI ----------
 
 @test "every mutation adapter run.sh accepts the five-flag CLI and exits 0 on survived" {
+  local exercised=0
   while IFS= read -r adapter_dir; do
     [ -n "$adapter_dir" ] || continue
     local name
@@ -98,17 +122,16 @@ _list_adapters() {
     # Generate mutants
     local gen_out="$TEST_TMP/${name}-gen"
     mkdir -p "$gen_out"
-    run "$gen" --source-dir "$src_dir" --files-from "$files_list" --out-dir "$gen_out"
-    # Adapters whose tools are unavailable exit non-zero (by contract);
-    # skip them rather than failing the harness — the adapter's own test
-    # suite covers the tool-missing case with stubs on PATH.
-    [ "$status" -eq 0 ] || { echo "SKIP: $name generate.sh exited $status (tool unavailable?)"; continue; }
-    [ -f "$gen_out/index.json" ] || { echo "SKIP: $name generate.sh produced no index.json"; continue; }
+    local apath
+    apath=$(_adapter_path "$adapter_dir")
+    run env PATH="$apath" "$gen" --source-dir "$src_dir" --files-from "$files_list" --out-dir "$gen_out"
+    [ "$status" -eq 0 ] || { echo "FAIL: $name generate.sh exited $status"; return 1; }
+    [ -f "$gen_out/index.json" ] || { echo "FAIL: $name generate.sh produced no index.json"; return 1; }
 
     # Get the first patch
     local first_patch
     first_patch=$(jq -r '.[0].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
-    [ -n "$first_patch" ] || { echo "SKIP: $name generated zero mutants"; continue; }
+    [ -n "$first_patch" ] || { echo "FAIL: $name generated zero mutants"; return 1; }
 
     # Create a throwaway copy (inside a gaia-mutation- prefix for containment)
     local copy_dir
@@ -117,7 +140,7 @@ _list_adapters() {
 
     # Run with --test-command "true" (mutant survives)
     local result="$TEST_TMP/${name}-result.json"
-    run "$runner" \
+    run env PATH="$apath" "$runner" \
       --source-dir "$copy_dir" \
       --patch-file "$gen_out/$first_patch" \
       --test-command "true" \
@@ -134,7 +157,9 @@ _list_adapters() {
     local s
     s=$(jq -r '.status' "$result")
     [ "$s" = "survived" ] || { echo "FAIL: $name expected survived, got $s"; return 1; }
+    exercised=$((exercised + 1))
   done < <(_list_adapters)
+  _assert_all_exercised "$exercised"
 }
 
 # ---------- Contract: baseline call and outcome honesty ----------
@@ -170,6 +195,7 @@ _list_adapters() {
 # ---------- Contract: timeout handling ----------
 
 @test "every mutation adapter reports timeout status when test exceeds deadline" {
+  local exercised=0
   while IFS= read -r adapter_dir; do
     [ -n "$adapter_dir" ] || continue
     local name
@@ -196,17 +222,20 @@ _list_adapters() {
 
     local gen_out="$TEST_TMP/${name}-to-gen"
     mkdir -p "$gen_out"
-    "$gen" --source-dir "$src_dir" --files-from "$files_list" --out-dir "$gen_out" 2>/dev/null || continue
+    local apath
+    apath=$(_adapter_path "$adapter_dir")
+    PATH="$apath" "$gen" --source-dir "$src_dir" --files-from "$files_list" --out-dir "$gen_out" 2>/dev/null \
+      || { echo "FAIL: $name generate.sh failed"; return 1; }
     local first_patch
     first_patch=$(jq -r '.[0].patch_file // empty' "$gen_out/index.json" 2>/dev/null || true)
-    [ -n "$first_patch" ] || continue
+    [ -n "$first_patch" ] || { echo "FAIL: $name generated zero mutants"; return 1; }
 
     local copy_dir
     copy_dir=$(mktemp -d "${TMPDIR:-/tmp}/gaia-mutation-contract-XXXXXX")
     cp -rL "$src_dir"/. "$copy_dir/" 2>/dev/null || true
 
     local result="$TEST_TMP/${name}-to-result.json"
-    run "$runner" \
+    run env PATH="$apath" "$runner" \
       --source-dir "$copy_dir" \
       --patch-file "$gen_out/$first_patch" \
       --test-command "sleep 999" \
@@ -216,11 +245,13 @@ _list_adapters() {
     rm -rf "$copy_dir"
 
     [ "$status" -eq 0 ] || { echo "FAIL: $name run.sh exited $status on timeout (expected 0)"; return 1; }
-    [ -f "$result" ] || continue
+    [ -f "$result" ] || { echo "FAIL: $name run.sh wrote no output on timeout"; return 1; }
     local ts
     ts=$(jq -r '.status' "$result" 2>/dev/null || true)
     [ "$ts" = "timeout" ] || { echo "FAIL: $name expected timeout, got $ts"; return 1; }
+    exercised=$((exercised + 1))
   done < <(_list_adapters)
+  _assert_all_exercised "$exercised"
 }
 
 # ---------- this suite and other runs ----------
