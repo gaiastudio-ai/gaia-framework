@@ -155,8 +155,8 @@ SURFACE_FILES=("${DEDUPED_FILES[@]}")
 
 # _resolve_script_ref — resolve a .sh reference to a real file.
 # Accepts a bare basename (foo.sh) or a relative path (brain/foo.sh).
-# Searches: scripts/<ref>, scripts/lib/<ref> (basename only), <surface>/<ref>,
-# and beside the referencing file (optional second argument). Returns 0 and prints the real path if found;
+# Searches: scripts/<ref>, scripts/lib/<ref> (basename only), beside the
+# referencing file (optional second argument), then <surface>/<ref>. Returns 0 and prints the real path if found;
 # returns 1 if not.
 _resolve_script_ref() {
   local ref="$1"
@@ -175,13 +175,10 @@ _resolve_script_ref() {
     printf '%s' "$candidate"
     return 0
   fi
-  # 3. Try as-given under the surface root (a path into another skill).
-  candidate="$SURFACE_ROOT/$ref"
-  if [ -f "$candidate" ]; then
-    printf '%s' "$candidate"
-    return 0
-  fi
-  # 4. Try the full relative path from the referencing file's directory.
+  # 3. Try the full relative path from the referencing file's directory.
+  #    This runs BEFORE the surface-root lookup so a decoy placed at
+  #    $SURFACE_ROOT/sub/evil.sh cannot shadow the real target next to
+  #    the referencing file (e.g. scripts/helpers/sub/evil.sh).
   if [ -n "${2:-}" ]; then
     candidate="$(dirname "$2")/$ref"
     if [ -f "$candidate" ]; then
@@ -189,7 +186,7 @@ _resolve_script_ref() {
       return 0
     fi
   fi
-  # 5. Try basename-only beside the referencing file (a skill script calling its
+  # 4. Try basename-only beside the referencing file (a skill script calling its
   #    sibling). Only when the reference is a bare basename — a reference with a
   #    directory component (sub/evil.sh) must not resolve to the basename alone
   #    (evil.sh) in a sibling position, which would hide the real target.
@@ -199,6 +196,12 @@ _resolve_script_ref() {
       printf '%s' "$candidate"
       return 0
     fi
+  fi
+  # 5. Try as-given under the surface root (a path into another skill).
+  candidate="$SURFACE_ROOT/$ref"
+  if [ -f "$candidate" ]; then
+    printf '%s' "$candidate"
+    return 0
   fi
   return 1
 }

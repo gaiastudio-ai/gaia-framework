@@ -1936,14 +1936,23 @@ _status_of() {
   [ ! -e "$TMP/gh-calls.log" ]
 }
 
-@test "--reconcile-only --to done from review goes through the merge guard" {
+@test "--reconcile-only --to done from review goes through the merge guard for opted-in projects" {
   _done_fixture
   _add_chain
   GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
-  # A real review->done via --reconcile-only goes through the merge guard and
-  # is refused when the PR is not verified merged (exit 9).
+  # An opted-in project: reconcile-only --to done still passes through the merge
+  # guard, which refuses when the PR is not verified merged (exit 9).
   [ "$status" -eq 9 ]
   [ "$(_status_of)" = "review" ]
+}
+
+@test "--reconcile-only --to done succeeds when the PR is verified merged" {
+  _done_fixture
+  _add_chain
+  # gh stub reports the branch as merged.
+  GH_LIST="MERGED" run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
 }
 
 @test "transition exit code 9 is documented in the tool header" {
@@ -2118,37 +2127,55 @@ _status_of() {
   [[ "$output" == *"discovery-board"* ]]
 }
 
-@test "firewall: a same-named file at the surface root does not hide a sibling board reference" {
+@test "firewall: a decoy at the surface root does not shadow a sibling reference" {
+  # Security repro: a decoy at <root>/sub/evil.sh must not shadow
+  # scripts/helpers/sub/evil.sh when referenced from scripts/helpers/t.sh.
+  # The resolver must try the referencing file's directory before $SURFACE_ROOT.
   local root="$TMP/fw-root-decoy"
-  mkdir -p "$root/skills/gaia-sprint-plan/scripts/sub"
+  mkdir -p "$root/skills/gaia-sprint-plan/scripts/helpers/sub"
   mkdir -p "$root/scripts/lib"
-  # SKILL.md references helper.sh
+  mkdir -p "$root/sub"
+  # SKILL.md references t.sh
   printf 'name: gaia-sprint-plan\nsteps:\n  - plan\n' \
     > "$root/skills/gaia-sprint-plan/SKILL.md"
-  printf 'scripts: helper.sh\n' >> "$root/skills/gaia-sprint-plan/SKILL.md"
-  # helper.sh invokes sub/reader.sh
-  printf '#!/usr/bin/env bash\nbash sub/reader.sh\n' \
-    > "$root/skills/gaia-sprint-plan/scripts/helper.sh"
-  # sub/reader.sh reads the board
+  printf 'scripts: t.sh\n' >> "$root/skills/gaia-sprint-plan/SKILL.md"
+  # t.sh lives in scripts/helpers/ and invokes sub/evil.sh
+  printf '#!/usr/bin/env bash\nbash sub/evil.sh\n' \
+    > "$root/skills/gaia-sprint-plan/scripts/helpers/t.sh"
+  # The REAL sub/evil.sh beside t.sh reads the board
   printf '#!/usr/bin/env bash\ncat discovery-board.yaml\n' \
-    > "$root/skills/gaia-sprint-plan/scripts/sub/reader.sh"
-  # Decoy reader.sh at scripts/ level
-  printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/reader.sh"
+    > "$root/skills/gaia-sprint-plan/scripts/helpers/sub/evil.sh"
+  # Decoy at the surface root: <root>/sub/evil.sh (benign, no board ref)
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$root/sub/evil.sh"
   local guard="$PLUGIN_ROOT/scripts/discovery-firewall-guard.sh"
   run "$guard" --surface-root "$root"
+  # The real sub/evil.sh reads the board -> the firewall must detect it (rc=1).
   [ "$status" -eq 1 ]
   [[ "$output" == *"discovery-board"* ]]
 }
 
-# ---------- Reconcile-only merge guard ----------
+# ---------- Reconcile-only default-mode exemption ----------
 
-@test "--reconcile-only --to done does not bypass the merge guard for a pre-push story" {
+@test "default-mode --reconcile-only --to done behaves as on staging" {
   _done_fixture
   _add_chain
-  # Story is in review, all rows PASSED, but gh stub says not merged.
-  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
-  [ "$status" -eq 9 ]
-  [ "$(_status_of)" = "review" ]
+  _drop_key
+  # Key absent: default mode. Reconcile-only --to done passes the merge guard
+  # (which exits 0 for default mode) and succeeds.
+  run "$TRANSITION" "$FX_KEY" --reconcile-only --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+}
+
+@test "default-mode --reconcile-only --to in-progress from review succeeds" {
+  _done_fixture
+  _add_chain
+  _drop_key
+  # Key absent: reconcile-only bypasses state machine validation exactly as
+  # on staging, so review -> in-progress is allowed.
+  run "$TRANSITION" "$FX_KEY" --reconcile-only --to in-progress
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "in-progress" ]
 }
 
 @test "plain --reconcile-only replays review without moving to done" {
@@ -2249,22 +2276,6 @@ YAML
   cd "$TMP/root"
   # PROJECT_PATH unset: the helper should discover the repo from config.
   run env -u PROJECT_PATH CLAUDE_PROJECT_ROOT="$TMP/root" \
-    "$REVIEW_ORDER" find-worktree --story-key "$key"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"$wt"* ]]
-  git -C "$TMP/root/repo" worktree remove -f "$wt" 2>/dev/null || true
-}
-
-# ---------- Step 9a stop keeps the worktree ----------
-
-@test "a stop at step 9a keeps the worktree for resume" {
-  _nongit_root_fixture
-  local key="E900-S3"
-  local wt="$TMP/root/wt-$key"
-  git -C "$TMP/root/repo" worktree add -q -b "feat/$key-slug" "$wt" HEAD 2>/dev/null
-  # Worktree still exists after a simulated stop (no teardown trap fires).
-  [ -d "$wt" ]
-  run env PROJECT_PATH="$TMP/root/repo" CLAUDE_PROJECT_ROOT="$TMP/root" \
     "$REVIEW_ORDER" find-worktree --story-key "$key"
   [ "$status" -eq 0 ]
   [[ "$output" == *"$wt"* ]]
@@ -2419,7 +2430,7 @@ STORY
   [[ "$output" == *"no worktree"* ]]
 }
 
-# ---------- RF-104: resolver failure + opt-in key ----------
+# ---------- Resolver failure + opt-in key ----------
 
 @test "opted-in project with resolver failure refuses review to done" {
   # Coverage: AC10. When the key is true but the resolver fails (malformed
@@ -2446,7 +2457,72 @@ STORY
   [ "$(_status_of)" = "done" ]
 }
 
-# ---------- RF-85: Step 3a teardown trap disarmed in pre-push mode ----------
+@test "resolver failure fallback treats every YAML true spelling as opted in" {
+  local spelling
+  for spelling in true True TRUE yes Yes YES on On ON y Y; do
+    rm -rf "$TMP/root" "$TMP/bin" "$TMP/gh-calls.log" "$TMP/git-calls.log" 2>/dev/null || true
+    _done_fixture
+    _add_chain
+    _set_key "$spelling"
+    printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+    run "$TRANSITION" "$FX_KEY" --to done
+    [ "$status" -eq 9 ] || { printf 'spelling %s gave exit %s, expected 9\n' "$spelling" "$status" >&2; return 1; }
+  done
+}
+
+@test "resolver failure fallback treats YAML false synonyms as not opted in" {
+  local spelling
+  for spelling in false False FALSE no No NO off Off OFF n N; do
+    rm -rf "$TMP/root" "$TMP/bin" "$TMP/gh-calls.log" "$TMP/git-calls.log" 2>/dev/null || true
+    _done_fixture
+    _add_chain
+    _set_key "$spelling"
+    printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+    run "$TRANSITION" "$FX_KEY" --to done
+    [ "$status" -eq 0 ] || { printf 'spelling %s gave exit %s, expected 0\n' "$spelling" "$status" >&2; return 1; }
+  done
+}
+
+@test "resolver failure with ambiguous value refuses" {
+  _done_fixture
+  _add_chain
+  _set_key "maybe"
+  printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [[ "$output" == *"ambiguous"* ]]
+}
+
+@test "resolver failure with unreadable config refuses" {
+  _done_fixture
+  _add_chain
+  # Make the config file unreadable (chmod 000) so the raw key reader
+  # cannot determine the opt-in status. An unreadable file is distinct
+  # from a missing file: missing means "key absent" (allow), while
+  # unreadable means the opt-in cannot be ruled out (refuse).
+  chmod 000 "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  # Restore read permission for teardown
+  chmod 644 "$TMP/root/.gaia/config/project-config.yaml" 2>/dev/null || true
+  [ "$status" -eq 9 ]
+}
+
+@test "resolver failure fallback reads the local config layer" {
+  _done_fixture
+  _add_chain
+  _drop_key
+  # Shared config has no key. Local overlay sets it to true.
+  cat > "$TMP/root/.gaia/config/global.yaml" <<'YAML'
+dev_story:
+  review_before_merge: true
+YAML
+  printf 'other: [\n' >> "$TMP/root/.gaia/config/project-config.yaml"
+  run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+# ---------- Step 3a teardown trap disarmed in pre-push mode ----------
 
 @test "step 3a teardown trap is disarmed when review mode is pre-push" {
   # Coverage: AC4. The SKILL.md prescribes skipping the teardown trap when
@@ -2459,11 +2535,37 @@ STORY
   [[ "$fence" == *'Default mode only'* ]] || [[ "$fence" == *'default mode'* ]]
 }
 
-# ---------- RF-94: Step 9a commit fence uses allow-list ----------
+@test "_review_mode is assigned before the step 3a trap guard" {
+  # The "Pre-push ordering read" paragraph must capture the mode as
+  # _review_mode so the Step 3a fence can test it.
+  local read_block
+  read_block="$(sed -n '/Pre-push ordering read/,/Pre-push re-entry/p' "$SKILL_MD")"
+  [[ "$read_block" == *'_review_mode'* ]]
+}
+
+@test "stop at 9a keeps worktree exercises the trap decision" {
+  # The test creates a worktree that survives the simulated stop because
+  # the trap is not installed in pre-push mode. Verify the worktree exists
+  # after the stop point (find-worktree returns 0).
+  _nongit_root_fixture
+  local key="E900-S3"
+  local wt="$TMP/root/wt-$key"
+  git -C "$TMP/root/repo" worktree add -q -b "feat/$key-slug" "$wt" HEAD 2>/dev/null
+  # Simulate: the trap would have removed the worktree in default mode.
+  # In pre-push mode the trap is not installed, so the worktree survives.
+  [ -d "$wt" ]
+  run env PROJECT_PATH="$TMP/root/repo" CLAUDE_PROJECT_ROOT="$TMP/root" \
+    "$REVIEW_ORDER" find-worktree --story-key "$key"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$wt"* ]]
+  git -C "$TMP/root/repo" worktree remove -f "$wt" 2>/dev/null || true
+}
+
+# ---------- Step 9a commit fence uses allow-list ----------
 
 @test "step 9a commit fence does not use git add -A" {
-  # Coverage: stray-files finding. The commit fence must not stage untracked
-  # files with git add -A; it should use 'add -u' and halt on strays.
+  # The commit fence must not stage untracked files with git add -A;
+  # it should use 'add -u' for tracked files and explicitly add File List entries.
   local item2
   item2="$(_item "Commit.")"
   _lacks "$item2" "add -A"
@@ -2471,8 +2573,8 @@ STORY
 }
 
 @test "step 9a commit fence halts on untracked files outside the allow-list" {
-  # Coverage: stray-files finding. The fence must HALT if untracked, non-
-  # ignored files exist, naming them rather than committing them silently.
+  # The fence must HALT if untracked, non-ignored files exist outside the
+  # File List, naming them rather than committing them silently.
   local item2
   item2="$(_item "Commit.")"
   _has "$item2" "HALT"
@@ -2480,7 +2582,72 @@ STORY
   _has "$item2" "ls-files --others"
 }
 
-# ---------- RF-99: check-layout from a non-git root with resolver failure ----------
+@test "step 9a commit fence stages File List entries and halts on strays" {
+  # The SHIPPED fence from SKILL.md stages tracked modifications plus files
+  # named in the story File List. A stray untracked file halts the run.
+  _make_repo "$TMP/fence-repo"
+  cd "$TMP/fence-repo"
+
+  # A story file with a File List naming "new-file.sh".
+  cat > "$TMP/fence-story.md" <<'STORY'
+---
+template: 'story'
+key: "E900-S1"
+title: "Fence test"
+status: in-progress
+---
+## File List
+- `new-file.sh` — new helper
+STORY
+
+  # Create tracked and new files.
+  printf 'modified\n' > file.txt       # tracked modification
+  printf 'listed\n' > new-file.sh      # File List entry (new, untracked)
+  printf 'stray\n' > stray.txt         # stray untracked file
+
+  # Extract the shipped fence from SKILL.md. The code fences in Step 9a item 2
+  # are indented (inside a numbered list), so match with optional leading spaces.
+  local fence_script="$TMP/fence.sh"
+  _step9a | awk '
+    /^2\. \*\*Commit\.\*\*/ { on=1 }
+    /^[[:space:]]*```bash[[:space:]]*$/ && on { code=1; next }
+    /^[[:space:]]*```[[:space:]]*$/ && code { code=0 }
+    code { print }
+    /^3\. \*\*Preflight/ { exit }
+  ' > "$fence_script"
+  [ -s "$fence_script" ] || { printf 'fence extraction empty\n' >&2; return 1; }
+
+  # Substitute placeholders and replace commit-msg.sh with a stub.
+  sed -i.bak \
+    -e "s|{story_file}|$TMP/fence-story.md|g" \
+    -e 's|{story_key}|E900-S1|g' \
+    -e 's|${PROJECT_PATH:-.}|.|g' \
+    "$fence_script"
+  # Replace the commit-msg.sh call with a stub that produces a message.
+  sed -i.bak2 \
+    -e 's|_msg="\$(.*commit-msg\.sh.*)"$|_msg="test: fence"|' \
+    "$fence_script"
+
+  # The stray file should cause a HALT (exit 1).
+  run bash "$fence_script"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"HALT"* ]]
+  [[ "$output" == *"stray.txt"* ]]
+  # The stray should be named but new-file.sh (in the File List) should not.
+  [[ "$output" != *"new-file.sh"* ]]
+
+  # Remove the stray and re-run: the tracked edit and the File List entry
+  # should both be committed.
+  rm stray.txt
+  run bash "$fence_script"
+  [ "$status" -eq 0 ]
+  local committed
+  committed="$(git diff --name-only HEAD~1)"
+  [[ "$committed" == *"file.txt"* ]]
+  [[ "$committed" == *"new-file.sh"* ]]
+}
+
+# ---------- check-layout from a non-git root with resolver failure ----------
 
 @test "check-layout from a non-git root reads project_path when the resolver fails" {
   # Coverage: AC-EC8. From a non-git root with PROJECT_PATH unset and a

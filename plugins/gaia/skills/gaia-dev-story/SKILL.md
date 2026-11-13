@@ -172,7 +172,7 @@ FRESH/REWORK/RESUME verdict inline.
   mode. Do NOT re-derive the mode from `$STATUS` inline; the script is the single
   source of truth.
 
-**Pre-push ordering read.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode`. Any non-zero exit is a HALT with its stderr: the configured value is not a boolean or the config cannot be resolved, and neither is ever read as the default order. When it prints `pre-push`, run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, so an unsupported layout is refused before any TDD time is spent. Exit 1 = HALT naming the layout and both remedies (enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false), with no fallback to the default order. Exit 0 or 3 (non-git workspace) continues. When `mode` prints `default` nothing else in this paragraph runs.
+**Pre-push ordering read.** Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode` and capture the output as `_review_mode`. Any non-zero exit is a HALT with its stderr: the configured value is not a boolean or the config cannot be resolved, and neither is ever read as the default order. When `_review_mode` is `pre-push`, run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, so an unsupported layout is refused before any TDD time is spent. Exit 1 = HALT naming the layout and both remedies (enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false), with no fallback to the default order. Exit 0 or 3 (non-git workspace) continues. When `_review_mode` is `default` nothing else in this paragraph runs.
 
 **Pre-push re-entry exception.** Before the `detect-mode.sh` RESUME path, check
 for the pre-push re-entry condition. When all four of these hold:
@@ -769,15 +769,26 @@ Then execute the following sequence:
    in the worktree. Do NOT push yet. A clean tree skips this item: a resumed run
    arrives with its commit already made, and `git commit` would fail with nothing
    to commit. In a non-git workspace there is nothing to commit; skip this item.
-   Stage only tracked modifications and files named in the story's File List.
-   HALT and name any untracked file outside that set rather than committing it:
+   Stage tracked modifications and any new files named in the story's File List.
+   HALT and name any untracked file outside the File List rather than committing
+   it silently:
    ```bash
    if [ -n "$(git -C "${PROJECT_PATH:-.}" status --porcelain)" ]; then
      # Stage tracked modifications (modified and deleted files).
      git -C "${PROJECT_PATH:-.}" add -u
-     # Check for untracked files. HALT if any exist: they are not in the
-     # allow-list and must not be committed silently. Secret-pattern
-     # exclusions stay as defence in depth.
+     # Stage new files that the story's File List names. The File List is the
+     # source of truth for expected new files; anything not in it is a stray.
+     _file_list="$(sed -n '/^## File List/,/^## /{ /^- /s/^- `\([^`]*\)`.*/\1/p; }' {story_file})"
+     if [ -n "$_file_list" ]; then
+       while IFS= read -r _fl_entry; do
+         [ -n "$_fl_entry" ] || continue
+         if [ -e "${PROJECT_PATH:-.}/$_fl_entry" ]; then
+           git -C "${PROJECT_PATH:-.}" add -- "$_fl_entry" 2>/dev/null || true
+         fi
+       done <<< "$_file_list"
+     fi
+     # Check for remaining untracked files. HALT if any exist outside the
+     # File List. Secret-pattern exclusions stay as defence in depth.
      _untracked="$(git -C "${PROJECT_PATH:-.}" ls-files --others --exclude-standard \
        -- ':!.env' ':!.env.*' ':!*.pem' ':!*.key' ':!*.tmp')"
      if [ -n "$_untracked" ]; then

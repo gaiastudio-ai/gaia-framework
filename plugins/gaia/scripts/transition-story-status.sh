@@ -1455,15 +1455,14 @@ STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")
 # on refusal. It can reach the network, so it runs before the status lock when
 # the story is already in review, keeping concurrent transitions from timing
 # out on that lock; the check under the lock covers a status that moved while
-# waiting. --reconcile-only is a replay, not an edge, and stays exempt.
+# waiting. --reconcile-only is exempt for all projects except when the project
+# has opted in to pre-push review (the merge guard is the one gate that
+# reconcile-only must still pass for opted-in projects).
 _PRE_PUSH_GUARD_RAN=0
 _pre_push_merge_guard() {
   _PRE_PUSH_GUARD_RAN=1
   "$SCRIPT_DIR"/../skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$STORY_KEY" || exit 9
 }
-# Pre-push merge guard on review -> done. --reconcile-only is exempt only when
-# it replays the current status (done -> done); a --reconcile-only --to done
-# where the current status is review is a real edge and goes through the guard.
 if [ "$NEW_STATUS" = "done" ] \
    && [ "$(read_frontmatter_status "$STORY_FILE" 2>/dev/null || true)" = "review" ]; then
   _pre_push_merge_guard
@@ -1526,9 +1525,8 @@ if [ "$CURRENT_STATUS" = "$NEW_STATUS" ] && [ "$RECONCILE_ONLY" != "1" ]; then
   exit 0
 fi
 
-# State-machine validation. Reconcile-only is a no-edge replay when the target
-# matches the current status; --reconcile-only --to <different> is a real edge.
-if [ "$CURRENT_STATUS" != "$NEW_STATUS" ] && ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
+# State-machine validation. Reconcile-only is a no-edge replay.
+if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
   exit 7
 fi
 
@@ -1548,7 +1546,8 @@ fi
 # (operator-set, audit-trail discoverable) preserves the documented
 # `/gaia-correct-course` composite-verdict escape path for genuine edge cases
 # (third-party block, infra outage) so the guard doesn't strand recovery.
-if [ "$CURRENT_STATUS" = "review" ] \
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
    && [ "$NEW_STATUS" = "done" ] \
    && [ "${GAIA_ALLOW_REVIEW_TO_DONE_WITHOUT_GATE:-0}" != "1" ]; then
   _review_gate_script="$(cd "$(dirname "$0")" && pwd)/review-gate.sh"
@@ -1572,7 +1571,8 @@ fi
 # stderr WITHOUT changing the exit code. In gating mode (config:
 # review_gate.manual_test_mode = gating): a FAILED verdict blocks the
 # transition.
-if [ "$CURRENT_STATUS" = "review" ] \
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
    && [ "$NEW_STATUS" = "done" ]; then
   _mt_flag="$(read_frontmatter_field "$STORY_FILE" manual_verification 2>/dev/null || true)"
   if [ "$_mt_flag" = "true" ]; then
@@ -1730,7 +1730,8 @@ _check_untriaged_findings() {
   exit 8
 }
 
-if [ "$CURRENT_STATUS" = "review" ] \
+if [ "$RECONCILE_ONLY" != "1" ] \
+   && [ "$CURRENT_STATUS" = "review" ] \
    && [ "$NEW_STATUS" = "done" ]; then
   _check_untriaged_findings "$STORY_FILE" "$STORY_KEY"
 fi

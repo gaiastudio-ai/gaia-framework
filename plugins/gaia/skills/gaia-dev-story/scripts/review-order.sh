@@ -121,28 +121,12 @@ _resolve() {
   CLAUDE_PROJECT_ROOT="$anchor" "$PLUGIN_ROOT/scripts/resolve-config.sh" "$@"
 }
 
-# Read the raw review_before_merge value from the shared config file without
-# the full resolver.  Returns:
-#   0 + prints "true"   — the key is set to true
-#   0 + prints "false"  — the key is explicitly false
-#   0 + prints ""       — the key is absent (no dev_story block or no key)
-#   1                   — the config file cannot be found or parsed
-# This intentionally avoids the resolver so a resolver failure does not mask
-# an explicit opt-in.
-_raw_key_from_config() {
-  local cfg
-  cfg="$(_discover_shared_config)" || return 1
-  [ -n "$cfg" ] || return 1
-  [ -f "$cfg" ] || return 1
-
-  # A lightweight awk parser that finds the first review_before_merge value
-  # under a top-level dev_story mapping.  It handles:
-  #   dev_story:\n  review_before_merge: <val>
-  #   dev_story: {review_before_merge: <val>}
-  # It does NOT handle aliases, multi-line flow mappings, or anchors.  For a
-  # single boolean key this is sufficient, and it avoids shelling out to yq/jq.
-  local val
-  val="$(awk '
+# _awk_raw_key — extract review_before_merge from a single YAML file.
+# Prints the raw value (unquoted) or empty if absent. Returns 1 on awk error.
+_awk_raw_key() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  awk '
     /^dev_story:/ {
       # Flow mapping on the same line?
       if (index($0, "review_before_merge:") > 0) {
@@ -151,6 +135,8 @@ _raw_key_from_config() {
         sub(/[,}].*/, "", s)
         sub(/[[:space:]]*#.*/, "", s)
         gsub(/[[:space:]]/, "", s)
+        # Strip surrounding quotes.
+        gsub(/^["'"'"']+|["'"'"']+$/, "", s)
         print s
         exit
       }
@@ -162,10 +148,46 @@ _raw_key_from_config() {
       sub(/^[[:space:]]*review_before_merge:[[:space:]]*/, "")
       sub(/[[:space:]]*#.*/, "")
       gsub(/[[:space:]]/, "")
+      # Strip surrounding quotes.
+      gsub(/^["'"'"']+|["'"'"']+$/, "")
       print
       exit
     }
-  ' "$cfg" 2>/dev/null)" || return 1
+  ' "$file" 2>/dev/null
+}
+
+# Read the raw review_before_merge value from project config files without
+# the full resolver.  Checks the shared config first, then the local overlay
+# (global.yaml), with the local layer winning (last-write-wins, matching the
+# resolver's merge order).
+# Returns:
+#   0 + prints the raw value  — key found (may be any string)
+#   0 + prints ""             — key absent in both layers
+#   1                         — no config file could be found or read
+# This intentionally avoids the resolver so a resolver failure does not mask
+# an explicit opt-in.
+_raw_key_from_config() {
+  local cfg val="" local_cfg="" local_val=""
+  cfg="$(_discover_shared_config)" || return 1
+  [ -n "$cfg" ] || return 1
+  [ -f "$cfg" ] || return 1
+
+  val="$(_awk_raw_key "$cfg")" || return 1
+
+  # Check the local overlay (global.yaml). It sits beside the shared config.
+  local cfg_dir
+  cfg_dir="$(dirname "$cfg")"
+  if [ -f "$cfg_dir/global.yaml" ]; then
+    local_cfg="$cfg_dir/global.yaml"
+  fi
+  # Also honor the env override.
+  [ -n "${GAIA_LOCAL_CONFIG:-}" ] && [ -f "${GAIA_LOCAL_CONFIG:-}" ] && local_cfg="$GAIA_LOCAL_CONFIG"
+  if [ -n "$local_cfg" ]; then
+    local_val="$(_awk_raw_key "$local_cfg")" || true
+    # Local layer wins when non-empty.
+    [ -z "$local_val" ] || val="$local_val"
+  fi
+
   printf '%s\n' "$val"
 }
 
@@ -591,23 +613,28 @@ cmd_merge_guard() {
     exit 0
   else
     # Mode could not be resolved (resolver failure). Check whether the key
-    # is set to true directly from the shared config, bypassing the resolver.
-    # Key true -> refuse: the user opted in, but the resolver failed, so the
-    #   guard cannot verify the merge. Fail closed for opted-in projects.
+    # is set to true directly from config, bypassing the resolver.
+    # Any YAML boolean true spelling -> refuse: the user opted in.
     # Key absent or false -> allow: the user never opted in.
     # Key unreadable -> refuse: the opt-in cannot be ruled out.
     local raw_val
     if raw_val="$(_raw_key_from_config)"; then
       case "$raw_val" in
-        true)
+        # Every YAML 1.1 boolean true spelling (the set yq and common loaders
+        # accept). Quoted forms ("true", 'true') are stripped by _awk_raw_key.
+        true|True|TRUE|yes|Yes|YES|on|On|ON|y|Y)
           _merge_refusal "$key" \
             "the project has opted in to pre-push review but the config resolver failed; fix the config or set the key to false"
           ;;
-        *)
-          # Key absent, false, or any non-true value — the user never opted
-          # in. A non-boolean value is invalid, but readable and not true, so
-          # the opt-in can be ruled out. Allow.
+        ""|false|False|FALSE|no|No|NO|off|Off|OFF|n|N)
+          # Key absent, false, or a YAML false synonym — the user never
+          # opted in. Allow.
           exit 0
+          ;;
+        *)
+          # Ambiguous value — cannot rule out an opt-in. Fail closed.
+          _merge_refusal "$key" \
+            "dev_story.review_before_merge has an ambiguous value '$raw_val'; the opt-in cannot be ruled out (resolver failed)"
           ;;
       esac
     else
