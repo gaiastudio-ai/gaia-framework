@@ -1508,6 +1508,7 @@ _commit_fence() {
 
 @test "clean-tree re-entry skips the commit item" {
   FX_KEY="E900-S1"; FX_STORY="$TMP/story.md"
+  printf '# Story\n\n## File List\n\n- `file.txt`\n\n## Notes\n' > "$FX_STORY"
   _make_repo "$TMP/wt"
   _commit_fence "$TMP/commit.sh"
   _fence_vars "$TMP/commit.sh"
@@ -1917,15 +1918,15 @@ _status_of() {
   [ "$(_status_of)" = "done" ]
 }
 
-@test "a non-boolean value allows done when the key is not confirmed true" {
-  # Coverage: AC10. A non-boolean value means the project has not opted in to
-  # pre-push mode, so the guard does not fire.
+@test "a non-boolean value refuses done because opt-in cannot be ruled out" {
+  # Coverage: AC10. A value that is neither true nor false cannot rule out an
+  # opt-in, so the guard fails closed and the story stays in review.
   _done_fixture
   _add_chain
   _set_key maybe
   run "$TRANSITION" "$FX_KEY" --to done
-  [ "$status" -eq 0 ]
-  [ ! -e "$TMP/gh-calls.log" ]
+  [ "$status" -eq 9 ]
+  grep -q '^status: review' "$FX_STORY"
 }
 
 @test "the operator bypass allows done with no verifier call" {
