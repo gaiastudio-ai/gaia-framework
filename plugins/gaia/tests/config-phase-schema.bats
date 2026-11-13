@@ -626,3 +626,77 @@ YAML
   run validate_fixture "${TMP}/mt-reject-string.yaml"
   [ "$status" -ne 0 ]
 }
+
+# ---------- dev_story.review_before_merge schema cases ----------
+
+@test "schema accepts dev_story.review_before_merge as boolean true" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-true.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: true
+YAML
+  run validate_fixture "${TMP}/config-rbm-true.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema accepts dev_story.review_before_merge as boolean false" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-false.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: false
+YAML
+  run validate_fixture "${TMP}/config-rbm-false.yaml"
+  [ "$status" -eq 0 ] || { echo "validator output: $output"; return 1; }
+}
+
+@test "schema rejects dev_story.review_before_merge as string yes" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-string.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: "yes"
+YAML
+  run validate_fixture "${TMP}/config-rbm-string.yaml"
+  [ "$status" -ne 0 ]
+}
+
+@test "schema rejects dev_story.review_before_merge as integer" {
+  have_python_yaml || skip "python3 + PyYAML not available"
+  have_ajv || have_python_jsonschema || skip "no JSON schema validator available"
+  cat > "${TMP}/config-rbm-int.yaml" <<'YAML'
+project_root: /tmp/test
+project_path: /tmp/test/src
+memory_path: /tmp/test/memory
+checkpoint_path: /tmp/test/checkpoints
+installed_path: /tmp/test/installed
+framework_version: "1.0.0"
+date: "2026-01-01"
+dev_story:
+  review_before_merge: 1
+YAML
+  run validate_fixture "${TMP}/config-rbm-int.yaml"
+  [ "$status" -ne 0 ]
+}

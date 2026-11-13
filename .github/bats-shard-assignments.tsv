@@ -854,3 +854,4 @@
 5	vcp-cpt-09-phase3-solutioning.bats	6
 5	worktree-chain-scripts.bats	62
 5	yolo-mode-sentinel.bats	1
+1	dev-story-review-before-merge.bats

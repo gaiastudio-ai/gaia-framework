@@ -109,6 +109,7 @@ _allowed_paths_regex() {
 ^knowledge/adrs/ADR-107.*\.md$
 ^tests/phase-parallel-orchestrator\.bats$
 ^scripts/phase-parallel-orchestrator\.sh$
+^tests/dev-story-review-before-merge\.bats$
 EOF
 }
 

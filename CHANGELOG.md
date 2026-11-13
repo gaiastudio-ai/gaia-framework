@@ -148,6 +148,23 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 - **Hardening default active on upgrade**: projects without a `tools:` or `review:` section get scanner-first with the default set (semgrep + osv-scanner). If a configured scanner is missing, the review HALTs with a message naming the scanner and offering remediation (install it, switch to the docker runner, change the provider, or set `review.scanner_first_enabled: false`).
 - **gitleaks bundled**: the `gaia-tools` image now includes gitleaks. No host install needed when using `brownfield.tools.runner: docker`.
 
+### Pre-push review ordering (opt-in)
+
+#### Added
+- `dev_story.review_before_merge` — opt-in boolean in `project-config.yaml` (default `false`). When `true`, `/gaia-dev-story` runs the six-gate review on the story worktree before push so the reviewed commit is the pushed commit. When absent or `false`, today's post-push review order applies with no behaviour change.
+- New `review-order.sh` helper with subcommands `check-layout`, `find-worktree`, `merge-guard`, `mode` (prints `pre-push` or `default`), `ancestor-check --base <branch>` (verifies the promotion base is an ancestor of HEAD before push), and `assert-reviewed-head --story <file>` (asserts clean tree and all Review Gate rows bound to HEAD).
+- `review-skip-check.sh --bind-head <sha>` — moves PASSED rows not bound to that SHA (stale after a fix commit, or with no binding at all) into the re-run partition.
+- `/gaia-run-all-reviews` accepts an optional `--bind-head <sha>` argument forwarded to the skip-check.
+- `/gaia-doctor` reports the active review ordering mode (`pre-push review` or `default`) in its review-limits section.
+- Interactive stop-and-resume: in non-YOLO mode the pre-push run asks before starting reviews; stopping keeps the story in `review` with a resume command. Re-invoking `/gaia-dev-story <key>` resumes at the review step without re-running the TDD cycle.
+- Drift halt: an ancestor check before push halts when the promotion base advanced during the review.
+- Layout check: with a promotion chain and a git code path, the mode needs worktree mode on (`GAIA_WORKTREE_MODE=1`), a linked story worktree and a story file outside that work tree. Any other layout halts before any status change, commit or review, with no fallback to the default order, and `/gaia-doctor` warns about it.
+- Moving to `done`: in this mode `transition-story-status.sh --to done` and `sprint-state.sh transition --to done` exit 9 until the story's PR is verified merged, and also when the config cannot be read. The run makes that transition as its last action after the merge. With the key absent or `false` no verifier or network call is made.
+
+#### Changed
+- Schema: `dev_story` object gains `review_before_merge` (boolean).
+- `resolve-config.sh` reads and emits `dev_story.review_before_merge` via `--field`, `--all` and `--format json`; `--all --format json` now prints JSON instead of shell pairs; a one-line flow mapping such as `dev_story: {review_before_merge: true}` now resolves.
+
 ### Fix-cycle cap with escalation and critical-security carve-out
 
 #### Added
