@@ -125,11 +125,22 @@ describe('band normal mode', () => {
     // Both gaia and the other mod draw a hotkey-9 Button.
     const buttons = await ui.findAll({ text: /^9$/ })
     const hotkey9Buttons = buttons.filter((el: any) => el.type === 'Button' && el.props && el.props.hotkey === '9')
-    // Two distinct hotkey-9 buttons exist in the composed band.
-    expect(hotkey9Buttons.length).toBeGreaterThanOrEqual(2)
-    // The other mod's button is drawn after gaia's, so under "later wins" it
-    // takes precedence.  This is a host limitation — no plugin API lets gaia
-    // control the order.
+    // Exactly two hotkey-9 buttons exist, gaia's first and the other mod's
+    // second. Under "later wins" the other mod's button takes precedence.
+    // This is a host limitation: no plugin API lets gaia control the order.
+    expect(hotkey9Buttons.length).toBe(2)
+    // ui.drawn() stamps each Button with the plugin that drew it; walk the
+    // composed tree in draw order and read the owners of the hotkey-9 Buttons.
+    const owners: string[] = []
+    const walk = (node: any): void => {
+      if (!node || typeof node !== 'object') return
+      if (Array.isArray(node)) { node.forEach(walk); return }
+      const hotkey = node.hotkey ?? (node.props && node.props.hotkey)
+      if (node.type === 'Button' && hotkey === '9') owners.push(node.press && node.press.plugin)
+      walk(node.children ?? (node.props && node.props.children))
+    }
+    walk(await ui.drawn())
+    expect(owners).toEqual(['gaia', 'test'])
     await ui.unmount()
   })
 })
