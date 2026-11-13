@@ -1597,13 +1597,19 @@ cmd_transition() {
   # invocation without reading source.
   assert_canonical_state "$to_state" "transition --to"
 
-  # Locate the story file before the merge-guard check so the derive
-  # function (which walks up from STORY_FILE) can find the project config.
-  # locate_story_file sets the global STORY_FILE.
-  locate_story_file "$story_key" 2>/dev/null || true
-  if [ "$to_state" = "done" ] && \
-     [ "$(read_story_status "$STORY_FILE" 2>/dev/null)" = "review" ]; then
-    _pre_push_merge_guard "$story_key"
+  # Locate the story file in a subshell, as before, so an unresolvable key
+  # cannot end this shell here: the locked transition below reports it. Only a
+  # review -> done move needs the path; the guard's root derivation walks up
+  # from it.
+  if [ "$to_state" = "done" ]; then
+    local _guard_story_file=""
+    _guard_story_file="$(locate_story_file "$story_key" 2>/dev/null && printf '%s' "$STORY_FILE")" \
+      || _guard_story_file=""
+    if [ -n "$_guard_story_file" ] && \
+       [ "$(read_story_status "$_guard_story_file" 2>/dev/null)" = "review" ]; then
+      STORY_FILE="$_guard_story_file"
+      _pre_push_merge_guard "$story_key"
+    fi
   fi
 
   (

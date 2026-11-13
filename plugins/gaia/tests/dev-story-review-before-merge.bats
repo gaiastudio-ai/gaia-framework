@@ -2362,6 +2362,20 @@ _outside_fixture() {
   [ "$(_status_of)" = "done" ]
 }
 
+@test "sprint-state transition reports an unknown story key, as on staging" {
+  local ia="$TMP/unknown-ia" ss="$TMP/unknown-ss.yaml"
+  mkdir -p "$ia"
+  printf 'sprint_id: "sprint-1"\nstories:\n  - key: "E9-S9"\n    status: "ready-for-dev"\n' > "$ss"
+  local to
+  for to in in-progress done; do
+    run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+      IMPLEMENTATION_ARTIFACTS="$ia" SPRINT_STATUS_YAML="$ss" \
+      "$PLUGIN_ROOT/scripts/sprint-state.sh" transition --story E9-S9 --to "$to"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no story file found for key 'E9-S9'"* ]]
+  done
+}
+
 # ---------- Default-mode done: no merge guard ----------
 
 @test "default-mode review to done makes no merge-guard call" {
