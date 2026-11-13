@@ -2312,6 +2312,70 @@ YAML
     /usr/bin/grep -qi 'per-story layout checks' "$DOCTOR_MD"
 }
 
+# ---------- AC3: derive project path from story location when outside project ----------
+
+# A variant of _done_fixture that runs from /tmp with no root env vars.
+# Only IMPLEMENTATION_ARTIFACTS is set. The story file lives under the
+# project's .gaia/artifacts/ tree, so the derive helper can walk up.
+_outside_fixture() {
+  _done_fixture
+  _add_chain
+  # Clear all root/path env vars — only IMPLEMENTATION_ARTIFACTS stays.
+  unset PROJECT_ROOT PROJECT_PATH CLAUDE_PROJECT_ROOT GAIA_PROJECT_ROOT 2>/dev/null || true
+}
+
+@test "opted-in + cwd outside + only IMPLEMENTATION_ARTIFACTS -> transition rc 9 status review" {
+  _outside_fixture
+  cd /tmp
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+@test "key absent + cwd outside + only IMPLEMENTATION_ARTIFACTS -> transition succeeds (default-mode safety)" {
+  _outside_fixture
+  _drop_key
+  cd /tmp
+  GH_LIST=NO_MATCH run "$TRANSITION" "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+  # No gh calls — the guard never engaged.
+  [ ! -e "$TMP/gh-calls.log" ]
+}
+
+@test "sprint-state transition: opted-in + cwd outside -> rc 9 status review" {
+  _outside_fixture
+  cd /tmp
+  SPRINT_STATE="$PLUGIN_ROOT/scripts/sprint-state.sh"
+  GH_LIST=NO_MATCH run "$SPRINT_STATE" transition --story "$FX_KEY" --to done
+  [ "$status" -eq 9 ]
+  [ "$(_status_of)" = "review" ]
+}
+
+@test "sprint-state transition: key absent + cwd outside -> same as staging (succeeds)" {
+  _outside_fixture
+  _drop_key
+  cd /tmp
+  SPRINT_STATE="$PLUGIN_ROOT/scripts/sprint-state.sh"
+  GH_LIST=NO_MATCH run "$SPRINT_STATE" transition --story "$FX_KEY" --to done
+  [ "$status" -eq 0 ]
+  [ "$(_status_of)" = "done" ]
+}
+
+@test "sprint-state transition reports an unknown story key, as on staging" {
+  local ia="$TMP/unknown-ia" ss="$TMP/unknown-ss.yaml"
+  mkdir -p "$ia"
+  printf 'sprint_id: "sprint-1"\nstories:\n  - key: "E9-S9"\n    status: "ready-for-dev"\n' > "$ss"
+  local to
+  for to in in-progress done; do
+    run env -u PROJECT_ROOT -u CLAUDE_PROJECT_ROOT -u PROJECT_PATH \
+      IMPLEMENTATION_ARTIFACTS="$ia" SPRINT_STATUS_YAML="$ss" \
+      "$PLUGIN_ROOT/scripts/sprint-state.sh" transition --story E9-S9 --to "$to"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"no story file found for key 'E9-S9'"* ]]
+  done
+}
+
 # ---------- Default-mode done: no merge guard ----------
 
 @test "default-mode review to done makes no merge-guard call" {
@@ -2523,25 +2587,90 @@ YAML
   [ "$(_status_of)" = "review" ]
 }
 
-# ---------- Step 3a teardown trap disarmed in pre-push mode ----------
+# ---------- Step 3a teardown trap: execution test ----------
 
-@test "step 3a teardown trap is disarmed when review mode is pre-push" {
-  # Coverage: AC4. The SKILL.md prescribes skipping the teardown trap when
-  # the review mode is pre-push, so a stop at Step 9a keeps the worktree.
-  local fence
-  fence="$(sed -n '/Install the teardown trap/,/worktree_teardown_trap/p' "$SKILL_MD")"
-  # The fence must condition the trap on the review mode being default.
-  [[ "$fence" == *'_review_mode'* ]] || [[ "$fence" == *'review_mode'* ]]
-  [[ "$fence" == *'pre-push'* ]]
-  [[ "$fence" == *'Default mode only'* ]] || [[ "$fence" == *'default mode'* ]]
+# Extract the shipped Step 3a fence code block from SKILL.md and return it
+# as a runnable script fragment.
+_extract_step3a_fence() {
+  sed -n '/Install the teardown trap/,/^Both arguments MUST/p' "$SKILL_MD" \
+    | awk '/^```bash$/ { on=1; next } /^```$/ { on=0 } on'
 }
 
-@test "_review_mode is assigned before the step 3a trap guard" {
-  # The "Pre-push ordering read" paragraph must capture the mode as
-  # _review_mode so the Step 3a fence can test it.
-  local read_block
-  read_block="$(sed -n '/Pre-push ordering read/,/Pre-push re-entry/p' "$SKILL_MD")"
-  [[ "$read_block" == *'_review_mode'* ]]
+@test "step 3a fence does not install trap when review-order.sh mode prints pre-push" {
+  # Coverage: AC1. Extract the shipped fence, stub review-order.sh to print
+  # pre-push, and verify that no EXIT trap is set.
+  local fence_script="$TMP/fence3a.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    # Stub CLAUDE_PLUGIN_ROOT to a directory with a mode stub that prints pre-push.
+    printf 'CLAUDE_PLUGIN_ROOT="%s/stub_plugin"\n' "$TMP"
+    _extract_step3a_fence
+    printf 'trap -p EXIT\n'
+  } > "$fence_script"
+
+  # Build the mode stub.
+  mkdir -p "$TMP/stub_plugin/skills/gaia-dev-story/scripts"
+  cat > "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'pre-push\n'
+STUB
+  chmod +x "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh"
+
+  run bash "$fence_script"
+  [ "$status" -eq 0 ]
+  # No EXIT trap should be installed — output must NOT contain worktree_teardown_trap.
+  [[ "$output" != *"worktree_teardown_trap"* ]]
+}
+
+@test "step 3a fence installs trap when review-order.sh mode prints default" {
+  # Coverage: AC1. Default mode must still install the teardown trap.
+  local fence_script="$TMP/fence3a_default.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'CLAUDE_PLUGIN_ROOT="%s/stub_plugin"\n' "$TMP"
+    printf 'worktree_teardown_trap() { :; }\n'
+    printf 'PRIMARY_CODE_TREE=/tmp/primary\nSTORY_WORKTREE_PATH=/tmp/wt\n'
+    _extract_step3a_fence
+    printf 'trap -p EXIT\n'
+  } > "$fence_script"
+
+  mkdir -p "$TMP/stub_plugin/skills/gaia-dev-story/scripts"
+  cat > "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'default\n'
+STUB
+  chmod +x "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh"
+
+  run bash "$fence_script"
+  [ "$status" -eq 0 ]
+  # The EXIT trap must be set.
+  [[ "$output" == *"worktree_teardown_trap"* ]]
+}
+
+@test "step 3a fence keeps worktree and warns when review-order.sh mode exits non-zero" {
+  # Coverage: AC1. A mode that cannot be determined must not destroy the worktree.
+  local fence_script="$TMP/fence3a_fail.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'CLAUDE_PLUGIN_ROOT="%s/stub_plugin"\n' "$TMP"
+    _extract_step3a_fence
+    printf 'trap -p EXIT\n'
+  } > "$fence_script"
+
+  mkdir -p "$TMP/stub_plugin/skills/gaia-dev-story/scripts"
+  cat > "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'invalid config\n' >&2
+exit 1
+STUB
+  chmod +x "$TMP/stub_plugin/skills/gaia-dev-story/scripts/review-order.sh"
+
+  run bash "$fence_script"
+  [ "$status" -eq 0 ]
+  # No trap — worktree is kept.
+  [[ "$output" != *"worktree_teardown_trap"* ]]
+  # The warning must be emitted.
+  [[ "$output" == *"keeping worktree"* ]] || [[ "$output" == *"unresolvable"* ]]
 }
 
 @test "stop at 9a keeps worktree exercises the trap decision" {

@@ -887,6 +887,11 @@ resolve_paths() {
   # PROJECT_PATH (then to CLAUDE_PROJECT_ROOT, then to "."). This preserves the
   # historic behavior for callers that set only PROJECT_PATH while letting
   # split-repo callers set PROJECT_ROOT explicitly to override.
+  # Snapshot the caller-supplied values before the fallback computes defaults.
+  # _pre_push_merge_guard checks these to decide whether to derive a path.
+  _CALLER_CPR="${CLAUDE_PROJECT_ROOT:-}"
+  _CALLER_PR="${PROJECT_ROOT:-}"
+
   PROJECT_PATH="${PROJECT_PATH:-.}"
   PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH}}}"
   # Smart-fallback for IMPLEMENTATION_ARTIFACTS — prefer
@@ -1524,6 +1529,43 @@ do_transition_locked() {
 # plugin root derivation. The check runs before the lock since it can reach the network; do_transition_locked
 # repeats it only when the status moved to review while waiting for that lock.
 _PRE_PUSH_GUARD_RAN=0
+
+# Derive the project path from the resolved story file's location by walking
+# up to the directory that holds `.gaia/config/` (or the legacy `config/`
+# layout). The result is passed ONLY to the review-order.sh subprocess so that
+# it can discover the project config; it is NOT exported or used for any other
+# path in this script (sprint-status, ledger, brain-index, etc.).
+_derive_project_path_for_guard() {
+  local dir depth=0
+  [ -n "${STORY_FILE:-}" ] && [ -f "$STORY_FILE" ] || return 1
+  dir="$(cd "$(dirname "$STORY_FILE")" 2>/dev/null && pwd -P)" || return 1
+  while [ "$depth" -lt 12 ]; do
+    # Check for the canonical GAIA config first, then the legacy layout.
+    # The `.gaia/config/` check wins: when `dir` is inside `.gaia/` itself
+    # (e.g. `.gaia/artifacts/`), `dir/config/` would be `.gaia/config/`
+    # which is the config directory, not the project root.
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    # Legacy layout: `config/` at the project root. Guard against false
+    # matches inside `.gaia/` by rejecting dirs whose basename is `.gaia`.
+    case "$(basename "$dir")" in
+      .gaia) ;;
+      *)
+        if [ -f "$dir/config/project-config.yaml" ]; then
+          printf '%s\n' "$dir"
+          return 0
+        fi
+        ;;
+    esac
+    [ "$dir" != "/" ] || return 1
+    dir="$(dirname "$dir")"
+    depth=$((depth + 1))
+  done
+  return 1
+}
+
 _pre_push_merge_guard() {
   local story_key="$1" plugin
   _PRE_PUSH_GUARD_RAN=1
@@ -1532,6 +1574,15 @@ _pre_push_merge_guard() {
     */skills/gaia-dev-story/scripts) plugin="${plugin%/skills/gaia-dev-story/scripts}" ;;
     *) plugin="${plugin%/scripts}" ;;
   esac
+  if [ -z "${_CALLER_CPR:-}" ] && [ -z "${_CALLER_PR:-}" ]; then
+    local _derived
+    _derived="$(_derive_project_path_for_guard)" || true
+    if [ -n "$_derived" ]; then
+      CLAUDE_PROJECT_ROOT="${_derived}" \
+        "$plugin"/skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$story_key" || exit 9
+      return
+    fi
+  fi
   "$plugin"/skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$story_key" || exit 9
 }
 
@@ -1546,9 +1597,19 @@ cmd_transition() {
   # invocation without reading source.
   assert_canonical_state "$to_state" "transition --to"
 
-  if [ "$to_state" = "done" ] && \
-     [ "$(locate_story_file "$story_key" 2>/dev/null && read_story_status "$STORY_FILE" 2>/dev/null)" = "review" ]; then
-    _pre_push_merge_guard "$story_key"
+  # Locate the story file in a subshell, as before, so an unresolvable key
+  # cannot end this shell here: the locked transition below reports it. Only a
+  # review -> done move needs the path; the guard's root derivation walks up
+  # from it.
+  if [ "$to_state" = "done" ]; then
+    local _guard_story_file=""
+    _guard_story_file="$(locate_story_file "$story_key" 2>/dev/null && printf '%s' "$STORY_FILE")" \
+      || _guard_story_file=""
+    if [ -n "$_guard_story_file" ] && \
+       [ "$(read_story_status "$_guard_story_file" 2>/dev/null)" = "review" ]; then
+      STORY_FILE="$_guard_story_file"
+      _pre_push_merge_guard "$story_key"
+    fi
   fi
 
   (

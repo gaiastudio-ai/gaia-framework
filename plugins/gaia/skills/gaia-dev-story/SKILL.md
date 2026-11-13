@@ -378,7 +378,18 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-checkpoint.sh gaia-dev-story 3 \
 
 ```bash
 # Default mode only — skip when the review ordering mode is pre-push.
-if [ "${_review_mode:-default}" != "pre-push" ]; then
+# Re-read the mode from the helper: each SKILL.md step runs in a fresh
+# Bash call, so a variable captured earlier is not available here.
+if _step3a_mode="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh" mode 2>/dev/null)"; then
+  :
+else
+  # Non-zero exit: the mode could not be determined. Keep the worktree
+  # (do not install the teardown trap) and warn; a broken config must
+  # never silently destroy a worktree.
+  printf 'step3a: review-order.sh mode exited non-zero — keeping worktree (mode unresolvable)\n' >&2
+  _step3a_mode="unresolvable"
+fi
+if [ "$_step3a_mode" != "pre-push" ] && [ "$_step3a_mode" != "unresolvable" ]; then
   trap 'worktree_teardown_trap "$PRIMARY_CODE_TREE" "$STORY_WORKTREE_PATH"' EXIT INT TERM
 fi
 ```
@@ -778,7 +789,14 @@ Then execute the following sequence:
      git -C "${PROJECT_PATH:-.}" add -u
      # Stage new files that the story's File List names. The File List is the
      # source of truth for expected new files; anything not in it is a stray.
-     _file_list="$(sed -n '/^## File List/,/^## /{ /^- /s/^- `\([^`]*\)`.*/\1/p; }' {story_file})"
+     _file_list="$(awk '
+       /^###[[:space:]]+File List/ { s=1; lvl=3; next }
+       /^##[[:space:]]+File List/  { s=1; lvl=2; next }
+       s && lvl==3 && /^###?[[:space:]]/ { s=0 }
+       s && lvl==3 && /^#[[:space:]]/    { s=0 }
+       s && lvl==2 && /^##?[[:space:]]/  { s=0 }
+       s && /^- / { sub(/^- /,""); gsub(/`/,""); sub(/[[:space:]].*/,""); if (length($0)>0) print }
+     ' {story_file})"
      if [ -n "$_file_list" ]; then
        while IFS= read -r _fl_entry; do
          [ -n "$_fl_entry" ] || continue
