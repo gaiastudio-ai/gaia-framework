@@ -2614,7 +2614,7 @@ STORY
     /^[[:space:]]*```bash[[:space:]]*$/ && on { code=1; next }
     /^[[:space:]]*```[[:space:]]*$/ && code { code=0 }
     code { print }
-    /^3\. \*\*Preflight/ { exit }
+    /^3\. \*\*/ { on=0 }
   ' > "$fence_script"
   [ -s "$fence_script" ] || { printf 'fence extraction empty\n' >&2; return 1; }
 
