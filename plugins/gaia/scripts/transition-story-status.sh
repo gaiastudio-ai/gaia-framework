@@ -35,6 +35,7 @@
 #   6  lock contention (5s lock-acquisition timeout)
 #   7  invalid state transition
 #   8  rollback after partial failure
+#   9  review -> done refused: a pre-push reviewed story's PR is not verified merged
 #
 # Config (env vars, all optional):
 #   PROJECT_PATH              — defaults to "."
@@ -260,6 +261,12 @@ fi
 #            workspace (supported mode)").
 #   Stage 2: PROJECT_PATH — legacy in-tree gaia-framework invocation override.
 #   Stage 3: '.' fallback — preserves the legacy CWD-relative behavior.
+
+# Snapshot the caller-supplied values before the three-stage fallback
+# computes defaults. _pre_push_merge_guard checks these to decide whether
+# to derive a path from the story file's location.
+_CALLER_CPR="${CLAUDE_PROJECT_ROOT:-}"
+_CALLER_PR="${PROJECT_ROOT:-}"
 
 PROJECT_PATH="${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}"
 PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-}}}"
@@ -1450,6 +1457,71 @@ fi
 # override STORY_INDEX_YAML wins unconditionally for tests / brownfield.
 STORY_INDEX_YAML="$(resolve_story_index_path "$STORY_FILE" "$EPIC_KEY_FOR_SLUG")"
 
+# Pre-push merge guard on review -> done. Decided by the shared helper, exit 9
+# on refusal. It can reach the network, so it runs before the status lock when
+# the story is already in review, keeping concurrent transitions from timing
+# out on that lock; the check under the lock covers a status that moved while
+# waiting. --reconcile-only is exempt for all projects except when the project
+# has opted in to pre-push review (the merge guard is the one gate that
+# reconcile-only must still pass for opted-in projects).
+_PRE_PUSH_GUARD_RAN=0
+
+# Derive the project path from the resolved story file's location by walking
+# up to the directory that holds `.gaia/config/project-config.yaml` (or the
+# legacy `config/project-config.yaml`). Used ONLY to pass PROJECT_PATH to
+# the review-order.sh subprocess when no root env var was supplied.
+_derive_project_path_for_guard() {
+  local dir depth=0
+  [ -n "${STORY_FILE:-}" ] && [ -f "$STORY_FILE" ] || return 1
+  dir="$(cd "$(dirname "$STORY_FILE")" 2>/dev/null && pwd -P)" || return 1
+  while [ "$depth" -lt 12 ]; do
+    if [ -f "$dir/.gaia/config/project-config.yaml" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    case "$(basename "$dir")" in
+      .gaia) ;;
+      *)
+        if [ -f "$dir/config/project-config.yaml" ]; then
+          printf '%s\n' "$dir"
+          return 0
+        fi
+        ;;
+    esac
+    [ "$dir" != "/" ] || return 1
+    dir="$(dirname "$dir")"
+    depth=$((depth + 1))
+  done
+  return 1
+}
+
+_pre_push_merge_guard() {
+  _PRE_PUSH_GUARD_RAN=1
+  # When the caller supplied an explicit root (CLAUDE_PROJECT_ROOT or
+  # PROJECT_ROOT), the existing env already points the helper at the config.
+  # When neither is set, derive the project root from the story file's
+  # directory tree and pass it as CLAUDE_PROJECT_ROOT so the helper's config
+  # discovery and resolver find the opt-in key.  CLAUDE_PROJECT_ROOT is the
+  # correct env to set: _discover_shared_config checks it before the
+  # PROJECT_PATH walk-up, and the resolver uses it for path resolution,
+  # while promotion-chain-guard.sh uses PROJECT_PATH for the git-CWD check
+  # which must stay as the code tree, not the project root.
+  if [ -z "${_CALLER_CPR}" ] && [ -z "${_CALLER_PR}" ]; then
+    local _derived
+    _derived="$(_derive_project_path_for_guard)" || true
+    if [ -n "$_derived" ]; then
+      CLAUDE_PROJECT_ROOT="${_derived}" \
+        "$SCRIPT_DIR"/../skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$STORY_KEY" || exit 9
+      return
+    fi
+  fi
+  "$SCRIPT_DIR"/../skills/gaia-dev-story/scripts/review-order.sh merge-guard --story-key "$STORY_KEY" || exit 9
+}
+if [ "$NEW_STATUS" = "done" ] \
+   && [ "$(read_frontmatter_status "$STORY_FILE" 2>/dev/null || true)" = "review" ]; then
+  _pre_push_merge_guard
+fi
+
 # Single exit handler — every trap installation calls this. Idempotent
 # (per-fd registry cleared on first release), so chaining it into a later
 # trap that also releases is safe.
@@ -1510,6 +1582,11 @@ fi
 # State-machine validation. Reconcile-only is a no-edge replay.
 if [ "$RECONCILE_ONLY" != "1" ] && ! validate_story_transition "$CURRENT_STATUS" "$NEW_STATUS"; then
   exit 7
+fi
+
+if [ "$CURRENT_STATUS" = "review" ] \
+   && [ "$NEW_STATUS" = "done" ] && [ "$_PRE_PUSH_GUARD_RAN" = "0" ]; then
+  _pre_push_merge_guard
 fi
 
 # Composite review-gate enforcement on review → done.

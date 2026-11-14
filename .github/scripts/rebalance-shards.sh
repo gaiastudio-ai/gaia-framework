@@ -15,7 +15,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-N_SHARDS=4
+N_SHARDS=5
 TIMING_FILE=""
 DRY_RUN=0
 

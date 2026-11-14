@@ -1,0 +1,6 @@
+=== RUN   TestAddPositive
+--- FAIL: TestAddPositive (0.00s)
+    calc_test.go:7: Add(1, 2) = -1, want 3
+FAIL
+exit status 1
+FAIL	example.com/calc	0.002s

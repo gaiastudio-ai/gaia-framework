@@ -45,12 +45,12 @@ teardown() {
   done
 }
 
-@test "SKILL.md documents 9 lettered sub-steps as out of scope for v1" {
+@test "SKILL.md documents 10 lettered sub-steps as out of scope for v1" {
   grep -q 'out of scope for v1' "$SKILL_MD" \
     || { echo "Missing out-of-scope sub-step documentation" >&2; false; }
-  # All 9 sub-steps must be listed
+  # All 10 sub-steps must be listed
   scope_line=$(grep 'out of scope for v1' "$SKILL_MD")
-  for sub in 2a 2b 3b 5a 6a 6b 7a 7b 14b; do
+  for sub in 2a 2b 3b 5a 6a 6b 7a 7b 9a 14b; do
     grep -qF "$sub" <<<"$scope_line" \
       || { echo "Missing sub-step $sub in out-of-scope documentation" >&2; false; }
   done

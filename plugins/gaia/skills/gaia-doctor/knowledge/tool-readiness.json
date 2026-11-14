@@ -336,6 +336,80 @@
         "docker": "docker run --rm -v $PWD:/src mcr.microsoft.com/dotnet/sdk:8.0 sh -c \"dotnet tool install --global Sarif.Multitool && PATH=$HOME/.dotnet/tools:$PATH sarif-multitool\""
       },
       "notes": "Required by brownfield Phase 7 sarif-merge.sh. Requires .NET SDK (8.0+). On hosts without dotnet, the brownfield SARIF merge degrades to single-tool consumption."
+    },
+    "semgrep": {
+      "name": "semgrep",
+      "category": "scanner",
+      "description": "Semgrep SAST scanner \u2014 multi-language pattern-based security and quality rules",
+      "tier": 1,
+      "applies_to_stacks": [
+        "any"
+      ],
+      "probe_cmd": "command -v semgrep",
+      "version_cmd": "semgrep --version",
+      "min_version": "1.0.0",
+      "install": {
+        "macos": "pip3 install semgrep",
+        "linux": "pip3 install semgrep",
+        "docker": "docker run --rm gaia-tools semgrep --version"
+      },
+      "notes": "Part of the scanner-first default set. Runs natively or through the gaia-tools docker image."
+    },
+    "gitleaks": {
+      "name": "gitleaks",
+      "category": "scanner",
+      "description": "Gitleaks secret scanner \u2014 detects hardcoded credentials in source files",
+      "tier": 1,
+      "applies_to_stacks": [
+        "any"
+      ],
+      "probe_cmd": "command -v gitleaks",
+      "version_cmd": "gitleaks version",
+      "min_version": "8.0.0",
+      "install": {
+        "macos": "brew install gitleaks",
+        "linux": "curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz | tar xz -C /usr/local/bin gitleaks",
+        "docker": "docker run --rm gaia-tools gitleaks version"
+      },
+      "notes": "Part of the scanner-first default set. Runs with redaction enabled so no secret value is stored in evidence."
+    },
+    "checkov": {
+      "name": "checkov",
+      "category": "scanner",
+      "description": "Checkov infrastructure-as-code scanner \u2014 Terraform, CloudFormation, Kubernetes, Dockerfiles, Helm",
+      "tier": 1,
+      "applies_to_stacks": [
+        "any"
+      ],
+      "probe_cmd": "command -v checkov",
+      "version_cmd": "checkov --version",
+      "min_version": "3.0.0",
+      "install": {
+        "macos": "pip3 install checkov",
+        "linux": "pip3 install checkov",
+        "docker": "docker run --rm gaia-tools checkov --version"
+      },
+      "notes": "Runs only when explicitly configured under tools: in project-config.yaml. Not in the default set."
+    },
+    "cppcheck": {
+      "name": "cppcheck",
+      "category": "scanner",
+      "description": "Cppcheck static analysis for C and C++ source files",
+      "tier": 1,
+      "applies_to_stacks": [
+        "c",
+        "cpp",
+        "embedded"
+      ],
+      "probe_cmd": "command -v cppcheck",
+      "version_cmd": "cppcheck --version",
+      "min_version": "2.0",
+      "install": {
+        "macos": "brew install cppcheck",
+        "linux": "apt-get install -y cppcheck",
+        "docker": "docker run --rm gaia-tools cppcheck --version"
+      },
+      "notes": "Runs only when explicitly configured under tools: in project-config.yaml. Not in the default set."
     }
   }
 }

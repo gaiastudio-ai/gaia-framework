@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# file-list-diff-check.bats — unit tests for plugins/gaia/scripts/file-list-diff-check.sh (E65-S1)
-# Covers TC-DEJ-DIVERGENCE-1, EC-8, EC-9.
+# file-list-diff-check.bats — unit tests for plugins/gaia/scripts/file-list-diff-check.sh
+# Covers divergence detection, heading level (H2/H3) acceptance, and edge cases.
 
 load 'test_helper.bash'
 
@@ -129,4 +129,128 @@ key: E65-S1
 EOF
   run "$SCRIPT" --story-file "$STORY" --base main
   [ "$status" -eq 0 ]
+}
+
+# ---------- H3 File List heading (story-template.md canonical format) ----------
+
+write_story_h3_filelist() {
+  cat > "$STORY" <<'EOF'
+---
+key: E65-S1
+---
+# Title
+
+## Dev Agent Record
+
+### File List
+
+- `gaia-public/plugins/gaia/scripts/a.ts`
+- `gaia-public/plugins/gaia/scripts/c.ts`
+
+## Findings
+EOF
+}
+
+write_story_h3_empty_filelist() {
+  cat > "$STORY" <<'EOF'
+---
+key: E65-S1
+---
+# Title
+
+## Dev Agent Record
+
+### File List
+
+## Findings
+EOF
+}
+
+@test "H3 File List with listed files reports ok or divergence, not no-file-list" {
+  init_git_repo
+  write_story_h3_filelist
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  # Must NOT report no-file-list; the heading was found.
+  [[ "$output" != *"no-file-list"* ]]
+}
+
+@test "H3 File List entries are parsed: divergence names missing file" {
+  init_git_repo
+  write_story_h3_filelist
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  # b.ts is in git diff but not in the File List.
+  [[ "$output" == *"b.ts"* ]]
+  [[ "$output" == *"divergence"* ]]
+}
+
+@test "H3 empty File List reports empty-file-list" {
+  init_git_repo
+  write_story_h3_empty_filelist
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"empty-file-list"* ]]
+}
+
+@test "H3 File List section ends at next H2 heading" {
+  # The section body between ### File List and ## Findings must not leak
+  # into the Findings section.
+  cat > "$STORY" <<'EOF'
+---
+key: E65-S1
+---
+# Title
+
+### File List
+
+- `real-file.ts`
+
+## Findings
+
+- `not-a-file.ts` — this is a finding, not a file entry
+EOF
+  init_git_repo
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  # The finding entry must NOT appear as a file-list entry.
+  [[ "$output" != *"not-a-file.ts"* ]] || {
+    # If it appears, it should be in extra_in_file_list, not missing.
+    echo "FAIL: not-a-file.ts leaked from Findings into File List" >&2
+    false
+  }
+}
+
+@test "H3 File List section ends at next H3 heading" {
+  # An H3 section ends at the next heading of the same level.
+  cat > "$STORY" <<'EOF'
+---
+key: E65-S1
+---
+# Title
+
+### File List
+
+- `real-file.ts`
+
+### Completion Notes
+
+- `completion-note.ts` — not a file entry
+EOF
+  init_git_repo
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"completion-note.ts"* ]] || {
+    echo "FAIL: completion-note.ts leaked from next H3 into File List" >&2
+    false
+  }
+}
+
+@test "H2 File List still works as before (backward compatibility)" {
+  init_git_repo
+  write_story_with_filelist
+  run "$SCRIPT" --story-file "$STORY" --base main
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"divergence"* ]]
+  [[ "$output" == *"b.ts"* ]]
 }

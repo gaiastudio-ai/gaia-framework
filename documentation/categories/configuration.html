@@ -197,6 +197,11 @@
           <span class="tag tag-user">user-facing</span>
           <span class="command-summary">Array of shell commands run after CI goes green and before merge in <code>/gaia-dev-story</code>. Non-zero exit halts the merge. Absent or empty = no-op. The smoke runs against the CI-verified commit. <strong>Trust boundary:</strong> same as preflight.</span>
         </li>
+        <li>
+          <span class="command-name">dev_story.review_before_merge</span>
+          <span class="tag tag-user">user-facing</span>
+          <span class="command-summary">Boolean (default <code>false</code>). When <code>true</code>, <code>/gaia-dev-story</code> runs the six-gate review on the story worktree before push so the reviewed commit is the pushed commit. When absent or <code>false</code>, the default post-push review order applies with no behaviour change.</span>
+        </li>
       </ul>
 
       <h2>Statusline</h2>

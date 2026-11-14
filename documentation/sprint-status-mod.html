@@ -228,6 +228,14 @@
           The pane shows a <code>9 close</code> button that dismisses the
           sidebar. The digit <code>9</code> on an empty prompt reopens it.
         </p>
+        <p>
+          <strong>Hotkey precedence.</strong> When another mod also binds
+          hotkey <code>9</code>, the host draws each plugin's band as a
+          separate part and the later-drawn button wins. Because the host
+          determines the draw order and no plugin API controls it, another
+          mod's <code>9</code> may take precedence over the dashboard toggle.
+          If that happens, use the <code>/sprint</code> command instead.
+        </p>
 
         <h3>Status glyphs</h3>
         <table>

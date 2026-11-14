@@ -93,7 +93,7 @@ Dispatch `check-stray-snapshots.sh --project-root <root>` (or `--json` when the 
 
 ### Step 7 — Review limits
 
-Report the active review-process limits. Read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`, and `review.max_concurrent_heavy_reviewers` via `resolve-config.sh --field review.max_concurrent_heavy_reviewers`. When each output is empty, the effective cap is its point-of-use default (2 for fix cycles, 4 for heavy-reviewer slots). Display the configured value or the default when absent:
+Report the active review-process limits and the review ordering mode. Read `review.max_fix_cycles` from project config via `resolve-config.sh --field review.max_fix_cycles`, and `review.max_concurrent_heavy_reviewers` via `resolve-config.sh --field review.max_concurrent_heavy_reviewers`. When each output is empty, the effective cap is its point-of-use default (2 for fix cycles, 4 for heavy-reviewer slots). Read the review ordering mode via `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh mode` — it prints `pre-push` or `default`. Display the configured value or the default when absent:
 
 ```
 Review limits:
@@ -101,9 +101,37 @@ Review limits:
   max_fix_cycles:                 2 (default)       (when absent from config)
   max_concurrent_heavy_reviewers: 3                 (when configured)
   max_concurrent_heavy_reviewers: 4 (default)       (when absent from config)
+  review_ordering:                pre-push review   (when dev_story.review_before_merge: true)
+  review_ordering:                default           (when absent or false)
+```
+
+When the mode is `pre-push`, also run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh check-layout --worktree-mode-only`, with `GAIA_WORKTREE_MODE` as this session has it. Exit 1 means the opt-in cannot run in this layout: `/gaia-dev-story` halts instead of falling back to the default order. Emit a warning naming the layout and both remedies: enable worktree mode with `GAIA_WORKTREE_MODE=1`, or set `dev_story.review_before_merge` to false. After the warning, state that per-story layout checks (non-linked code path, story file inside the code tree) run at `/gaia-dev-story` time. Exit 0 or 3 emits nothing. When `mode` itself exits non-zero, warn with its stderr: the value is not a boolean or the config cannot be resolved.
+
+```
+Review limits:
+  review_ordering:                pre-push review
+  WARNING: review_before_merge cannot run in this layout: worktree mode is off
+           Per-story checks (non-linked code path, story file inside the code tree) run at /gaia-dev-story time.
 ```
 
 This section is always emitted — it is a read-only diagnostic, not gated on any config section existing.
+
+### Step 7b — Regression-rule gate
+
+Report whether the regression-rule gate is on or turned off by config:
+
+```bash
+gate_status=$(${CLAUDE_PLUGIN_ROOT}/scripts/regression-rule-check.sh enabled)
+```
+
+Display the result:
+
+```
+Regression-rule gate:           on                    (when absent or true)
+Regression-rule gate:           turned off by config  (when false)
+```
+
+This section is always emitted — it is a read-only diagnostic.
 
 ### Step 8 — Review gate bypass audit
 
@@ -122,6 +150,14 @@ Read `preflight_commands` and `post_ci_smoke_commands` from `.gaia/config/projec
 - If yq is not installed and a key is present, print a warning: `yq not installed — cannot read <key>`.
 
 This is a read-only listing. It never executes the commands.
+
+### Step 9 — Mutation testing
+
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/mutation-runner.sh --doctor` (passing `--config` when the project config path is known). The output reports:
+
+- The configured mutation-testing score thresholds (or that mutation testing is off when `test_execution.mutation_thresholds` is absent).
+- Whether each installed mutation adapter's tool is available.
+- A warning when leftover `gaia-mutation-` temp directories exist under the temp root.
 
 ## Finalize
 

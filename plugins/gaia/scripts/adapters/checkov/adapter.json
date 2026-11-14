@@ -1,0 +1,9 @@
+{
+  "provider": "checkov",
+  "category": "sast",
+  "version-range": ">=3.0.0",
+  "runtime-profile": "subprocess",
+  "default-timeout-seconds": 300,
+  "file-extensions": [".tf", ".yaml", ".yml", ".json"],
+  "description": "Checkov infrastructure-as-code scanner — Terraform, CloudFormation, Kubernetes manifests, Dockerfiles, and Helm charts."
+}

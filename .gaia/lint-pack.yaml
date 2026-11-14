@@ -1,0 +1,29 @@
+# lint-pack.yaml — framework repository lint configuration
+#
+# This file configures the leaked-identifier rule for the GAIA Framework
+# repository. The rule is off by default in user projects; this file turns
+# it on for the framework's own preflight gate.
+#
+# User projects: to enable the leaked-identifier rule, create a
+# .gaia/lint-pack.yaml in your repository with your own patterns and
+# published paths, then list the lint pack in preflight_commands.
+
+lint_pack:
+  leaked_identifiers:
+    # Regex patterns matching internal planning identifiers that must not
+    # appear in published source. Each pattern is a POSIX extended regex
+    # passed to grep -E.
+    patterns:
+      - "FR-[0-9]+"
+      - "NFR-[0-9]+"
+      - "SR-[0-9]+"
+      - "ADR-[0-9]+"
+      - "E[0-9]+-S[0-9]+"
+      - "TC-[A-Z]+-[A-Z]+-[0-9]+"
+      - "AF-[0-9]{4}-[0-9]{2}-[0-9]{2}"
+      - "AI-[0-9]{4}-[0-9]{2}-[0-9]{2}"
+      - "T-[A-Z]+-[0-9]+"
+    # Paths (relative to the repository root) that count as published source.
+    # Only files under these prefixes are scanned by the leaked-identifier rule.
+    published_paths:
+      - "plugins/gaia/"

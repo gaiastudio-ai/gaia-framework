@@ -220,11 +220,12 @@ fields:
     type: map
     required: false
     default: null
-    description: "Dev-Story workflow knobs. Holds the nested tdd_review block consumed by /gaia-dev-story. Schema for the nested block (resolved via resolve-config.sh --field dev_story.tdd_review.<key>):
+    description: "Dev-Story workflow knobs. Holds the nested tdd_review block and the review_before_merge flag consumed by /gaia-dev-story. Schema for the nested block (resolved via resolve-config.sh --field dev_story.tdd_review.<key>):
       - threshold (enum): off | low | medium | high — default medium. Risk threshold at which the post-Red TDD review gate prompt fires. 'off' opts out entirely.
       - phases (array): default [red]. TDD phase(s) at which the review fires. type=array.
       - qa_auto_in_yolo (bool): default true. Whether YOLO auto-runs the QA review after the gate.
-      - qa_timeout_seconds (int): default 600. Per-review timeout for the QA auto-run."
+      - qa_timeout_seconds (int): default 600. Per-review timeout for the QA auto-run.
+      - review_before_merge (bool): default false. When true, the six-gate review runs on the story worktree before push so the reviewed commit is the pushed commit."
 
   sizing_map:
     type: map

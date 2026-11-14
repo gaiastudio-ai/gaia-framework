@@ -1,0 +1,3 @@
+# Flaky test quarantine — stack IDs retried by run-with-retry.sh.
+# Each line is a stack ID matched by --flaky-list-file. Remove an
+# entry when its root-cause fix lands. The file may be empty.

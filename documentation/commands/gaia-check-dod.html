@@ -86,7 +86,7 @@
 
       <section id="step-by-step">
         <h2>What it does step by step</h2>
-        <ol class="step-list"><li><span class="step-title">Resolve story file</span> Locates the story file using the story key.</li><li><span class="step-title">Parse Definition of Done section</span> Reads the DoD section and identifies each checkbox line as checked or unchecked.</li><li><span class="step-title">Generate verdict</span> COMPLETE if all items are checked; INCOMPLETE if any are unchecked.</li><li><span class="step-title">Report results</span> Prints the verdict, the ratio of checked items, and lists any unchecked items explicitly.</li></ol>
+        <ol class="step-list"><li><span class="step-title">Resolve story file</span> Locates the story file using the story key.</li><li><span class="step-title">Parse Definition of Done section</span> Reads the DoD section and identifies each checkbox line as checked or unchecked.</li><li><span class="step-title">CI evidence citation</span> When the story folder contains <code>ci-evidence/ci-junit-evidence.json</code>, reads the CI run links and the pinned head SHA and shows them as read-only information next to the CI checklist item. This is informational only and does not change the DoD verdict.</li><li><span class="step-title">Generate verdict</span> COMPLETE if all items are checked; INCOMPLETE if any are unchecked.</li><li><span class="step-title">Report results</span> Prints the verdict, the ratio of checked items, and lists any unchecked items explicitly. When CI evidence is present, appends a CI Evidence section showing each run link and the pinned SHA.</li></ol>
       </section>
 
       <section id="inputs">

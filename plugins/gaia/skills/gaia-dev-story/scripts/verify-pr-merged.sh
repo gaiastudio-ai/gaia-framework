@@ -13,10 +13,17 @@
 # Usage:
 #   verify-pr-merged.sh <story_key> <target_branch>
 #   verify-pr-merged.sh <story_key> --no-chain
+#   verify-pr-merged.sh --strict <story_key> <target_branch>
 #
 # The <target_branch> may include a remote prefix (e.g. "origin/staging")
 # or a refs/ prefix; only a known git remote is stripped, so multi-segment
 # branch names like "release/next" are preserved.
+#
+# Options:
+#   --strict — require the gh CLI for verification; do not fall back to
+#              commit-grep when gh is unavailable or fails. Used by the
+#              merge guard so that only a PR confirmed merged via the API
+#              counts as verification.
 #
 # Environment:
 #   PROJECT_PATH — optional. The git working directory (defaults to .).
@@ -47,7 +54,16 @@ SCRIPT_NAME="gaia-dev-story/verify-pr-merged.sh"
 
 log() { printf '%s: %s\n' "$SCRIPT_NAME" "$*" >&2; }
 warn() { printf '%s: WARNING: %s\n' "$SCRIPT_NAME" "$*" >&2; }
-die() { log "usage: verify-pr-merged.sh <story_key> <target_branch|--no-chain>"; exit 1; }
+die() { log "usage: verify-pr-merged.sh [--strict] <story_key> <target_branch|--no-chain>"; exit 1; }
+
+STRICT=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --strict) STRICT=1; shift ;;
+    -*) die ;;
+    *)  break ;;
+  esac
+done
 
 if [ $# -lt 2 ]; then
   die
@@ -165,6 +181,10 @@ fi
 check_pr_via_api() {
   # Guard: gh must be on PATH.
   if ! command -v gh >/dev/null 2>&1; then
+    if [ "$STRICT" -eq 1 ]; then
+      log "gh CLI not found on PATH — gate fails (strict mode, no fallback)"
+      exit 2
+    fi
     warn "gh CLI not found on PATH — falling back to commit-based check"
     return 1
   fi
@@ -196,6 +216,10 @@ check_pr_via_api() {
         --limit 200 \
         --jq '[.[] | select((.headRefName | ascii_downcase | startswith("feat/'"${key_lower}"'-")) and (.baseRefName | ascii_downcase == "'"${base_lower}"'"))] | if length == 0 then "NO_MATCH" elif (.[0].state == "MERGED" and .[0].mergedAt != null) then "MERGED" else "\(.[0].state):\(.[0].number)" end' \
         2>/dev/null)"; then
+    if [ "$STRICT" -eq 1 ]; then
+      log "gh pr list failed — gate fails (strict mode, no fallback)"
+      exit 2
+    fi
     warn "gh pr list failed — falling back to commit-based check"
     return 1
   fi
@@ -203,6 +227,10 @@ check_pr_via_api() {
   # Empty output means gh produced nothing useful (parse failure, etc.).
   # Fail closed: fall back rather than silently passing.
   if [ -z "$pr_result" ]; then
+    if [ "$STRICT" -eq 1 ]; then
+      log "gh pr list returned empty output — gate fails (strict mode, no fallback)"
+      exit 2
+    fi
     warn "gh pr list returned empty output — falling back to commit-based check"
     return 1
   fi

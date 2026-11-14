@@ -10,18 +10,22 @@ When `brownfield.tools.runner: docker` is set in `project-config.yaml`, the brow
 
 ## Bundled tools
 
-| Tool          | Tier | Version    | Stack scope        |
-|---------------|------|------------|--------------------|
-| `grype`       | 2    | 0.79.5     | any (CVE scan)     |
-| `syft`        | 2    | 1.4.1      | any (SBOM)         |
-| `osv-scanner` | 1    | 1.7.4      | any (CVE)          |
-| `spotbugs`    | 2    | 4.8.4      | java, android      |
-| `vulture`     | 1    | 2.13       | python (dead-code) |
-| `pip-audit`   | 1    | 2.7.3      | python (CVE)       |
-| `cyclonedx-bom` | 1  | 4.4.3      | python (SBOM)      |
-| `cdxgen`      | 1    | 10.11.0    | any (Node SBOM)    |
-| `yamllint`    | 1    | 1.35.1     | yaml workflows     |
-| `yq` (Mike Farah) | — | 4.44.1   | core               |
+| Tool          | Tier | Version    | Stack scope          |
+|---------------|------|------------|----------------------|
+| `grype`       | 2    | 0.79.5     | any (CVE scan)       |
+| `syft`        | 2    | 1.4.1      | any (SBOM)           |
+| `osv-scanner` | 1    | 1.7.4      | any (CVE)            |
+| `spotbugs`    | 2    | 4.8.4      | java, android        |
+| `semgrep`     | 1    | 1.90.0     | any (SAST)           |
+| `checkov`     | 1    | 3.2.262    | any (IaC)            |
+| `cppcheck`    | 1    | 2.13.0     | c, cpp (SAST)        |
+| `gitleaks`    | 1    | 8.18.4     | any (secrets)        |
+| `vulture`     | 1    | 2.13       | python (dead-code)   |
+| `pip-audit`   | 1    | 2.7.3      | python (CVE)         |
+| `cyclonedx-bom` | 1  | 4.4.3      | python (SBOM)        |
+| `cdxgen`      | 1    | 10.11.0    | any (Node SBOM)      |
+| `yamllint`    | 1    | 1.35.1     | yaml workflows       |
+| `yq` (Mike Farah) | — | 4.44.1   | core                 |
 
 The image version (`0.1.0`) and DB date (`2026-05-30`) are stamped into image labels and surfaced via `gaia-tools --bom`.
 

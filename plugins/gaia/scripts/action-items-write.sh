@@ -36,6 +36,92 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
+# Source the shared lock helper. Sourced inside a function guard so
+# LC_ALL=C export does not collide with callers that source us.
+# ---------------------------------------------------------------------------
+_AIW_SCRIPTS_DIR="${BASH_SOURCE[0]%/*}"
+# shellcheck source=lib/acquire-lock.sh
+source "${_AIW_SCRIPTS_DIR}/lib/acquire-lock.sh"
+
+# Default lock timeout (seconds). Tests override via GAIA_AIW_LOCK_TIMEOUT.
+_AIW_LOCK_TIMEOUT="${GAIA_AIW_LOCK_TIMEOUT:-120}"
+
+# Internal fd for the action-items lock. Chosen to avoid collision with
+# sprint-state.sh (fd 7, 8, 9) when both scripts are sourced together.
+_AIW_LOCK_FD=6
+
+# ---------------------------------------------------------------------------
+# _aiw_lock — acquire the action-items lock via the shared helper.
+#
+# Handles the parallel-execution fail-closed gate, the forced-fallback
+# override, and maps acquire_lock exit codes to the writer's stdout protocol.
+# Returns 0 on success, 1 on failure (with status=error already printed).
+#
+# The shared helper's fallback path has a transient failure mode: the
+# reaper can rm an ownerless lock file between a concurrent acquirer's
+# ln and its publication-inode stat, causing the publication check to
+# fail.  This wrapper retries on non-timeout failures within the
+# configured timeout so a transient refusal does not propagate as a
+# hard failure.
+# ---------------------------------------------------------------------------
+_aiw_lock() {
+  local lock_file="$1" caller="$2"
+  local _timeout="${GAIA_AIW_LOCK_TIMEOUT:-$_AIW_LOCK_TIMEOUT}"
+
+  # Clean up any leftover .lockdir from the old mkdir-based lock.
+  local _old_lockdir="${lock_file%.lock}.lockdir"
+  [ "${_old_lockdir}" = "${lock_file}" ] || rmdir "$_old_lockdir" 2>/dev/null || true
+
+  local _start _now _elapsed _al_rc
+  _start="$(date +%s)"
+
+  while true; do
+    _al_rc=0
+    acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" || _al_rc=$?
+
+    if [ "$_al_rc" -eq 0 ]; then
+      # Test-only hold hook: sleep inside the lock to simulate a slow
+      # critical section for race reproduction.
+      if [ -n "${GAIA_AIW_TEST_HOLD_SECONDS:-}" ]; then
+        sleep "$GAIA_AIW_TEST_HOLD_SECONDS" 2>/dev/null || sleep 1
+      fi
+      return 0
+    fi
+
+    # Timeout: hard failure (the helper already waited the full duration).
+    if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_TIMEOUT" ]; then
+      printf 'status=error\nreason=%s: lock timeout\n' "$caller"
+      return 1
+    fi
+
+    # Parallel-execution gate: hard failure (flock is mandatory).
+    if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
+      printf 'status=error\nreason=%s: lock unavailable (parallel execution requires flock)\n' "$caller"
+      return 1
+    fi
+
+    # Transient failure (e.g. the reaper rm'd an ownerless lock between
+    # our ln and the publication-inode stat): retry within the overall
+    # timeout.
+    _now="$(date +%s)"
+    _elapsed=$(( _now - _start ))
+    if [ "$_elapsed" -ge "$_timeout" ]; then
+      printf 'status=error\nreason=%s: lock timeout\n' "$caller"
+      return 1
+    fi
+
+    sleep 0.05 2>/dev/null || sleep 1
+  done
+}
+
+# ---------------------------------------------------------------------------
+# _aiw_unlock — release the action-items lock via the shared helper.
+# ---------------------------------------------------------------------------
+_aiw_unlock() {
+  release_lock "$_AIW_LOCK_FD"
+}
+
+# ---------------------------------------------------------------------------
 # aiw_bootstrap_file — create action-items.yaml with canonical schema header
 # ---------------------------------------------------------------------------
 aiw_bootstrap_file() {
@@ -343,38 +429,19 @@ aiw_build_entry() {
 }
 
 # ---------------------------------------------------------------------------
-# aiw_append_entry — atomic append with flock
+# aiw_append_entry — atomic append via shared lock helper
 # Args: target entry_text
+# Returns: 0 on success, 1 on lock failure (status=error already printed).
 # ---------------------------------------------------------------------------
 aiw_append_entry() {
   local target="$1" entry_text="$2"
-  local lockdir="${target}.lockdir"
+  local lock_file="${target}.lock"
 
-  _do_append() {
-    printf '\n%s\n' "$entry_text" >> "$target"
-  }
-
-  if command -v flock >/dev/null 2>&1; then
-    local lockfile="${target}.lock"
-    (
-      flock -x 9
-      _do_append
-    ) 9>"$lockfile"
-    # Do NOT unlink $lockfile — aiw_resolve uses the same lock identity.
-    # Unlinking after release lets a newcomer lock a fresh inode while
-    # a waiter still holds the unlinked one, breaking mutual exclusion
-    # with three or more contenders.
-  else
-    # macOS fallback — mkdir-based mutex
-    local tries=0
-    while ! mkdir "$lockdir" 2>/dev/null; do
-      tries=$((tries + 1))
-      [ "$tries" -gt 600 ] && { rmdir "$lockdir" 2>/dev/null || true; break; }
-      sleep 0.02
-    done
-    _do_append
-    rmdir "$lockdir" 2>/dev/null || true
+  if ! _aiw_lock "$lock_file" "aiw_write"; then
+    return 1
   fi
+  printf '\n%s\n' "$entry_text" >> "$target"
+  _aiw_unlock
 }
 
 # ---------------------------------------------------------------------------
@@ -459,13 +526,28 @@ aiw_write() {
   # Bootstrap file if missing
   aiw_bootstrap_file "$target"
 
-  # Idempotency check
+  # Refuse to write through a symlink (planted-symlink attack surface)
+  if [ -L "$target" ]; then
+    printf 'status=error\nreason=target is a symlink; refusing to write\n'
+    return 1
+  fi
+
+  # Acquire the lock BEFORE computing the next id and dedup check, so both
+  # are evaluated by the lock holder and no two writers race on the same id
+  # or slip past the dedup check concurrently.
+  local lock_file="${target}.lock"
+  if ! _aiw_lock "$lock_file" "aiw_write"; then
+    return 1
+  fi
+
+  # Idempotency check (inside the lock).
   if aiw_check_dedup "$target" "$sprint_id" "$classification" "$ref_key" "$ref_value"; then
+    _aiw_unlock
     printf 'status=skipped_idempotent\nreason=entry with matching composite key already exists\n'
     return 0
   fi
 
-  # Compute next id
+  # Compute next id (inside the lock).
   local next_id
   next_id="$(aiw_next_id "$target")"
 
@@ -477,14 +559,9 @@ aiw_write() {
   local entry
   entry="$(aiw_build_entry "$next_id" "$sprint_id" "$classification" "$text" "$ref_key" "$ref_value" "$indent")"
 
-  # Refuse to write through a symlink (planted-symlink attack surface)
-  if [ -L "$target" ]; then
-    printf 'status=error\nreason=target is a symlink; refusing to write\n'
-    return 1
-  fi
-
-  # Atomic append
-  aiw_append_entry "$target" "$entry"
+  # Append (already under the lock — write directly, do not re-lock).
+  printf '\n%s\n' "$entry" >> "$target"
+  _aiw_unlock
 
   printf 'status=ok\nid=%s\ntarget=%s\n' "$next_id" "$target"
   return 0
@@ -614,14 +691,20 @@ aiw_resolve() {
   # preventing matches against field names that appear inside block text.
   # Block-list fields (key:\n  - entry) are also handled correctly.
 
-  local tmp
-  tmp="$(mktemp "${target}.XXXXXX")" || {
-    printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
-  }
-
   # The entire read-edit-write must happen under the lock to prevent
   # concurrent resolves from overwriting each other's changes.
-  local lockdir="${target}.lockdir"
+  local lock_file="${target}.lock"
+  if ! _aiw_lock "$lock_file" "aiw_resolve"; then
+    return 1
+  fi
+
+  # Create the temp file AFTER the lock is held so a timeout leaves no
+  # leftover temp behind.
+  local tmp
+  tmp="$(mktemp "${target}.XXXXXX")" || {
+    _aiw_unlock
+    printf 'status=error\nreason=aiw_resolve: mktemp failed\n'; return 1
+  }
 
   _do_resolve_locked() {
   local awk_rc=0
@@ -1065,36 +1148,14 @@ aiw_resolve() {
   return 0
   }  # end _do_resolve_locked
 
-  # Take the action-items lock (same lock as aiw_write uses) around the
-  # entire read-edit-write to prevent concurrent resolves losing updates.
-  # The lock file is NOT removed after release — unlinking a held inode
-  # lets a newcomer lock a fresh file while a waiter still holds the
-  # unlinked one, breaking mutual exclusion with three or more contenders.
-  if command -v flock >/dev/null 2>&1; then
-    local lockfile="${target}.lock"
-    (
-      flock -x 9
-      _do_resolve_locked
-    ) 9>"$lockfile"
-    local _flock_rc=$?
-    if [ "$_flock_rc" -ne 0 ]; then
-      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
-      return 1
-    fi
-  else
-    local tries=0
-    while ! mkdir "$lockdir" 2>/dev/null; do
-      tries=$((tries + 1))
-      [ "$tries" -gt 600 ] && { rmdir "$lockdir" 2>/dev/null || true; break; }
-      sleep 0.02
-    done
-    _do_resolve_locked
-    local _mkdir_rc=$?
-    rmdir "$lockdir" 2>/dev/null || true
-    if [ "$_mkdir_rc" -ne 0 ]; then
-      printf 'status=error\nreason=aiw_resolve: locked operation failed\n'
-      return 1
-    fi
+  # The lock is already held (acquired above). Run the locked operation
+  # and release.
+  _do_resolve_locked
+  local _locked_rc=$?
+  _aiw_unlock
+
+  if [ "$_locked_rc" -ne 0 ]; then
+    return 1
   fi
 
   printf 'status=ok\nitem=%s\ntarget=%s\n' "$item" "$target"

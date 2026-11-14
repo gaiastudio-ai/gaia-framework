@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # file-list-diff-check.sh — GAIA shared review-skill script
 #
-# Compares the story `## File List` section against `git diff --name-only`
+# Compares the story File List section (`## File List` or `### File List`)
+# against `git diff --name-only`
 # (against the configured base branch) and emits a divergence Warning in
 # machine-parseable form when files differ. The check is non-blocking: if
 # the workspace is not a git repository, or if HEAD is detached, the script
@@ -14,7 +15,7 @@
 #    "missing_from_file_list":[...],"extra_in_file_list":[...]}
 #
 # Reasons:
-#   no-file-list       — story has no `## File List` section
+#   no-file-list       — story has no File List section
 #   empty-file-list    — section exists but contains zero file entries
 #   divergence         — entries differ between story and git diff
 #
@@ -48,7 +49,7 @@ Usage:
   $SCRIPT_NAME --help
 
 Options:
-  --story-file <path>  Path to story markdown (must contain '## File List') (required)
+  --story-file <path>  Path to story markdown (must contain File List section) (required)
   --base <branch>      Git ref to diff against (default: main)
   --repo <dir>         Repository root (default: current directory)
   --help               Show this help and exit 0
@@ -73,15 +74,20 @@ done
 [ -r "$STORY" ] || die 1 "story file not readable: $STORY"
 
 # --- 1. Extract File List section from story markdown ---
-# Section runs from `## File List` (or `## File list`) until the next H2
-# heading (`^## `) or EOF. File entries are markdown list items beginning
-# with `-` or `*`. Backtick-quoted code spans are stripped.
+# Section runs from `## File List` or `### File List` (the canonical
+# story-template heading level) until the next heading of the same or higher
+# level, or EOF. An H3 section ends at `#`, `##` or `###`; an H2 section
+# ends at `#` or `##`. File entries are markdown list items beginning with
+# `-` or `*`. Backtick-quoted code spans are stripped.
 
 extract_file_list() {
   awk '
-    BEGIN { in_section = 0 }
-    /^##[[:space:]]+[Ff]ile [Ll]ist[[:space:]]*$/ { in_section = 1; next }
-    in_section && /^##[[:space:]]/                { in_section = 0 }
+    BEGIN { in_section = 0; level = 0 }
+    /^###[[:space:]]+[Ff]ile [Ll]ist[[:space:]]*$/ { in_section = 1; level = 3; next }
+    /^##[[:space:]]+[Ff]ile [Ll]ist[[:space:]]*$/  { in_section = 1; level = 2; next }
+    in_section && level == 3 && /^###?[[:space:]]/ { in_section = 0 }
+    in_section && level == 3 && /^#[[:space:]]/    { in_section = 0 }
+    in_section && level == 2 && /^##?[[:space:]]/  { in_section = 0 }
     in_section { print }
   ' "$STORY"
 }
@@ -111,7 +117,7 @@ FILE_LIST_SECTION="$(extract_file_list || true)"
 
 # --- 2. Detect missing or empty File List ---
 if [ -z "$(printf '%s' "$FILE_LIST_SECTION" | tr -d '[:space:]')" ]; then
-  if ! grep -Eq '^##[[:space:]]+[Ff]ile [Ll]ist[[:space:]]*$' "$STORY"; then
+  if ! grep -Eq '^#{2,3}[[:space:]]+[Ff]ile [Ll]ist[[:space:]]*$' "$STORY"; then
     printf '{"warning":"file-list-divergence","reason":"no-file-list","missing_from_file_list":[],"extra_in_file_list":[]}\n'
   else
     printf '{"warning":"file-list-divergence","reason":"empty-file-list","missing_from_file_list":[],"extra_in_file_list":[]}\n'

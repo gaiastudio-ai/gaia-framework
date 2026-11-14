@@ -132,6 +132,36 @@ case "${GAIA_TEST_TAGGING_STRICT:-}" in
     TAG_OUT="$(run_with_args "$TAG" --stack "$STACK")" ;;
 esac
 
+# ---------- Mutation evidence check (--zero-kill for test-review) ----------
+# Reads the score only; this skill never generates or runs mutants. With the
+# thresholds key absent nothing is added, so existing projects see no change.
+MUT_CHECK="$SCRIPT_DIR/mutation-evidence-check.sh"
+MUT_OUT=""
+if [ -x "$MUT_CHECK" ]; then
+  # shellcheck source=../lib/mutation-config.sh
+  . "$SCRIPT_DIR/../lib/mutation-config.sh"
+  _tr_config="$(mutation_config_path)"
+  if ! _tr_mut_thresholds="$(mutation_read_thresholds "$_tr_config" 2>&1)"; then
+    printf '%s: %s\n' "$SCRIPT_NAME" "$_tr_mut_thresholds" >&2
+    MUT_OUT="$("$MUT_CHECK" --story-key "$STORY_KEY" --config-error "$_tr_mut_thresholds")"
+  elif [ -n "$_tr_mut_thresholds" ]; then
+    _tr_code_tree="${PROJECT_PATH:-$(pwd)}"
+    _tr_mut_commit="$(git -C "$_tr_code_tree" rev-parse HEAD 2>/dev/null || echo unknown)"
+    _tr_story_file="$("$SCRIPT_DIR/../resolve-story-file.sh" "$STORY_KEY" 2>/dev/null || true)"
+    _tr_mut_priority=""
+    if [ -n "$_tr_story_file" ] && [ -f "$_tr_story_file" ]; then
+      _tr_mut_priority="$(mutation_story_priority "$_tr_story_file")"
+    fi
+    MUT_OUT="$("$MUT_CHECK" \
+      --story-key "$STORY_KEY" \
+      --evidence "$(mutation_evidence_path "$STORY_KEY")" \
+      --commit "$_tr_mut_commit" \
+      --priority "$_tr_mut_priority" \
+      --thresholds "$_tr_mut_thresholds" \
+      --zero-kill)" || MUT_OUT='{"name":"mutation-score","status":"errored","error_reason":"mutation-evidence-check.sh failed","findings":[]}'
+  fi
+fi
+
 # ---------- emit merged analysis-results.json ----------
 
 # Each sub-scanner emits a complete JSON object that already constitutes a
@@ -144,7 +174,11 @@ printf '"skill":"%s",' "$SKILL_NAME"
 printf '"model":"%s",' "$MODEL"
 printf '"model_temperature":0,'
 printf '"checks":['
-printf '%s,%s,%s,%s' "$SMELL_OUT" "$FLAKE_OUT" "$FIXTURE_OUT" "$TAG_OUT"
+if [ -n "$MUT_OUT" ]; then
+  printf '%s,%s,%s,%s,%s' "$SMELL_OUT" "$FLAKE_OUT" "$FIXTURE_OUT" "$TAG_OUT" "$MUT_OUT"
+else
+  printf '%s,%s,%s,%s' "$SMELL_OUT" "$FLAKE_OUT" "$FIXTURE_OUT" "$TAG_OUT"
+fi
 printf ']'
 printf '}\n'
 

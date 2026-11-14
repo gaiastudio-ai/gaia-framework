@@ -53,8 +53,10 @@ on:
       - '.github/bats-file-timing.tsv'
       - '.github/scripts/**'
       - 'profiling/**'
-      - 'scripts/audit-v2-migration.sh'
+      - 'scripts/**'
       - 'tests/**'
+      - '.husky/**'
+      - 'commitlint.config.mjs'
 
 jobs:
   frontmatter-lint:

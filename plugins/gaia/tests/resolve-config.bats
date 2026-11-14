@@ -570,3 +570,35 @@ YAML
   [ "$status" -eq 0 ]
   [[ "$output" == *"GAIA_CREATIVE_ARTIFACTS"* ]] || [[ "$output" == *"creative_artifacts"* ]]
 }
+
+# ---------- dev_story.review_before_merge --field cases ----------
+
+@test "field dev_story.review_before_merge prints true when set" {
+  local dir="$TEST_TMP/rbm-true"
+  mkdir -p "$dir/config"
+  cat > "$dir/config/project-config.yaml" <<'YAML'
+project_root: /tmp/gaia-fx
+project_path: /tmp/gaia-fx/app
+memory_path: /tmp/gaia-fx/_memory
+checkpoint_path: /tmp/gaia-fx/_memory/checkpoints
+installed_path: /tmp/gaia-fx/_gaia
+framework_version: 1.127.2-rc.1
+date: 1970-01-01
+dev_story:
+  review_before_merge: true
+YAML
+  CLAUDE_SKILL_DIR="$dir" run "$SCRIPT" --field dev_story.review_before_merge
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"true"* ]]
+}
+
+@test "field dev_story.review_before_merge prints empty when absent" {
+  local dir="$TEST_TMP/rbm-absent"
+  mk_skill_dir "$dir"
+  CLAUDE_SKILL_DIR="$dir" run "$SCRIPT" --field dev_story.review_before_merge
+  [ "$status" -eq 0 ]
+  # Output should be empty or a single empty line
+  local trimmed
+  trimmed="$(echo "$output" | tr -d '[:space:]')"
+  [ -z "$trimmed" ]
+}

@@ -2,26 +2,68 @@
 
 > **Why this file exists.** The `bats-tests` gate in `plugin-ci.yml` is the
 > framework's primary integration gate. The full suite (~13000 tests across
-> ~791 top-level .bats files) is split into 4 parallel shards to keep
-> CI wall-clock under 10 minutes. This runbook tells contributors how
-> the sharding works, how to add new tests, and when to rebalance.
+> ~846 top-level .bats files) is split into 5 parallel shards to keep
+> CI wall-clock under 12 minutes per shard. This runbook tells contributors
+> how the sharding works, how to add new tests, and when to rebalance.
+
+## PR-vs-promotion split
+
+Feature-to-staging PRs gate on **plugin-ci.yml** only: the 5 bats shards
+(covering every top-level .bats file), the `bats-tests` rollup gate
+(public-function coverage check, plugin validate, plugin mod tests), the
+skills-bats-tests job, the component-subdir-tests job, and the various
+lints. This keeps the critical-path wall clock around **15 minutes**.
+
+The `selective-tests.yml` workflow still runs on feature PRs, but its
+`test (gaia-core)` job detects that it is not a promotion and emits a
+skip message instead of running the full suite — the shards already
+provide identical top-level-file coverage.
+
+Staging-to-main **promotion PRs** additionally run the full core suite
+with the public-function coverage gate via `selective-tests.yml`. The
+promotion detection mechanism (`is_promotion` plan-job output, derived
+from the promotion-chain config) triggers the full suite. Expected
+wall clock: **15 min (plugin-ci) + full suite** (varies with runner
+core count; `BATS_JOBS` defaults to `nproc`, capped at 8).
+
+A `workflow_dispatch` trigger on `selective-tests.yml` with
+`force_full_suite=true` simulates a promotion run for measurement on
+any branch.
+
+## Shard-level retry
+
+Each bats shard wraps its `bats` invocation with
+`.github/scripts/bats-shard-retry.sh`. When a shard fails, the script
+identifies the failed test files from the JUnit XML and re-runs only
+those once. A file that fails again still fails the shard. Every retry
+is logged by test name in the job summary. The script never retries
+when the failure is a signal kill (exit >= 128, indicating a timeout or
+cancellation).
+
+For the promotion-time full-suite run via `selective-tests.yml`, the
+coverage wrapper (`run-with-coverage.sh`) passes `--report-formatter
+junit` to bats and hands the JUnit output directory to
+`bats-shard-retry.sh`. The retry script parses `report.xml` to
+identify which files failed and re-runs only those files once. A
+quarantine list at `.gaia/flaky-tests.txt` marks stacks for retry
+eligibility at the `run-with-retry.sh` level.
 
 ## TL;DR
 
-- **Architecture:** 4 parallel shard jobs (`bats-shard-1` through
-  `bats-shard-4`) feed into a `bats-tests` gate job that runs the
+- **Architecture:** 5 parallel shard jobs (`bats-shard-1` through
+  `bats-shard-5`) feed into a `bats-tests` gate job that runs the
   static public-function coverage check and plugin validation.
-- **Per-shard timeout:** 12 min (~50% headroom over the expected ~5 min).
+- **Per-shard timeout:** 15 min (>40% headroom over the expected ~8 min).
 - **Fast feedback:** `bats-fast-feedback` runs diff-selected tests and
   reports within minutes, independently of the full regression suite.
 - **Superseded runs:** cancelled automatically via workflow `concurrency`.
 - **Required check:** `bats-tests` (the gate job) is the branch-protection
-  required status check.  It passes only when all 4 shards pass.
+  required status check.  It passes only when all 5 shards pass.
 - **Escalation triggers:** see the bats-scaling ADR Appendix B.
 
 ## Shard architecture
 
-The monolithic `bats-tests` job was replaced by a 4-shard matrix.  Each
+The monolithic `bats-tests` job was replaced by a 5-shard matrix.  Each
 shard runs on its own runner, so temp directories, fixtures, and state
 files are inherently isolated (no shared `/tmp/gaia-*` paths).
 
@@ -30,7 +72,7 @@ files are inherently isolated (no shared `/tmp/gaia-*` paths).
 | Job | Purpose | Timeout |
 |-----|---------|---------|
 | `bats-fast-feedback` | Diff-selected tests for early signal | 5 min |
-| `bats-shard-1` .. `bats-shard-4` | Parallel regression shards | 12 min each |
+| `bats-shard-1` .. `bats-shard-5` | Parallel regression shards | 15 min each |
 | `bats-tests` | Gate: coverage check + plugin validate (needs all shards) | 10 min |
 
 ### Shard assignment file
@@ -66,7 +108,7 @@ regenerate assignments:
 The macOS bash 3.2 job is a separate dimension, not
 a shard of the Linux suite.  It runs a curated subset of
 bash-3.2-sensitive tests on a macOS runner with the system `/bin/bash`
-3.2 and BSD tools.  It is orthogonal to the 4 Linux shards.
+3.2 and BSD tools.  It is orthogonal to the 5 Linux shards.
 
 ## How to add new bats fixtures
 
@@ -94,11 +136,9 @@ bash-3.2-sensitive tests on a macOS runner with the system `/bin/bash`
 
 Open a follow-on story when **any** of these fire:
 
-- Any shard consistently exceeds 8 minutes (66% of the 12-minute
+- Any shard consistently exceeds 10 minutes (66% of the 15-minute
   timeout). Rebalance first; escalate if rebalancing does not help.
-- The `bats-tests` critical path exceeds 10 minutes.
-- A new shard (5th) is proposed. Consider whether the test count
-  justifies the additional runner cost and queue-slot contention.
+- The `bats-tests` critical path exceeds 12 minutes.
 
 ## Local repro
 
@@ -139,8 +179,8 @@ The plugin ships **two** bats trees, both exercised by CI:
 - `tests/` (legacy) — cluster-4-e2e, cluster-5-parity,
   cluster-6-e2e, cluster-7-chain, cluster-8-sprint-cycle, and
   skills-bats-tests jobs.
-- `plugins/gaia/tests/` (canonical, ~791 top-level .bats files) —
-  `bats-shard-{1..4}` (sharded regression suite) and
+- `plugins/gaia/tests/` (canonical, ~842 top-level .bats files) —
+  `bats-shard-{1..5}` (sharded regression suite) and
   cluster-9-run-all-reviews.
 
 The two trees are **disjoint** (zero filename or relative-path overlap),

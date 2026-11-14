@@ -125,6 +125,7 @@ TIMEOUT_OVERRIDE=""
 CONFIG=""
 RUNTIME_PROFILE_OVERRIDE=""
 TOOL_NAME=""
+OUTPUT_PATH=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -146,6 +147,9 @@ while [ "$#" -gt 0 ]; do
     --tool)
       [ "$#" -ge 2 ] || die 1 "--tool requires a name"
       TOOL_NAME="$2"; shift 2 ;;
+    --output)
+      [ "$#" -ge 2 ] || die 1 "--output requires a path"
+      OUTPUT_PATH="$2"; shift 2 ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -429,6 +433,14 @@ fi
 run_args=(--input "$FILE_LIST" --runtime-profile "$RUNTIME_PROFILE" --timeout "$EFFECTIVE_TIMEOUT")
 if [ -n "$CONFIG" ]; then
   run_args+=(--config "$CONFIG")
+fi
+# --output passthrough: when set, the adapter's fragment is written to this
+# path by run.sh (the adapter's own --output flag). The probe still reads
+# stdout for its state JSON; the fragment file is a side-channel so callers
+# can collect scanner evidence in one pass instead of running the adapter
+# twice (once for the probe, once for the fragment).
+if [ -n "$OUTPUT_PATH" ]; then
+  run_args+=(--output "$OUTPUT_PATH")
 fi
 
 # Capture stderr + exit code in a temp file (no PIPESTATUS dependency for

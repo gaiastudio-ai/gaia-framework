@@ -66,6 +66,10 @@ gaia-tools $GAIA_TOOLS_VERSION (db: $GAIA_TOOLS_DB_DATE)
   syft        $(syft version 2>/dev/null | awk '/Version:/ {print $2; exit}' || echo unknown)
   osv-scanner $(osv-scanner --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
   spotbugs    $(printf '%s' "${GAIA_SPOTBUGS_VERSION:-$(spotbugs -version 2>&1 | awk '/SpotBugs/ {print $NF; exit}')}" | awk 'NF{print; exit} END{if(!NR) print "unknown"}')
+  semgrep     $(semgrep --version 2>/dev/null || echo unknown)
+  checkov     $(checkov --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
+  cppcheck    $(cppcheck --version 2>/dev/null | awk '{print $NF; exit}' || echo unknown)
+  gitleaks    $(gitleaks version 2>/dev/null || echo unknown)
   vulture     $(vulture --version 2>/dev/null || echo unknown)
   pip-audit   $(pip-audit --version 2>/dev/null || echo unknown)
   cyclonedx   $(cyclonedx-py --version 2>/dev/null | head -1 || echo unknown)
@@ -91,7 +95,8 @@ case "${1}" in
     echo "       gaia-tools --version | --bom"
     echo ""
     echo "Subcommands dispatch to bundled binaries: grype, syft, osv-scanner,"
-    echo "spotbugs, vulture, pip-audit, cyclonedx-py, cdxgen, yamllint, yq, sarif."
+    echo "spotbugs, semgrep, checkov, cppcheck, gitleaks, vulture, pip-audit,"
+    echo "cyclonedx-py, cdxgen, yamllint, yq, sarif."
     exit 0
     ;;
 esac
@@ -113,8 +118,9 @@ _subcmd="$1"
 shift
 if ! command -v "$_subcmd" >/dev/null 2>&1; then
   echo "gaia-tools: unknown subcommand '$_subcmd'" >&2
-  echo "  valid: grype | syft | osv-scanner | spotbugs | vulture | pip-audit |" >&2
-  echo "         cyclonedx-py | cdxgen | yamllint | yq | sarif | --version | --bom" >&2
+  echo "  valid: grype | syft | osv-scanner | spotbugs | semgrep | checkov |" >&2
+  echo "         cppcheck | gitleaks | vulture | pip-audit | cyclonedx-py |" >&2
+  echo "         cdxgen | yamllint | yq | sarif | --version | --bom" >&2
   exit 127
 fi
 

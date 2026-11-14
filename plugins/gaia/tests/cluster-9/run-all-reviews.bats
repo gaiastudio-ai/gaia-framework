@@ -440,7 +440,7 @@ PARITY_TRACE="$(cd "${BATS_TEST_DIRNAME}/../../test/fixtures/parity-baseline/tra
   fm=$(awk '/^---$/{c++; next} c==1' "$SKILL_FILE")
 
   # argument-hint check (exact string match)
-  grep -Fq 'argument-hint: "[story-key] [--force]"' <<<"$fm"
+  grep -Fq 'argument-hint: "[story-key] [--force] [--bind-head <sha>]"' <<<"$fm"
   # allowed-tools unchanged
   grep -Fq 'allowed-tools: [Read, Grep, Glob, Bash]' <<<"$fm"
 }

@@ -4,9 +4,10 @@
 # Contract: run --input <file-list> --config <adapter-config> --output <fragment.json>
 #               --runtime-profile {subprocess|container|network} --timeout {seconds}
 #
-# Phase-5 stub-real implementation: invokes `semgrep --json` against the file list and
-# emits a deterministic analysis-results fragment on stdout (or to --output if provided).
-# Exit code 0 = ran cleanly, 1 = scanner errored. The probe interprets exit-code semantics.
+# Invokes semgrep --json against the file list (natively or through the
+# docker runner) and emits a deterministic analysis-results fragment.
+# Exit code 0 = ran cleanly, 1 = scanner errored. The probe interprets
+# exit-code semantics.
 
 set -euo pipefail
 LC_ALL=C
@@ -40,37 +41,84 @@ done
 [ -n "$INPUT" ] || { echo "run.sh: --input required" >&2; exit 1; }
 [ -r "$INPUT" ] || { echo "run.sh: input file not readable: $INPUT" >&2; exit 1; }
 
-semgrep_args=(--json --quiet)
-if [ -n "$CONFIG" ]; then
-  semgrep_args+=(--config "$CONFIG")
-else
-  semgrep_args+=(--config "p/default")
-fi
-
-# Read targets from the file-list line by line.
-# bash 3.2-compat replacement for mapfile.
+# Read targets from the file-list line by line (bash 3.2-compat).
 TARGETS=()
 while IFS= read -r _line; do [ -n "$_line" ] && TARGETS+=("$_line"); done < "$INPUT"
 
-if ! command -v semgrep >/dev/null 2>&1; then
-  echo "run.sh: semgrep not found on PATH" >&2
-  # Exit 127 = unavailable (distinct from generic error 1).
-  # The probe still classifies this via its own command -v check before invoking
-  # run.sh; this exit code surfaces unavailability when run.sh is invoked directly.
-  exit 127
-fi
+_run_native() {
+  if ! command -v semgrep >/dev/null 2>&1; then
+    echo "run.sh: semgrep not found on PATH" >&2
+    exit 127
+  fi
+  local args=(--json --quiet --metrics=off)
+  if [ -n "$CONFIG" ]; then
+    args+=(--config "$CONFIG")
+  else
+    args+=(--config "p/default")
+  fi
+  # Load regression-rule library rule.yml files as extra configs.
+  if [ -n "${SEMGREP_EXTRA_RULE_CONFIGS:-}" ]; then
+    local IFS=':'
+    local _extra_cfg
+    for _extra_cfg in $SEMGREP_EXTRA_RULE_CONFIGS; do
+      [ -f "$_extra_cfg" ] && args+=(--config "$_extra_cfg")
+    done
+  fi
+  # Exclude library test fixtures from scanning (they contain must-fire
+  # patterns that would produce false findings on the framework itself).
+  args+=(--exclude "plugins/gaia/scripts/lint-rules/*/test/*")
+  semgrep "${args[@]}" -- "${TARGETS[@]}" 2>/dev/null
+}
 
-raw="$(semgrep "${semgrep_args[@]}" "${TARGETS[@]}" 2>&1)" || rc=$? || true
-rc="${rc:-0}"
+_run_docker() {
+  local image="${GAIA_TOOLS_IMAGE:-ghcr.io/gaiastudio-ai/gaia-tools:latest}"
+  if [ -z "$CONFIG" ]; then
+    # Semgrep rules are not baked into the image (moved to a separate story).
+    # Without baked rules, docker mode with --network=none cannot fetch from
+    # the registry and must not do an empty pass. Fail explicitly.
+    echo "run.sh: semgrep rules are not baked into the image; docker mode requires baked rules or an explicit --config path" >&2
+    exit 1
+  fi
+  local args=(semgrep --json --quiet --metrics=off --config "$CONFIG")
+  local docker_targets=()
+  for t in "${TARGETS[@]}"; do
+    docker_targets+=("/workspace/$t")
+  done
+  local code_root; code_root="$(pwd)"
+  docker run --rm --network=none \
+    -v "${code_root}:/workspace:ro" \
+    "$image" "${args[@]}" -- "${docker_targets[@]}" 2>/dev/null
+}
 
-# Emit canonical analysis-results fragment shape per run-contract.md §2.1:
-# {"name": <adapter>, "status": <passed|errored>, "findings": [...]}.
-# Findings shape conforms to checks[].findings[] in analysis-results.schema.json.
+rc=0
+case "$RUNTIME_PROFILE" in
+  container) raw="$(_run_docker)" || rc=$? ;;
+  *)         raw="$(_run_native)" || rc=$? ;;
+esac
+
+# Map semgrep JSON into findings[].
+# semgrep --json exits 0 with findings present; the results object is
+# {"results": [...], "errors": [...]}.
+findings="$(printf '%s' "$raw" | jq -c '
+  [(.results // [])[] | {
+    id: (.check_id // "unknown"),
+    severity: (if (.extra.severity // "WARNING") == "ERROR" then "high"
+               elif (.extra.severity // "WARNING") == "WARNING" then "medium"
+               else "low" end),
+    message: ((.check_id // "finding") + ": " + (.extra.message // "issue detected") +
+              " at " + (.path // "unknown") + ":" + ((.start.line // 0) | tostring)),
+    source: "semgrep"
+  }]
+' 2>/dev/null)" || findings="[]"
+[ -n "$findings" ] || findings="[]"
+
+# Emit canonical analysis-results fragment.
 fragment="$(jq -nc \
   --arg name "semgrep" \
   --argjson rc "$rc" \
+  --argjson findings "$findings" \
   --arg raw "$raw" \
-  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: [], raw: $raw}')"
+  '{name: $name, status: (if $rc == 0 then "passed" else "errored" end), findings: $findings, raw: $raw}')"
 
 if [ -n "$OUTPUT" ]; then
   printf '%s\n' "$fragment" > "$OUTPUT"

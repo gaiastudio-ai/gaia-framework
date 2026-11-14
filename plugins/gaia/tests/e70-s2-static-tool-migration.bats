@@ -68,8 +68,8 @@ _assert_fragment_shape_in_source() {
     || { echo "missing 'name: \$name' in $script" >&2; return 1; }
   grep -qE 'status:[[:space:]]*\(if[[:space:]]+\$rc' "$script" \
     || { echo "missing canonical status: branch in $script" >&2; return 1; }
-  grep -qE 'findings:[[:space:]]*\[\]' "$script" \
-    || { echo "missing 'findings: []' in $script" >&2; return 1; }
+  grep -qE 'findings:[[:space:]]*(\[\]|\$findings)' "$script" \
+    || { echo "missing findings field in $script" >&2; return 1; }
 }
 
 @test "semgrep run.sh emits canonical analysis-results fragment shape" {

@@ -98,6 +98,10 @@
 #   _al_identity_hook <lock_path> <fd> — called during the strict-mode
 #     post-lock identity re-check. Lets tests inject a deterministic
 #     mismatch.
+#   _al_reap_window_hook <lock_path> <shadow_path> — called in
+#     _al_try_reap between the shadow pin and the final inode
+#     comparison, before the guarded rm. Lets tests replace the lock
+#     file and prove the inode guard catches the replacement.
 
 # Sourcing contract: this library DOES NOT alter the caller's shell options.
 # Every public function sets its own errexit/pipefail internally via subshell
@@ -326,7 +330,7 @@ _al_enforce_path_type() {
     # read as "empty directory" and reclaim a tree that must be refused.
     # Collect the whole listing and slice the first line in the shell.
     local leftover
-    leftover="$(find "$lock_file" -mindepth 1 ! -name '.lock-tmp.*' 2>/dev/null)" || leftover=""
+    leftover="$(find "$lock_file" -mindepth 1 ! -name '.lock-tmp.*' ! -name '.lock-reap.*' 2>/dev/null)" || leftover=""
     leftover="${leftover%%$'\n'*}"
     if [ -n "$leftover" ]; then
       printf 'acquire-lock: lock path is a directory with unrelated contents: %s\n' \
@@ -334,7 +338,7 @@ _al_enforce_path_type() {
       printf 'acquire-lock: refusing to use it as a lock — remove it by hand.\n' >&2
       return 1
     fi
-    rm -f "$lock_file"/.lock-tmp.* 2>/dev/null || true
+    rm -f "$lock_file"/.lock-tmp.* "$lock_file"/.lock-reap.* 2>/dev/null || true
     if ! rmdir "$lock_file" 2>/dev/null; then
       printf 'acquire-lock: lock path is a directory that could not be removed: %s\n' \
         "$lock_file" >&2
@@ -452,40 +456,113 @@ _al_try_reap() {
     return 1
   fi
 
-  local recorded_pid=""
-  # Read PID and discard the epoch (used only as a format marker).
-  read -r recorded_pid _ < "$lock_file" 2>/dev/null || true
-
-  # No valid PID line — ownerless file, immediately stale.
-  # A correctly held lock always contains "<pid> <epoch>\n" (created
-  # atomically via hard-link). An empty file is a legitimate post-release
-  # sentinel (transition-story-status.sh, set-story-sprint.sh re-touch the
-  # path for path-split-resolution compatibility) or a remnant from a prior
-  # version's bare `touch`. Reap silently — this is expected, not an anomaly.
-  if [ -z "$recorded_pid" ] || ! [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
-    rm -f "$lock_file" 2>/dev/null || true
-    return 0
-  fi
-
-  # PID alive — never reap regardless of age.
-  if kill -0 "$recorded_pid" 2>/dev/null; then
+  # --- Step 1: Pin the inspected file via a shadow hard link ---
+  # The shadow keeps the inode alive so the kernel cannot recycle it, and
+  # gives the reaper a private path to read from (no other process can
+  # unlink it). If ln fails, the file disappeared between the existence
+  # check and the link attempt — do not reap.
+  local lock_dir
+  lock_dir="$(dirname "$lock_file")"
+  local shadow="${lock_dir}/.lock-reap.$$.$RANDOM"
+  if ! ln "$lock_file" "$shadow" 2>/dev/null; then
     return 1
   fi
 
-  # PID dead — reap only if age exceeds threshold.
-  # PID recycling note: a recycled PID is a false positive on kill -0.
-  # The reap threshold (60s minimum) provides the second gate.
-  local age
-  age="$(_al_file_age "$lock_file" 2>/dev/null)" || age=""
-  if [ -n "$age" ] && [ "$age" -ge "$reap_threshold" ]; then
-    rm -f "$lock_file" 2>/dev/null || true
-    printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
-      "$lock_file" "$recorded_pid" "$age" >&2
-    return 0
+  # --- Step 2: Read PID and epoch from the shadow ---
+  # Reading from the shadow is safe: the shadow name is unique to this
+  # process and no other process can unlink it. A failed read under the
+  # old code was the root of Bug 2 — structurally impossible here.
+  local recorded_pid=""
+  if ! read -r recorded_pid _ < "$shadow" 2>/dev/null; then
+    # Read failed. If the file has content (non-empty), the content is
+    # unreadable (permissions or I/O error). A live holder's PID may be
+    # inside. Conservative: do not reap (AC1).
+    if [ -s "$shadow" ]; then
+      rm -f "$shadow" 2>/dev/null || true
+      return 1
+    fi
+    # Empty file: read "failed" because there was no content (EOF).
+    # Fall through to the ownerless branch.
   fi
 
-  # PID dead but file not old enough yet — do not reap.
-  return 1
+  # --- Step 3: Decide ---
+  local _reap_candidate=0 age=""
+
+  if [ -z "$recorded_pid" ] || ! [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
+    # No valid PID line — ownerless file (empty sentinel or remnant).
+    # Before reaping, probe for an active flock holder (mixed-mode
+    # detection). When flock is present, an ownerless file may still
+    # be held by a flock process (which writes no PID). The probe
+    # runs regardless of GAIA_LOCK_FORCE_FALLBACK because the override
+    # is per-process, not system-wide.
+    if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
+      local _reap_probe_rc=0
+      if eval "exec 222<\"${lock_file}\"" 2>/dev/null; then
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -n -x 222 2>/dev/null \
+          && _reap_probe_rc=0 || _reap_probe_rc=1
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+        eval "exec 222<&-" 2>/dev/null || true
+      fi
+      if [ "$_reap_probe_rc" -ne 0 ]; then
+        # Active flock holder detected — do not reap.
+        rm -f "$shadow" 2>/dev/null || true
+        return 1
+      fi
+    fi
+    _reap_candidate=1
+  elif kill -0 "$recorded_pid" 2>/dev/null; then
+    # PID alive — never reap regardless of age.
+    rm -f "$shadow" 2>/dev/null || true
+    return 1
+  else
+    # PID dead — reap only if age exceeds threshold.
+    # PID recycling note: a recycled PID is a false positive on kill -0.
+    # The reap threshold (60s minimum) provides the second gate.
+    age="$(_al_file_age "$shadow" 2>/dev/null)" || age=""
+    if [ -n "$age" ] && [ "$age" -ge "$reap_threshold" ]; then
+      _reap_candidate=1
+    else
+      rm -f "$shadow" 2>/dev/null || true
+      return 1
+    fi
+  fi
+
+  # --- Step 4: Inode-guarded delete ---
+  # The shadow pins the inspected inode (Step 1). Stat the shadow first
+  # (stable — nobody else can unlink it). The test-only hook fires next,
+  # giving tests a deterministic window to replace the lock file. Then
+  # stat the lock path: if the inode matches the shadow, the path still
+  # refers to the file we inspected — rm is safe. If they differ,
+  # another process replaced the file — do NOT rm.
+  if [ "$_reap_candidate" = "1" ]; then
+    local shadow_ino lock_ino
+    shadow_ino="$(_al_inode "$shadow" 2>/dev/null)" || shadow_ino=""
+
+    # Test-only hook: fires between the shadow pin and the final inode
+    # comparison, before the guarded rm. Not a user-facing surface.
+    if declare -F _al_reap_window_hook >/dev/null 2>&1; then
+      _al_reap_window_hook "$lock_file" "$shadow"
+    fi
+
+    lock_ino="$(_al_inode "$lock_file" 2>/dev/null)" || lock_ino=""
+
+    if [ -n "$lock_ino" ] && [ -n "$shadow_ino" ]; then
+      if [ "$lock_ino" = "$shadow_ino" ]; then
+        rm -f "$lock_file" 2>/dev/null || true
+        if [ -n "$recorded_pid" ] && [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
+          printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
+            "$lock_file" "$recorded_pid" "$age" >&2
+        fi
+      fi
+      # Inodes differ — another process replaced the file since the
+      # shadow was taken. Do not rm. The new holder's lock survives.
+    fi
+    # On a host where stat does not work, skip the rm (conservative:
+    # a stale lock remains until the next process's reaper can stat).
+  fi
+
+  rm -f "$shadow" 2>/dev/null || true
+  return 0
 }
 
 # --- Public: acquire_lock <lock_file> <timeout_seconds> <fd_number> [--strict] ---
@@ -585,6 +662,17 @@ _al_acquire_impl() {
         fi
         # Post-lock identity re-check via dev:ino.
         if _al_verify_identity_strict "$lock_file" "$fd"; then
+          # Mixed-mode guard (strict path): same check as non-strict.
+          local _al_fb_pid_s=""
+          read -r _al_fb_pid_s _ < "$lock_file" 2>/dev/null || true
+          if [ -n "$_al_fb_pid_s" ] && [ "$_al_fb_pid_s" -gt 0 ] 2>/dev/null \
+             && [ "$_al_fb_pid_s" != "$$" ] \
+             && kill -0 "$_al_fb_pid_s" 2>/dev/null; then
+            "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+            eval "exec ${fd}>&-" 2>/dev/null || true
+            printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+            return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          fi
           _al_set_registry "$fd" "flock" "$lock_file"
           _al_trace "acquire" "$lock_file"
           return 0
@@ -614,6 +702,20 @@ _al_acquire_impl() {
     else
       # Non-strict flock path (existing behavior).
       if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
+        # Mixed-mode guard: a fallback holder writes "<pid> <epoch>" to
+        # the file and does not hold a kernel flock. Check for a live PID
+        # other than ours. If found, the fallback holder is inside the
+        # critical section — release flock and report timeout.
+        local _al_fb_pid=""
+        read -r _al_fb_pid _ < "$lock_file" 2>/dev/null || true
+        if [ -n "$_al_fb_pid" ] && [ "$_al_fb_pid" -gt 0 ] 2>/dev/null \
+           && [ "$_al_fb_pid" != "$$" ] \
+           && kill -0 "$_al_fb_pid" 2>/dev/null; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+          eval "exec ${fd}>&-" 2>/dev/null || true
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+        fi
         _al_set_registry "$fd" "flock" "$lock_file"
         _al_trace "acquire" "$lock_file"
         return 0

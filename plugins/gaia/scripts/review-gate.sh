@@ -1280,6 +1280,7 @@ main() {
   local sprint_scoped=""
   local telemetry_started_at="" telemetry_token_estimate=""
   local telemetry_round="" telemetry_run_id=""
+  local telemetry_mutation_score=""
   LEDGER_FLAG=""
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1357,6 +1358,10 @@ main() {
       --telemetry-run-id)
         [ $# -ge 2 ] || die "--telemetry-run-id requires a value"
         telemetry_run_id="$2"; shift 2
+        ;;
+      --mutation-score)
+        [ $# -ge 2 ] || die "--mutation-score requires a value"
+        telemetry_mutation_score="$2"; shift 2
         ;;
       --help|-h)
         usage
@@ -1648,6 +1653,21 @@ main() {
               fi
               if [ -n "$telemetry_token_estimate" ]; then
                 _tel_args+=(--token-estimate "$telemetry_token_estimate")
+              fi
+              # QA and test review read the score from the story's mutation
+              # evidence unless the caller passed one.
+              if [ -z "$telemetry_mutation_score" ]; then
+                case "$gate_name" in
+                  "QA Tests"|"Test Review")
+                    _tel_ev="${GAIA_TEST_ARTIFACTS:-${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/artifacts/test-artifacts}/test-results/${story_key}-mutation.json"
+                    if [ -f "$_tel_ev" ]; then
+                      telemetry_mutation_score="$(jq -r '.score // empty' "$_tel_ev" 2>/dev/null || true)"
+                    fi
+                    ;;
+                esac
+              fi
+              if [ -n "$telemetry_mutation_score" ]; then
+                _tel_args+=(--mutation-score "$telemetry_mutation_score")
               fi
               _tw_gate_entry "${_tel_args[@]}" || true
             fi

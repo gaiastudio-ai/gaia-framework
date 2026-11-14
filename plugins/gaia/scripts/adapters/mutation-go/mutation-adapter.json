@@ -1,0 +1,9 @@
+{
+  "provider": "go-mutesting",
+  "stack": "go",
+  "file-extensions": [".go"],
+  "default-timeout-seconds": 60,
+  "version-range": ">=0.0.1",
+  "mutant-format": "patch",
+  "description": "Mutation adapter for Go source files. Generates mutants via go-mutesting and runs covering Go tests with a configurable timeout."
+}
