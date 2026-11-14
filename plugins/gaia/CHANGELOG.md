@@ -3,12 +3,27 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
-## [Unreleased]
+## [1.227.0] — 2026-11-14
 
 ### Added
 
-- (mutation) add stack-neutral mutation runner and bash adapter. Opt-in via `test_execution.mutation_thresholds` in project config (P0..P3 integer thresholds, 0-100). `/gaia-test-automate --mutation` is the sole producer; QA and test-review consume the score but never generate mutants. The bash adapter runs tests under both bash 5 and macOS bash 3.2, with parallel execution and timeout enforcement. `/gaia-doctor` reports mutation-testing status and leftover temp directories. A run refuses to score when the covering tests are red on unmutated code. A run that cannot produce a score records `blocking_failure: runner_unavailable`. `execution-evidence.json` gains an optional `mutation_check`, which `verdict-resolver.sh` honours. Review gate telemetry for QA and test review carries the score. When the config key is absent, no behaviour changes on upgrade.
-- (mutation) add Go mutation adapter. Generates mutants via go-mutesting with a capture hook that produces unified-diff patches. Runs covering Go tests with timeout enforcement and process-group isolation. Requires `go-mutesting` on PATH; when it is absent the adapter reports the missing tool and the gate is never `passed`. The shared contract harness picks up the adapter automatically.
+- (dev-story) add opt-in pre-push review ordering (#2380)
+- (qa) add CI JUnit ingestion (#2408)
+- (ci) run full core suite at promotion only (#2406)
+- (mutation) add Go mutation adapter (#2409). Generates mutants via go-mutesting with a capture hook that produces unified-diff patches. Runs covering Go tests with timeout enforcement and process-group isolation. Requires `go-mutesting` on PATH; when it is absent the adapter reports the missing tool and the gate is never `passed`. The shared contract harness picks up the adapter automatically.
+- (mutation) add stack-neutral mutation runner and bash adapter (#2381). Opt-in via `test_execution.mutation_thresholds` in project config (P0..P3 integer thresholds, 0-100). `/gaia-test-automate --mutation` is the sole producer; QA and test-review consume the score but never generate mutants. The bash adapter runs tests under both bash 5 and macOS bash 3.2, with parallel execution and timeout enforcement. `/gaia-doctor` reports mutation-testing status and leftover temp directories. A run refuses to score when the covering tests are red on unmutated code. A run that cannot produce a score records `blocking_failure: runner_unavailable`. `execution-evidence.json` gains an optional `mutation_check`, which `verdict-resolver.sh` honours. Review gate telemetry for QA and test review carries the score. When the config key is absent, no behaviour changes on upgrade.
+- (review) add deterministic secret-scrubbed review packet builder (#2401)
+- (review) add regression-rule gate and seed library (#2400)
+- (ci) expand bats-shard matrix to five shards (#2404)
+- (security) add scanner-first evidence pipeline and close scanner gaps (#2393)
+- (lint-pack) add deterministic lint runner for known bug types (#2372)
+
+### Fixed
+
+- (sprint-status) pin hotkey-9 band ordering for host 2.1.323+ (#2433)
+- (dev-story) fix-forward for the opt-in pre-push review mode (#2419)
+- (lock) shadow hard-link reap with inode-guarded delete (#2410)
+- (action-items-write) replace fallback lock with shared helper (#2390)
 
 ## [1.226.0] — 2026-11-05
 
