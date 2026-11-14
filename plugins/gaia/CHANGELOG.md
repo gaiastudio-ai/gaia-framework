@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.227.0] — 2026-11-14
+
+### Added
+
+- (dev-story) add opt-in pre-push review ordering (#2380)
+- (qa) add CI JUnit ingestion (#2408)
+- (ci) run full core suite at promotion only (#2406)
+- (mutation) add Go mutation adapter (#2409)
+- (mutation) add stack-neutral mutation runner and bash adapter (#2381)
+- (review) add deterministic secret-scrubbed review packet builder (#2401)
+- (review) add regression-rule gate and seed library (#2400)
+- (ci) expand bats-shard matrix to five shards (#2404)
+- (security) add scanner-first evidence pipeline and close scanner gaps (#2393)
+- (lint-pack) add deterministic lint runner for known bug types (#2372)
+
+### Fixed
+
+- (sprint-status) pin hotkey-9 band ordering for host 2.1.323+ (#2433)
+- (dev-story) fix-forward for the opt-in pre-push review mode (#2419)
+- (lock) shadow hard-link reap with inode-guarded delete
+- (action-items-write) replace fallback lock with shared helper (#2390)
+
 ## [Unreleased]
 
 ### Added
