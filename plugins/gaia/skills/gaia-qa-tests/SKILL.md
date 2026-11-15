@@ -355,9 +355,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
 ```
 
-**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+**Legacy path.** Without a story key (and therefore no register), write the LLM findings to disk first, then invoke the resolver:
 
 ```bash
+# Write LLM findings to disk for the legacy-path resolver call.
+mkdir -p .gaia/state/review/qa-tests/{story_key}
+cat > .gaia/state/review/qa-tests/{story_key}/llm-findings.json <<'FINDINGS_EOF'
+{"findings": [ <array of {severity, message, ...} objects from the LLM review phase> ]}
+FINDINGS_EOF
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
   --llm-findings .gaia/state/review/qa-tests/{story_key}/llm-findings.json \

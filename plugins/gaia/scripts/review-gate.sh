@@ -1446,6 +1446,30 @@ main() {
         die "invalid verdict '$verdict' — allowed: $allowed_verdicts"
       fi
 
+      # Test-execution canonical gates refuse --plan-id (including
+      # sprint-scoped auto-generated plan_id). Outside the proof-of-execution
+      # off-switch so it fires regardless.
+      if [ -n "$plan_id" ]; then
+        case "$gate_name" in
+          "QA Tests"|"Test Automation"|"Test Review")
+            die "gate '$gate_name' does not accept --plan-id; use a plan-only gate for plan approvals"
+            ;;
+        esac
+      fi
+
+      # Coerce PASSED + report-missing-reason to UNVERIFIED on test-execution
+      # gates. Outside the proof-of-execution off-switch so it fires regardless.
+      if [ "$verdict" = "PASSED" ] && [ -n "$report_missing_reason" ]; then
+        case "$gate_name" in
+          "QA Tests"|"Test Automation"|"Test Review")
+            _validate_table_value "--report-missing-reason" "$report_missing_reason"
+            [ -z "$report_path" ] && report_path="$report_missing_reason"
+            printf '%s: coercing PASSED to UNVERIFIED for gate '\''%s'\'' (--report-missing-reason supplied without execution evidence)\n' "$SCRIPT_NAME" "$gate_name" >&2
+            verdict="UNVERIFIED"
+            ;;
+        esac
+      fi
+
       # Proof-of-execution gate.
       # Disabled when REVIEW_GATE_PROOF_OF_EXECUTION=off (e.g. inside the
       # script's own bats fixtures that exercise the verdict mechanics
@@ -1502,15 +1526,66 @@ main() {
                   if ! jq -e 'type == "object"' "$execution_evidence" >/dev/null 2>&1; then
                     die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence is not valid JSON or is not an object. Fix the evidence file and retry."
                   fi
-                  _ev_exit="$(jq -r '[.suites[]? | select(.required != false) | .exit_code // 0] | max // 0' "$execution_evidence" 2>/dev/null)" || _ev_exit=""
-                  _ev_fails="$(jq -r '[.suites[]? | select(.required != false) | .fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null)" || _ev_fails=""
+
+                  # Structural checks on the suites array: shape, non-object
+                  # entries, required-suite count, missing exit_code, and any
+                  # non-zero exit code — all in one jq pass to avoid repeating
+                  # the required-suite filter.
+                  _ev_check="$(jq -r '
+                    # Shape: .suites must be absent, null, or an array.
+                    (if (.suites | type) == "array" then "ok"
+                     elif .suites == null or (has("suites") | not) then "ok"
+                     else "bad_shape" end) as $shape |
+                    if $shape == "bad_shape" then "BAD_SHAPE"
+                    else
+                      # Non-object entry check.
+                      (if [(.suites // [])[] | select(type != "object")] | length > 0
+                       then "NON_OBJECT"
+                       else
+                         # Required suites (objects, not optional, no skip_reason).
+                         ([(.suites // [])[]
+                           | select(type == "object")
+                           | select(.required != false)
+                           | select(has("skip_reason") | not)
+                         ]) as $req |
+                         if ($req | length) == 0 then "ZERO_REQUIRED"
+                         else
+                           # Any required suite missing exit_code?
+                           ([$req[] | select(has("exit_code") | not) | .name // "unnamed"] | join(", ")) as $missing |
+                           if ($missing | length) > 0 then "MISSING_EXIT:\($missing)"
+                           else
+                             # Any non-zero exit code?
+                             if [$req[] | .exit_code] | any(. != 0) then "NONZERO_EXIT"
+                             else "PASS"
+                             end
+                           end
+                         end
+                       end)
+                    end
+                  ' "$execution_evidence" 2>/dev/null)" || _ev_check=""
+
+                  case "$_ev_check" in
+                    BAD_SHAPE)
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence .suites is not an array. Fix the evidence file and retry." ;;
+                    NON_OBJECT)
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence suites array contains a non-object entry. Fix the evidence file and retry." ;;
+                    ZERO_REQUIRED)
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — no required suite evaluated. Add at least one required suite or use a plan-only gate." ;;
+                    MISSING_EXIT:*)
+                      _ev_missing="${_ev_check#MISSING_EXIT:}"
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — required suite(s) missing exit_code key: ${_ev_missing}. Fix the evidence file and retry." ;;
+                    NONZERO_EXIT)
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports non-zero exit_code. Either fix the failing tests and re-capture evidence, or record verdict=FAILED." ;;
+                    PASS) ;; # all structural checks passed
+                    *)
+                      die "proof-of-execution: refusing PASSED verdict for '$gate_name' — failed to read execution-evidence fields (malformed JSON structure). Fix the evidence file and retry." ;;
+                  esac
+
+                  _ev_fails="$(jq -r '[.suites[]? | select(type == "object") | select(.required != false) | .fail_count // 0] | add // 0' "$execution_evidence" 2>/dev/null)" || _ev_fails=""
                   _ev_skipped="$(jq -r '.skipped // false' "$execution_evidence" 2>/dev/null)" || _ev_skipped=""
                   # If any jq extraction failed (empty), fail closed.
-                  if [ -z "$_ev_exit" ] || [ -z "$_ev_fails" ] || [ -z "$_ev_skipped" ]; then
+                  if [ -z "$_ev_fails" ] || [ -z "$_ev_skipped" ]; then
                     die "proof-of-execution: refusing PASSED verdict for '$gate_name' — failed to read execution-evidence fields (malformed JSON structure). Fix the evidence file and retry."
-                  fi
-                  if [ "${_ev_exit:-0}" != "0" ]; then
-                    die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports exit_code=${_ev_exit} (red suite). Either fix the failing tests and re-capture evidence, or record verdict=FAILED."
                   fi
                   if [ "${_ev_fails:-0}" != "0" ] && [ "${_ev_fails:-0}" != "null" ]; then
                     die "proof-of-execution: refusing PASSED verdict for '$gate_name' — execution-evidence reports fail_count=${_ev_fails} across suites. Either fix the failing tests and re-capture evidence, or record verdict=FAILED."

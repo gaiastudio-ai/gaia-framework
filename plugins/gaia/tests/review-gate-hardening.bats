@@ -121,11 +121,14 @@ _extract_code_review_link() {
   [[ "$output" == *"fail_count"* ]]
 }
 
-@test "all-optional suites with failures allows PASSED" {
+@test "all-optional suites refuses PASSED (no required suite evaluated)" {
   local ev_file="$TEST_TMP/evidence.json"
   _write_evidence "$ev_file" '{"suites":[{"name":"opt1","required":false,"fail_count":5},{"name":"opt2","required":false,"fail_count":2}]}'
   local report="$TEST_TMP/report.md"
   _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
 
   run bash "$SCRIPT" update \
     --story "$STORY_KEY" \
@@ -133,7 +136,13 @@ _extract_code_review_link() {
     --verdict PASSED \
     --report "$report" \
     --execution-evidence "$ev_file"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no required suite evaluated"* ]]
+
+  # Row must be unchanged (still UNVERIFIED).
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
 }
 
 @test "mixed required/optional suites: required green, optional red allows PASSED" {
@@ -179,7 +188,9 @@ _extract_code_review_link() {
   [ "$status" -eq 0 ]
 
   local cr_line
-  cr_line="$(/usr/bin/grep '| Code Review |' "$STORY_FILE")"
+  cr_line="$(grep '| Code Review |' "$STORY_FILE")"
+  # Positive assertion: em-dash character must be present
+  [[ "$cr_line" == *"—"* ]]
   [[ "$cr_line" != *".md"* ]]
 }
 
@@ -202,11 +213,9 @@ _extract_code_review_link() {
   # The literal path string (with the backslash) must appear in the file,
   # not a tab-expanded version.
   /usr/bin/grep -qF "| $report |" "$STORY_FILE"
-  # Confirm no tab character crept in
-  run /usr/bin/grep -cP '\t' <<< "$(/usr/bin/grep '| Code Review |' "$STORY_FILE")" 2>/dev/null ||:
   # The line must not contain an actual tab (beyond the original | delimiters)
   local cr_line
-  cr_line="$(/usr/bin/grep '| Code Review |' "$STORY_FILE")"
+  cr_line="$(grep '| Code Review |' "$STORY_FILE")"
   [[ "$cr_line" != *$'\t'* ]]
 }
 
@@ -505,7 +514,30 @@ _extract_code_review_link() {
   [[ "$output" == *"not valid JSON or is not an object"* ]]
 }
 
-@test "suites entry that is a string blocks PASSED with diagnostic" {
+@test "non-array suites value blocks PASSED with shape diagnostic" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":"x"}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not an array"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+@test "suites entry that is a string blocks PASSED with non-object diagnostic" {
   local ev_file="$TEST_TMP/evidence.json"
   _write_evidence "$ev_file" '{"suites":["not-an-object"]}'
   local report="$TEST_TMP/report.md"
@@ -518,37 +550,78 @@ _extract_code_review_link() {
     --report "$report" \
     --execution-evidence "$ev_file"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"malformed JSON structure"* ]]
+  [[ "$output" == *"non-object entry"* ]]
 }
 
-@test "empty suites array allows PASSED (no suites to fail)" {
+@test "mixed junk and valid green suite is refused (non-object entry)" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":["junk",{"name":"unit","required":true,"exit_code":0,"fail_count":0}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  # Snapshot the table before the attempt.
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"non-object entry"* ]]
+
+  # Row must be unchanged (still UNVERIFIED).
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+@test "empty suites array refuses PASSED (no required suite evaluated)" {
   local ev_file="$TEST_TMP/evidence.json"
   _write_evidence "$ev_file" '{"suites":[]}'
   local report="$TEST_TMP/report.md"
   _write_report "$report"
 
+  local before
+  before="$(cat "$STORY_FILE")"
+
   run bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "QA Tests" \
     --verdict PASSED \
     --report "$report" \
     --execution-evidence "$ev_file"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no required suite evaluated"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
 }
 
-@test "evidence with missing suites key allows PASSED (no suites)" {
+@test "evidence with missing suites key refuses PASSED (no required suite evaluated)" {
   local ev_file="$TEST_TMP/evidence.json"
   _write_evidence "$ev_file" '{"version":"1.0"}'
   local report="$TEST_TMP/report.md"
   _write_report "$report"
 
+  local before
+  before="$(cat "$STORY_FILE")"
+
   run bash "$SCRIPT" update \
     --story "$STORY_KEY" \
     --gate "QA Tests" \
     --verdict PASSED \
     --report "$report" \
     --execution-evidence "$ev_file"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no required suite evaluated"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
 }
 
 @test "FAILED verdict is allowed even with optional-suite failures" {
@@ -570,6 +643,261 @@ _extract_code_review_link() {
 # AC9: tests use temp directories, never the real plugin tree
 # ---------------------------------------------------------------------------
 
-@test "all test fixtures live in temp directories" {
-  [[ "$STORY_FILE" == "${BATS_TEST_TMPDIR}"* ]] || [[ "$STORY_FILE" == /tmp/* ]] || [[ "$STORY_FILE" == /private/tmp/* ]]
+@test "review-gate.sh does not write outside the test temp directory" {
+  # Snapshot the plugin tree before a representative invocation.
+  local plugin_tree="$BATS_TEST_DIRNAME/.."
+  local before_count
+  before_count="$(find "$plugin_tree" -newer "$STORY_FILE" -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+  # Run an update (UNVERIFIED needs no proof).
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict UNVERIFIED
+
+  # No new files should appear in the plugin tree.
+  local after_count
+  after_count="$(find "$plugin_tree" -newer "$STORY_FILE" -type f 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$before_count" = "$after_count" ]
+}
+
+# ---------------------------------------------------------------------------
+# Template-path report wins over pass-suffixed fallback
+# ---------------------------------------------------------------------------
+
+@test "template path report wins when both template and passN exist" {
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report-missing-reason "seeding gate"
+
+  # Create BOTH the canonical template-path report AND a passN report.
+  local template_report="$ART/code-review-${STORY_KEY}.md"
+  _write_report "$template_report"
+  _write_report "$ART/code-review-${STORY_KEY}-pass2.md"
+
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local summary_file
+  summary_file="$(echo "$output" | tail -1)"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  # Template path must win — basename has no -pass suffix.
+  [ "$(basename "$link")" = "code-review-${STORY_KEY}.md" ]
+  [ -f "$link" ]
+
+  # Remove the template path — passN should now be linked.
+  rm "$template_report"
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  summary_file="$(echo "$output" | tail -1)"
+  link="$(_extract_code_review_link "$summary_file")"
+  [ "$(basename "$link")" = "code-review-${STORY_KEY}-pass2.md" ]
+}
+
+@test "reviews/ subdir report wins over flat passN" {
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report-missing-reason "seeding gate"
+
+  # Create a reviews/ canonical copy AND a flat passN — reviews/ must win.
+  local reviews_dir="$ART/epic-E900/${STORY_KEY}-fixture/reviews"
+  mkdir -p "$reviews_dir"
+  _write_report "$reviews_dir/code-review-${STORY_KEY}.md"
+  _write_report "$ART/code-review-${STORY_KEY}-pass3.md"
+
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local summary_file
+  summary_file="$(echo "$output" | tail -1)"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  # reviews/ canonical copy must win over flat passN — basename has no -pass suffix.
+  [ "$(basename "$link")" = "code-review-${STORY_KEY}.md" ]
+  [[ "$link" == */reviews/* ]]
+}
+
+@test "pass2 vs pass10 ordering in reviews/ subdir picks pass10" {
+  bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Code Review" \
+    --verdict PASSED \
+    --report-missing-reason "seeding gate"
+
+  local reviews_dir="$ART/epic-E900/${STORY_KEY}-fixture/reviews"
+  mkdir -p "$reviews_dir"
+  _write_report "$reviews_dir/code-review-${STORY_KEY}-pass2.md"
+  _write_report "$reviews_dir/code-review-${STORY_KEY}-pass10.md"
+
+  run bash "$SUMMARY" --story "$STORY_KEY"
+  [ "$status" -eq 0 ]
+  local summary_file
+  summary_file="$(echo "$output" | tail -1)"
+  local link
+  link="$(_extract_code_review_link "$summary_file")"
+  [ "$(basename "$link")" = "code-review-${STORY_KEY}-pass10.md" ]
+}
+
+# ---------------------------------------------------------------------------
+# review-summary-gen.sh uses grep from PATH (no hardcoded /usr/bin/grep)
+# ---------------------------------------------------------------------------
+
+@test "review-summary-gen.sh has no hardcoded /usr/bin/grep" {
+  local count
+  count="$(grep -c '/usr/bin/grep' "$SUMMARY" || true)"
+  [ "$count" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Negative exit code detected as non-zero in proof-of-execution
+# ---------------------------------------------------------------------------
+
+@test "negative exit code in required suite refuses PASSED" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":[{"name":"unit","required":true,"fail_count":0,"exit_code":0},{"name":"signal","required":true,"fail_count":0,"exit_code":-1}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"exit_code"* ]] || [[ "$output" == *"non-zero"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+# ---------------------------------------------------------------------------
+# Required suite missing exit_code key refuses PASSED
+# ---------------------------------------------------------------------------
+
+@test "required suite without exit_code key refuses PASSED" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":[{"name":"unitA","required":true}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"missing exit_code"* ]] || [[ "$output" == *"unitA"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+@test "mixed suites: one with exit_code one without refuses PASSED and names the suite" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":[{"name":"ok-suite","required":true,"exit_code":0},{"name":"no-exit-suite","required":true}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "Test Automation" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no-exit-suite"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+# ---------------------------------------------------------------------------
+# Placeholder suite with skip_reason does not count as an evaluated required suite
+# ---------------------------------------------------------------------------
+
+@test "placeholder suite with skip_reason does not count as evaluated" {
+  local ev_file="$TEST_TMP/evidence.json"
+  _write_evidence "$ev_file" '{"suites":[{"name":"ph","required":true,"skip_reason":"no command declared"}]}'
+  local report="$TEST_TMP/report.md"
+  _write_report "$report"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" \
+    --verdict PASSED \
+    --report "$report" \
+    --execution-evidence "$ev_file"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no required suite evaluated"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
+# ---------------------------------------------------------------------------
+# Legacy path blocks tell parent to write llm-findings.json before resolver
+# ---------------------------------------------------------------------------
+
+# Helper: check a SKILL.md file for a write construct (cat > ...llm-findings.json)
+# in the Legacy path block, appearing before the verdict-resolver.sh call.
+# Returns 0 on pass, 1 on fail with diagnostic on stderr.
+_check_legacy_path_write_step() {
+  local skill_md="$1" label="$2"
+  [ -f "$skill_md" ] || { echo "$label: file not found: $skill_md" >&2; return 1; }
+  # Extract the Legacy path block: from "Legacy path" to the next "## " heading.
+  local block
+  block="$(awk '/Legacy path/,/^## /' "$skill_md")"
+  # Match only a shell write construct that targets llm-findings.json
+  # (cat > / cat >> / > " patterns), not a bare mention in prose or --llm-findings arg.
+  local write_line resolver_line
+  write_line="$(echo "$block" | grep -nE '(cat|>)[[:space:]]+.*llm-findings\.json' | head -1 | cut -d: -f1)"
+  resolver_line="$(echo "$block" | grep -n 'verdict-resolver\.sh' | head -1 | cut -d: -f1)"
+  [ -n "$write_line" ] || { echo "$label: no write construct for llm-findings.json found" >&2; return 1; }
+  [ -n "$resolver_line" ] || { echo "$label: no verdict-resolver.sh call found" >&2; return 1; }
+  [ "$write_line" -lt "$resolver_line" ] || {
+    echo "$label: write construct (line $write_line) must precede resolver call (line $resolver_line)" >&2; return 1
+  }
+  return 0
+}
+
+@test "five review skill Legacy path blocks instruct writing llm-findings.json" {
+  local skills_dir="$BATS_TEST_DIRNAME/../skills"
+  local skill
+  for skill in gaia-code-review gaia-qa-tests gaia-test-review gaia-test-automate gaia-performance-review; do
+    _check_legacy_path_write_step "$skills_dir/$skill/SKILL.md" "$skill" || false
+  done
+}
+
+@test "Legacy path write-step check fails when the write construct is stripped" {
+  # Negative test: copy a SKILL.md to a temp file, strip the write construct,
+  # and confirm the helper rejects it.
+  local skills_dir="$BATS_TEST_DIRNAME/../skills"
+  local orig="$skills_dir/gaia-code-review/SKILL.md"
+  local stripped="$TEST_TMP/stripped-SKILL.md"
+  # Remove lines containing the cat-to-llm-findings write construct.
+  sed '/cat.*llm-findings\.json/d' "$orig" > "$stripped"
+  run _check_legacy_path_write_step "$stripped" "stripped-fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no write construct"* ]]
 }

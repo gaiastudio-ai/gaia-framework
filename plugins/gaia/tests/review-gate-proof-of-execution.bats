@@ -139,7 +139,7 @@ teardown() { common_teardown; }
   REPORT="$TST/${STORY_KEY}-qa-tests.md"
   EVIDENCE="$TST/${STORY_KEY}-execution-evidence.json"
   echo "report" > "$REPORT"
-  echo '{"suites": []}' > "$EVIDENCE"
+  echo '{"suites": [{"name":"unit","required":true,"fail_count":0,"exit_code":0}]}' > "$EVIDENCE"
   run bash "$SCRIPT" update --story "$STORY_KEY" --gate "QA Tests" \
     --verdict PASSED --report "$REPORT" --execution-evidence "$EVIDENCE"
   [ "$status" -eq 0 ]
@@ -233,4 +233,130 @@ _seed_all_passed_no_reports() {
     run bash "$SCRIPT" update --story "$STORY_KEY" --gate "$GATE" --verdict PASSED
     [ "$status" -ne 0 ]
   done
+}
+
+# ---------- plan-id refused on test-execution canonical gates ----------
+
+@test "POE: plan-id on QA Tests gate is refused" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED --plan-id "some-plan"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+  [[ "$output" == *"QA Tests"* ]]
+}
+
+@test "POE: plan-id on Test Automation gate is refused" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "Test Automation" --verdict PASSED --plan-id "some-plan"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+}
+
+@test "POE: plan-id on Test Review gate is refused" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "Test Review" --verdict PASSED --plan-id "some-plan"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+}
+
+# Regression guard: plan-only gates still accept --plan-id PASSED.
+@test "POE: story-validation gate accepts plan-id PASSED (regression guard)" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "story-validation" --verdict PASSED --plan-id "val-run-1"
+  [ "$status" -eq 0 ]
+}
+
+# Regression guard: test-automate-plan gate still accepts --plan-id PASSED.
+@test "POE: test-automate-plan gate accepts plan-id PASSED (regression guard)" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "test-automate-plan" --verdict PASSED --plan-id "ta-plan-1"
+  [ "$status" -eq 0 ]
+}
+
+@test "POE: sprint-scoped auto plan-id on QA Tests is refused" {
+  local ledger="$TEST_TMP/ledger"
+  run bash "$SCRIPT" update \
+    --sprint sprint-x --gate "QA Tests" --verdict PASSED --ledger "$ledger"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+}
+
+@test "POE: report-missing-reason with PASSED on test gate coerces to UNVERIFIED" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "Test Review" --verdict PASSED \
+    --report-missing-reason "all good"
+  [ "$status" -eq 0 ]
+  # stderr must name the coercion.
+  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  # The Review Gate table must show UNVERIFIED (not PASSED) for Test Review.
+  local tr_line
+  tr_line="$(grep '| Test Review |' "$STORY_FILE")"
+  [[ "$tr_line" == *"UNVERIFIED"* ]]
+  [[ "$tr_line" != *"PASSED"* ]]
+  # The reason text must appear in the Report column.
+  [[ "$tr_line" == *"all good"* ]]
+}
+
+@test "POE: report-missing-reason with pipe character on test gate is refused" {
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED \
+    --report-missing-reason "has|pipe"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"pipe character"* ]]
+}
+
+@test "POE: coercion fires even with proof-of-execution off" {
+  run env REVIEW_GATE_PROOF_OF_EXECUTION=off bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED \
+    --report-missing-reason "reason text"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  local qa_line
+  qa_line="$(grep '| QA Tests |' "$STORY_FILE")"
+  [[ "$qa_line" == *"UNVERIFIED"* ]]
+  [[ "$qa_line" == *"reason text"* ]]
+}
+
+@test "POE: plan-id on test gate is refused even with proof-of-execution off" {
+  run env REVIEW_GATE_PROOF_OF_EXECUTION=off bash "$SCRIPT" update \
+    --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED --plan-id p1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+}
+
+@test "POE: both report and report-missing-reason keeps report path in column" {
+  REPORT="$TST/${STORY_KEY}-test-review.md"
+  echo "report body" > "$REPORT"
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "Test Review" --verdict PASSED \
+    --report "$REPORT" --report-missing-reason "r"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  local tr_line
+  tr_line="$(grep '| Test Review |' "$STORY_FILE")"
+  [[ "$tr_line" == *"UNVERIFIED"* ]]
+  # The report path must appear in the Report column, not the reason text.
+  [[ "$tr_line" == *"$REPORT"* ]]
+}
+
+@test "POE: report-missing-reason with newline on test gate is refused" {
+  local reason
+  reason="$(printf 'line1\nline2')"
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED \
+    --report-missing-reason "$reason"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"newline"* ]] || [[ "$output" == *"carriage-return"* ]]
+}
+
+@test "POE: report-missing-reason with carriage-return on test gate is refused" {
+  local reason
+  reason="$(printf 'line1\rline2')"
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "QA Tests" --verdict PASSED \
+    --report-missing-reason "$reason"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"newline"* ]] || [[ "$output" == *"carriage-return"* ]]
 }
