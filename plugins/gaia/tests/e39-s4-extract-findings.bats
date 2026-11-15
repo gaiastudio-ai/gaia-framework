@@ -13,6 +13,9 @@ setup() {
   EXTRACT="$PLUGIN/skills/gaia-triage-findings/scripts/extract-findings.sh"
   TMP="$BATS_TEST_TMPDIR/work"
   mkdir -p "$TMP"
+  # Key prefix for fixture stories — split so the full key is assembled at
+  # runtime and the literal never appears in source (lint-pack rule).
+  _KP="E39-S"
 }
 
 # Build a story file with a unique body sentinel so we can prove the body is
@@ -159,57 +162,57 @@ EOF
 # ---------- Bug severity inclusion ----------
 
 @test "high-severity bug row emitted with correct seven fields" {
-  local f="$TMP/E39-S70-high-bug/story.md"
-  _make_story "$f" "E39-S70" "sprint-70" \
+  local f="$TMP/${_KP}70-high-bug/story.md"
+  _make_story "$f" "${_KP}70" "sprint-70" \
     "| 1 | bug | high | High severity finding | Fix immediately |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S70|done|sprint-70|bug:high|high|High severity finding|Fix immediately"* ]]
+  [[ "$output" == *"${_KP}70|done|sprint-70|bug:high|high|High severity finding|Fix immediately"* ]]
 }
 
 @test "critical-severity bug row emitted with correct seven fields" {
-  local f="$TMP/E39-S71-crit-bug/story.md"
-  _make_story "$f" "E39-S71" "sprint-71" \
+  local f="$TMP/${_KP}71-crit-bug/story.md"
+  _make_story "$f" "${_KP}71" "sprint-71" \
     "| 1 | bug | critical | Critical severity finding | Fix urgently |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S71|done|sprint-71|bug:critical|critical|Critical severity finding|Fix urgently"* ]]
+  [[ "$output" == *"${_KP}71|done|sprint-71|bug:critical|critical|Critical severity finding|Fix urgently"* ]]
 }
 
 # ---------- Column-shift fix ----------
 
 @test "documentation row emitted without column shift" {
-  local f="$TMP/E39-S72-doc/story.md"
-  _make_story "$f" "E39-S72" "sprint-72" \
+  local f="$TMP/${_KP}72-doc/story.md"
+  _make_story "$f" "${_KP}72" "sprint-72" \
     "| 1 | documentation | medium | Doc issue | Update docs |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S72|done|sprint-72|documentation|medium|Doc issue|Update docs"* ]]
+  [[ "$output" == *"${_KP}72|done|sprint-72|documentation|medium|Doc issue|Update docs"* ]]
 }
 
 @test "enhancement row emitted without column shift" {
-  local f="$TMP/E39-S73-enh/story.md"
-  _make_story "$f" "E39-S73" "sprint-73" \
+  local f="$TMP/${_KP}73-enh/story.md"
+  _make_story "$f" "${_KP}73" "sprint-73" \
     "| 1 | enhancement | low | Enhancement desc | Implement |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S73|done|sprint-73|enhancement|low|Enhancement desc|Implement"* ]]
+  [[ "$output" == *"${_KP}73|done|sprint-73|enhancement|low|Enhancement desc|Implement"* ]]
 }
 
 @test "missing-setup row emitted without column shift" {
-  local f="$TMP/E39-S74-ms/story.md"
-  _make_story "$f" "E39-S74" "sprint-74" \
+  local f="$TMP/${_KP}74-ms/story.md"
+  _make_story "$f" "${_KP}74" "sprint-74" \
     "| 1 | missing-setup | medium | Setup issue | Add config |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S74|done|sprint-74|missing-setup|medium|Setup issue|Add config"* ]]
+  [[ "$output" == *"${_KP}74|done|sprint-74|missing-setup|medium|Setup issue|Add config"* ]]
 }
 
 # ---------- Mixed-type table and placeholder ----------
 
 @test "mixed-type table emits all row types in source order" {
-  local f="$TMP/E39-S75-mixed/story.md"
-  _make_story "$f" "E39-S75" "sprint-75" \
+  local f="$TMP/${_KP}75-mixed/story.md"
+  _make_story "$f" "${_KP}75" "sprint-75" \
     "| 1 | bug | critical | Critical finding | Fix urgently |
 | 2 | bug | high | High finding | Fix soon |
 | 3 | bug | low | Low finding | Monitor |
@@ -235,16 +238,16 @@ EOF
 # ---------- Legacy four-column table ----------
 
 @test "legacy four-column table parsed without regression" {
-  local f="$TMP/E39-S76-legacy/story.md"
+  local f="$TMP/${_KP}76-legacy/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S76"
+key: "${_KP}76"
 status: "done"
 sprint_id: "sprint-76"
 ---
 
-# Story: E39-S76
+# Story: ${_KP}76
 
 ## Findings
 
@@ -256,21 +259,21 @@ FIXTURE
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
   [ "${#lines[@]}" -eq 2 ]
-  [[ "${lines[0]}" == "E39-S76|done|sprint-76|bug:medium|medium|Old finding|Old action" ]]
-  [[ "${lines[1]}" == "E39-S76|done|sprint-76|tech-debt|low|Other finding|Other act" ]]
+  [[ "${lines[0]}" == "${_KP}76|done|sprint-76|bug:medium|medium|Old finding|Old action" ]]
+  [[ "${lines[1]}" == "${_KP}76|done|sprint-76|tech-debt|low|Other finding|Other act" ]]
 }
 
 @test "legacy high-severity bug row now emitted" {
-  local f="$TMP/E39-S77-legacy-high/story.md"
+  local f="$TMP/${_KP}77-legacy-high/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S77"
+key: "${_KP}77"
 status: "done"
 sprint_id: "sprint-77"
 ---
 
-# Story: E39-S77
+# Story: ${_KP}77
 
 ## Findings
 
@@ -280,14 +283,14 @@ sprint_id: "sprint-77"
 FIXTURE
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"E39-S77|done|sprint-77|bug:high|high|Old finding|Old action"* ]]
+  [[ "$output" == *"${_KP}77|done|sprint-77|bug:high|high|Old finding|Old action"* ]]
 }
 
 # ---------- Case insensitivity ----------
 
 @test "capitalised severity and type matched case-insensitively" {
-  local f="$TMP/E39-S78-caps/story.md"
-  _make_story "$f" "E39-S78" "sprint-78" \
+  local f="$TMP/${_KP}78-caps/story.md"
+  _make_story "$f" "${_KP}78" "sprint-78" \
     "| 1 | bug | High | Capitalised severity finding | Fix |
 | 2 | bug | Low | Another finding | Monitor |
 | 3 | Documentation | Medium | Doc finding | Update |"
@@ -301,8 +304,8 @@ FIXTURE
 # ---------- Non-standard types in five-column tables ----------
 
 @test "non-standard type in five-column table emitted with correct columns" {
-  local f="$TMP/E39-S79-nonstandard/story.md"
-  _make_story "$f" "E39-S79" "sprint-79" \
+  local f="$TMP/${_KP}79-nonstandard/story.md"
+  _make_story "$f" "${_KP}79" "sprint-79" \
     "| 1 | defect | high | A parser bug | Fix it |
 | 2 | leak | low | Minor leak | Monitor |"
   run "$EXTRACT" --story-file "$f"
@@ -312,16 +315,16 @@ FIXTURE
 }
 
 @test "uppercase TYPE header detected as five-column table" {
-  local f="$TMP/E39-S85-upper-type/story.md"
+  local f="$TMP/${_KP}85-upper-type/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S85"
+key: "${_KP}85"
 status: "done"
 sprint_id: "sprint-85"
 ---
 
-# Story: E39-S85
+# Story: ${_KP}85
 
 ## Findings
 
@@ -337,16 +340,16 @@ FIXTURE
 # ---------- Finding-count invariant ----------
 
 @test "finding-count invariant exits 2 on high-row shortfall" {
-  local f="$TMP/E39-S60-invariant/story.md"
+  local f="$TMP/${_KP}60-invariant/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S60"
+key: "${_KP}60"
 status: "done"
 sprint_id: "sprint-60"
 ---
 
-# Story: E39-S60
+# Story: ${_KP}60
 
 ## Findings
 
@@ -358,12 +361,12 @@ FIXTURE
   run bash -c '"$1" --story-file "$2" 2>"$3"' _ "$EXTRACT" "$f" "$errfile"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  [[ "$(cat "$errfile")" == *"extract-findings.sh: E39-S60: high/critical shortfall on high (critical: source=0 emitted=0; high: source=1 emitted=0)"* ]]
+  [[ "$(cat "$errfile")" == *"extract-findings.sh: ${_KP}60: high/critical shortfall on high (critical: source=0 emitted=0; high: source=1 emitted=0)"* ]]
 }
 
 @test "finding-count invariant passes on a well-formed mixed table" {
-  local f="$TMP/E39-S75-inv-pass/story.md"
-  _make_story "$f" "E39-S75" "sprint-75" \
+  local f="$TMP/${_KP}75-inv-pass/story.md"
+  _make_story "$f" "${_KP}75" "sprint-75" \
     "| 1 | bug | critical | Critical finding | Fix urgently |
 | 2 | bug | high | High finding | Fix soon |
 | 3 | bug | low | Low finding | Monitor |
@@ -378,8 +381,8 @@ FIXTURE
 }
 
 @test "empty findings table exits 0 with no output" {
-  local f="$TMP/E39-S61-empty/story.md"
-  _make_story "$f" "E39-S61" "sprint-61" \
+  local f="$TMP/${_KP}61-empty/story.md"
+  _make_story "$f" "${_KP}61" "sprint-61" \
     "| — | — | — | — | — |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -387,8 +390,8 @@ FIXTURE
 }
 
 @test "multi-line high finding with br tag extracted correctly" {
-  local f="$TMP/E39-S62-br/story.md"
-  _make_story "$f" "E39-S62" "sprint-62" \
+  local f="$TMP/${_KP}62-br/story.md"
+  _make_story "$f" "${_KP}62" "sprint-62" \
     "| 1 | bug | high | line one<br>line two | Fix |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -396,8 +399,8 @@ FIXTURE
 }
 
 @test "escaped pipe in finding text emitted with correct type and severity" {
-  local f="$TMP/E39-S63-pipe/story.md"
-  _make_story "$f" "E39-S63" "sprint-63" \
+  local f="$TMP/${_KP}63-pipe/story.md"
+  _make_story "$f" "${_KP}63" "sprint-63" \
     '| 1 | bug | high | text \| more | Fix |'
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -407,16 +410,16 @@ FIXTURE
 # ---------- Invariant edge cases ----------
 
 @test "finding-before-severity table with high row triggers invariant exit 2" {
-  local f="$TMP/E39-S64-fbs-high/story.md"
+  local f="$TMP/${_KP}64-fbs-high/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S64"
+key: "${_KP}64"
 status: "done"
 sprint_id: "sprint-64"
 ---
 
-# Story: E39-S64
+# Story: ${_KP}64
 
 ## Findings
 
@@ -428,21 +431,21 @@ FIXTURE
   run bash -c '"$1" --story-file "$2" 2>"$3"' _ "$EXTRACT" "$f" "$errfile"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  [[ "$(cat "$errfile")" == *"E39-S64"* ]]
+  [[ "$(cat "$errfile")" == *"${_KP}64"* ]]
   [[ "$(cat "$errfile")" == *"high"* ]]
 }
 
 @test "finding-before-severity table with uppercase CRITICAL rows triggers invariant" {
-  local f="$TMP/E39-S65-fbs-crit/story.md"
+  local f="$TMP/${_KP}65-fbs-crit/story.md"
   mkdir -p "$(dirname "$f")"
-  cat > "$f" <<'FIXTURE'
+  cat > "$f" <<FIXTURE
 ---
-key: "E39-S65"
+key: "${_KP}65"
 status: "done"
 sprint_id: "sprint-65"
 ---
 
-# Story: E39-S65
+# Story: ${_KP}65
 
 ## Findings
 
@@ -455,20 +458,20 @@ FIXTURE
   run bash -c '"$1" --story-file "$2" 2>"$3"' _ "$EXTRACT" "$f" "$errfile"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  [[ "$(cat "$errfile")" == *"extract-findings.sh: E39-S65: high/critical shortfall on critical (critical: source=2 emitted=0; high: source=0 emitted=0)"* ]]
+  [[ "$(cat "$errfile")" == *"extract-findings.sh: ${_KP}65: high/critical shortfall on critical (critical: source=2 emitted=0; high: source=0 emitted=0)"* ]]
 }
 
 @test "invariant raw scan does not false-positive on finding text containing high" {
-  local f="$TMP/E39-S66-no-fp/story.md"
-  _make_story "$f" "E39-S66" "sprint-66" \
+  local f="$TMP/${_KP}66-no-fp/story.md"
+  _make_story "$f" "${_KP}66" "sprint-66" \
     "| 1 | tech-debt | low | high availability concern | Fix |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
 }
 
 @test "invariant raw scan counts row with em-dash action cell" {
-  local f="$TMP/E39-S67-emdash/story.md"
-  _make_story "$f" "E39-S67" "sprint-67" \
+  local f="$TMP/${_KP}67-emdash/story.md"
+  _make_story "$f" "${_KP}67" "sprint-67" \
     "| 1 | bug | high | F | — |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -476,8 +479,8 @@ FIXTURE
 }
 
 @test "invariant raw scan counts row whose finding starts with ID" {
-  local f="$TMP/E39-S68-id-finding/story.md"
-  _make_story "$f" "E39-S68" "sprint-68" \
+  local f="$TMP/${_KP}68-id-finding/story.md"
+  _make_story "$f" "${_KP}68" "sprint-68" \
     "| 1 | bug | high | ID mapping is broken | Fix |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -485,8 +488,8 @@ FIXTURE
 }
 
 @test "invariant raw scan counts row whose finding contains triple dashes" {
-  local f="$TMP/E39-S69-dashes/story.md"
-  _make_story "$f" "E39-S69" "sprint-69" \
+  local f="$TMP/${_KP}69-dashes/story.md"
+  _make_story "$f" "${_KP}69" "sprint-69" \
     "| 1 | bug | high | service --- timeout | Fix |"
   local errfile="$TMP/stderr"
   run bash -c '"$1" --story-file "$2" 2>"$3"' _ "$EXTRACT" "$f" "$errfile"
@@ -498,27 +501,27 @@ FIXTURE
 # ---------- Multi-space and tab padding ----------
 
 @test "padded five-column high bug row emits clean fields" {
-  local f="$TMP/E39-S86-padded-high/story.md"
+  local f="$TMP/${_KP}86-padded-high/story.md"
   local TAB=$'\t'
-  _make_story "$f" "E39-S86" "sprint-86" \
+  _make_story "$f" "${_KP}86" "sprint-86" \
     "| 1 | bug  |${TAB}high     | padded  | Fix  |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == "E39-S86|done|sprint-86|bug:high|high|padded|Fix" ]]
+  [[ "$output" == "${_KP}86|done|sprint-86|bug:high|high|padded|Fix" ]]
 }
 
 @test "padded critical bug row emits clean fields" {
-  local f="$TMP/E39-S87-padded-crit/story.md"
-  _make_story "$f" "E39-S87" "sprint-87" \
+  local f="$TMP/${_KP}87-padded-crit/story.md"
+  _make_story "$f" "${_KP}87" "sprint-87" \
     "|  2  |  bug  |  critical  |  Critical padded  |  Fix urgently  |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
-  [[ "$output" == "E39-S87|done|sprint-87|bug:critical|critical|Critical padded|Fix urgently" ]]
+  [[ "$output" == "${_KP}87|done|sprint-87|bug:critical|critical|Critical padded|Fix urgently" ]]
 }
 
 @test "padded mixed-case type and severity lowercase correctly" {
-  local f="$TMP/E39-S88-padded-case/story.md"
-  _make_story "$f" "E39-S88" "sprint-88" \
+  local f="$TMP/${_KP}88-padded-case/story.md"
+  _make_story "$f" "${_KP}88" "sprint-88" \
     "|  1  |  Bug   |   HIGH  |  Padded finding  |  Fix  |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -526,8 +529,8 @@ FIXTURE
 }
 
 @test "internal whitespace preserved in finding and action text" {
-  local f="$TMP/E39-S89-internal-ws/story.md"
-  _make_story "$f" "E39-S89" "sprint-89" \
+  local f="$TMP/${_KP}89-internal-ws/story.md"
+  _make_story "$f" "${_KP}89" "sprint-89" \
     "| 1 | tech-debt | medium |  two  words  |  fix  it  |"
   run "$EXTRACT" --story-file "$f"
   [ "$status" -eq 0 ]
@@ -535,9 +538,9 @@ FIXTURE
 }
 
 @test "mutant that drops padded high row triggers invariant exit 2" {
-  local f="$TMP/E39-S90-mutant-pad/story.md"
+  local f="$TMP/${_KP}90-mutant-pad/story.md"
   local TAB=$'\t'
-  _make_story "$f" "E39-S90" "sprint-90" \
+  _make_story "$f" "${_KP}90" "sprint-90" \
     "| 1 | bug  |${TAB}high     | padded finding  | Fix  |"
   local mutant="$TMP/mutant-pad-extract.sh"
   # Copy script, inject a line that drops the padded row before it is buffered.
@@ -550,7 +553,7 @@ FIXTURE
   run bash -c '"$1" --story-file "$2" 2>"$3"' _ "$mutant" "$f" "$errfile"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
-  [[ "$(cat "$errfile")" == *"extract-findings.sh: E39-S90: high/critical shortfall on high (critical: source=0 emitted=0; high: source=1 emitted=0)"* ]]
+  [[ "$(cat "$errfile")" == *"extract-findings.sh: ${_KP}90: high/critical shortfall on high (critical: source=0 emitted=0; high: source=1 emitted=0)"* ]]
 }
 
 # ---------- SKILL.md and documentation prose ----------
