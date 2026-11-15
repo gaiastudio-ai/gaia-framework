@@ -67,7 +67,9 @@ fm=$(awk '
 ' "$STORY_FILE")
 
 status=$(printf '%s\n' "$fm" | awk -F: '/^status[[:space:]]*:/ { sub(/^status[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }')
+status="${status%$'\r'}"
 sprint_id=$(printf '%s\n' "$fm" | awk -F: '/^sprint_id[[:space:]]*:/ { sub(/^sprint_id[[:space:]]*:[[:space:]]*/, ""); gsub(/["'\'']/, ""); print; exit }')
+sprint_id="${sprint_id%$'\r'}"
 
 # ---------- "## Findings" section — stop at next ## heading or EOF ----------
 findings_section=$(awk '
@@ -96,6 +98,16 @@ _lc_token() {
   case "$1" in
     *[A-Z]*) _result="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" ;;
     *)       _result="$1" ;;
+  esac
+}
+
+# Test whether a line is a markdown table separator: every character is a pipe,
+# dash, colon, or space, and there is at least one dash.
+_is_separator() {
+  case "$1" in
+    *[!\ \|:-]*) return 1 ;;  # has non-separator characters
+    *-*)         return 0 ;;  # all separator chars, at least one dash
+    *)           return 1 ;;  # no dashes
   esac
 }
 
@@ -133,32 +145,31 @@ emitted_high=0
 emitted_critical=0
 five_col=0
 _prev_pipe_row=""
+_saw_sep=0  # 1 after the table's separator row has been seen
 
 while IFS= read -r line; do
+  line="${line%$'\r'}"  # strip trailing CR (CRLF files)
   case "$line" in
     *\|*) ;;          # only pipe-delimited rows
-    *) _prev_pipe_row=""; continue ;;  # non-table line — clear header tracking
+    *) _prev_pipe_row=""; _saw_sep=0; continue ;;  # table boundary
   esac
+  # Separator: structurally, the first character-test-passing row of a table
+  # (immediately after the header).  Once seen, subsequent character-test rows
+  # are data (e.g. placeholder | - | - |) and fall through to parsing.
+  if _is_separator "$line" && [ "$_saw_sep" -eq 0 ]; then
+    _saw_sep=1
+    if [ -n "$_prev_pipe_row" ]; then
+      IFS='|' read -r _ _ _hdr2 _ _ _ _ <<<"$_prev_pipe_row"
+      _trim "$_hdr2"; _lc_token "$_result"
+      [ "$_result" = "type" ] && five_col=1 || five_col=0
+    fi
+    _prev_pipe_row=""
+    continue
+  fi
+  # Pre-existing skip: data rows whose text contains "---" (not a genuine
+  # separator but matched by the legacy glob — preserves sweep identity).
   case "$line" in
-    *---*)
-      # Separator row — detect the table layout from the preceding header row.
-      # Only re-detect on a TRUE separator (all characters are |, -, :, space).
-      # A data row whose finding text contains "---" also matches *---* but
-      # contains letters; treating it as a layout boundary would corrupt
-      # five_col for subsequent rows.
-      case "$line" in
-        *[!\ \|:-]*) ;;  # data row with dashes in text — skip but do not re-detect
-        *)
-          if [ -n "$_prev_pipe_row" ]; then
-            IFS='|' read -r _ _ _hdr2 _ _ _ _ <<<"$_prev_pipe_row"
-            _trim "$_hdr2"; _lc_token "$_result"
-            [ "$_result" = "type" ] && five_col=1 || five_col=0
-          fi
-          ;;
-      esac
-      _prev_pipe_row=""
-      continue
-      ;;
+    *---*) _prev_pipe_row=""; continue ;;
   esac
   _trim "$line"; trimmed="$_result"
   IFS='|' read -r _blank col1 col2 col3 col4 col5 _rest <<<"$trimmed"
@@ -237,25 +248,31 @@ source_high=0
 source_critical=0
 prev_line=""
 header_line=""
+_inv_saw_sep=0  # 1 after the table's separator row has been seen
 while IFS= read -r raw_line; do
+  raw_line="${raw_line%$'\r'}"  # strip trailing CR (CRLF files)
   # Only pipe-delimited rows.
   case "$raw_line" in
     *\|*) ;;
-    *) prev_line="$raw_line"; continue ;;
+    *) prev_line="$raw_line"; _inv_saw_sep=0; continue ;;
   esac
 
-  # TRUE separator: a row whose characters are all in { |, :, -, space }.
-  # Tested with a case-glob instead of a tr subshell.
-  case "$raw_line" in
-    *[!\ \|:-]*)
-      ;; # contains a non-separator character — not a separator
-    *)
-      # Pure separator row; the previous pipe-delimited row is the header.
-      header_line="$prev_line"
-      prev_line="$raw_line"
-      continue
-      ;;
-  esac
+  # Separator: structurally, the first character-test-passing row of a table.
+  # Same definition as the parser (all separator chars + at least one dash),
+  # independently implemented — does not share parser state.
+  if [ "$_inv_saw_sep" -eq 0 ]; then
+    case "$raw_line" in
+      *[!\ \|:-]*) ;;  # non-separator characters present
+      *-*)
+        # Genuine separator; the previous pipe-delimited row is the header.
+        _inv_saw_sep=1
+        header_line="$prev_line"
+        prev_line="$raw_line"
+        continue
+        ;;
+      *) ;;  # all separator chars but no dash
+    esac
+  fi
 
   # Skip the header row itself (identified structurally above).
   if [ "$raw_line" = "$header_line" ]; then

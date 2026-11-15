@@ -638,6 +638,150 @@ FIXTURE
   [[ "$output" == *"|tech-debt|medium|Real finding|Fix it"* ]]
 }
 
+# ---------- Separator format variants and CRLF ----------
+
+@test "short-dash separator recognized as five-column table" {
+  local f="$TMP/${_KP}94-short-sep/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}94"
+status: "done"
+sprint_id: "sprint-94"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+|-|-|-|-|-|
+| 1 | bug | medium | Short sep finding | Fix |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}94|done|sprint-94|bug:medium|medium|Short sep finding|Fix" ]]
+}
+
+@test "colon-aligned separator recognized as five-column table" {
+  local f="$TMP/${_KP}95-aligned-sep/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}95"
+status: "done"
+sprint_id: "sprint-95"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+|:-:|:-:|:-:|:-:|:-:|
+| 1 | bug | medium | Aligned sep finding | Fix |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}95|done|sprint-95|bug:medium|medium|Aligned sep finding|Fix" ]]
+}
+
+@test "CRLF file with high bug row parsed without trailing CR" {
+  local f="$TMP/${_KP}96-crlf/story.md"
+  mkdir -p "$(dirname "$f")"
+  printf -- '---\r\nkey: "%s"\r\nstatus: "done"\r\nsprint_id: "sprint-96"\r\n---\r\n\r\n## Findings\r\n\r\n| # | Type | Severity | Finding | Action |\r\n|---|------|----------|---------|--------|\r\n| 1 | bug | high | CRLF finding | Fix |\r\n' "${_KP}96" > "$f"
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}96|done|sprint-96|bug:high|high|CRLF finding|Fix" ]]
+}
+
+@test "spaced colon-aligned separator recognized as five-column table" {
+  local f="$TMP/${_KP}97-spaced-colon/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}97"
+status: "done"
+sprint_id: "sprint-97"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+| :-: | :-: | :-: | :-: | :-: |
+| 1 | bug | medium | Five | Fix |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}97|done|sprint-97|bug:medium|medium|Five|Fix" ]]
+}
+
+@test "spaced single-dash separator recognized as five-column table" {
+  local f="$TMP/${_KP}98-spaced-dash/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}98"
+status: "done"
+sprint_id: "sprint-98"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+| - | - | - | - | - |
+| 1 | bug | medium | Five | Fix |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}98|done|sprint-98|bug:medium|medium|Five|Fix" ]]
+}
+
+@test "spaced double-dash separator recognized as five-column table" {
+  local f="$TMP/${_KP}99-spaced-ddash/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}99"
+status: "done"
+sprint_id: "sprint-99"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+| -- | -- | -- | -- | -- |
+| 1 | bug | medium | Five | Fix |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}99|done|sprint-99|bug:medium|medium|Five|Fix" ]]
+}
+
+@test "placeholder dash row after standard separator emitted as data" {
+  local f="$TMP/${_KP}100-placeholder/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}100"
+status: "done"
+sprint_id: "sprint-100"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Suggested Action |
+|---|------|----------|---------|-----------------|
+| - | -    | -        | -       | -               |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 1 ]
+  [[ "${lines[0]}" == "${_KP}100|done|sprint-100|-|-|-|-" ]]
+}
+
 # ---------- SKILL.md and documentation prose ----------
 
 @test "triage skill step 1b instructs skip-report-continue on extractor error" {
