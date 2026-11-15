@@ -293,10 +293,11 @@
             <tr>
               <td><code>--plan-id</code> passed on a test-execution gate (QA Tests, Test Automation, Test Review), including a sprint-scoped auto-generated plan identifier</td>
               <td>
-                Refused with a diagnostic. Test-execution gates require real
-                execution evidence; use a plan-only gate (e.g.
+                Refused with a diagnostic. Test-execution gates do not accept
+                plan-keyed verdicts; use a plan-only gate (e.g.
                 test-automate-plan) for plan approvals. This refusal applies
-                even when the proof-of-execution off-switch is set.
+                even when a valid execution-evidence file is supplied and even
+                when the proof-of-execution off-switch is set.
               </td>
             </tr>
             <tr>

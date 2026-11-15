@@ -326,6 +326,46 @@ _seed_all_passed_no_reports() {
   [[ "$output" == *"does not accept --plan-id"* ]]
 }
 
+@test "POE: sprint-scoped plan-id on test gate refused even with valid evidence" {
+  local _rpt="$TEST_TMP/rpt.md"
+  local _ev="$TEST_TMP/ev.json"
+  printf '# report\n' > "$_rpt"
+  printf '{"suites":[{"name":"unit","required":true,"exit_code":0,"fail_count":0,"timeout":false}],"skipped":false}\n' > "$_ev"
+  local ledger="$TEST_TMP/ledger"
+
+  run bash "$SCRIPT" update \
+    --sprint sprint-x --gate "QA Tests" --verdict PASSED \
+    --ledger "$ledger" --report "$_rpt" --execution-evidence "$_ev"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+  # Ledger must not contain an entry.
+  if [ -f "$ledger" ]; then
+    local count
+    count="$(wc -l < "$ledger" | tr -d ' ')"
+    [ "$count" -eq 0 ]
+  fi
+}
+
+@test "POE: explicit plan-id on test gate refused even with valid evidence and row unchanged" {
+  local _rpt="$TEST_TMP/rpt2.md"
+  local _ev="$TEST_TMP/ev2.json"
+  printf '# report\n' > "$_rpt"
+  printf '{"suites":[{"name":"unit","required":true,"exit_code":0,"fail_count":0,"timeout":false}],"skipped":false}\n' > "$_ev"
+
+  local before
+  before="$(cat "$STORY_FILE")"
+
+  run bash "$SCRIPT" update --story "$STORY_KEY" \
+    --gate "Test Review" --verdict PASSED --plan-id p1 \
+    --report "$_rpt" --execution-evidence "$_ev"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not accept --plan-id"* ]]
+
+  local after
+  after="$(cat "$STORY_FILE")"
+  [ "$before" = "$after" ]
+}
+
 @test "POE: both report and report-missing-reason keeps report path in column" {
   REPORT="$TST/${STORY_KEY}-test-review.md"
   echo "report body" > "$REPORT"
