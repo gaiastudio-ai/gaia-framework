@@ -3960,14 +3960,37 @@ _write_nested_json() {
     fail "expected surface enum [artifact, designsync], got: $surface_enum"
 }
 
-@test "schema: unknown surface value is rejected by schema" {
+@test "schema: record with unknown surface value is rejected by real validator" {
   [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
 
-  local has_artifact
-  has_artifact="$(jq '.properties.design_system_project.oneOf[1].properties.surface.enum | index("artifact")' "$SCHEMA")"
-  # If artifact is not in the enum, the enum is still restrictive (which is correct);
-  # but we need it present. This test fails until the schema is widened.
-  [ "$has_artifact" != "null" ] || fail "surface enum does not include artifact"
+  # Build a minimal schema-valid record, then inject an invalid surface value
+  # and validate through the production schema-validation pipeline.
+  assert_script_exists
+  run "$SCRIPT" init --reference "test-ref" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+  # Set the ds project block with an invalid surface
+  yq -i '.design_system_project = {"reference":"ds-ref","type":"design-system","surface":"unknown","discovered_via":"project-artifacts"}' "$RECORD"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot validate"
+  [ "$status" -ne 0 ] || fail "record with surface 'unknown' should be rejected by schema"
+}
+
+@test "schema: record with surface artifact passes real validator" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  # Build a record via the real writer so it is baseline-valid, then set a
+  # valid surface value and confirm the validator accepts it.
+  assert_script_exists
+  run "$SCRIPT" init --reference "test-ref" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+  yq -i '.design_system_project = {"reference":"ds-ref","type":"design-system","surface":"artifact","discovered_via":"project-artifacts"}' "$RECORD"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot validate"
+  [ "$status" -eq 0 ] || fail "record with surface 'artifact' should pass schema: $output"
 }
 
 @test "schema: audit event enum includes rebind and force-iteration-override" {
@@ -4196,11 +4219,13 @@ EOF
   run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --dry-run
   [ "$status" -eq 0 ] || fail "rebind dry-run should succeed: $output"
 
-  # Output should mention old and new references and surfaces
-  [[ "$output" == *"ds.example.com/project/ds-123"* ]] || fail "dry-run should print old reference"
-  [[ "$output" == *"new-ds-789"* ]] || fail "dry-run should print new reference"
-  [[ "$output" == *"designsync"* ]] || fail "dry-run should print old surface"
-  [[ "$output" == *"artifact"* ]] || fail "dry-run should print new surface"
+  # Assert the exact old_reference and new_reference lines are distinct values
+  [[ "$output" == *"old_reference: https://ds.example.com/project/ds-123"* ]] || \
+    fail "dry-run should print old_reference line with the original ds reference"
+  [[ "$output" == *"new_reference: https://claude.ai/artifact/new-ds-789"* ]] || \
+    fail "dry-run should print new_reference line with the target reference"
+  [[ "$output" == *"old_surface:   designsync"* ]] || fail "dry-run should print old surface"
+  [[ "$output" == *"new_surface:   artifact"* ]] || fail "dry-run should print exact new_surface line"
 
   # Record must not be mutated
   assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
@@ -4306,8 +4331,8 @@ EOF
 
   run "$SCRIPT" rebind --project product_design_project --target "https://claude.ai/artifact/new-789" --execute
   [ "$status" -ne 0 ] || fail "rebind with --project product_design_project should be refused"
-  # Must be refused by the rebind verb's own validation, not as "unknown verb"
-  [[ "$output" != *"unknown verb"* ]] || fail "rebind verb should be recognized, got: $output"
+  [[ "$output" == *"--project must be design_system_project"* ]] || \
+    fail "expected project-guard diagnostic, got: $output"
 }
 
 @test "rebind: --target equal to product_design_project reference is refused" {
@@ -4317,8 +4342,8 @@ EOF
   # The pd_ref is https://claude.ai/artifact/pd-456
   run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/pd-456" --execute
   [ "$status" -ne 0 ] || fail "rebind targeting the pd reference should be refused"
-  # Must be refused by cross-reference guard, not as "unknown verb"
-  [[ "$output" != *"unknown verb"* ]] || fail "rebind verb should be recognized, got: $output"
+  [[ "$output" == *"cross-wire the two project references"* ]] || \
+    fail "expected cross-wire diagnostic, got: $output"
 }
 
 @test "rebind: null design_system_project is refused" {
@@ -4348,8 +4373,8 @@ EOF
 
   run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-789" --execute
   [ "$status" -ne 0 ] || fail "rebind on null design_system_project should be refused"
-  # Must be refused by the null-ds guard, not as "unknown verb"
-  [[ "$output" != *"unknown verb"* ]] || fail "rebind verb should be recognized, got: $output"
+  [[ "$output" == *"design_system_project is null"* ]] || \
+    fail "expected null-ds diagnostic, got: $output"
 }
 
 @test "rebind: same reference from designsync flips surface to artifact" {

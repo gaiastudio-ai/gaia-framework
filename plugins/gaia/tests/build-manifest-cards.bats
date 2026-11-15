@@ -5976,9 +5976,8 @@ YAML
       --expected-type 'Design System'
   "
   [ "$status" -ne 0 ] || fail "mismatched type should halt"
-  # Must be refused by the type-mismatch guard, not as "unknown option"
-  [[ "$output" != *"unknown option"* ]] || \
-    fail "should be a type-mismatch diagnostic, not unknown-option: $output"
+  [[ "$output" == *"Artifact type must be exactly 'Design System'"* ]] || \
+    fail "expected type-mismatch diagnostic, got: $output"
 }
 
 @test "verify-target: omitted --project-role defaults to product_design_project and Design" {
