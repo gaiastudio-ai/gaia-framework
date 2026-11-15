@@ -594,15 +594,24 @@ _locked_mutate() {
     _validate_project_references "$tmp"
 
     # Apply mutation callback
+    _DR_NOOP=0
     "$callback" "$tmp" "$@"
 
-    # Cross-validation after callback, before publish
-    _validate_project_references "$tmp"
+    # No-op path: callback signalled that no mutation is needed.
+    # Clean up and exit without writing (preserves record byte-identical).
+    if [ "$_DR_NOOP" = 1 ]; then
+      rm -f "$tmp" 2>/dev/null || true
+      _DR_TMP=""
+      _DR_DONE=1
+    else
+      # Cross-validation after callback, before publish
+      _validate_project_references "$tmp"
 
-    # Atomic publish: mv is atomic on POSIX within a single filesystem
-    mv -f "$tmp" "$RECORD_PATH" || _die "atomic publish failed"
-    _DR_TMP=""
-    _DR_DONE=1
+      # Atomic publish: mv is atomic on POSIX within a single filesystem
+      mv -f "$tmp" "$RECORD_PATH" || _die "atomic publish failed"
+      _DR_TMP=""
+      _DR_DONE=1
+    fi
   )
 }
 
@@ -1361,7 +1370,7 @@ _do_transition() {
       fi
     fi
 
-    new_iter=$((current_iter + 1))
+    new_iter=$((10#$current_iter + 1))
     yq -i ".iteration = $new_iter" "$tmp"
   fi
 
@@ -1994,60 +2003,100 @@ cmd_rebind() {
   # Sentinel rejection on target
   _assert_not_sentinel "$target" "rebind --target"
 
+  # Enum validation: discovered_via must be a valid value for ds project
+  _assert_discovered_via "$discovered_via" "project-artifacts integration-list created rebind" "rebind"
+
   _preflight_mutate
 
-  # Read the current record for pre-lock guards
-  local current_state ds_ref ds_surface pd_ref ds_null
-  current_state="$(yq '.design_state' "$RECORD_PATH")"
-  ds_null="$(yq '.design_system_project == null' "$RECORD_PATH")"
+  if "$dry_run"; then
+    # Dry-run: evaluate on a migrated read-only copy without writing
+    _rebind_dry_run "$target"
+    return $?
+  fi
 
-  # Refuse if design_system_project is null
+  _locked_mutate _do_rebind "$target" "$actor" "$discovered_via"
+}
+
+# _rebind_dry_run TARGET — print the rebind plan from a migrated read-only
+# copy so v1 records dry-run correctly. No lock, no write.
+_rebind_dry_run() {
+  local target="$1"
+  local _dryrun_tmp
+  _dryrun_tmp=$(mktemp "${RECORD_PATH}.dryrun.XXXXXX")
+  cp "$RECORD_PATH" "$_dryrun_tmp"
+  _migrate_v1_to_v2 "$_dryrun_tmp"
+
+  local ds_null ds_ref ds_surface pd_ref current_state
+  ds_null="$(yq '.design_system_project == null' "$_dryrun_tmp")"
+  if [ "$ds_null" = "true" ]; then
+    rm -f "$_dryrun_tmp" 2>/dev/null || true
+    _die "rebind: design_system_project is null — rebind requires an existing design-system project"
+  fi
+
+  ds_ref="$(yq '.design_system_project.reference' "$_dryrun_tmp")"
+  ds_surface="$(yq '.design_system_project.surface' "$_dryrun_tmp")"
+  pd_ref="$(yq '.product_design_project.reference // ""' "$_dryrun_tmp")"
+  current_state="$(yq '.design_state' "$_dryrun_tmp")"
+  rm -f "$_dryrun_tmp" 2>/dev/null || true
+
+  if [ -n "$pd_ref" ] && [ "$target" = "$pd_ref" ]; then
+    _die "rebind: --target must not equal product_design_project.reference (\"$pd_ref\") — that would cross-wire the two project references"
+  fi
+  if [ "$current_state" = "review" ]; then
+    _die "rebind refused: design record is in review state; complete or cancel the review first"
+  fi
+  if [ "$ds_surface" = "artifact" ] && [ "$ds_ref" = "$target" ]; then
+    printf 'rebind: already on target surface (artifact) with reference %s — no change\n' "$target"
+    return 0
+  fi
+
+  printf 'rebind dry-run:\n'
+  printf '  old_reference: %s\n' "$ds_ref"
+  printf '  new_reference: %s\n' "$target"
+  printf '  old_surface:   %s\n' "$ds_surface"
+  printf '  new_surface:   artifact\n'
+  return 0
+}
+
+_do_rebind() {
+  local tmp="$1" target="$2" actor="$3" discovered_via="$4"
+
+  # All checks run on the locked, migrated snapshot (migration already
+  # applied by _locked_mutate before the callback).
+
+  # Null design_system_project check
+  local ds_null
+  ds_null="$(yq '.design_system_project == null' "$tmp")"
   if [ "$ds_null" = "true" ]; then
     _die "rebind: design_system_project is null — rebind requires an existing design-system project"
   fi
 
-  ds_ref="$(yq '.design_system_project.reference' "$RECORD_PATH")"
-  ds_surface="$(yq '.design_system_project.surface' "$RECORD_PATH")"
-  pd_ref="$(yq '.product_design_project.reference // ""' "$RECORD_PATH")"
+  # Read current values from the locked snapshot
+  local ds_ref ds_surface pd_ref current_state
+  ds_ref="$(yq '.design_system_project.reference' "$tmp")"
+  ds_surface="$(yq '.design_system_project.surface' "$tmp")"
+  pd_ref="$(yq '.product_design_project.reference // ""' "$tmp")"
+  current_state="$(yq '.design_state' "$tmp")"
 
   # Cross-reference guard: target must not equal product_design_project reference
   if [ -n "$pd_ref" ] && [ "$target" = "$pd_ref" ]; then
     _die "rebind: --target must not equal product_design_project.reference (\"$pd_ref\") — that would cross-wire the two project references"
   fi
 
-  # Review-state refusal (fast-fail before lock)
+  # Review-state refusal
   if [ "$current_state" = "review" ]; then
     _die "rebind refused: design record is in review state; complete or cancel the review first"
   fi
 
-  # Idempotent: already on artifact surface with the same reference
+  # Idempotent no-op: already on artifact surface with the same reference.
+  # Leave the record byte-identical and append no audit entry.
   if [ "$ds_surface" = "artifact" ] && [ "$ds_ref" = "$target" ]; then
     printf 'rebind: already on target surface (artifact) with reference %s — no change\n' "$target"
+    _DR_NOOP=1
     return 0
   fi
 
-  if "$dry_run"; then
-    printf 'rebind dry-run:\n'
-    printf '  old_reference: %s\n' "$ds_ref"
-    printf '  new_reference: %s\n' "$target"
-    printf '  old_surface:   %s\n' "$ds_surface"
-    printf '  new_surface:   artifact\n'
-    return 0
-  fi
-
-  _locked_mutate _do_rebind "$target" "$actor" "$discovered_via" "$ds_ref"
-}
-
-_do_rebind() {
-  local tmp="$1" target="$2" actor="$3" discovered_via="$4" old_reference="$5"
-
-  # Re-check review state inside the lock (a concurrent transition may have
-  # moved the record into review between our pre-lock check and now)
-  local current_state
-  current_state="$(yq '.design_state' "$tmp")"
-  if [ "$current_state" = "review" ]; then
-    _die "rebind refused: design record is in review state; complete or cancel the review first"
-  fi
+  local old_reference="$ds_ref"
 
   # Set ds reference/surface/discovered_via, mirror project.reference, go stale
   _RB_TARGET="$target" _RB_DV="$discovered_via" yq -i '

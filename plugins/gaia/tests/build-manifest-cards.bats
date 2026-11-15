@@ -6015,3 +6015,74 @@ YAML
   "
   [ "$status" -eq 0 ] || fail "designsync path should be unaffected by --project-role: $output"
 }
+
+
+# ===========================================================================
+# verify-target: design_system_project reference mismatch and cross-wire
+# ===========================================================================
+
+@test "verify-target: design_system_project reference mismatch halts with diagnostic" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  # Metadata points at a DIFFERENT reference than what design_system_project has
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/WRONG-REF" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/WRONG-REF, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/WRONG-REF' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -ne 0 ] || fail "reference mismatch should halt"
+  [[ "$output" == *"reference mismatch"* ]] || [[ "$output" == *"design_system_project.reference"* ]] || \
+    fail "diagnostic should mention reference mismatch, got: $output"
+}
+
+@test "verify-target: cross-wire design_system_project using product_design reference halts" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  # Reference equals the product_design_project reference — cross-wire
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/pd-456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/pd-456, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/pd-456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -ne 0 ] || fail "cross-wire should halt"
+  [[ "$output" == *"cross-wire"* ]] || \
+    fail "diagnostic should mention cross-wire, got: $output"
+}
+
+@test "verify-target: positive control for design_system_project role passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/ds-789" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/ds-789, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/ds-789' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -eq 0 ] || fail "positive control for DS role should pass: $output"
+}

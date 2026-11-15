@@ -4323,9 +4323,28 @@ EOF
 
 @test "rebind: null design_system_project is refused" {
   assert_script_exists
-  seed_minimal_record "draft" 1
+  # Seed a real v2 not-applicable record with design_system_project: null
+  mkdir -p "$STATE_DIR"
+  cat > "$RECORD" <<'EOF'
+schema_version: "2.0"
+applicability: not-applicable
+design_state: draft
+iteration: 1
+project:
+  reference: "not-applicable"
+  discovered_via: "project-artifacts"
+  questionnaire_record: "not-applicable"
+design_system_project: null
+product_design_project: null
+reviews: []
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+EOF
   seed_roster_gaia
-  # The minimal record has no design_system_project (v1 format); rebind should refuse
 
   run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-789" --execute
   [ "$status" -ne 0 ] || fail "rebind on null design_system_project should be refused"
@@ -4463,4 +4482,73 @@ EOF
   local surface
   surface="$(yq '.design_system_project.surface' "$RECORD")"
   [ "$surface" = "designsync" ] || fail "expected default surface designsync, got: $surface"
+}
+
+
+# =========================================================================
+# rebind --discovered-via enum validation
+# =========================================================================
+
+@test "rebind: bogus --discovered-via value is refused without mutation" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --discovered-via "bogus" --execute
+  [ "$status" -ne 0 ] || fail "rebind with bogus discovered_via should be refused"
+  [[ "$output" == *"bogus"* ]] || fail "diagnostic should name the bad value, got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+
+# =========================================================================
+# null-iteration: zero-padded octal values
+# =========================================================================
+
+@test "null-iteration: zero-padded 08 treated as base-10 on stale-to-review" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Write zero-padded iteration that crashes bash octal arithmetic
+  _V="08" yq -i '.iteration = strenv(_V)' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: zero-padded 08 test"
+  [ "$status" -eq 0 ] || fail "zero-padded 08 stale-to-review should succeed: $output"
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 9 ] || fail "iteration should be 9 after 08->bump, got: $iter"
+}
+
+
+# =========================================================================
+# rebind: v1.0 record is migrated then rebound successfully
+# =========================================================================
+
+@test "rebind: v1.0 record is migrated then rebound successfully" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --execute --actor "test-v1-rebind"
+  [ "$status" -eq 0 ] || fail "rebind on v1.0 record should succeed after migration: $output"
+
+  # Verify the record is now v2 with correct references
+  local sv
+  sv="$(yq '.schema_version' "$RECORD")"
+  [ "$sv" = "2.0" ] || fail "schema_version should be 2.0 after migration, got: $sv"
+
+  local ds_ref
+  ds_ref="$(yq '.design_system_project.reference' "$RECORD")"
+  [ "$ds_ref" = "https://claude.ai/artifact/new-ds-789" ] || fail "ds reference should be updated, got: $ds_ref"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "surface should be artifact, got: $surface"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "stale" ] || fail "state should be stale after rebind, got: $state"
 }
