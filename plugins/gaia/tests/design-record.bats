@@ -4387,6 +4387,25 @@ EOF
     fail "expected flag-required diagnostic, got: $output"
 }
 
+@test "static: cmd_rebind enforces one-of dry-run/execute and delegates via locked mutate" {
+  assert_script_exists
+
+  local body
+  body="$(_extract_fn_body cmd_rebind "$SCRIPT")"
+
+  # Must enforce exactly-one-of --dry-run / --execute
+  [[ "$body" == *'rebind requires exactly one of --dry-run or --execute'* ]] || \
+    fail "cmd_rebind missing one-of --dry-run/--execute guard"
+
+  # Must call _preflight_mutate before the lock
+  grep -q '_preflight_mutate' <<<"$body" || \
+    fail "cmd_rebind does not call _preflight_mutate"
+
+  # Must delegate mutation through _locked_mutate _do_rebind
+  grep -q '_locked_mutate _do_rebind' <<<"$body" || \
+    fail "cmd_rebind does not delegate via _locked_mutate _do_rebind"
+}
+
 # =========================================================================
 # --surface flag on init and reopen-applicable
 # =========================================================================
