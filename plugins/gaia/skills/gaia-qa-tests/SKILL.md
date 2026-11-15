@@ -359,15 +359,16 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
 
 ```bash
 # Write LLM findings to disk for the legacy-path resolver call.
-mkdir -p .gaia/state/review/qa-tests/{story_key}
-cat > .gaia/state/review/qa-tests/{story_key}/llm-findings.json <<'FINDINGS_EOF'
+_review_dir="${PROJECT_ROOT:-.}/.gaia/state/review/qa-tests/{story_key}"
+mkdir -p "$_review_dir"
+cat > "$_review_dir/llm-findings.json" <<'FINDINGS_EOF'
 {"findings": [ <array of {severity, message, ...} objects from the LLM review phase> ]}
 FINDINGS_EOF
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
-  --llm-findings .gaia/state/review/qa-tests/{story_key}/llm-findings.json \
-  [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
+  --analysis-results "$_review_dir/analysis-results.json" \
+  --llm-findings "$_review_dir/llm-findings.json" \
+  [--execution-evidence "$_review_dir/execution-evidence.json"]
 ```
 
 The resolver applies strict first-match-wins precedence:

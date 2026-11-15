@@ -674,3 +674,123 @@ run_verdict() {
   [ "$rc_c" = "$rc_f" ]
   [ "$out_c" = "BLOCKED" ]
 }
+
+# =====================================================================
+# Non-string suite names must not cause fail-open
+# =====================================================================
+
+@test "object-valued suite name does not cause fail-open on timeout rule" {
+  write_execution_evidence "$TEST_TMP/ee.json" '[
+    {"name":{"x":1},"required":true,"timeout":true,"exit_code":0}
+  ]'
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  run_verdict \
+    --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" \
+    --execution-evidence "$TEST_TMP/ee.json"
+  [ "$VERDICT" = "BLOCKED" ]
+  grep -q "timed out" "$STDERR_OUT"
+}
+
+@test "array-valued suite name does not cause fail-open on failure rule" {
+  write_execution_evidence "$TEST_TMP/ee.json" '[
+    {"name":["a"],"required":true,"exit_code":1,"timeout":false}
+  ]'
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  run_verdict \
+    --analysis-results "$TEST_TMP/a.json" \
+    --llm-findings "$TEST_TMP/f.json" \
+    --execution-evidence "$TEST_TMP/ee.json"
+  [ "$VERDICT" = "REQUEST_CHANGES" ]
+  grep -q "failed" "$STDERR_OUT"
+}
+
+# =====================================================================
+# Forwarder parity: additional fixture coverage
+# =====================================================================
+
+@test "forwarder parity holds for skipped=0 fixture" {
+  printf '{"skipped":0,"suites":[{"name":"s","required":true,"timeout":true}]}' \
+    > "$TEST_TMP/ee.json"
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  local canonical="$SCRIPTS_DIR/verdict-resolver.sh"
+  local forwarder="$SCRIPTS_DIR/review-common/verdict-resolver.sh"
+
+  local out_c err_c rc_c out_f err_f rc_f
+  out_c="$(bash "$canonical" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>"$TEST_TMP/err_c.txt")" && rc_c=0 || rc_c=$?
+  err_c="$(cat "$TEST_TMP/err_c.txt")"
+  out_f="$(bash "$forwarder" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>"$TEST_TMP/err_f.txt")" && rc_f=0 || rc_f=$?
+  err_f="$(cat "$TEST_TMP/err_f.txt")"
+
+  [ "$out_c" = "$out_f" ]
+  [ "$rc_c" = "$rc_f" ]
+  [ "$err_c" = "$err_f" ]
+  [ "$out_c" = "BLOCKED" ]
+}
+
+@test "forwarder parity holds for directory-as-llm-findings fixture" {
+  mkdir -p "$TEST_TMP/somedir"
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+
+  local canonical="$SCRIPTS_DIR/verdict-resolver.sh"
+  local forwarder="$SCRIPTS_DIR/review-common/verdict-resolver.sh"
+
+  local out_c err_c rc_c out_f err_f rc_f
+  out_c="$(bash "$canonical" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/somedir" 2>"$TEST_TMP/err_c.txt")" && rc_c=0 || rc_c=$?
+  err_c="$(cat "$TEST_TMP/err_c.txt")"
+  out_f="$(bash "$forwarder" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/somedir" 2>"$TEST_TMP/err_f.txt")" && rc_f=0 || rc_f=$?
+  err_f="$(cat "$TEST_TMP/err_f.txt")"
+
+  [ "$out_c" = "$out_f" ]
+  [ "$rc_c" = "$rc_f" ]
+  [ "$err_c" = "$err_f" ]
+  [ "$out_c" = "BLOCKED" ]
+}
+
+@test "forwarder parity holds for suite-name-in-diagnostic fixture" {
+  write_execution_evidence "$TEST_TMP/ee.json" '[
+    {"name":"integration","required":true,"exit_code":1,"timeout":false}
+  ]'
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  local canonical="$SCRIPTS_DIR/verdict-resolver.sh"
+  local forwarder="$SCRIPTS_DIR/review-common/verdict-resolver.sh"
+
+  local out_c err_c rc_c out_f err_f rc_f
+  out_c="$(bash "$canonical" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>"$TEST_TMP/err_c.txt")" && rc_c=0 || rc_c=$?
+  err_c="$(cat "$TEST_TMP/err_c.txt")"
+  out_f="$(bash "$forwarder" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>"$TEST_TMP/err_f.txt")" && rc_f=0 || rc_f=$?
+  err_f="$(cat "$TEST_TMP/err_f.txt")"
+
+  [ "$out_c" = "$out_f" ]
+  [ "$rc_c" = "$rc_f" ]
+  [ "$err_c" = "$err_f" ]
+  [ "$out_c" = "REQUEST_CHANGES" ]
+  echo "$err_c" | grep -q "integration"
+}
+
+@test "forwarder parity holds for object-name timeout fixture" {
+  write_execution_evidence "$TEST_TMP/ee.json" '[
+    {"name":{"x":1},"required":true,"timeout":true,"exit_code":0}
+  ]'
+  write_analysis "$TEST_TMP/a.json" '[{"name":"tsc","status":"passed","findings":[]}]'
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  local canonical="$SCRIPTS_DIR/verdict-resolver.sh"
+  local forwarder="$SCRIPTS_DIR/review-common/verdict-resolver.sh"
+
+  local out_c rc_c out_f rc_f
+  out_c="$(bash "$canonical" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>/dev/null)" && rc_c=0 || rc_c=$?
+  out_f="$(bash "$forwarder" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json" --execution-evidence "$TEST_TMP/ee.json" 2>/dev/null)" && rc_f=0 || rc_f=$?
+
+  [ "$out_c" = "$out_f" ]
+  [ "$rc_c" = "$rc_f" ]
+  [ "$out_c" = "BLOCKED" ]
+}

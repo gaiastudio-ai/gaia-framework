@@ -447,12 +447,15 @@ if [ "$EE_OK" = "1" ]; then
       printf '%s: non-object entry in suites array -> BLOCKED\n' "$SCRIPT_NAME" >&2
       emit "BLOCKED"
     fi
-    # Required-suite timeout: extract names in one pass (empty = no match).
-    _timed_suites="$(jq -r '
-      [.suites[]? | select(type == "object") | select(.required != false)
-        | select((.timeout // false) == true) | .name // "unnamed"] | join(", ")
-    ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _timed_suites=""
-    if [ -n "$_timed_suites" ]; then
+    # Required-suite timeout: check presence first, then extract names.
+    # The trigger (count > 0) must not depend on name extraction — a jq
+    # error in the name list must never cause the rule to fall through.
+    if jq -e '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == true)] | length > 0' \
+       "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      _timed_suites="$(jq -r '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == true) | (.name // "unnamed" | tostring)] | join(", ")
+      ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _timed_suites="(name extraction failed)"
       printf '%s: required test suite timed out: %s -> BLOCKED\n' "$SCRIPT_NAME" "$_timed_suites" >&2
       emit "BLOCKED"
     fi
@@ -469,13 +472,15 @@ fi
 # --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES ---
 if [ "$EE_OK" = "1" ]; then
   if jq -e '(.skipped == true) | not' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
-    # Required-suite failure: extract names in one pass (empty = no match).
-    _failed_suites="$(jq -r '
-      [.suites[]? | select(type == "object") | select(.required != false)
+    # Required-suite failure: check presence first, then extract names.
+    if jq -e '[.suites[]? | select(type == "object") | select(.required != false)
         | select((.timeout // false) == false)
-        | select((.exit_code // 0) != 0) | .name // "unnamed"] | join(", ")
-    ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _failed_suites=""
-    if [ -n "$_failed_suites" ]; then
+        | select((.exit_code // 0) != 0)] | length > 0' \
+       "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      _failed_suites="$(jq -r '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == false)
+        | select((.exit_code // 0) != 0) | (.name // "unnamed" | tostring)] | join(", ")
+      ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _failed_suites="(name extraction failed)"
       printf '%s: required test suite failed (non-zero exit): %s -> REQUEST_CHANGES\n' "$SCRIPT_NAME" "$_failed_suites" >&2
       emit "REQUEST_CHANGES"
     fi

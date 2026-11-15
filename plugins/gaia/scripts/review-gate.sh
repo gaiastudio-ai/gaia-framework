@@ -1464,7 +1464,7 @@ main() {
           "QA Tests"|"Test Automation"|"Test Review")
             _validate_table_value "--report-missing-reason" "$report_missing_reason"
             [ -z "$report_path" ] && report_path="$report_missing_reason"
-            printf '%s: coercing PASSED to UNVERIFIED for gate '\''%s'\'' (--report-missing-reason supplied without execution evidence)\n' "$SCRIPT_NAME" "$gate_name" >&2
+            printf '%s: --report-missing-reason cannot record PASSED on test-execution gate '\''%s'\''; recorded as UNVERIFIED\n' "$SCRIPT_NAME" "$gate_name" >&2
             verdict="UNVERIFIED"
             ;;
         esac

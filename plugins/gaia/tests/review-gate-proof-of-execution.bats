@@ -287,7 +287,7 @@ _seed_all_passed_no_reports() {
     --report-missing-reason "all good"
   [ "$status" -eq 0 ]
   # stderr must name the coercion.
-  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  [[ "$output" == *"recorded as UNVERIFIED"* ]]
   # The Review Gate table must show UNVERIFIED (not PASSED) for Test Review.
   local tr_line
   tr_line="$(grep '| Test Review |' "$STORY_FILE")"
@@ -311,7 +311,7 @@ _seed_all_passed_no_reports() {
     --gate "QA Tests" --verdict PASSED \
     --report-missing-reason "reason text"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  [[ "$output" == *"recorded as UNVERIFIED"* ]]
   local qa_line
   qa_line="$(grep '| QA Tests |' "$STORY_FILE")"
   [[ "$qa_line" == *"UNVERIFIED"* ]]
@@ -333,7 +333,7 @@ _seed_all_passed_no_reports() {
     --gate "Test Review" --verdict PASSED \
     --report "$REPORT" --report-missing-reason "r"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"coercing PASSED to UNVERIFIED"* ]]
+  [[ "$output" == *"recorded as UNVERIFIED"* ]]
   local tr_line
   tr_line="$(grep '| Test Review |' "$STORY_FILE")"
   [[ "$tr_line" == *"UNVERIFIED"* ]]
