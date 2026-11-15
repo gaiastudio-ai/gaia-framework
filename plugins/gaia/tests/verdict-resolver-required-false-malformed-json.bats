@@ -773,7 +773,7 @@ run_verdict() {
   [ "$rc_c" = "$rc_f" ]
   [ "$err_c" = "$err_f" ]
   [ "$out_c" = "REQUEST_CHANGES" ]
-  echo "$err_c" | grep -q "integration"
+  grep -q "integration" "$TEST_TMP/err_c.txt"
 }
 
 @test "forwarder parity holds for object-name timeout fixture" {
