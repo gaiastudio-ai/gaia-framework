@@ -146,7 +146,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 2. **AC parser (markdown-aware, NOT raw regex).** Use a YAML/markdown-aware parser (`mistune`, `remark`, or robust YAML extractor) to handle backticks, code blocks, pipe characters, and asterisks. Extract Given/When/Then text content per AC. Flag malformed ACs as `status: warning, category: ac-quality` for ACs without Given/When/Then structure. Zero-AC story → `status: failed` with finding "No acceptance criteria found in story"; resolver maps to REQUEST_CHANGES via precedence rule 2 (LLM-cannot-override).
 
 3. **AC-coverage analyzer (dual-strategy matching).** Two-pass match per AC:
-   - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/E65-S4-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
+   - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/{story_key}-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
    - **Fallback match** — Given/When/Then pattern match against test description string. Example: AC text "Given invalid email, when submit, then reject" matches a test named `'should reject invalid email when submitted'`.
    - **Cross-story attribution scoping.** Only tests with the current `story_key` in path or test name count toward coverage. Tests without explicit story_key attribution are reported separately under `unattributed_tests[]`, NOT counted as coverage.
 

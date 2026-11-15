@@ -25,7 +25,7 @@ usage: /gaia-test-automate {story_key} --status
 ```
 
 **Arguments**
-- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for older projects).
+- `{story_key}` — required, e.g. `E1-S1`. Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for older projects).
 
 **Output format (stdout)**
 ```
@@ -62,7 +62,7 @@ The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-r
 | Field          | Type    | Notes                                                                 |
 |----------------|---------|-----------------------------------------------------------------------|
 | `id`           | string  | `CS-NNN`, zero-padded to three digits. Allocated atomically.          |
-| `story_key`    | string  | Owning story (e.g. `E72-S3`).                                          |
+| `story_key`    | string  | Owning story (e.g. `E1-S1`).                                           |
 | `description`  | string  | Short human-readable scenario description.                             |
 | `tier`         | enum    | `unit` \| `integration` \| `e2e`.                                      |
 | `priority`     | enum    | `P0` \| `P1` \| `P2` \| `P3`.                                          |

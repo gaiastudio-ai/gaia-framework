@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# review-gate-proof-of-execution.bats — AF-2026-05-20-1.
+# review-gate-proof-of-execution.bats — proof-of-execution gate contract.
 #
 # Asserts the proof-of-execution contract added to review-gate.sh update and
 # review-summary-gen.sh:
@@ -158,8 +158,8 @@ teardown() { common_teardown; }
 # ---------- review-summary-gen.sh proof-of-execution surfacing ----------
 
 # Helper: seed the gate to PASSED across all 6 rows WITHOUT writing the report
-# files (the very defect AF-2026-05-20-1 captures). We bypass POE during the
-# seed so the summary-gen scenario can run.
+# files (reproduces the verdicts-without-evidence defect class). We bypass POE
+# during the seed so the summary-gen scenario can run.
 _seed_all_passed_no_reports() {
   REVIEW_GATE_PROOF_OF_EXECUTION=off bash "$SCRIPT" update --story "$STORY_KEY" --gate "Code Review" --verdict PASSED
   REVIEW_GATE_PROOF_OF_EXECUTION=off bash "$SCRIPT" update --story "$STORY_KEY" --gate "QA Tests" --verdict PASSED
@@ -209,8 +209,8 @@ _seed_all_passed_no_reports() {
 
 @test "POE: review-summary-gen exits 0 under REVIEW_SUMMARY_REQUIRE_REPORTS=on when reports present" {
   # Create all six report files then seed verdicts via POE-respecting path.
-  # F-28 (AF-2026-05-26-6): canonical report paths are FR-402 type-FIRST, all
-  # under implementation-artifacts/; the test-automate review report token is
+  # Canonical report paths use the type-first naming convention, all under
+  # implementation-artifacts/; the test-automate review report token is
   # `test-automate-review`. Seed those exact paths so summary-gen's
   # proof-of-execution check finds them.
   for r in code-review qa-tests security-review test-automate-review test-review performance-review; do
