@@ -556,6 +556,88 @@ FIXTURE
   [[ "$(cat "$errfile")" == *"extract-findings.sh: ${_KP}90: high/critical shortfall on high (critical: source=0 emitted=0; high: source=1 emitted=0)"* ]]
 }
 
+# ---------- Multi-table layout reset ----------
+
+@test "five-column table followed by four-column table parsed correctly" {
+  local f="$TMP/${_KP}91-multi-table/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}91"
+status: "done"
+sprint_id: "sprint-91"
+---
+
+## Findings
+
+| # | Type | Severity | Finding | Action |
+|---|------|----------|---------|--------|
+| 1 | bug | high | Five-col finding | Fix five |
+
+| # | Severity | Finding | Suggested Action |
+|---|----------|---------|------------------|
+| BUG-1 | medium | Four-col finding | Fix four |
+| F-1 | low | Other finding | Other act |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 3 ]
+  [[ "${lines[0]}" == "${_KP}91|done|sprint-91|bug:high|high|Five-col finding|Fix five" ]]
+  [[ "${lines[1]}" == "${_KP}91|done|sprint-91|bug:medium|medium|Four-col finding|Fix four" ]]
+  [[ "${lines[2]}" == "${_KP}91|done|sprint-91|tech-debt|low|Other finding|Other act" ]]
+}
+
+@test "four-column table followed by five-column table parsed correctly" {
+  local f="$TMP/${_KP}92-multi-table-rev/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}92"
+status: "done"
+sprint_id: "sprint-92"
+---
+
+## Findings
+
+| # | Severity | Finding | Suggested Action |
+|---|----------|---------|------------------|
+| BUG-1 | medium | Four-col finding | Fix four |
+
+| # | Type | Severity | Finding | Action |
+|---|------|----------|---------|--------|
+| 1 | bug | high | Five-col finding | Fix five |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]
+  [[ "${lines[0]}" == "${_KP}92|done|sprint-92|bug:medium|medium|Four-col finding|Fix four" ]]
+  [[ "${lines[1]}" == "${_KP}92|done|sprint-92|bug:high|high|Five-col finding|Fix five" ]]
+}
+
+@test "data row with Type in col2 does not switch layout" {
+  local f="$TMP/${_KP}93-type-data/story.md"
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<FIXTURE
+---
+key: "${_KP}93"
+status: "done"
+sprint_id: "sprint-93"
+---
+
+## Findings
+
+| # | Severity | Finding | Suggested Action |
+|---|----------|---------|------------------|
+| 7 | Type | low | Skipped by header check |
+| 8 | medium | Real finding | Fix it |
+FIXTURE
+  run "$EXTRACT" --story-file "$f"
+  [ "$status" -eq 0 ]
+  # Row 7 is skipped by the header check (col2_lc="type"), but row 8 must
+  # still be parsed as four-column legacy (type=tech-debt, severity=medium).
+  [[ "$output" == *"|tech-debt|medium|Real finding|Fix it"* ]]
+}
+
 # ---------- SKILL.md and documentation prose ----------
 
 @test "triage skill step 1b instructs skip-report-continue on extractor error" {

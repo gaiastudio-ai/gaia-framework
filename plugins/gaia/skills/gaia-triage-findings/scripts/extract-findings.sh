@@ -132,14 +132,33 @@ output_buf=""
 emitted_high=0
 emitted_critical=0
 five_col=0
+_prev_pipe_row=""
 
 while IFS= read -r line; do
   case "$line" in
     *\|*) ;;          # only pipe-delimited rows
-    *) continue ;;
+    *) _prev_pipe_row=""; continue ;;  # non-table line — clear header tracking
   esac
   case "$line" in
-    *---*) continue ;; # separator row
+    *---*)
+      # Separator row — detect the table layout from the preceding header row.
+      # Only re-detect on a TRUE separator (all characters are |, -, :, space).
+      # A data row whose finding text contains "---" also matches *---* but
+      # contains letters; treating it as a layout boundary would corrupt
+      # five_col for subsequent rows.
+      case "$line" in
+        *[!\ \|:-]*) ;;  # data row with dashes in text — skip but do not re-detect
+        *)
+          if [ -n "$_prev_pipe_row" ]; then
+            IFS='|' read -r _ _ _hdr2 _ _ _ _ <<<"$_prev_pipe_row"
+            _trim "$_hdr2"; _lc_token "$_result"
+            [ "$_result" = "type" ] && five_col=1 || five_col=0
+          fi
+          ;;
+      esac
+      _prev_pipe_row=""
+      continue
+      ;;
   esac
   _trim "$line"; trimmed="$_result"
   IFS='|' read -r _blank col1 col2 col3 col4 col5 _rest <<<"$trimmed"
@@ -150,10 +169,8 @@ while IFS= read -r line; do
   _trim "$col5"; col5="$_result"
   _lc_token "$col2"; col2_lc="$_result"
   _lc_token "$col3"; col3_lc="$_result"
-  # Detect five-column header (Type in col2, case-insensitive).
-  if [ "$col2_lc" = "type" ]; then
-    five_col=1
-  fi
+  # Track as a potential header for the separator handler above.
+  _prev_pipe_row="$trimmed"
   # Skip header / placeholder rows.
   if [ "$col1" = "#" ] || [ "$col1" = "ID" ] || [ "$col2_lc" = "type" ] || [ "$col2_lc" = "severity" ] || [ "$col1" = "—" ] || [ -z "$col1$col2" ]; then
     continue
