@@ -3701,19 +3701,20 @@ SHIMEOF
 }
 
 @test "mixed-mode dead-PID: reaper paused after reading stale token, flock acquirer arrives (paused)" {
-  # X's reaper pauses in the reap-window hook after reading the stale
-  # token. While paused, A acquires via flock. X resumes and removes
-  # the path. On unfixed code: A entered on the non-empty file, then
-  # X removes it = double holder risk. On fixed code: A sees non-empty,
-  # waits; X reaps; A re-acquires the now-empty path.
+  # Mirrors the paused variant of repro-deadpid.sh. X's reaper pauses
+  # in the reap-window hook after reading the stale token; while paused,
+  # A acquires via flock. X resumes and reaps. On unfixed code: A enters
+  # on the non-empty file (dead PID not checked), X reaps A's lock =
+  # double holder. On fixed code: A sees non-empty, never enters until
+  # X reaps and the file is recreated empty.
   command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
 
   local lock_file="$LOCK_DIR/mm-deadpid-paused.lock"
   local a_state="$TEST_TMP/mm-paused-a"
-  local x_resumed="$TEST_TMP/mm-paused-x-resumed"
+  local x_state="$TEST_TMP/mm-paused-x"
   local hook_fired="$TEST_TMP/mm-paused-hook"
   local hook_go="$TEST_TMP/mm-paused-go"
-  rm -f "$a_state" "$x_resumed" "$hook_fired" "$hook_go"
+  rm -f "$a_state" "$x_state" "$hook_fired" "$hook_go"
 
   printf '99999 1000000000\n' > "$lock_file"
   touch -t 202001010000 "$lock_file" \
@@ -3734,13 +3735,20 @@ SHIMEOF
         sleep 0.1 2>/dev/null || sleep 1; _w=$((_w + 1))
       done
     }
-    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || true
-    touch "'"$x_resumed"'"
-    release_lock 9 2>/dev/null
+    if acquire_lock "'"$lock_file"'" 10 9 2>/dev/null; then
+      # X acquired: check if A is inside (overlap).
+      if [ -f "'"$a_state"'" ] && grep -q A_IN "'"$a_state"'" && ! grep -q A_OUT "'"$a_state"'"; then
+        echo "DOUBLE_HOLDER" > "'"$x_state"'"
+      else
+        echo "X_OK" > "'"$x_state"'"
+      fi
+      release_lock 9 2>/dev/null
+    else
+      echo "X_EXCLUDED" > "'"$x_state"'"
+    fi
   ' &
   local xp=$!
 
-  # Wait for X's reaper to pause in the hook.
   _wait_for_file "$hook_fired" || true
 
   # A: flock mode, arrives while X's reaper is paused.
@@ -3749,7 +3757,7 @@ SHIMEOF
     source "'"$HELPER"'"
     if acquire_lock "'"$lock_file"'" 10 8 2>/dev/null; then
       echo "A_IN" > "'"$a_state"'"
-      sleep 1 2>/dev/null || sleep 1
+      sleep 2 2>/dev/null || sleep 2
       echo "A_OUT" >> "'"$a_state"'"
       release_lock 8
     else
@@ -3765,33 +3773,37 @@ SHIMEOF
   wait "$xp" 2>/dev/null || true
   wait "$ap" 2>/dev/null || true
 
-  # A must have acquired eventually (not been excluded).
+  # No double holder: X must not have entered while A was inside.
+  local result_x=""
+  [ -f "$x_state" ] && read -r result_x < "$x_state" 2>/dev/null || result_x="NO_STATE"
+  [ "$result_x" != "DOUBLE_HOLDER" ] || {
+    echo "DOUBLE_HOLDER: X entered while A held via flock" >&2; false; }
+
+  # A must have acquired eventually.
   local result_a=""
   [ -f "$a_state" ] && result_a="$(cat "$a_state" 2>/dev/null)" || result_a="NO_STATE"
   [[ "$result_a" == *"A_IN"* ]] || {
     echo "A never acquired: $result_a" >&2; false; }
-
-  # No simultaneous holders.
-  [[ "$result_a" != *"DOUBLE"* ]] || {
-    echo "double holder detected" >&2; false; }
 }
 
 @test "flock acquirer on dead-PID file waits for reclamation, then acquires within deadline" {
   # A flock-mode acquirer facing a dead-PID file must NOT enter before
-  # reclamation. With a short reap threshold it acquires after the
-  # threshold, within its overall deadline.
+  # reclamation. The file is recently created (not backdated), so the
+  # reaper must wait for the age threshold (GAIA_LOCK_REAP_SECONDS=2)
+  # before it can reclaim. On unfixed code the flock acquirer enters
+  # instantly (elapsed ~0) because it ignores the non-empty content.
   command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
 
   local lock_file="$LOCK_DIR/flock-deadpid-wait.lock"
+  # Create a stale lock with a dead PID but a FRESH mtime, so the
+  # reaper's age check (age >= reap_threshold) forces a real wait.
   printf '99999 1000000000\n' > "$lock_file"
-  touch -t 202001010000 "$lock_file" \
-    || { echo "cannot backdate $lock_file" >&2; false; }
 
   local start_s rc=0
   start_s="$(date +%s)"
   (
     unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
-    export GAIA_LOCK_REAP_SECONDS=1
+    export GAIA_LOCK_REAP_SECONDS=2
     source "$HELPER"
     acquire_lock "$lock_file" 10 8 2>/dev/null
     release_lock 8
@@ -3800,7 +3812,10 @@ SHIMEOF
 
   [ "$rc" -eq 0 ] || {
     echo "flock acquirer failed to acquire after reclamation (rc=$rc)" >&2; false; }
-  # Must have waited (not instant — the reaper path adds latency).
+  # Must have waited at least 1 s (the reap threshold forces a wait).
+  # On unfixed code the flock acquirer enters instantly (elapsed 0).
+  [ "$elapsed" -ge 1 ] || {
+    echo "elapsed ${elapsed}s — entered instantly, did not wait for reclamation" >&2; false; }
   # But must not have taken the full 10 s timeout.
   [ "$elapsed" -lt 8 ] || {
     echo "took ${elapsed}s — timed out instead of acquiring" >&2; false; }
@@ -3862,31 +3877,65 @@ SHIMEOF
 
 @test "flock acquirer: non-empty malformed or whitespace record is never treated as empty" {
   # Various non-empty contents that are not a valid PID line must all
-  # trigger the non-empty path (reap attempt), never the empty-enter path.
+  # trigger the non-empty path (reap attempt), never the empty-enter
+  # path. On unfixed code the flock acquirer enters instantly. On fixed
+  # code it waits for reclamation (elapsed >= 1 s with a short reap
+  # threshold). Additionally: a second holder started concurrently must
+  # never overlap with the first.
   command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
 
   local lock_file="$LOCK_DIR/flock-malformed.lock"
+  local marker="$TEST_TMP/mf-cs"
 
+  # Dead-PID records with FRESH mtime: the reaper reads the PID, finds
+  # it dead, then waits for the age threshold. The flock acquirer must
+  # NOT enter instantly. On unfixed code it enters in 0 s.
   local content
-  for content in "not-a-pid" "   " $'\n' "0 leftover" "-1 negative"; do
+  for content in "99999 1000000000" "99998 leftover"; do
+    printf '%s\n' "$content" > "$lock_file"
+    # Fresh mtime (not backdated) forces the reaper to wait.
+    rm -f "$marker"
+
+    local start_s rc=0
+    start_s="$(date +%s)"
+    (
+      unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+      export GAIA_LOCK_REAP_SECONDS=2
+      source "$HELPER"
+      acquire_lock "$lock_file" 10 8 2>/dev/null || exit $?
+      if ! mkdir "$marker" 2>/dev/null; then
+        echo "OVERLAP" >&2; release_lock 8; exit 99
+      fi
+      sleep 0.05 2>/dev/null || sleep 1
+      rmdir "$marker" 2>/dev/null || true
+      release_lock 8
+    ) || rc=$?
+    local elapsed=$(( $(date +%s) - start_s ))
+
+    [ "$rc" -eq 0 ] || {
+      echo "failed for content [$content] (rc=$rc)" >&2; false; }
+    [ "$elapsed" -ge 1 ] || {
+      echo "instant entry for [$content] (${elapsed}s) — treated as empty" >&2; false; }
+  done
+
+  # Non-newline-terminated content: the reaper's read fails and the
+  # file is non-empty, so the reaper refuses to clear it (conservative).
+  # The flock acquirer must time out rather than entering.
+  for content in "   " "partial"; do
     printf '%s' "$content" > "$lock_file"
-    # Back-date so the reaper can reclaim after threshold.
     touch -t 202001010000 "$lock_file" \
       || { echo "cannot backdate $lock_file" >&2; false; }
 
-    local rc=0
+    local rc2=0
     (
       unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
       export GAIA_LOCK_REAP_SECONDS=1
       source "$HELPER"
-      acquire_lock "$lock_file" 5 8 2>/dev/null
-      release_lock 8
-    ) || rc=$?
+      acquire_lock "$lock_file" 2 8 2>/dev/null
+    ) || rc2=$?
 
-    # Must succeed (the reaper clears the stale file) but NOT immediately
-    # (a truly empty file would be instant).
-    [ "$rc" -eq 0 ] || {
-      echo "failed for content [$content] (rc=$rc)" >&2; false; }
+    [ "$rc2" -ne 0 ] || {
+      echo "entered for unreadable content [$content]" >&2; false; }
   done
 }
 

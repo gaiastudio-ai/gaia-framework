@@ -1003,9 +1003,12 @@ _al_acquire_impl() {
         fi
       fi
 
-      # Post-lock identity re-check: the descriptor must still refer to
-      # the same inode as the path. If the reaper deleted the path and a
-      # new file appeared, the inodes differ and we must retry.
+      # Post-lock checks: identity first, then fd-based emptiness.
+      # Identity is checked first because a flock-held inode cannot be
+      # unlinked (kernel keeps it alive), so the inode comparison is
+      # safe. Only after identity is verified do we read size through
+      # the fd, which at that point is guaranteed to refer to the same
+      # inode as the pathname.
       local _al_vid_rc=0
       _al_verify_fd_identity "$lock_file" "$fd" || _al_vid_rc=$?
       if [ "$_al_vid_rc" -eq 2 ]; then
@@ -1075,8 +1078,9 @@ _al_acquire_impl() {
           # deadline (the holder may release soon).
           _al_fnow="$(date +%s)"
           if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+            if [ -n "$_al_last_diag" ]; then printf '%s\n' "$_al_last_diag" >&2; fi
             printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-            return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+            return "$_al_last_exit"
           fi
           sleep 0.1 2>/dev/null || sleep 1
           continue
@@ -1089,8 +1093,9 @@ _al_acquire_impl() {
 
         _al_fnow="$(date +%s)"
         if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+          if [ -n "$_al_last_diag" ]; then printf '%s\n' "$_al_last_diag" >&2; fi
           printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          return "$_al_last_exit"
         fi
         sleep 0.1 2>/dev/null || sleep 1
         continue

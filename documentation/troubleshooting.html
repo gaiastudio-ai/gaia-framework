@@ -324,7 +324,9 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
         and does not spin. After reclamation it acquires normally.</p>
         <p>This wait is by design: entering on a non-empty file without
         reclamation would let a flock holder and a fallback reaper coexist,
-        breaking mutual exclusion.</p>
+        breaking mutual exclusion. If the acquisition deadline is shorter
+        than the age threshold, the flock process times out before
+        reclamation can occur.</p>
         <p>Older helper versions do not perform this check and are
         <strong>not</strong> concurrently compatible with the current
         version. Stop all GAIA processes before upgrading.</p>
