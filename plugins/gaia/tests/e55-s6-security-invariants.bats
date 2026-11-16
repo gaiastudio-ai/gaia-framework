@@ -17,6 +17,7 @@
 load 'test_helper.bash'
 
 setup_file() {
+  _litter_snapshot_before
   # Print BASH_VERSION to fd 3 (bats TAP stream) so CI logs evidence the
   # shell version for bash-compatibility verification.
   printf '# BASH_VERSION=%s\n' "$BASH_VERSION" >&3 || true
