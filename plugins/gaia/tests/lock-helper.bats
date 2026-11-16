@@ -5145,41 +5145,46 @@ SHIMEOF
 
 @test "flock dead-PID reaper throttled: bounded calls per second" {
   # The flock path's dead-PID/non-empty record wait must call the reaper
-  # at most about once per second (plus the initial call). Count calls
-  # via the debug trace.
+  # at most about once per second. Count calls via a counting wrapper
+  # that delegates every call to the original implementation.
   command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
   local lock_file="$LOCK_DIR/flock-reap-throttle.lock"
-  local debug_log="$TEST_TMP/flock-reap-throttle.log"
-  : > "$debug_log"
+  local count_file="$TEST_TMP/flock-reap-count"
+  : > "$count_file"
 
-  # Plant a fresh stale lock (dead PID, NOT backdated — reaper waits for age).
-  printf '99999 1000000000\n' > "$lock_file"
+  # Guaranteed-dead PID: spawn and reap a short-lived process.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  # Plant a fresh stale lock (dead PID, NOT backdated — reaper waits).
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
 
   run bash -c '
     unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
     export GAIA_LOCK_REAP_SECONDS=10
     source "'"$HELPER"'"
-    # Count _al_try_reap calls via a wrapper.
-    _orig_try_reap="$(declare -f _al_try_reap)"
+    # Rename the original, then define a counting wrapper.
+    eval "$(declare -f _al_try_reap | sed "1s/_al_try_reap/_al_try_reap_orig/")"
     _al_try_reap() {
-      printf "reap_call %s\n" "$(date +%s)" >> "'"$debug_log"'"
-      eval "$_orig_try_reap"
-      _al_try_reap "$@"
+      printf "reap_call %s\n" "$(date +%s)" >> "'"$count_file"'"
+      _al_try_reap_orig "$@"
     }
     acquire_lock "'"$lock_file"'" 3 9 2>/dev/null || true
   '
 
   local call_count
-  call_count="$(grep -c '^reap_call ' "$debug_log" || true)"
-  # 3 s timeout, at most 1 reap/s + initial = about 4 max. Allow some slack.
-  [ "$call_count" -le 6 ] || {
+  call_count="$(grep -c '^reap_call ' "$count_file" || true)"
+  # 3 s timeout, at most 1 reap/s + initial = about 4-5 max.
+  [ "$call_count" -le 5 ] || {
     echo "reaper called $call_count times in 3 s — not throttled" >&2
-    cat "$debug_log" >&2
+    cat "$count_file" >&2
     false
   }
-  # At least 1 call must have been made.
-  [ "$call_count" -ge 1 ] || {
-    echo "reaper never called" >&2; false
+  # At least 2 calls: the wrapper must actually count.
+  [ "$call_count" -ge 2 ] || {
+    echo "only $call_count reaper call(s) — wrapper not counting" >&2
+    false
   }
   rm -f "$lock_file"
 }
@@ -5189,7 +5194,11 @@ SHIMEOF
   # it (after the reap threshold) and acquire, within the deadline.
   command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
   local lock_file="$LOCK_DIR/flock-deadpid-reclaim.lock"
-  printf '99999 1000000000\n' > "$lock_file"
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
   touch -t 202001010000 "$lock_file" \
     || { echo "cannot backdate" >&2; false; }
 
