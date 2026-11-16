@@ -10110,3 +10110,127 @@ UX
   [ "$call_count" -ge 4 ] || \
     fail "shared locator $shared_fn_name referenced $call_count times outside library (expected >= 4)"
 }
+
+
+# =========================================================================
+# Heading with pipe after a table-less section must end the section
+# =========================================================================
+
+@test "heading with pipe after table-less section does not absorb the next section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A components section with no table, followed by a heading that
+  # contains a pipe character.  The pipe-bearing heading must still
+  # end the components section so the next section's table is not
+  # treated as the component table.
+  local doc_dir="$TEST_TMP/heading-pipe"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+Nothing yet.
+
+## Tokens | Values
+
+| Token | Value |
+|---|---|
+| red | #f00 |
+
+## Screens
+UX
+
+  local snapshot="$TEST_TMP/heading-pipe-snap.json"
+  jq -n '{"components":["Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must be in bullet form (no table in the components section)
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card not found after sync"
+  [[ "$card_row" == '- Card' ]] || \
+    fail "Card should be a bullet, got: $card_row"
+
+  # The Tokens table must be untouched
+  local red_row
+  red_row="$(grep 'red' "$doc_dir/ux-design.md")"
+  [[ "$red_row" == *'| red | #f00 |'* ]] || \
+    fail "Tokens table was modified: $red_row"
+
+  # red must NOT be reported as absent from the snapshot
+  [[ "$output" != *"red"* ]] || \
+    fail "red was reported in sync output (section boundary leaked): $output"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Reader must end the table at a fence, matching the writer
+# =========================================================================
+
+@test "reader ends table at fence consistently with writer" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A component table followed by a fence, then a pipe row.  The
+  # writer already ends the table at the fence.  The reader must do
+  # the same so it does not count the post-fence row as a present
+  # component (which would cause the sync to report "up to date"
+  # instead of adding the component to the real table).
+  local doc_dir="$TEST_TMP/reader-fence-end"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+| Name | Desc |
+|---|---|
+| Alpha | a |
+```
+some code
+```
+| Gamma | g |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/reader-fence-snap.json"
+  jq -n '{"components":["Alpha","Gamma"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Gamma must appear in the table BEFORE the first fence line.
+  # With the reader bug, Gamma is extracted from after the fence and
+  # the sync reports "up to date" without adding it to the table.
+  local gamma_table_line fence_line
+  gamma_table_line="$(awk '/^\| Gamma \|/ && !fence_seen {print NR; exit} /^```/{fence_seen=1}' "$doc_dir/ux-design.md")"
+  fence_line="$(grep -n '^```' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$gamma_table_line" ] || \
+    fail "Gamma not found in the table before the fence (reader did not add it)"
+  [ -n "$fence_line" ] || fail "fence line not found"
+  [ "$gamma_table_line" -lt "$fence_line" ] || \
+    fail "Gamma (line $gamma_table_line) must be before the fence (line $fence_line)"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}

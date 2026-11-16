@@ -326,11 +326,21 @@ _extract_doc_components() {
         }
         ev = tbl_locator_feed($0)
         if (ev == -1) next
-        if (ev == 2) { saw_sep = 1; sep_piped = _tbl_sep_piped; next }
-        if (ev == 1) next
-        # ev == 0: ordinary line — fall through
+        # A section-end heading may contain | — undo any locator
+        # hold and fall through to the section-end rule below.
+        if (is_section_end($0)) {
+          if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
+        } else {
+          if (ev == 2) { saw_sep = 1; sep_piped = _tbl_sep_piped; next }
+          if (ev == 1) next
+          # ev == 0: ordinary line — fall through
+        }
       } else {
-        if (check_fence($0)) next
+        if (check_fence($0)) {
+          # A fence in Phase 2 ends the table (match the writer).
+          if (saw_sep && !first_table_done) first_table_done = 1
+          next
+        }
       }
     }
 
@@ -360,24 +370,28 @@ _count_table_cols() {
       if (in_s && !found) {
         ev = tbl_locator_feed($0)
         if (ev == -1) next
-        if (ev == 2) {
-          # Count columns from the separator line
-          line = $0
-          gsub(/\r$/, "", line)
-          pc = 0
-          for (k = 1; k <= length(line); k++)
-            if (substr(line, k, 1) == "|") pc++
-          lp = (line ~ /^[[:space:]]*\|/)
-          tp = (line ~ /\|[[:space:]]*$/)
-          if (lp && tp) cols = pc - 1
-          else if (lp || tp) cols = pc
-          else cols = pc + 1
-          print cols
-          found = 1
-          exit
+        if (is_section_end($0)) {
+          if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
+        } else {
+          if (ev == 2) {
+            # Count columns from the separator line
+            line = $0
+            gsub(/\r$/, "", line)
+            pc = 0
+            for (k = 1; k <= length(line); k++)
+              if (substr(line, k, 1) == "|") pc++
+            lp = (line ~ /^[[:space:]]*\|/)
+            tp = (line ~ /\|[[:space:]]*$/)
+            if (lp && tp) cols = pc - 1
+            else if (lp || tp) cols = pc
+            else cols = pc + 1
+            print cols
+            found = 1
+            exit
+          }
+          if (ev == 1) next
+          # ev == 0: ordinary line — fall through
         }
-        if (ev == 1) next
-        # ev == 0: ordinary line — fall through
       } else {
         if (check_fence($0)) next
       }
@@ -431,8 +445,12 @@ _batch_add_components() {
         if (in_s && !found) {
           ev = tbl_locator_feed($0)
           if (ev == -1) next
-          if (ev == 2) { print $0; found = 1; exit }
-          if (ev == 1) next
+          if (is_section_end($0)) {
+            if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
+          } else {
+            if (ev == 2) { print $0; found = 1; exit }
+            if (ev == 1) next
+          }
         } else {
           if (check_fence($0)) next
         }
@@ -498,17 +516,25 @@ _batch_add_components() {
             if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
             print; next
           }
-          if (ev == 2) {
-            # Table found: print the candidate header, buffer separator
-            printf "%s\n", _tbl_prev_cand
-            pending[++npend] = $0
-            saw_sep = 1
-            next
+          # Section-end heading with pipe: undo locator hold, print any
+          # cleared prev candidate, fall through to section-end rule.
+          if (is_section_end($0)) {
+            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+            if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
+            # fall through to section-end rule below
+          } else {
+            if (ev == 2) {
+              # Table found: print the candidate header, buffer separator
+              printf "%s\n", _tbl_prev_cand
+              pending[++npend] = $0
+              saw_sep = 1
+              next
+            }
+            if (ev == 1) next
+            # ev == 0: ordinary line — if a candidate was cleared, print it
+            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+            # fall through to remaining rules
           }
-          if (ev == 1) next
-          # ev == 0: ordinary line — if a candidate was cleared, print it
-          if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
-          # fall through to remaining rules
         } else {
           if (check_fence($0)) {
             if (saw_sep && !first_table_done) {
