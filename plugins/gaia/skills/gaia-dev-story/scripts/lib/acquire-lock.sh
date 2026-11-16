@@ -566,6 +566,44 @@ _al_verify_identity_strict() {
   esac
 }
 
+# --- Internal: file size via an open fd (Bash 3.2 compatible) ---
+#
+# _al_fd_size <fd>
+#   Returns:
+#     0 — size is 0 bytes (empty).
+#     1 — size is non-zero (non-empty).
+#     2 — UNAVAILABLE (no usable fd path or stat failed).
+#
+# Used by the flock path to decide emptiness from the LOCKED FILE
+# DESCRIPTOR, never from the pathname (which could be a different inode
+# after a rename). Reads size via stat -L on /proc/self/fd/N or /dev/fd/N,
+# using the same GNU/BSD stat format already probed at source time.
+
+_al_fd_size() {
+  local fd="$1"
+  local fd_path=""
+  if [ -e "/proc/self/fd/${fd}" ]; then
+    fd_path="/proc/self/fd/${fd}"
+  elif [ -e "/dev/fd/${fd}" ]; then
+    fd_path="/dev/fd/${fd}"
+  else
+    return 2  # UNAVAILABLE
+  fi
+  local sz=""
+  if [ "$_ACQUIRE_LOCK_STAT_FMT" = "gnu" ]; then
+    sz="$(stat -L -c %s "$fd_path" 2>/dev/null)" || sz=""
+  elif [ "$_ACQUIRE_LOCK_STAT_FMT" = "bsd" ]; then
+    sz="$(stat -L -f %z "$fd_path" 2>/dev/null)" || sz=""
+  fi
+  case "$sz" in
+    ''|*[!0-9]*) return 2 ;;  # UNAVAILABLE
+  esac
+  if [ "$sz" -eq 0 ]; then
+    return 0  # empty
+  fi
+  return 1    # non-empty
+}
+
 # --- Internal: debug trace ---
 
 _al_trace() {
@@ -882,13 +920,22 @@ _al_acquire_impl() {
     local _al_flock_start
     _al_flock_start="$(date +%s)"
 
+    # Track the last non-timeout failure reason so the deadline-expiry
+    # exit preserves the right code and diagnostic (e.g. identity
+    # MISMATCH returns EXIT_IDENTITY, not TIMEOUT).
+    local _al_last_exit="$ACQUIRE_LOCK_EXIT_TIMEOUT"
+    local _al_last_diag=""
+
     while true; do
       local _al_fnow _al_remaining
       _al_fnow="$(date +%s)"
       _al_remaining=$(( timeout - (_al_fnow - _al_flock_start) ))
       if [ "$_al_remaining" -le 0 ]; then
+        if [ -n "$_al_last_diag" ]; then
+          printf '%s\n' "$_al_last_diag" >&2
+        fi
         printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-        return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+        return "$_al_last_exit"
       fi
 
       # Enforce path type before opening.
@@ -962,33 +1009,70 @@ _al_acquire_impl() {
       local _al_vid_rc=0
       _al_verify_fd_identity "$lock_file" "$fd" || _al_vid_rc=$?
       if [ "$_al_vid_rc" -eq 2 ]; then
-        # UNAVAILABLE: refuse if ordinary-file stat works (the reaper can
-        # reap on such hosts, so an unverified flock is unsafe). Allow if
-        # stat is absent (the reaper can't reap without stat, so the risk
-        # does not exist).
-        if [ -n "$_ACQUIRE_LOCK_STAT_FMT" ]; then
-          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
-          eval "exec ${fd}>&-" 2>/dev/null || true
-          printf 'acquire-lock: cannot verify lock identity (fd inode lookup unavailable): %s\n' \
-            "$lock_file" >&2
-          return 1
+        # UNAVAILABLE — fail closed unconditionally. This process
+        # lacking stat proves nothing about OTHER processes on the host;
+        # a reaper with a different PATH may have stat and reap.
+        # Unlock, close, retry within the deadline.
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+        eval "exec ${fd}>&-" 2>/dev/null || true
+        _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+        _al_last_diag="$(printf 'acquire-lock: cannot verify lock identity (fd inode lookup unavailable): %s' "$lock_file")"
+        _al_fnow="$(date +%s)"
+        if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+          printf '%s\n' "$_al_last_diag" >&2
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$_al_last_exit"
         fi
-        # No stat at all — degrade to verified (reaper can't reap anyway).
-        _al_vid_rc=0
+        sleep 0.1 2>/dev/null || sleep 1
+        continue
       fi
 
       if [ "$_al_vid_rc" -eq 0 ]; then
-        # VERIFIED. Check for a live fallback holder (mixed-mode guard).
-        # If a live fallback holder is present, release the flock and
-        # retry within the deadline (the holder may release soon).
+        # VERIFIED. A flock acquirer enters ONLY on an empty file.
+        # Check emptiness from the LOCKED FILE DESCRIPTOR (never from
+        # the pathname, which could be a different inode after a rename).
+        local _al_sz_rc=0
+        _al_fd_size "$fd" || _al_sz_rc=$?
+
+        if [ "$_al_sz_rc" -eq 2 ]; then
+          # UNAVAILABLE — fail closed unconditionally. This process
+          # lacking stat proves nothing about other processes on the host.
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+          eval "exec ${fd}>&-" 2>/dev/null || true
+          _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+          _al_last_diag="$(printf 'acquire-lock: cannot determine lock-file size via fd: %s' "$lock_file")"
+          _al_fnow="$(date +%s)"
+          if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+            printf '%s\n' "$_al_last_diag" >&2
+            printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+            return "$_al_last_exit"
+          fi
+          sleep 0.1 2>/dev/null || sleep 1
+          continue
+        fi
+
+        if [ "$_al_sz_rc" -eq 0 ]; then
+          # Empty file — safe to enter. No fallback holder can be present
+          # (the fallback path creates files with content atomically via
+          # hard link, and never truncates or empties them in place).
+          _al_set_registry "$fd" "flock" "$lock_file" "$_al_self"
+          _al_trace "acquire" "$lock_file"
+          return 0
+        fi
+
+        # Non-empty file: a fallback holder's record. Never enter; always
+        # check whether the holder is still alive.
         local _al_fb_pid=""
         read -r _al_fb_pid _ < "$lock_file" 2>/dev/null || true
+
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+        eval "exec ${fd}>&-" 2>/dev/null || true
+
         if [ -n "$_al_fb_pid" ] && [ "$_al_fb_pid" -gt 0 ] 2>/dev/null \
            && [ "$_al_fb_pid" != "$_al_self" ] \
            && kill -0 "$_al_fb_pid" 2>/dev/null; then
-          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
-          eval "exec ${fd}>&-" 2>/dev/null || true
-          # Retry within the deadline instead of failing immediately.
+          # Live PID: the existing mixed-mode guard — retry within the
+          # deadline (the holder may release soon).
           _al_fnow="$(date +%s)"
           if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
             printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
@@ -997,19 +1081,31 @@ _al_acquire_impl() {
           sleep 0.1 2>/dev/null || sleep 1
           continue
         fi
-        _al_set_registry "$fd" "flock" "$lock_file" "$_al_self"
-        _al_trace "acquire" "$lock_file"
-        return 0
+
+        # Dead PID (or non-empty record that isn't a live PID): run the
+        # normal reaper path once (mutex, rename-and-verify, age threshold),
+        # then retry. The lock has already been unlocked and closed above.
+        _al_try_reap "$lock_file" "$timeout" || true
+
+        _al_fnow="$(date +%s)"
+        if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+        fi
+        sleep 0.1 2>/dev/null || sleep 1
+        continue
       fi
 
       # MISMATCH: unlock, close, reopen and retry within the deadline.
       "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
       eval "exec ${fd}>&-" 2>/dev/null || true
+      _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+      _al_last_diag="$(printf 'lock_identity_unstable: identity re-check mismatch: %s' "$lock_file")"
       _al_fnow="$(date +%s)"
       if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
-        printf 'lock_identity_unstable: identity re-check mismatch: %s\n' \
-          "$lock_file" >&2
-        return "$ACQUIRE_LOCK_EXIT_IDENTITY"
+        printf '%s\n' "$_al_last_diag" >&2
+        printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+        return "$_al_last_exit"
       fi
       sleep 0.1 2>/dev/null || sleep 1
     done

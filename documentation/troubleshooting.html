@@ -315,6 +315,20 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
         use the same locking mode. Installs mixing GAIA framework versions
         must quiesce all GAIA processes before upgrading or recovering.</p>
 
+        <h3>Flock acquirer waiting for a stale fallback record</h3>
+        <p>On hosts where both flock-mode and fallback-mode processes share
+        a lock path, a flock-mode process that finds a crashed fallback
+        holder's stale record in the lock file waits until the record can
+        be safely reclaimed (the age threshold, typically 60&nbsp;seconds).
+        During that wait the flock process retries with bounded backoff
+        and does not spin. After reclamation it acquires normally.</p>
+        <p>This wait is by design: entering on a non-empty file without
+        reclamation would let a flock holder and a fallback reaper coexist,
+        breaking mutual exclusion.</p>
+        <p>Older helper versions do not perform this check and are
+        <strong>not</strong> concurrently compatible with the current
+        version. Stop all GAIA processes before upgrading.</p>
+
         <h3>Legacy <code>.lockdir</code> folder next to action-items.yaml</h3>
         <p>Older writer versions used a directory-based lock
         (<code>action-items.yaml.lockdir</code>) next to the data file. The

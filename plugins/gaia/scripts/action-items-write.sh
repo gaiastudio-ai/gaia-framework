@@ -110,6 +110,11 @@ _aiw_lock() {
     fi
 
     if [ "$_al_rc" -eq 0 ]; then
+      # Forward helper stderr on success too so notices like "reaped
+      # stale lock" are not lost. Stdout is unchanged.
+      if [ -n "$_err_file" ] && [ -s "$_err_file" ]; then
+        cat "$_err_file" >&2
+      fi
       rm -f "$_err_file" 2>/dev/null || true
       # A legacy .lockdir may exist from an older writer version. The
       # writer never removes it automatically; manual recovery (after
@@ -136,9 +141,9 @@ _aiw_lock() {
     fi
 
     # Publication refusal (exit 6): transient — retry with only the
-    # remaining time before the original deadline. (Cause: see the
-    # function header — subshells sharing $$, or a separate-process
-    # reaper; both handled in the shared helper.)
+    # remaining time before the original deadline. (Cause: a reaper
+    # renamed the lock between the acquirer's ln and its publication-
+    # inode stat; handled by the reap mutex in the shared helper.)
     if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_PUBLISH" ]; then
       _now="$(date +%s)"
       _elapsed=$(( _now - _start ))

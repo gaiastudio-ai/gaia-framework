@@ -63,6 +63,15 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 - Publication refusals (the post-link inode check failed) now return a
   distinct exit code (`ACQUIRE_LOCK_EXIT_PUBLISH`, 6) so callers can
   distinguish them from permanent failures and retry appropriately.
+- **Mixed-mode double-holder fix:** a flock-mode acquirer now enters only
+  when the locked file descriptor shows an empty file (checked via stat
+  on the fd, never the pathname). A non-empty file — such as a crashed
+  fallback holder's stale record — triggers a reap attempt and retry
+  within the original deadline, with bounded backoff while waiting for
+  the age threshold. This prevents a flock holder and a fallback reaper
+  from both entering simultaneously on a stale dead-PID record. Older
+  helper versions are compatible only by quiescing all processes before
+  upgrading.
 - Flock capability is probed at source time: if `-w` (timeout) is not
   supported (e.g. BusyBox flock), the helper uses a bounded `flock -n`
   polling loop within the original deadline with backoff and jitter. If
@@ -74,7 +83,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
   concurrent subshells on bash 3.2 (which share `$$` and can draw the
   same `$RANDOM`) never collide on the temp name.
 - The owner token and release check now use the real per-acquirer PID
-  (via `$BASHPID` on bash 4+ or a portable fallback on bash 3.2),
+  (via `/proc/self/stat` on Linux, or an exclusive-mktemp `sh` probe on
+  macOS bash 3.2; fails closed if neither works — never falls back to `$$`),
   so subshells of the same parent correctly identify and release only
   their own locks. The fallback mixed-mode guards use the same identity.
 - A failed publication check now cleans up the stale lock it left behind

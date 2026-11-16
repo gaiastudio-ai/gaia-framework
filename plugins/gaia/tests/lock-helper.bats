@@ -3627,6 +3627,269 @@ SHIMEOF
   }
 }
 
+# ================================================================
+# Mixed-mode dead-PID double-holder regression
+#
+# A flock-mode acquirer must never enter on a non-empty file (a
+# crashed fallback holder's stale record). Without the fd-based
+# emptiness check, the flock holder and a fallback reaper can both
+# enter simultaneously.
+# ================================================================
+
+@test "mixed-mode dead-PID: flock holder and no-flock reaper are never simultaneous (basic)" {
+  # A (flock) locks the existing stale file; X (no flock) reaps it.
+  # On unfixed code: A enters immediately (dead PID not checked),
+  # X reaps and enters = double holder.
+  # On fixed code: A sees non-empty → triggers reap → retries.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/mm-deadpid-basic.lock"
+  local a_state="$TEST_TMP/mm-basic-a"
+  local x_state="$TEST_TMP/mm-basic-x"
+  rm -f "$a_state" "$x_state"
+
+  # Plant a stale lock (dead PID, backdated).
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate $lock_file" >&2; false; }
+
+  # A: flock mode, acquires the existing file.
+  bash -c '
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    if acquire_lock "'"$lock_file"'" 5 8 2>/dev/null; then
+      echo "A_IN" > "'"$a_state"'"
+      sleep 2 2>/dev/null || sleep 2
+      echo "A_OUT" >> "'"$a_state"'"
+      release_lock 8
+    else
+      echo "A_EXCLUDED" > "'"$a_state"'"
+    fi
+  ' &
+  local ap=$!
+
+  # Give A time to flock.
+  sleep 0.5 2>/dev/null || sleep 1
+
+  # X: no-flock fallback, reaper sees dead PID.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    unset GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    if acquire_lock "'"$lock_file"'" 5 9 2>/dev/null; then
+      if [ -f "'"$a_state"'" ] && grep -q A_IN "'"$a_state"'" && ! grep -q A_OUT "'"$a_state"'"; then
+        echo "DOUBLE_HOLDER" > "'"$x_state"'"
+      else
+        echo "X_OK" > "'"$x_state"'"
+      fi
+      release_lock 9
+    else
+      echo "X_EXCLUDED" > "'"$x_state"'"
+    fi
+  ' &
+  local xp=$!
+
+  wait "$ap" 2>/dev/null || true
+  wait "$xp" 2>/dev/null || true
+
+  local result_x=""
+  [ -f "$x_state" ] && read -r result_x < "$x_state" 2>/dev/null || result_x="NO_STATE"
+  [ "$result_x" != "DOUBLE_HOLDER" ] || {
+    echo "DOUBLE_HOLDER: X entered while A held via flock" >&2; false; }
+}
+
+@test "mixed-mode dead-PID: reaper paused after reading stale token, flock acquirer arrives (paused)" {
+  # X's reaper pauses in the reap-window hook after reading the stale
+  # token. While paused, A acquires via flock. X resumes and removes
+  # the path. On unfixed code: A entered on the non-empty file, then
+  # X removes it = double holder risk. On fixed code: A sees non-empty,
+  # waits; X reaps; A re-acquires the now-empty path.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/mm-deadpid-paused.lock"
+  local a_state="$TEST_TMP/mm-paused-a"
+  local x_resumed="$TEST_TMP/mm-paused-x-resumed"
+  local hook_fired="$TEST_TMP/mm-paused-hook"
+  local hook_go="$TEST_TMP/mm-paused-go"
+  rm -f "$a_state" "$x_resumed" "$hook_fired" "$hook_go"
+
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate $lock_file" >&2; false; }
+
+  # X: fallback reaper with a window hook that pauses after reading the
+  # stale token and before the inode comparison.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    unset GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    _al_reap_window_hook() {
+      touch "'"$hook_fired"'"
+      local _w=0
+      while [ ! -f "'"$hook_go"'" ] && [ "$_w" -lt 80 ]; do
+        sleep 0.1 2>/dev/null || sleep 1; _w=$((_w + 1))
+      done
+    }
+    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || true
+    touch "'"$x_resumed"'"
+    release_lock 9 2>/dev/null
+  ' &
+  local xp=$!
+
+  # Wait for X's reaper to pause in the hook.
+  _wait_for_file "$hook_fired" || true
+
+  # A: flock mode, arrives while X's reaper is paused.
+  bash -c '
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    if acquire_lock "'"$lock_file"'" 10 8 2>/dev/null; then
+      echo "A_IN" > "'"$a_state"'"
+      sleep 1 2>/dev/null || sleep 1
+      echo "A_OUT" >> "'"$a_state"'"
+      release_lock 8
+    else
+      echo "A_EXCLUDED" > "'"$a_state"'"
+    fi
+  ' &
+  local ap=$!
+
+  # Give A time to attempt, then resume X.
+  sleep 0.5 2>/dev/null || sleep 1
+  touch "$hook_go"
+
+  wait "$xp" 2>/dev/null || true
+  wait "$ap" 2>/dev/null || true
+
+  # A must have acquired eventually (not been excluded).
+  local result_a=""
+  [ -f "$a_state" ] && result_a="$(cat "$a_state" 2>/dev/null)" || result_a="NO_STATE"
+  [[ "$result_a" == *"A_IN"* ]] || {
+    echo "A never acquired: $result_a" >&2; false; }
+
+  # No simultaneous holders.
+  [[ "$result_a" != *"DOUBLE"* ]] || {
+    echo "double holder detected" >&2; false; }
+}
+
+@test "flock acquirer on dead-PID file waits for reclamation, then acquires within deadline" {
+  # A flock-mode acquirer facing a dead-PID file must NOT enter before
+  # reclamation. With a short reap threshold it acquires after the
+  # threshold, within its overall deadline.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/flock-deadpid-wait.lock"
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate $lock_file" >&2; false; }
+
+  local start_s rc=0
+  start_s="$(date +%s)"
+  (
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$HELPER"
+    acquire_lock "$lock_file" 10 8 2>/dev/null
+    release_lock 8
+  ) || rc=$?
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$rc" -eq 0 ] || {
+    echo "flock acquirer failed to acquire after reclamation (rc=$rc)" >&2; false; }
+  # Must have waited (not instant — the reaper path adds latency).
+  # But must not have taken the full 10 s timeout.
+  [ "$elapsed" -lt 8 ] || {
+    echo "took ${elapsed}s — timed out instead of acquiring" >&2; false; }
+}
+
+@test "flock acquirer fail-closed: fd-size UNAVAILABLE does not enter" {
+  # The flock acquirer must refuse to enter unconditionally when
+  # fd-based emptiness returns UNAVAILABLE — regardless of whether
+  # this process has stat (another process on the host may have it).
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/flock-failclosed.lock"
+  : > "$lock_file"
+
+  # Case 1: stat IS usable on this host (the normal case).
+  local rc=0
+  (
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "$HELPER"
+    _al_fd_size() { return 2; }
+    acquire_lock "$lock_file" 2 8 2>/dev/null
+  ) || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "entered despite UNAVAILABLE fd-size (with stat)" >&2; false; }
+
+  # Case 2: stat ALSO unavailable — still must not enter.
+  rm -f "$lock_file"; : > "$lock_file"
+  rc=0
+  (
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "$HELPER"
+    _al_fd_size() { return 2; }
+    _ACQUIRE_LOCK_STAT_FMT=""
+    acquire_lock "$lock_file" 2 8 2>/dev/null
+  ) || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "entered despite UNAVAILABLE fd-size (no stat)" >&2; false; }
+}
+
+@test "flock acquirer fail-closed: identity UNAVAILABLE does not enter" {
+  # When the post-flock identity check returns UNAVAILABLE, the flock
+  # acquirer must refuse unconditionally — even with no stat.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/flock-failclosed-id.lock"
+  : > "$lock_file"
+
+  local rc=0
+  (
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "$HELPER"
+    _al_verify_fd_identity() { return 2; }
+    _ACQUIRE_LOCK_STAT_FMT=""
+    acquire_lock "$lock_file" 2 8 2>/dev/null
+  ) || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "entered despite UNAVAILABLE identity (no stat)" >&2; false; }
+}
+
+@test "flock acquirer: non-empty malformed or whitespace record is never treated as empty" {
+  # Various non-empty contents that are not a valid PID line must all
+  # trigger the non-empty path (reap attempt), never the empty-enter path.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+
+  local lock_file="$LOCK_DIR/flock-malformed.lock"
+
+  local content
+  for content in "not-a-pid" "   " $'\n' "0 leftover" "-1 negative"; do
+    printf '%s' "$content" > "$lock_file"
+    # Back-date so the reaper can reclaim after threshold.
+    touch -t 202001010000 "$lock_file" \
+      || { echo "cannot backdate $lock_file" >&2; false; }
+
+    local rc=0
+    (
+      unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+      export GAIA_LOCK_REAP_SECONDS=1
+      source "$HELPER"
+      acquire_lock "$lock_file" 5 8 2>/dev/null
+      release_lock 8
+    ) || rc=$?
+
+    # Must succeed (the reaper clears the stale file) but NOT immediately
+    # (a truly empty file would be instant).
+    [ "$rc" -eq 0 ] || {
+      echo "failed for content [$content] (rc=$rc)" >&2; false; }
+  done
+}
+
 @test "reaper that backs off (mutex busy) leaves a waiting flock acquirer a legitimate holder" {
   # A live reap mutex blocks the reaper, which backs off. A flock-mode
   # acquirer A waits on the empty lock. After the reaper releases its
