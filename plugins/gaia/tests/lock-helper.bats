@@ -5073,7 +5073,7 @@ SHIMEOF
 }
 
 @test "strict fallback: in-loop type rejection returns exit 4 and never enters" {
-  # RF-17 regression: when the in-loop strict type check rejects, the
+  # Regression: when the in-loop strict type check rejects, the
   # cleanup must preserve the status code. The bug was: `rm || true;
   # return $?` always returned 0 because `|| true` clobbered $?.
   # Strategy: override _al_enforce_path_type_strict to pass on the
