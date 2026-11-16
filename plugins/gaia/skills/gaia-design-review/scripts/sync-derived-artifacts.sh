@@ -240,8 +240,10 @@ function check_fence(line,   raw, ch, i, flen, rest, j) {
 #    0  ordinary line, no locator event
 #    1  line held as candidate header (contains |)
 #    2  separator found — table located; _tbl_sep_piped is set
-# When a fence opens, any pending candidate is cleared (a header
-# before a fence can never pair with a separator after it).
+# When a fence opens or a section-end heading is seen, any pending
+# candidate is cleared (a header before a fence or section boundary
+# can never pair with a separator after it). A section-end heading
+# that contains | is never held as a candidate.
 # After a return of 0 when a candidate was pending, the candidate
 # was just text; the caller can read the former candidate from
 # _tbl_prev_cand (set before clearing) and must re-evaluate the
@@ -261,6 +263,19 @@ function tbl_locator_feed(line) {
     _tbl_have_cand = 0
     _tbl_cand_line = ""
     return -1
+  }
+  # A section-end heading ends any locator search. Clear any held
+  # candidate and return 0 so the section-end rules in the caller
+  # fire. Never hold a section-end heading as a candidate, even
+  # when it contains |.
+  if (is_section_end(line)) {
+    if (_tbl_have_cand) {
+      _tbl_prev_cand = _tbl_cand_line
+      _tbl_had_cand = 1
+    }
+    _tbl_have_cand = 0
+    _tbl_cand_line = ""
+    return 0
   }
   if (_tbl_have_cand) {
     _tbl_have_cand = 0
@@ -326,15 +341,9 @@ _extract_doc_components() {
         }
         ev = tbl_locator_feed($0)
         if (ev == -1) next
-        # A section-end heading may contain | — undo any locator
-        # hold and fall through to the section-end rule below.
-        if (is_section_end($0)) {
-          if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
-        } else {
-          if (ev == 2) { saw_sep = 1; sep_piped = _tbl_sep_piped; next }
-          if (ev == 1) next
-          # ev == 0: ordinary line — fall through
-        }
+        if (ev == 2) { saw_sep = 1; sep_piped = _tbl_sep_piped; next }
+        if (ev == 1) next
+        # ev == 0: ordinary line (or section-end) — fall through
       } else {
         if (check_fence($0)) {
           # A fence in Phase 2 ends the table (match the writer).
@@ -370,28 +379,24 @@ _count_table_cols() {
       if (in_s && !found) {
         ev = tbl_locator_feed($0)
         if (ev == -1) next
-        if (is_section_end($0)) {
-          if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
-        } else {
-          if (ev == 2) {
-            # Count columns from the separator line
-            line = $0
-            gsub(/\r$/, "", line)
-            pc = 0
-            for (k = 1; k <= length(line); k++)
-              if (substr(line, k, 1) == "|") pc++
-            lp = (line ~ /^[[:space:]]*\|/)
-            tp = (line ~ /\|[[:space:]]*$/)
-            if (lp && tp) cols = pc - 1
-            else if (lp || tp) cols = pc
-            else cols = pc + 1
-            print cols
-            found = 1
-            exit
-          }
-          if (ev == 1) next
-          # ev == 0: ordinary line — fall through
+        if (ev == 2) {
+          # Count columns from the separator line
+          line = $0
+          gsub(/\r$/, "", line)
+          pc = 0
+          for (k = 1; k <= length(line); k++)
+            if (substr(line, k, 1) == "|") pc++
+          lp = (line ~ /^[[:space:]]*\|/)
+          tp = (line ~ /\|[[:space:]]*$/)
+          if (lp && tp) cols = pc - 1
+          else if (lp || tp) cols = pc
+          else cols = pc + 1
+          print cols
+          found = 1
+          exit
         }
+        if (ev == 1) next
+        # ev == 0: ordinary line (or section-end) — fall through
       } else {
         if (check_fence($0)) next
       }
@@ -445,12 +450,9 @@ _batch_add_components() {
         if (in_s && !found) {
           ev = tbl_locator_feed($0)
           if (ev == -1) next
-          if (is_section_end($0)) {
-            if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
-          } else {
-            if (ev == 2) { print $0; found = 1; exit }
-            if (ev == 1) next
-          }
+          if (ev == 2) { print $0; found = 1; exit }
+          if (ev == 1) next
+          # ev == 0: ordinary line (or section-end) — fall through
         } else {
           if (check_fence($0)) next
         }
@@ -516,25 +518,17 @@ _batch_add_components() {
             if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
             print; next
           }
-          # Section-end heading with pipe: undo locator hold, print any
-          # cleared prev candidate, fall through to section-end rule.
-          if (is_section_end($0)) {
-            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
-            if (ev == 1) { _tbl_have_cand = 0; _tbl_cand_line = "" }
-            # fall through to section-end rule below
-          } else {
-            if (ev == 2) {
-              # Table found: print the candidate header, buffer separator
-              printf "%s\n", _tbl_prev_cand
-              pending[++npend] = $0
-              saw_sep = 1
-              next
-            }
-            if (ev == 1) next
-            # ev == 0: ordinary line — if a candidate was cleared, print it
-            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
-            # fall through to remaining rules
+          if (ev == 2) {
+            # Table found: print the candidate header, buffer separator
+            printf "%s\n", _tbl_prev_cand
+            pending[++npend] = $0
+            saw_sep = 1
+            next
           }
+          if (ev == 1) next
+          # ev == 0: ordinary line (or section-end) — if a candidate
+          # was cleared, print it; then fall through to remaining rules
+          if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
         } else {
           if (check_fence($0)) {
             if (saw_sep && !first_table_done) {

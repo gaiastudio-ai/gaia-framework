@@ -10234,3 +10234,310 @@ UX
   [[ "$output" == *"up to date"* ]] || \
     fail "sync 2 not stable: $output"
 }
+
+
+# =========================================================================
+# Structural: locator private state is never written outside the library
+# =========================================================================
+
+@test "structural: locator private state is never assigned outside the library" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Extract the library body boundaries.
+  local lib_start lib_end
+  lib_start="$(grep -n "^_SDA_AWK_LIB='" "$SYNC_SCRIPT" | head -1 | cut -d: -f1)"
+  lib_end="$(awk -v start="$lib_start" 'NR > start && /^'"'"'$/ { print NR; exit }' "$SYNC_SCRIPT")"
+  [ -n "$lib_start" ] || fail "cannot find _SDA_AWK_LIB start"
+  [ -n "$lib_end" ] || fail "cannot find _SDA_AWK_LIB end"
+
+  # Collect non-comment lines outside the library body.
+  local outside_before outside_after outside
+  outside_before="$(sed -n "1,$((lib_start))p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  outside_after="$(sed -n "$((lib_end)),\$p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  outside="$(printf '%s\n%s\n' "$outside_before" "$outside_after")"
+
+  # _tbl_have_cand and _tbl_cand_line are locator-private state.
+  # Assignments (= 0, = 1, = "", = line, etc.) must only exist inside
+  # the library. Reads (_tbl_have_cand as a condition, printf _tbl_cand_line)
+  # are permitted outside. Match assignment patterns: var space* = .
+  local assigns
+  assigns="$(printf '%s\n' "$outside" \
+    | grep -E '_tbl_have_cand[[:space:]]*=' \
+    || true)"
+  assigns="${assigns}$(printf '%s\n' "$outside" \
+    | grep -E '_tbl_cand_line[[:space:]]*=' \
+    || true)"
+  [ -z "$assigns" ] || \
+    fail "locator private state assigned outside library: $assigns"
+}
+
+
+# =========================================================================
+# Structural: no duplicated section-end handling in locator callers
+# =========================================================================
+
+@test "structural: no section-end guard duplicated in locator callers" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Extract the library body boundaries.
+  local lib_start lib_end
+  lib_start="$(grep -n "^_SDA_AWK_LIB='" "$SYNC_SCRIPT" | head -1 | cut -d: -f1)"
+  lib_end="$(awk -v start="$lib_start" 'NR > start && /^'"'"'$/ { print NR; exit }' "$SYNC_SCRIPT")"
+  [ -n "$lib_start" ] || fail "cannot find _SDA_AWK_LIB start"
+  [ -n "$lib_end" ] || fail "cannot find _SDA_AWK_LIB end"
+
+  # Collect non-comment lines outside the library body.
+  local outside_before outside_after outside
+  outside_before="$(sed -n "1,$((lib_start))p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  outside_after="$(sed -n "$((lib_end)),\$p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  outside="$(printf '%s\n%s\n' "$outside_before" "$outside_after")"
+
+  # After the refactor, section-end handling lives inside tbl_locator_feed.
+  # Callers that call tbl_locator_feed must NOT also call is_section_end
+  # inside an if-statement to guard locator state. Legitimate uses of
+  # is_section_end outside the library are awk rule patterns (top-level
+  # conditions like "in_section && is_section_end($0) { ... }"), never
+  # nested inside if-statements.
+  #
+  # Detect: "if" followed by "is_section_end" on the same line outside
+  # the library body. This catches the caller-copy pattern:
+  #   if (is_section_end($0)) { _tbl_have_cand = 0; ... }
+  # but not the legitimate awk-rule patterns which are top-level.
+  local dupes
+  dupes="$(printf '%s\n' "$outside" \
+    | grep -E 'if[[:space:]]*\(.*is_section_end' \
+    || true)"
+  [ -z "$dupes" ] || \
+    fail "section-end guard duplicated in locator callers: $dupes"
+}
+
+
+# =========================================================================
+# Behavioural: pipe-heading section end through the reader path
+# =========================================================================
+
+@test "reader does not extract from a section after a pipe-bearing heading ends the components section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Components section is table-less (bullets only), then a ## heading
+  # containing | ends the section. The locator must not hold the heading
+  # as a candidate and pair it with the next section's separator. The
+  # reader must not extract from the next table.
+  local doc_dir="$TEST_TMP/reader-pipe-heading-end"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- Button
+
+## Layout | Grid
+
+| Token | Value |
+|---|---|
+| spacing | 8px |
+
+## Screens
+UX
+
+  local snapshot="$TEST_TMP/reader-pipe-heading-snap.json"
+  jq -n '{"components":["Button"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "Button should be up to date: $output"
+
+  # spacing must NOT be mentioned (it belongs to the next section)
+  [[ "$output" != *"spacing"* ]] || \
+    fail "reader leaked into the next section: $output"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Behavioural: pipe-heading section end through the col-count path
+# =========================================================================
+
+@test "col count stops at a pipe-bearing heading that ends the components section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Components section is bullet-only (no table), followed by a
+  # pipe-bearing heading, then a 3-column table. The col count for
+  # the components section must be 0 (no table), not 3.
+  local doc_dir="$TEST_TMP/colcount-pipe-heading"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- OldWidget
+
+## Tokens | Values
+
+| Token | Light | Dark |
+|---|---|---|
+| fg | #000 | #fff |
+
+## Screens
+UX
+
+  local snapshot="$TEST_TMP/colcount-pipe-heading-snap.json"
+  jq -n '{"components":["Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must be inserted in bullet form (col count was 0)
+  local card_line
+  card_line="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_line" ] || fail "Card not found after sync"
+  [[ "$card_line" == '- Card' ]] || \
+    fail "Card should be a bullet (col count must be 0), got: $card_line"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Behavioural: pipe-heading section end through the separator search path
+# =========================================================================
+
+@test "separator search stops at a pipe-bearing heading that ends the section" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Components section with an existing table. A pipe-bearing heading
+  # ends it, followed by another section with a different separator
+  # style. The writer must use the FIRST table's separator form, not
+  # leak into the next section's separator.
+  local doc_dir="$TEST_TMP/sepsearch-pipe-heading"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+| Name | Desc |
+|---|---|
+| Alpha | a |
+
+## Variants | Options
+
+| Variant | Default |
+|:---|:---|
+| dark | no |
+
+## Screens
+UX
+
+  local snapshot="$TEST_TMP/sepsearch-pipe-heading-snap.json"
+  jq -n '{"components":["Alpha","Beta"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Beta must be in the components table (piped form, 2 cols)
+  local beta_line
+  beta_line="$(grep 'Beta' "$doc_dir/ux-design.md")"
+  [ -n "$beta_line" ] || fail "Beta not found after sync"
+  [[ "$beta_line" == *'| Beta |'* ]] || \
+    fail "Beta should be in piped table form, got: $beta_line"
+
+  # The Variants table must be untouched
+  local dark_line
+  dark_line="$(grep 'dark' "$doc_dir/ux-design.md")"
+  [[ "$dark_line" == *'| dark | no |'* ]] || \
+    fail "Variants table was modified: $dark_line"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Behavioural: pipe-heading section end through the writer path
+# =========================================================================
+
+@test "writer does not absorb a post-heading table when the heading contains a pipe" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Components section with a table. A pipe-bearing heading ends it.
+  # The writer must flush new components BEFORE the heading, not carry
+  # the locator state past the heading into the next section.
+  local doc_dir="$TEST_TMP/writer-pipe-heading"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+| Name | Desc |
+|---|---|
+| Existing | e |
+
+## Colors | Palette
+
+| Color | Hex |
+|---|---|
+| red | #f00 |
+
+## Screens
+UX
+
+  local snapshot="$TEST_TMP/writer-pipe-heading-snap.json"
+  jq -n '{"components":["Existing","NewComp"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # NewComp must appear BEFORE the Colors heading
+  local newcomp_line heading_line
+  newcomp_line="$(grep -n 'NewComp' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  heading_line="$(grep -n '## Colors | Palette' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$newcomp_line" ] || fail "NewComp not found after sync"
+  [ -n "$heading_line" ] || fail "Colors heading not found"
+  [ "$newcomp_line" -lt "$heading_line" ] || \
+    fail "NewComp (line $newcomp_line) must be before Colors heading (line $heading_line)"
+
+  # The Colors table must be untouched
+  local red_line
+  red_line="$(grep 'red' "$doc_dir/ux-design.md")"
+  [[ "$red_line" == *'| red | #f00 |'* ]] || \
+    fail "Colors table was modified: $red_line"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
