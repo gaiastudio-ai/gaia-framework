@@ -9350,10 +9350,11 @@ UX
 @test "structural: single definitions, shared library coverage, no bash duplicates" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  # 1. Each shared predicate defined exactly once (including check_fence)
+  # 1. Each shared function defined exactly once (including check_fence
+  #    and the shared table-locator)
   local fn count
   for fn in heading_match is_section_end is_sep is_table_row \
-            extract_first_cell _needs_prefix check_fence; do
+            extract_first_cell _needs_prefix check_fence tbl_locator_feed; do
     count="$(grep -v '^[[:space:]]*#' "$SYNC_SCRIPT" | grep -c "function ${fn}(" || true)"
     [ "$count" -eq 1 ] || \
       fail "function $fn is defined $count times (expected 1)"
@@ -9864,4 +9865,248 @@ UX
       fail "stdout hash mismatch: $ref_label=$ref_out_sha vs $cur_label=$cur_out_sha"
     i=$((i + 1))
   done
+}
+
+
+# =========================================================================
+# Fence-flush regression — fence directly after table must keep rows above
+# =========================================================================
+
+@test "fence directly after table keeps all rows and new components above the fence" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Reproduction case from code review: a component table followed
+  # immediately by a code fence (no blank line). The writer must flush
+  # all buffered rows and new components before emitting the fence.
+  local doc_dir="$TEST_TMP/fence-flush"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+| Name | Desc |
+|---|---|
+| Alpha | a |
+```
+| fenced | x |
+```
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/fence-flush-snap.json"
+  jq -n '{"components":["Alpha","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The table must be intact: header, separator, Alpha, Card — all
+  # before the code fence.
+  local doc_content
+  doc_content="$(cat "$doc_dir/ux-design.md")"
+
+  # Alpha must appear BEFORE the backtick fence
+  local alpha_line fence_line
+  alpha_line="$(grep -n '| Alpha |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  fence_line="$(grep -n '^```' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$alpha_line" ] || fail "Alpha row not found"
+  [ -n "$fence_line" ] || fail "fence line not found"
+  [ "$alpha_line" -lt "$fence_line" ] || \
+    fail "Alpha (line $alpha_line) is not before the fence (line $fence_line)"
+
+  # Card must be in piped form and before the fence
+  local card_line
+  card_line="$(grep -n '| Card |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$card_line" ] || fail "Card not found in table form"
+  [ "$card_line" -lt "$fence_line" ] || \
+    fail "Card (line $card_line) is not before the fence (line $fence_line)"
+
+  # Separator must be before Alpha
+  local sep_line
+  sep_line="$(grep -n '^|---|' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$sep_line" ] || fail "separator not found"
+  [ "$sep_line" -lt "$alpha_line" ] || \
+    fail "separator (line $sep_line) is not before Alpha (line $alpha_line)"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Header-before-fence must not pair with separator after fence
+# =========================================================================
+
+@test "candidate header before a fence does not pair with separator after the fence" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A | line (candidate header), then a fence block, then a separator
+  # line. Without clearing the candidate on fence open, the separator
+  # pairs with the pre-fence header and the reader locates a phantom
+  # table that spans the fence.
+  local doc_dir="$TEST_TMP/hdr-fence-sep"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- Existing
+
+| Phantom | Header |
+```
+some code
+```
+|---|---|
+| Alpha | a |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/hdr-fence-sep-snap.json"
+  jq -n '{"components":["Existing","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must be in bullet form (no valid table was found — the header
+  # was invalidated by the fence).
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card not found after sync"
+  [[ "$card_row" == '- '* ]] || \
+    fail "Card should be a bullet (phantom table detected): $card_row"
+
+  # Sync 2: stable
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  [[ "$output" == *"up to date"* ]] || \
+    fail "sync 2 not stable: $output"
+}
+
+@test "writer does not let a pre-fence header pair with a post-fence separator" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Table-mode writer: a stray | line before a fence, then a separator
+  # after the fence. The real table is further down. Without clearing
+  # the candidate on fence open, the writer pairs the stray header
+  # with the post-fence separator and treats it as the table, so the
+  # real table's column count is missed and Card gets the wrong form.
+  local doc_dir="$TEST_TMP/hdr-fence-writer"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+| Stray | Header |
+```
+code block
+```
+|---|---|
+| Ghost | a |
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| Button | primary | yes |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/hdr-fence-writer-snap.json"
+  jq -n '{"components":["Button","Card"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Card must be in 3-column piped form (the real table has 3 cols).
+  # If the phantom table is found instead (2 cols), Card gets 2-column form.
+  local card_row
+  card_row="$(grep 'Card' "$doc_dir/ux-design.md")"
+  [ -n "$card_row" ] || fail "Card not found after sync"
+
+  # Count pipe characters in Card's row — real table has 3 columns
+  # so piped form is | Card | | | (4 pipes).
+  local pipe_count
+  pipe_count="$(printf '%s' "$card_row" | tr -cd '|' | wc -c | tr -d ' ')"
+  [ "$pipe_count" -eq 4 ] || \
+    fail "Card row has $pipe_count pipes (expected 4 for 3-column table): $card_row"
+
+  # The stray header must remain in its original position (before the fence)
+  local stray_line fence_line
+  stray_line="$(grep -n '| Stray |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  fence_line="$(grep -n '^```' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ -n "$stray_line" ] || fail "Stray header line not found"
+  [ -n "$fence_line" ] || fail "fence line not found"
+  [ "$stray_line" -lt "$fence_line" ] || \
+    fail "Stray header (line $stray_line) moved below the fence (line $fence_line)"
+}
+
+
+# =========================================================================
+# Structural test: callers use the shared locator routine
+# =========================================================================
+
+@test "structural: callers use shared table-locator and carry no private pairing state" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # The shared table-locator routine lives in _SDA_AWK_LIB and manages
+  # candidate header / separator pairing state internally. No awk program
+  # outside the library body should maintain its own pairing-state variables
+  # (have_cand, have_candidate, _coltbl_have_candidate, or similar).
+
+  # Extract the library body: everything between the opening _SDA_AWK_LIB='
+  # and the closing single-quote.
+  local lib_start lib_end
+  lib_start="$(grep -n "^_SDA_AWK_LIB='" "$SYNC_SCRIPT" | head -1 | cut -d: -f1)"
+  lib_end="$(awk -v start="$lib_start" 'NR > start && /^'"'"'$/ { print NR; exit }' "$SYNC_SCRIPT")"
+  [ -n "$lib_start" ] || fail "cannot find _SDA_AWK_LIB start"
+  [ -n "$lib_end" ] || fail "cannot find _SDA_AWK_LIB end"
+
+  # Outside the library body, grep for candidate-pairing state variables.
+  # Strip comment lines first to avoid false positives from comments.
+  local outside_before outside_after
+  outside_before="$(sed -n "1,$((lib_start))p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  outside_after="$(sed -n "$((lib_end)),\$p" "$SYNC_SCRIPT" | grep -v '^[[:space:]]*#')"
+  local outside
+  outside="$(printf '%s\n%s\n' "$outside_before" "$outside_after")"
+
+  # Match any variable that holds candidate-header pairing state.
+  local pairing_vars
+  pairing_vars="$(printf '%s\n' "$outside" | grep -oE '\bhave_cand(idate)?\b' || true)"
+  [ -z "$pairing_vars" ] || \
+    fail "private pairing-state variable found outside library: $pairing_vars"
+
+  # Also check that each of the 6 awk program invocations references the
+  # shared locator function (tbl_locator_feed or whatever it is named).
+  # The shared routine must be called from each awk program.
+  local shared_fn_name
+  shared_fn_name="$(grep -oE 'function (tbl_locator[_a-z]*)\(' "$SYNC_SCRIPT" | head -1 | sed 's/function //; s/(//')"
+  [ -n "$shared_fn_name" ] || \
+    fail "no shared table-locator function found in _SDA_AWK_LIB"
+
+  # Count how many awk programs reference the shared locator.
+  # Each document-parsing awk call that locates a table must call it.
+  # The four original paths (reader, _count_table_cols, sep-search, table-writer)
+  # must all reference the shared function.
+  local call_count
+  call_count="$(printf '%s\n' "$outside" | grep -c "$shared_fn_name" || true)"
+  [ "$call_count" -ge 4 ] || \
+    fail "shared locator $shared_fn_name referenced $call_count times outside library (expected >= 4)"
 }
