@@ -570,6 +570,7 @@
 4	drift-detection-ci-suppression.bats	15
 4	e103-s1-adr-120-lifecycle-ordering-enforcement.bats	1
 4	e103-s2-lifecycle-overrides-helpers.bats	1
+4	lifecycle-overrides-bash32-fd.bats	10
 4	e103-s5-strict-mode-retro-coverage.bats	1
 4	e106-s1-throughput-telemetry.bats	2
 4	e106-s2-dual-track-estimation.bats	1

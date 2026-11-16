@@ -755,6 +755,7 @@ scripts-lib	lib-env-allowlist.bats
 scripts-lib	lib-exec-with-timeout.bats
 scripts-lib	lib-transcript-writer.bats
 scripts-lib	lib/resolve-epic-slug.bats
+scripts-lib	lifecycle-overrides-bash32-fd.bats
 scripts-lib	load-taxonomy.bats
 scripts-lib	meeting-dispatch-envelope-assertion.bats
 scripts-lib	meeting-mode-b-dispatch-wiring.bats
