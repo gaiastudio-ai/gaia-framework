@@ -16,6 +16,7 @@ E93-S6-sprint-review-rubric-sgr-velocity-003-calibration.bats	1
 E93-S6-sprint-state-set-shape.bats	1
 a11y-three-phase-reorganization.bats	2
 action-items-canonical-path.bats	1
+action-items-write-lock.bats	146
 action-items-write-retro-interop.bats	8
 action-skill-contract.bats	1
 adapter-schema-contract.bats	3
@@ -191,7 +192,7 @@ concurrent-sprint-glossary.bats	15
 concurrent-sprint-independence-ab.bats	32
 concurrent-sprint-independence-cd.bats	67
 concurrent-sprint-ledger.bats	28
-concurrent-sprint-lifecycle-scoped.bats	84
+concurrent-sprint-lifecycle-scoped.bats	97
 concurrent-sprint-lifecycle.bats	42
 concurrent-sprint-lock.bats	19
 concurrent-sprint-merge.bats	57
@@ -523,10 +524,10 @@ lint-pack.bats	21
 load-stack-persona-units.bats	1
 load-stack-persona.bats	1
 load-taxonomy.bats	1
-lock-helper.bats	51
-lock-review-gate-ledger.bats	3
+lock-helper.bats	151
+lock-review-gate-ledger.bats	2
 lock-sprint-state.bats	30
-lock-story-status.bats	16
+lock-story-status.bats	18
 manual-test-docs.bats	1
 manual-test-flakiness-tracking.bats	1
 manual-verification-scan.bats	1
