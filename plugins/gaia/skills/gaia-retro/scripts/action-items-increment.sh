@@ -207,6 +207,8 @@ trap '_incr_term_handler' TERM
 # Acquire the shared lock. On failure (timeout, permission denied),
 # the data is left unchanged and we exit non-zero. The flag is set
 # before the call so the trap covers the hold window inside _aiw_lock.
+# Stdout (the status=/reason= protocol) is discarded; stderr (remedy
+# lines from the helper) passes through to the caller.
 _incr_lock_held=1
 if ! _aiw_lock "$LOCKFILE" "action-items-increment" >/dev/null; then
   _incr_lock_held=0

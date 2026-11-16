@@ -77,14 +77,13 @@ _AIW_LOCK_FD=6
 # override, and maps acquire_lock exit codes to the writer's stdout protocol.
 # Returns 0 on success, 1 on failure (with status=error already printed).
 #
-# The shared helper's fallback path has two transient failure modes:
-#   (a) Subshells sharing $$ can collide on the temp-file name, causing
-#       the publication check to see a different process's content.
-#   (b) A separate-process reaper that judged the lock ownerless could
-#       delete the next holder's freshly linked lock between the link
-#       and the publication-inode stat.  This is closed by the reap
-#       mutex (mkdir serialisation) and rename-and-verify protocol in
-#       acquire-lock.sh.
+# The shared helper's fallback path has one transient failure mode:
+#   A separate-process reaper that judged the lock ownerless could
+#   rename the next holder's freshly linked lock between the link and
+#   the publication-inode stat.  This is closed by the reap mutex
+#   (hard-linked token file) and rename-and-verify protocol in
+#   acquire-lock.sh. The old temp-name collision (subshells sharing $$)
+#   was fixed by switching to mktemp (O_EXCL).
 # This wrapper retries publication refusals (exit code 6) within the
 # remaining time, and fails immediately on permanent errors.
 # ---------------------------------------------------------------------------
@@ -159,9 +158,13 @@ _aiw_lock() {
     fi
 
     # Any other failure: permanent. Fail at once with the helper's reason.
+    # Forward the FULL stderr (remedy lines like "remove it by hand") so
+    # diagnostic detail reaches the user; extract only the first line for
+    # the reason= stdout field so the stdout contract is unchanged.
     local _reason=""
     if [ -n "$_err_file" ] && [ -s "$_err_file" ]; then
       _reason="$(head -1 "$_err_file")"
+      cat "$_err_file" >&2
     fi
     rm -f "$_err_file" 2>/dev/null || true
 

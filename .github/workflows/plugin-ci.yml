@@ -1281,7 +1281,7 @@ jobs:
             echo "::error::flock is unexpectedly available before brew install"
             exit 1
           fi
-          _lh_out="$(bats --tap -f 'reaper rename-and-verify|two-reaper serialisation' \
+          _lh_out="$(bats --tap -f 'reaper rename-and-verify|two-reaper serialisation|reaper delayed-rm overlap regression' \
             plugins/gaia/tests/lock-helper.bats 2>&1)"
           echo "$_lh_out"
           # Fail if any test skipped or zero tests ran.

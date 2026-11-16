@@ -3430,11 +3430,14 @@ SH
     if [ "$_rc" = "0" ]; then
       res_ok=$((res_ok + 1))
     else
+      # Accept only the reasons AC1 names (permanent: unwritable lock dir,
+      # denied open, path-type refusal) plus the expected contention outcome
+      # (lock timeout). A regression to permanent failures can't hide behind
+      # the success floor.
       [[ "$_out" == *"lock timeout"* ]] \
-        || [[ "$_out" == *"lock path is not a regular file"* ]] \
-        || [[ "$_out" == *"lock identity unstable"* ]] \
-        || [[ "$_out" == *"lock acquisition failed"* ]] \
+        || [[ "$_out" == *"cannot create lock directory"* ]] \
         || [[ "$_out" == *"permission denied"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
         || {
         echo "Forced race: unexpected resolve failure: rc=$_rc out=$_out" >&2
         false
@@ -3450,10 +3453,9 @@ SH
       app_ok=$((app_ok + 1))
     else
       [[ "$_out" == *"lock timeout"* ]] \
-        || [[ "$_out" == *"lock path is not a regular file"* ]] \
-        || [[ "$_out" == *"lock identity unstable"* ]] \
-        || [[ "$_out" == *"lock acquisition failed"* ]] \
+        || [[ "$_out" == *"cannot create lock directory"* ]] \
         || [[ "$_out" == *"permission denied"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
         || {
         echo "Forced race: unexpected append failure: rc=$_rc out=$_out" >&2
         false

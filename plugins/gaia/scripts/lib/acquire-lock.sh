@@ -215,18 +215,17 @@ _al_restore_opts() {
 #   Sets the named variable to the PID of the calling shell by spawning
 #   sh -c 'echo $PPID' and reading the result from an exclusive temp
 #   file (mktemp, O_EXCL). This is the macOS bash 3.2 fallback where
-#   neither $BASHPID nor /proc exists. Fails closed (returns 1 with a
-#   diagnostic) rather than falling back to $$ on any error, since $$
-#   is shared across subshells and produces wrong identity.
+#   /proc does not exist. Fails closed (returns 1 with a diagnostic)
+#   rather than falling back to $$ on any error, since $$ is shared
+#   across subshells and produces wrong identity.
 #
 # _al_set_self_pid <var_name>
 #   Sets the named variable to the PID of the current shell. Must NOT
 #   be called inside $() — command substitution forks and gives its own
 #   PID. Strategy:
-#     1. $BASHPID (bash 4+): immediate.
-#     2. /proc/self/stat (Linux): read first field, no fork.
-#     3. _al_self_pid_via_sh (macOS bash 3.2): one fork, exclusive temp.
-#     4. Fail closed (return 1) — never falls back to $$.
+#     1. /proc/self/stat (Linux): read first field, no fork.
+#     2. _al_self_pid_via_sh (macOS bash 3.2): one fork, exclusive temp.
+#     3. Fail closed (return 1) — never falls back to $$.
 
 _al_self_pid_via_sh() {
   local _var="$1"
@@ -253,10 +252,6 @@ _al_self_pid_via_sh() {
 
 _al_set_self_pid() {
   local _var="$1"
-  if [ -n "${BASHPID:-}" ]; then
-    eval "$_var=\"\$BASHPID\""
-    return
-  fi
   if [ -r /proc/self/stat ]; then
     local _stat_pid=""
     read -r _stat_pid _ < /proc/self/stat 2>/dev/null || _stat_pid=""
@@ -710,11 +705,10 @@ _al_try_reap() {
 
   # --- Step 4: Mutex-guarded rename-and-verify delete ---
   #
-  # A mkdir mutex serialises reapers so only one is between the inode
-  # check and the removal at any time. Inside the mutex the lock file
-  # is renamed to a private temp and re-verified; if the file changed
-  # hands the temp is linked back. Pattern follows the in-tree prior
-  # art in sprint-progress-snapshot.sh (_reap_lock).
+  # A hard-linked token file mutex serialises reapers so only one is
+  # between the inode check and the removal at any time. Inside the
+  # mutex the lock file is renamed to a private temp and re-verified;
+  # if the file changed hands the temp is linked back.
   if [ "$_reap_candidate" = "1" ]; then
     local shadow_ino lock_ino
     shadow_ino="$(_al_inode "$shadow" 2>/dev/null)" || shadow_ino=""

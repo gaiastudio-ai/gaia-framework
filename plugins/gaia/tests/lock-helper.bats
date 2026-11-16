@@ -2672,6 +2672,130 @@ _assert_macos_bash32_env() {
   }
 }
 
+@test "reaper delayed-rm overlap regression: mutex prevents live-holder deletion" {
+  _assert_macos_bash32_env
+  # Scenario (from d2-empty-reap.sh): a stale lock left by a dead process.
+  # R's reaper reads it as reclaimable and starts to remove it; before the
+  # removal completes, B acquires and enters the critical section. With the
+  # reaper mutex and rename-and-verify, R's removal targets a private temp
+  # (not B's live lock), so B's lock survives and no overlap occurs. Without
+  # the fix, R's rm deletes B's live lock and a third acquirer C enters while
+  # B is still inside.
+  #
+  # Uses a dead-PID stale lock (not empty) so the reaper can decide via
+  # kill -0 without a flock probe, letting the test run on macOS bash 3.2
+  # with no flock installed.
+
+  local lock_file="$LOCK_DIR/delayed-rm.lock"
+  local log="$TEST_TMP/dr-log"
+  local marker_R_rm="$TEST_TMP/dr-R-rm"
+  local marker_R_go="$TEST_TMP/dr-R-go"
+  local marker_B_in="$TEST_TMP/dr-B-in"
+  : > "$log"
+  rm -f "$marker_R_rm" "$marker_R_go" "$marker_B_in"
+
+  # Plant a stale lock (dead PID, backdated past the reap threshold).
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate $lock_file" >&2; false; }
+
+  # R: acquirer with an rm wrapper that pauses when the lock path is the
+  # target. On unfixed code, the reaper calls rm -f on the lock path
+  # directly and the wrapper fires. On fixed code, the reaper renames
+  # the file first and rm targets the private temp — the wrapper does
+  # not fire for the lock path.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    _dr_paused=0
+    rm() {
+      local _a
+      for _a in "$@"; do
+        if [ "$_a" = "'"$lock_file"'" ] && [ "$_dr_paused" = "0" ]; then
+          _dr_paused=1
+          touch "'"$marker_R_rm"'"
+          local _w=0
+          while [ ! -f "'"$marker_R_go"'" ] && [ "$_w" -lt 80 ]; do
+            sleep 0.1 2>/dev/null || sleep 1; _w=$((_w + 1))
+          done
+          break
+        fi
+      done
+      command rm "$@"
+    }
+    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || { echo "R_FAIL" >> "'"$log"'"; exit 0; }
+    if [ -f "'"$marker_B_in"'" ]; then
+      echo "OVERLAP" >> "'"$log"'"
+    fi
+    release_lock 9 2>/dev/null
+  ' &
+  local rp=$!
+
+  # Wait for R to pause in its rm wrapper (old code), or for R to finish
+  # entirely (fixed code — the wrapper never fires for the lock path).
+  local _w=0
+  while [ ! -f "$marker_R_rm" ] && kill -0 "$rp" 2>/dev/null && [ "$_w" -lt 60 ]; do
+    sleep 0.1 2>/dev/null || sleep 1; _w=$((_w + 1))
+  done
+
+  # B: acquires and enters the critical section.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || { echo "B_FAIL" >> "'"$log"'"; exit 0; }
+    touch "'"$marker_B_in"'"
+    echo "B_IN" >> "'"$log"'"
+    sleep 2 2>/dev/null || sleep 2
+    command rm -f "'"$marker_B_in"'"
+    release_lock 9 2>/dev/null
+  ' &
+  local bp=$!
+
+  # Give B time to link and enter, then resume R.
+  sleep 0.5 2>/dev/null || sleep 1
+  touch "$marker_R_go"
+
+  # C: tries to acquire while B holds. If R's rm deleted B's lock,
+  # C links into the vacated path = OVERLAP.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 2>/dev/null || { echo "C_TIMEOUT" >> "'"$log"'"; exit 0; }
+    if [ -f "'"$marker_B_in"'" ]; then
+      echo "OVERLAP" >> "'"$log"'"
+    fi
+    release_lock 9 2>/dev/null
+  ' &
+  local cp=$!
+
+  wait "$rp" 2>/dev/null || true
+  wait "$bp" 2>/dev/null || true
+  wait "$cp" 2>/dev/null || true
+
+  # No overlap.
+  local overlaps
+  overlaps="$(grep -c 'OVERLAP' "$log" 2>/dev/null)" || overlaps=0
+  [ "$overlaps" -eq 0 ] || {
+    echo "OVERLAP detected: $(cat "$log")" >&2; false; }
+
+  # No stranded lock after all processes exit.
+  [ ! -f "$lock_file" ] || {
+    local leftover=""
+    leftover="$(cat "$lock_file" 2>/dev/null)" || leftover=""
+    # A file whose recorded PID is dead is a stranded lock.
+    local spid=""
+    read -r spid _ <<< "$leftover" 2>/dev/null || spid=""
+    if [ -n "$spid" ] && ! kill -0 "$spid" 2>/dev/null; then
+      echo "stranded lock after run: $leftover" >&2; false
+    fi
+  }
+}
+
 @test "dead reaper mutex is not auto-reclaimed: acquisition times out" {
   # A dead reaper's mutex stays. The lock stays unreaped and the
   # acquirer times out. This is the manual-recovery design.

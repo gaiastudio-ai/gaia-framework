@@ -94,6 +94,10 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
   now uses the shared lock helper instead of self-managed flock/mkdir,
   so it participates in the same serialization domain as the writer
   and produces the same timeout handling and diagnostics.
+- On hosts without flock (for example macOS by default), an empty
+  `.story-status.lock` left by earlier versions blocks story transitions
+  until it is removed once by hand, as described in the troubleshooting
+  guide's lock-recovery section. No automatic migration.
 - The troubleshooting page documents one-time manual lock recovery
   for the "cannot safely clear" and reaper-mutex timeout messages.
 

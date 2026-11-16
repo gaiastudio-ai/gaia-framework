@@ -966,9 +966,11 @@ _seed_file() {
 # the lock path must fail fast with the reason, not "lock timeout".
 # ================================================================
 
-@test "non-regular uncleanable entry at lock path fails fast with reason" {
+@test "non-regular uncleanable entry at lock path fails fast with reason on stderr" {
   # A non-empty directory at the lock path is a permanent failure:
   # the helper cannot clear it and must not spin until timeout.
+  # Stdout carries the two-line status/reason protocol unchanged;
+  # stderr carries the helper's full diagnostic (remedy lines).
   source "$AIW_SH"
 
   local target="$TEST_TMP/pathtype-perm.yaml"
@@ -979,12 +981,13 @@ _seed_file() {
   mkdir -p "$lock_file"
   printf 'planted\n' > "$lock_file/occupant.txt"
 
-  local start_epoch out rc
+  local start_epoch out err rc
   start_epoch="$(date +%s)"
   out="$(
     GAIA_AIW_LOCK_TIMEOUT=4 GAIA_LOCK_FORCE_FALLBACK=1 \
-    _aiw_lock "$lock_file" "pathtype-test" 2>/dev/null
+    _aiw_lock "$lock_file" "pathtype-test" 2>"$TEST_TMP/pathtype-stderr"
   )" && rc=0 || rc=$?
+  err="$(cat "$TEST_TMP/pathtype-stderr" 2>/dev/null)"
   local elapsed=$(( $(date +%s) - start_epoch ))
 
   # Clean up the planted directory.
@@ -1002,15 +1005,21 @@ _seed_file() {
     false
   }
 
-  # Reason must NOT be "lock timeout".
+  # Stdout: reason must NOT be "lock timeout".
   [[ "$out" != *"lock timeout"* ]] || {
     echo "reported 'lock timeout' for a permanent path-type failure: $out" >&2
     false
   }
 
-  # Reason should mention the actual problem.
+  # Stdout: must have the status=error protocol.
   [[ "$out" == *"status=error"* ]] || {
     echo "no status=error in output: $out" >&2
+    false
+  }
+
+  # Stderr: must carry the helper's diagnostic (remedy text).
+  [[ "$err" == *"remove it by hand"* ]] || [[ "$err" == *"directory with unrelated contents"* ]] || {
+    echo "stderr does not carry the helper's diagnostic: $err" >&2
     false
   }
 }
