@@ -1299,24 +1299,31 @@ jobs:
 
           echo "::group::mixed parallel race 50/50 under bash 3.2"
           for _run in $(seq 1 50); do
+            _mp_t0="$(date +%s)"
             _mp_out="$(bats --tap -f 'mixed parallel resolves and appends preserve all updates' \
               plugins/gaia/tests/concurrent-sprint-lifecycle-scoped.bats 2>&1)"
+            _mp_t1="$(date +%s)"
+            _mp_dur=$(( _mp_t1 - _mp_t0 ))
             if echo "$_mp_out" | grep -q '^not ok'; then
               echo "$_mp_out"
-              echo "::error::mixed parallel race failed on run $_run/50"
+              echo "run $_run/50: ${_mp_dur}s FAIL"
+              echo "::error::mixed parallel race failed on run $_run/50 (${_mp_dur}s)"
               exit 1
             fi
             if echo "$_mp_out" | grep -qE '# skip|^ok .* # skip'; then
               echo "$_mp_out"
+              echo "run $_run/50: ${_mp_dur}s SKIP"
               echo "::error::mixed parallel race must not skip on macOS bash 3.2 (run $_run/50)"
               exit 1
             fi
             _mp_plan="$(echo "$_mp_out" | grep '^1\.\.' | head -1)"
             _mp_n="${_mp_plan#1..}"
             if [ -z "$_mp_n" ] || [ "$_mp_n" -eq 0 ] 2>/dev/null; then
+              echo "run $_run/50: ${_mp_dur}s ZERO-TESTS"
               echo "::error::mixed parallel race: zero tests executed on run $_run/50"
               exit 1
             fi
+            echo "run $_run/50: ${_mp_dur}s ok"
           done
           echo "50/50 mixed parallel race runs passed."
           echo "::endgroup::"

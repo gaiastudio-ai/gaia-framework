@@ -4677,3 +4677,307 @@ SHIMEOF
     false
   }
 }
+
+# ============================================================
+# Optimisation validation: temp reuse, reaper throttle, lazy cap
+# ============================================================
+
+@test "holder dies mid-contention: other contenders reclaim and finish within deadline" {
+  # A acquires the lock and is killed. B and C contend; both must
+  # eventually acquire (after the reap threshold) within their
+  # deadlines, with no double holder at any point.
+  local lock_file="$LOCK_DIR/die-mid.lock"
+  local holder_ready="$TEST_TMP/die-mid-ready"
+  local marker="$TEST_TMP/die-mid-cs"
+  local overlap="$TEST_TMP/die-mid-overlap"
+  local b_done="$TEST_TMP/die-mid-b"
+  local c_done="$TEST_TMP/die-mid-c"
+  rm -f "$holder_ready" "$overlap" "$b_done" "$c_done"
+
+  # A: acquire and hold, signal readiness.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 10 9 || exit 1
+    touch "'"$holder_ready"'"
+    while :; do sleep 0.1; done
+  ' &
+  local a_pid=$!
+  _wait_for_file "$holder_ready"
+
+  # Kill A.
+  kill -9 "$a_pid" 2>/dev/null || true
+  wait "$a_pid" 2>/dev/null || true
+  sleep 1
+
+  # B and C contend with a short reap threshold.
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || exit 1
+    if ! mkdir "'"$marker"'" 2>/dev/null; then
+      echo OVERLAP > "'"$overlap"'"
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+    rmdir "'"$marker"'" 2>/dev/null || true
+    release_lock 9
+    touch "'"$b_done"'"
+  ' &
+  local b_pid=$!
+
+  bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 10 9 2>/dev/null || exit 1
+    if ! mkdir "'"$marker"'" 2>/dev/null; then
+      echo OVERLAP > "'"$overlap"'"
+    fi
+    sleep 0.2 2>/dev/null || sleep 1
+    rmdir "'"$marker"'" 2>/dev/null || true
+    release_lock 9
+    touch "'"$c_done"'"
+  ' &
+  local c_pid=$!
+
+  wait "$b_pid" 2>/dev/null || true
+  wait "$c_pid" 2>/dev/null || true
+
+  [ -f "$b_done" ] || { echo "B never acquired" >&2; false; }
+  [ -f "$c_done" ] || { echo "C never acquired" >&2; false; }
+  [ ! -f "$overlap" ] || { echo "double holder detected" >&2; false; }
+}
+
+@test "deadline shorter than reap threshold: acquirer times out cleanly" {
+  # A lock with a dead PID and a FRESH mtime. The reap threshold is 10 s,
+  # so the reaper reads the dead PID but refuses to clear it (file too
+  # young). The acquirer has a 2 s deadline, which is shorter than the
+  # 10 s the reaper would need. The acquirer must time out cleanly.
+  local lock_file="$LOCK_DIR/short-dl.lock"
+  printf '99999 1000000000\n' > "$lock_file"
+  # Do NOT backdate — the file has a fresh mtime, so age < 10 s threshold.
+
+  local start_s elapsed
+  start_s="$(date +%s)"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_REAP_SECONDS=10
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9
+  '
+  elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$status" -eq 3 ] || { echo "expected exit 3 (timeout), got $status" >&2; false; }
+  [ "$elapsed" -ge 2 ] || { echo "returned in ${elapsed}s, expected >=2" >&2; false; }
+  [ "$elapsed" -le 5 ] || { echo "took ${elapsed}s, expected ~2" >&2; false; }
+  [[ "$output" == *"lock_timeout"* ]] || { echo "no timeout diagnostic: $output" >&2; false; }
+}
+
+@test "reused temp never collides across concurrent subshells of one process" {
+  # 8 background subshells of one process acquire and release in a loop.
+  # Assert unique temp names via the debug trace and no double holder.
+  local lock_file="$LOCK_DIR/reuse-temp.lock"
+  local debug_log="$TEST_TMP/reuse-temp-debug.log"
+  local overlap="$TEST_TMP/reuse-temp-overlap"
+  local marker="$TEST_TMP/reuse-temp-cs"
+  : > "$debug_log"
+  rm -f "$overlap"
+
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export ACQUIRE_LOCK_DEBUG=1
+    export ACQUIRE_LOCK_DEBUG_LOG="'"$debug_log"'"
+    source "'"$HELPER"'"
+    for i in 1 2 3 4 5 6 7 8; do
+      (
+        source "'"$HELPER"'"
+        local _j
+        for _j in 1 2 3; do
+          if acquire_lock "'"$lock_file"'" 5 9 2>/dev/null; then
+            if ! mkdir "'"$marker"'" 2>/dev/null; then
+              echo OVERLAP > "'"$overlap"'"
+            fi
+            sleep 0.01 2>/dev/null || true
+            rmdir "'"$marker"'" 2>/dev/null || true
+            release_lock 9
+          fi
+        done
+      ) &
+    done
+    wait 2>/dev/null || true
+  '
+
+  [ ! -f "$overlap" ] || { echo "double holder detected" >&2; false; }
+
+  # Check temp names are unique.
+  local total distinct
+  total="$(grep -c '^tmp ' "$debug_log" || true)"
+  [ "$total" -ge 8 ] || { echo "too few temp traces: $total" >&2; false; }
+  distinct="$(awk '$1 == "tmp" { print $2 }' "$debug_log" | sort -u | wc -l | tr -d ' ')"
+  [ "$distinct" -ge 8 ] || {
+    echo "temp collision: $total traced, $distinct unique" >&2
+    false
+  }
+}
+
+@test "cleanup path: no .lock-tmp residue after acquire+release or timeout" {
+  local lock_file="$LOCK_DIR/cleanup.lock"
+
+  # Test 1: after a successful acquire and release.
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 || exit 1
+    release_lock 9
+  '
+  [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
+  local residue
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after release: $residue" >&2; false; }
+
+  # Test 2: after a timeout.
+  local held_lock="$LOCK_DIR/cleanup-held.lock"
+  printf '%s %s\n' "$$" "$(date +%s)" > "$held_lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$held_lock"'" 1 9
+  '
+  [ "$status" -ne 0 ]  # must have timed out
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after timeout: $residue" >&2; false; }
+
+  # Test 3: a published lock is never removed by temp cleanup.
+  local pub_lock="$LOCK_DIR/cleanup-pub.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$pub_lock"'" 5 9 || exit 1
+    # Do NOT release — leave the published lock in place.
+    echo "HELD"
+  '
+  [[ "$output" == *"HELD"* ]] || { echo "acquire failed: $output" >&2; false; }
+  [ -f "$pub_lock" ] || { echo "published lock vanished" >&2; false; }
+  rm -f "$held_lock"
+}
+
+@test "lazy capability probe: forced-fallback still probes when flock is usable" {
+  # The reaper's flock probe runs even under GAIA_LOCK_FORCE_FALLBACK=1
+  # when flock is on PATH. This test verifies the lazy probe runs before
+  # the reaper's flock-probe decision.
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  local lock_file="$LOCK_DIR/lazy-probe.lock"
+  local a_ready="$TEST_TMP/lazy-a-ready"
+  local a_done="$TEST_TMP/lazy-a-done"
+  rm -f "$a_ready" "$a_done"
+
+  # A: flock-mode holder.
+  bash -c '
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 5 9 2>/dev/null || exit 1
+    touch "'"$a_ready"'"
+    w=0; while [ ! -f "'"$a_done"'" ] && [ "$w" -lt 50 ]; do
+      sleep 0.2 2>/dev/null || sleep 1; w=$((w+1))
+    done
+    release_lock 9
+  ' &
+  local a_pid=$!
+  _wait_for_file "$a_ready"
+
+  # X: forced-fallback acquirer (lazy cap probe must run before reaper).
+  run bash -c '
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    unset GAIA_PARALLEL_EXECUTION
+    source "'"$HELPER"'"
+    acquire_lock "'"$lock_file"'" 2 9 2>/dev/null
+    echo "rc=$?"
+  '
+
+  touch "$a_done"
+  wait "$a_pid" 2>/dev/null || true
+
+  # X must have been excluded (probe detected A).
+  [[ "$output" == *"rc=3"* ]] || [[ "$output" == *"rc=1"* ]] || {
+    echo "X was not excluded: $output" >&2; false
+  }
+}
+
+@test "lazy capability probe: incompatible flock gives fallback in default, rejection in parallel" {
+  local real_flock=""
+  real_flock="$(command -v flock 2>/dev/null || true)"
+  [ -n "$real_flock" ] || skip "flock not available"
+
+  local shim_dir="$TEST_TMP/lazy-incompat"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/flock" <<SHIMEOF
+#!/bin/sh
+for _a in "\$@"; do case "\$_a" in -w|-n) exit 1 ;; esac; done
+exec "$real_flock" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/flock"
+
+  # Default mode: falls back to ln(2) via the lazy probe.
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$LOCK_DIR/lazy-incompat.lock"'" 2 9 2>/dev/null || exit 1
+    echo "ACQUIRED"
+    release_lock 9
+  '
+  [[ "$output" == *"ACQUIRED"* ]] || {
+    echo "did not fall back via lazy probe: $output" >&2; false
+  }
+
+  # Parallel mode: rejected.
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    export GAIA_PARALLEL_EXECUTION=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$LOCK_DIR/lazy-incompat-par.lock"'" 2 9 2>&1
+  '
+  [ "$status" -ne 0 ] || {
+    echo "incompatible flock accepted in parallel mode via lazy probe" >&2; false
+  }
+  [[ "$output" == *"-w or -n"* ]] || {
+    echo "no capability diagnostic: $output" >&2; false
+  }
+}
+
+@test "lazy capability probe: no fd 223 leak after incompatible flock probe" {
+  local real_flock=""
+  real_flock="$(command -v flock 2>/dev/null || true)"
+  [ -n "$real_flock" ] || skip "flock not available"
+
+  local shim_dir="$TEST_TMP/lazy-fd-leak"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/flock" <<SHIMEOF
+#!/bin/sh
+for _a in "\$@"; do case "\$_a" in -w|-n) exit 1 ;; esac; done
+exec "$real_flock" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/flock"
+
+  run bash -c '
+    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
+    source "'"$HELPER"'"
+    # Trigger the lazy probe.
+    acquire_lock "'"$LOCK_DIR/lazy-fd-leak.lock"'" 2 9 2>/dev/null || true
+    if [ -e /proc/self/fd/223 ] || [ -e /dev/fd/223 ]; then
+      echo "FD_223_LEAKED"
+    else
+      echo "FD_223_CLEAN"
+    fi
+  '
+  [[ "$output" == *"FD_223_CLEAN"* ]] || {
+    echo "fd 223 leaked after lazy probe: $output" >&2; false
+  }
+}
