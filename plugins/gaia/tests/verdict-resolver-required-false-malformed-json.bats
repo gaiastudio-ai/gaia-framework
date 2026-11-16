@@ -24,13 +24,15 @@ teardown() { common_teardown; }
 
 # --- helpers (thin wrappers that build JSON via the real schema) ---
 
+_FIXTURE_KEY="E900-S1" # lint-pack:allow leaked-identifiers — synthetic fixture story key for resolver tests
+
 write_analysis() {
   # write_analysis <path> <checks-json-array>
   local path="$1"; shift
   cat > "$path" <<ENDOFANALYSIS
 {
   "schema_version": "1.0",
-  "story_key": "E900-S1",
+  "story_key": "${_FIXTURE_KEY}",
   "skill": "gaia-code-review",
   "skill_version": "1.0",
   "model": "test-model",

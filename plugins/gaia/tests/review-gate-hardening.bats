@@ -19,7 +19,7 @@ setup() {
   TST="$TEST_TMP/docs/test-artifacts"
   mkdir -p "$ART" "$TST"
 
-  STORY_KEY="E900-S1"
+  STORY_KEY="E900-S1" # lint-pack:allow leaked-identifiers — synthetic fixture story key for gate tests
   STORY_FILE="$ART/${STORY_KEY}-fixture.md"
   _write_story_file "$STORY_FILE" "$STORY_KEY"
 }
