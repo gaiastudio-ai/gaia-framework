@@ -1368,3 +1368,273 @@ jobs:
             exit 1
           fi
           echo "Disposition: flock identity VERIFIED under macOS bash 3.2."
+
+  # ================================================================
+  # TEMPORARY lock race measurement — remove before merge.
+  # Data collection only; never required by other jobs.
+  # ================================================================
+  TEMP-lock-race-measure:
+    if: github.head_ref == 'tmp/lock-timing-measurement'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install yq jq
+          else
+            sudo apt-get update && sudo apt-get install -y jq
+            YQ_VER="v4.44.6"
+            sudo wget -qO /usr/local/bin/yq \
+              "https://github.com/mikefarah/yq/releases/download/${YQ_VER}/yq_linux_amd64"
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          yq --version
+          echo "bash: $BASH_VERSION"
+
+      - name: Prepare trees
+        id: trees
+        run: |
+          set -euo pipefail
+          CAND="$(pwd)"
+          CAND_SHA="$(git rev-parse HEAD)"
+          STG_DIR="$(mktemp -d)"
+          git worktree add --detach "$STG_DIR" 645a9dfdb0b4c9af4ec0ce7f81078b897367ff93
+          STG_SHA="$(git -C "$STG_DIR" rev-parse HEAD)"
+          echo "cand=$CAND" >> "$GITHUB_OUTPUT"
+          echo "cand_sha=$CAND_SHA" >> "$GITHUB_OUTPUT"
+          echo "stg=$STG_DIR" >> "$GITHUB_OUTPUT"
+          echo "stg_sha=$STG_SHA" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $CAND_SHA  Staging: $STG_SHA"
+
+      - name: Record environment
+        run: |
+          echo "OS: $RUNNER_OS"
+          uname -a
+          echo "bash: $BASH_VERSION"
+          yq --version
+          jq --version
+          command -v flock && flock --version 2>&1 || echo "flock: not available"
+          echo "Candidate SHA: ${{ steps.trees.outputs.cand_sha }}"
+          echo "Staging SHA:   ${{ steps.trees.outputs.stg_sha }}"
+
+      - name: Run measurements
+        env:
+          CAND: ${{ steps.trees.outputs.cand }}
+          STG: ${{ steps.trees.outputs.stg }}
+        run: |
+          set -euo pipefail
+          LC_ALL=C; export LC_ALL
+          unset GAIA_PARALLEL_EXECUTION
+
+          OUT="$(mktemp -d)"
+          REAL_SLEEP="$(command -v sleep)"
+
+          _ts_ms() {
+            if perl -MTime::HiRes -e 1 2>/dev/null; then
+              perl -MTime::HiRes -e 'printf "%d\n", Time::HiRes::time()*1000'
+            elif python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null; then
+              python3 -c 'import time; print(int(time.time()*1000))'
+            else
+              echo "$(( $(date +%s) * 1000 ))"
+            fi
+          }
+
+          _build_sleep_shim() {
+            local sd="$1" ws="$2"
+            mkdir -p "$sd"
+            cat > "$sd/sleep" <<SHIMEOF
+          #!/usr/bin/env bash
+          if [ "\$1" = "0.100" ] || [ "\$1" = "0.1" ] || [ "\$1" = ".1" ]; then
+            if ! mkdir "$ws/inside" 2>/dev/null; then
+              touch "$ws/overlap.\$\$"
+            fi
+            _n=1
+            while ! mkdir "$ws/slot.\$_n" 2>/dev/null; do
+              _n=\$((_n + 1)); [ "\$_n" -lt 100 ] || break
+            done
+            "$REAL_SLEEP" 0.1
+            rmdir "$ws/slot.\$_n" 2>/dev/null || true
+            rmdir "$ws/inside" 2>/dev/null || true
+            exit 0
+          fi
+          exec "$REAL_SLEEP" "\$@"
+          SHIMEOF
+            chmod +x "$sd/sleep"
+          }
+
+          _seed() {
+            local t="$1"
+            printf 'last_updated: "2026-01-01"\nitems:\n' > "$t"
+            for i in $(seq 1 16); do
+              printf '  - id: "LT-%d"\n    status: "open"\n    text: "Item %d"\n' "$i" "$i" >> "$t"
+            done
+          }
+
+          measure() {
+            local tree="$1" label="$2" run_n="$3"
+            local rd="$OUT/${label}-run${run_n}"
+            mkdir -p "$rd/rc" "$rd/ws" "$rd/barrier"
+            local target="$rd/ai.yaml"
+            _seed "$target"
+            local sd="$rd/shim"
+            _build_sleep_shim "$sd" "$rd/ws"
+            local aiw="$tree/plugins/gaia/scripts/action-items-write.sh"
+            [ -f "$aiw" ] || { echo "ERROR: $aiw not found" >&2; return 1; }
+
+            local pids=() i
+            for i in $(seq 1 16); do
+              (
+                export PATH="$sd:$PATH"
+                export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=60 GAIA_AIW_TEST_HOLD_SECONDS=0.100
+                unset GAIA_PARALLEL_EXECUTION
+                source "$aiw"
+                touch "$rd/barrier/ready.res.$i"
+                while [ ! -f "$rd/barrier/go" ]; do "$REAL_SLEEP" 0.01 2>/dev/null || "$REAL_SLEEP" 1; done
+                _t0="$(_ts_ms)"; _rc=0
+                aiw_resolve --target "$target" --item "LT-$i" --status "done" \
+                  --resolution "fr-resolved-$i" > "$rd/rc/res-$i.out" 2>&1 || _rc=$?
+                _t1="$(_ts_ms)"
+                printf '%s %s %s %s resolve\n' "$_t0" "$_t1" "$_rc" "$i" > "$rd/rc/res-$i.timing"
+              ) &
+              pids+=($!)
+            done
+            for i in $(seq 1 16); do
+              (
+                export PATH="$sd:$PATH"
+                export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=60 GAIA_AIW_TEST_HOLD_SECONDS=0.100
+                unset GAIA_PARALLEL_EXECUTION
+                source "$aiw"
+                touch "$rd/barrier/ready.app.$i"
+                while [ ! -f "$rd/barrier/go" ]; do "$REAL_SLEEP" 0.01 2>/dev/null || "$REAL_SLEEP" 1; done
+                _t0="$(_ts_ms)"; _rc=0
+                aiw_write --target "$target" --sprint-id "sprint-99" \
+                  --classification "implementation" --text "FR appended $i" \
+                  --ref-key "story_key" --ref-value "ref-$i" > "$rd/rc/app-$i.out" 2>&1 || _rc=$?
+                _t1="$(_ts_ms)"
+                printf '%s %s %s %s append\n' "$_t0" "$_t1" "$_rc" "$i" > "$rd/rc/app-$i.timing"
+              ) &
+              pids+=($!)
+            done
+
+            local rdy=0 wl=0
+            while [ "$rdy" -lt 32 ] && [ "$wl" -lt 300 ]; do
+              rdy="$(find "$rd/barrier" -name 'ready.*' 2>/dev/null | wc -l | tr -d ' ')"
+              "$REAL_SLEEP" 0.05 2>/dev/null || "$REAL_SLEEP" 1; wl=$((wl+1))
+            done
+
+            local wt0; wt0="$(_ts_ms)"
+            touch "$rd/barrier/go"
+            for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+            local wt1; wt1="$(_ts_ms)"
+            local wall=$(( wt1 - wt0 ))
+
+            local rok=0 aok=0 durs="" _f
+            for _f in "$rd/rc"/res-*.timing; do
+              [ -f "$_f" ] || continue
+              read -r _a _b _rc _idx _k < "$_f"
+              durs="$durs $((_b - _a))"
+              [ "$_rc" = "0" ] && rok=$((rok+1))
+            done
+            for _f in "$rd/rc"/app-*.timing; do
+              [ -f "$_f" ] || continue
+              read -r _a _b _rc _idx _k < "$_f"
+              durs="$durs $((_b - _a))"
+              [ "$_rc" = "0" ] && aok=$((aok+1))
+            done
+            local tok=$((rok+aok))
+            local yv="yes"
+            yq '.' "$target" >/dev/null 2>&1 || yv="NO"
+            local dc=0 ti=0 lu="no"
+            if [ "$yv" = "yes" ]; then
+              dc="$(yq -r '[.items[]|select(.status=="done")]|length' "$target" 2>/dev/null)" || dc=0
+              ti="$(yq -r '.items|length' "$target" 2>/dev/null)" || ti=0
+              [ "$dc" -eq "$rok" ] && [ "$ti" -eq $((16+aok)) ] || lu="YES"
+            fi
+            local ov; ov="$(find "$rd/ws" -name 'overlap.*' 2>/dev/null | wc -l | tr -d ' ')"
+
+            local sd2 p50=0 p90=0 mx=0 nd
+            sd2="$(printf '%s\n' $durs | sort -n)"
+            nd="$(printf '%s\n' $durs | wc -w | tr -d ' ')"
+            if [ "$nd" -gt 0 ]; then
+              mx="$(printf '%s\n' $sd2 | tail -1)"
+              p50="$(printf '%s\n' $sd2 | sed -n "$(( (nd*50+99)/100 ))p")"
+              p90="$(printf '%s\n' $sd2 | sed -n "$(( (nd*90+99)/100 ))p")"
+            fi
+
+            local rch
+            rch="$(for _f in "$rd/rc"/*.timing; do [ -f "$_f" ] || continue; read -r _ _ _rc _ _ < "$_f"; printf '%s\n' "$_rc"; done | sort | uniq -c | tr '\n' ' ')"
+
+            printf 'SUMMARY %s run%s: ok=%s/32 res=%s app=%s wall=%sms p50=%sms p90=%sms max=%sms yaml=%s lost=%s overlaps=%s rc=[%s]\n' \
+              "$label" "$run_n" "$tok" "$rok" "$aok" "$wall" "$p50" "$p90" "$mx" "$yv" "$lu" "$ov" "$rch"
+
+            # Per-writer raw lines.
+            for _f in "$rd/rc"/*.timing; do
+              [ -f "$_f" ] || continue
+              read -r _a _b _rc _idx _k < "$_f"
+              printf '%s %s %s %s %s %sms\n' "$label" "$run_n" "$_k" "$_idx" "rc=$_rc" "$((_b-_a))"
+            done
+
+            # Append to TSV.
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$label" "$run_n" "$tok" "$rok" "$aok" "$wall" "$p50" "$p90" "$mx" "$yv" "$lu" "$ov" \
+              >> "$OUT/results.tsv"
+          }
+
+          printf 'label\trun\tok\tres_ok\tapp_ok\twall_ms\tp50_ms\tp90_ms\tmax_ms\tyaml\tlost\toverlaps\n' > "$OUT/results.tsv"
+
+          for pair in 1 2 3 4 5 6; do
+            echo "::group::Pair $pair"
+            if [ $((pair % 2)) -eq 1 ]; then
+              measure "$STG" "stg" "$pair"
+              measure "$CAND" "cand" "$pair"
+            else
+              measure "$CAND" "cand" "$pair"
+              measure "$STG" "stg" "$pair"
+            fi
+            echo "::endgroup::"
+          done
+
+          echo ""
+          echo "=== Results ==="
+          column -t -s $'\t' "$OUT/results.tsv" 2>/dev/null || cat "$OUT/results.tsv"
+
+          # Write markdown summary.
+          {
+            echo "## Lock Race Measurement ($RUNNER_OS)"
+            echo ""
+            echo "| Label | Run | OK | Res | App | Wall ms | p50 ms | p90 ms | Max ms | YAML | Lost | Overlaps |"
+            echo "|-------|-----|----|-----|-----|---------|--------|--------|--------|------|------|----------|"
+            tail -n +2 "$OUT/results.tsv" | while IFS=$'\t' read -r la ru ok ro ao wl p5 p9 mx yv lu ov; do
+              printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+                "$la" "$ru" "$ok" "$ro" "$ao" "$wl" "$p5" "$p9" "$mx" "$yv" "$lu" "$ov"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Save results for upload.
+          cp "$OUT/results.tsv" "$GITHUB_WORKSPACE/race-results-$RUNNER_OS.tsv"
+          cp -r "$OUT" "$GITHUB_WORKSPACE/race-raw-$RUNNER_OS"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: lock-race-${{ matrix.os }}
+          path: |
+            race-results-*.tsv
+            race-raw-*/
+
+      - name: Cleanup staging worktree
+        if: always()
+        run: |
+          STG="${{ steps.trees.outputs.stg }}"
+          [ -n "$STG" ] && git worktree remove --force "$STG" 2>/dev/null || true
