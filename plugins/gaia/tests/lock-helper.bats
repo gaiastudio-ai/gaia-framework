@@ -5072,115 +5072,138 @@ SHIMEOF
   rm -f "$lock_file" "$flag"
 }
 
-@test "lazy capability probe: forced-fallback still probes when flock is usable" {
-  # The reaper's flock probe runs even under GAIA_LOCK_FORCE_FALLBACK=1
-  # when flock is on PATH. This test verifies the lazy probe runs before
-  # the reaper's flock-probe decision.
-  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
-  local lock_file="$LOCK_DIR/lazy-probe.lock"
-  local a_ready="$TEST_TMP/lazy-a-ready"
-  local a_done="$TEST_TMP/lazy-a-done"
-  rm -f "$a_ready" "$a_done"
+@test "strict fallback: in-loop type rejection returns exit 4 and never enters" {
+  # RF-17 regression: when the in-loop strict type check rejects, the
+  # cleanup must preserve the status code. The bug was: `rm || true;
+  # return $?` always returned 0 because `|| true` clobbered $?.
+  # Strategy: override _al_enforce_path_type_strict to pass on the
+  # pre-loop check (so the temp is created) and fail with exit 4 on the
+  # in-loop check (a file-based flag distinguishes the calls).
+  local lock_file="$LOCK_DIR/strict-inloop.lock"
+  local entered="$TEST_TMP/strict-inloop-entered"
+  local flag="$TEST_TMP/strict-inloop-flag"
+  rm -f "$entered" "$flag"
 
-  # A: flock-mode holder.
-  bash -c '
-    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
-    source "'"$HELPER"'"
-    acquire_lock "'"$lock_file"'" 5 9 2>/dev/null || exit 1
-    touch "'"$a_ready"'"
-    w=0; while [ ! -f "'"$a_done"'" ] && [ "$w" -lt 50 ]; do
-      sleep 0.2 2>/dev/null || sleep 1; w=$((w+1))
-    done
-    release_lock 9
-  ' &
-  local a_pid=$!
-  _wait_for_file "$a_ready"
+  # Plant a held lock so the first ln fails and the loop iterates.
+  local holder_done="$TEST_TMP/strict-inloop-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s nonce\n' "$holder_pid" "$(date +%s)" > "$lock_file"
 
-  # X: forced-fallback acquirer (lazy cap probe must run before reaper).
+  local start_s
+  start_s="$(date +%s)"
   run bash -c '
+    export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
-    unset GAIA_PARALLEL_EXECUTION
     source "'"$HELPER"'"
-    acquire_lock "'"$lock_file"'" 2 9 2>/dev/null
-    echo "rc=$?"
-  '
-
-  touch "$a_done"
-  wait "$a_pid" 2>/dev/null || true
-
-  # X must have been excluded (probe detected A).
-  [[ "$output" == *"rc=3"* ]] || [[ "$output" == *"rc=1"* ]] || {
-    echo "X was not excluded: $output" >&2; false
-  }
-}
-
-@test "lazy capability probe: incompatible flock gives fallback in default, rejection in parallel" {
-  local real_flock=""
-  real_flock="$(command -v flock 2>/dev/null || true)"
-  [ -n "$real_flock" ] || skip "flock not available"  # lint-pack:allow-skip
-
-  local shim_dir="$TEST_TMP/lazy-incompat"
-  mkdir -p "$shim_dir"
-  cat > "$shim_dir/flock" <<SHIMEOF
-#!/bin/sh
-for _a in "\$@"; do case "\$_a" in -w|-n) exit 1 ;; esac; done
-exec "$real_flock" "\$@"
-SHIMEOF
-  chmod +x "$shim_dir/flock"
-
-  # Default mode: falls back to ln(2) via the lazy probe.
-  run bash -c '
-    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
-    source "'"$HELPER"'"
-    acquire_lock "'"$LOCK_DIR/lazy-incompat.lock"'" 2 9 2>/dev/null || exit 1
-    echo "ACQUIRED"
-    release_lock 9
-  '
-  [[ "$output" == *"ACQUIRED"* ]] || {
-    echo "did not fall back via lazy probe: $output" >&2; false
-  }
-
-  # Parallel mode: rejected.
-  run bash -c '
-    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
-    export GAIA_PARALLEL_EXECUTION=1
-    source "'"$HELPER"'"
-    acquire_lock "'"$LOCK_DIR/lazy-incompat-par.lock"'" 2 9 2>&1
-  '
-  [ "$status" -ne 0 ] || {
-    echo "incompatible flock accepted in parallel mode via lazy probe" >&2; false
-  }
-  [[ "$output" == *"-w or -n"* ]] || {
-    echo "no capability diagnostic: $output" >&2; false
-  }
-}
-
-@test "lazy capability probe: no fd 223 leak after incompatible flock probe" {
-  local real_flock=""
-  real_flock="$(command -v flock 2>/dev/null || true)"
-  [ -n "$real_flock" ] || skip "flock not available"  # lint-pack:allow-skip
-
-  local shim_dir="$TEST_TMP/lazy-fd-leak"
-  mkdir -p "$shim_dir"
-  cat > "$shim_dir/flock" <<SHIMEOF
-#!/bin/sh
-for _a in "\$@"; do case "\$_a" in -w|-n) exit 1 ;; esac; done
-exec "$real_flock" "\$@"
-SHIMEOF
-  chmod +x "$shim_dir/flock"
-
-  run bash -c '
-    export PATH="'"$shim_dir"':'"$SAFE_PATH"'"
-    source "'"$HELPER"'"
-    # Trigger the lazy probe.
-    acquire_lock "'"$LOCK_DIR/lazy-fd-leak.lock"'" 2 9 2>/dev/null || true
-    if [ -e /proc/self/fd/223 ] || [ -e /dev/fd/223 ]; then
-      echo "FD_223_LEAKED"
-    else
-      echo "FD_223_CLEAN"
+    # Pre-loop check: pass. In-loop check (after temp created): fail 4.
+    _al_enforce_path_type_strict() {
+      if [ -f "'"$flag"'" ]; then
+        printf "lock_symlink_detected: %s\n" "$1" >&2
+        return 4
+      fi
+      touch "'"$flag"'"
+      return 0
+    }
+    acquire_lock "'"$lock_file"'" 10 9 --strict
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+      touch "'"$entered"'"
+      release_lock 9
     fi
+    exit "$rc"
   '
-  [[ "$output" == *"FD_223_CLEAN"* ]] || {
-    echo "fd 223 leaked after lazy probe: $output" >&2; false
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null || true
+
+  # (a) Exit status must be 4.
+  [ "$status" -eq 4 ] || { echo "expected exit 4, got $status" >&2; false; }
+
+  # (b) Prompt termination (well under the 10 s deadline).
+  [ "$elapsed" -lt 3 ] || { echo "took ${elapsed}s — not prompt" >&2; false; }
+
+  # (c) Critical section never entered.
+  [ ! -f "$entered" ] || { echo "critical section entered despite type rejection" >&2; false; }
+
+  # (d) No temp residue.
+  local residue
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue: $residue" >&2; false; }
+
+  # (e) The holder's lock file is intact (not damaged by cleanup).
+  if [ -f "$lock_file" ]; then
+    grep -qF "$holder_pid" "$lock_file" || {
+      echo "holder's lock file damaged" >&2; false
+    }
+  fi
+
+  rm -f "$lock_file" "$flag"
+}
+
+@test "flock dead-PID reaper throttled: bounded calls per second" {
+  # The flock path's dead-PID/non-empty record wait must call the reaper
+  # at most about once per second (plus the initial call). Count calls
+  # via the debug trace.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+  local lock_file="$LOCK_DIR/flock-reap-throttle.lock"
+  local debug_log="$TEST_TMP/flock-reap-throttle.log"
+  : > "$debug_log"
+
+  # Plant a fresh stale lock (dead PID, NOT backdated — reaper waits for age).
+  printf '99999 1000000000\n' > "$lock_file"
+
+  run bash -c '
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    export GAIA_LOCK_REAP_SECONDS=10
+    source "'"$HELPER"'"
+    # Count _al_try_reap calls via a wrapper.
+    _orig_try_reap="$(declare -f _al_try_reap)"
+    _al_try_reap() {
+      printf "reap_call %s\n" "$(date +%s)" >> "'"$debug_log"'"
+      eval "$_orig_try_reap"
+      _al_try_reap "$@"
+    }
+    acquire_lock "'"$lock_file"'" 3 9 2>/dev/null || true
+  '
+
+  local call_count
+  call_count="$(grep -c '^reap_call ' "$debug_log" || true)"
+  # 3 s timeout, at most 1 reap/s + initial = about 4 max. Allow some slack.
+  [ "$call_count" -le 6 ] || {
+    echo "reaper called $call_count times in 3 s — not throttled" >&2
+    cat "$debug_log" >&2
+    false
   }
+  # At least 1 call must have been made.
+  [ "$call_count" -ge 1 ] || {
+    echo "reaper never called" >&2; false
+  }
+  rm -f "$lock_file"
+}
+
+@test "flock acquirer reclaims a dead-PID record after reap threshold" {
+  # A flock-mode acquirer facing a dead-PID file must eventually reclaim
+  # it (after the reap threshold) and acquire, within the deadline.
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+  local lock_file="$LOCK_DIR/flock-deadpid-reclaim.lock"
+  printf '99999 1000000000\n' > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  local start_s rc=0
+  start_s="$(date +%s)"
+  (
+    unset GAIA_LOCK_FORCE_FALLBACK GAIA_PARALLEL_EXECUTION
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$HELPER"
+    acquire_lock "$lock_file" 10 8 2>/dev/null
+    release_lock 8
+  ) || rc=$?
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$rc" -eq 0 ] || { echo "failed to acquire (rc=$rc)" >&2; false; }
+  [ "$elapsed" -lt 8 ] || { echo "took ${elapsed}s — timed out" >&2; false; }
 }
