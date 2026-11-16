@@ -283,6 +283,62 @@ ls -1 ~/.claude/plugins/cache/gaiastudio-ai-gaia-framework/gaia/ | sort -V | tai
         <p>Make sure the bridge is enabled (<code>test_execution_bridge.bridge_enabled: true</code> in <code>.gaia/config/project-config.yaml</code>) AND a <code>test-environment.yaml</code> manifest exists with runners that the bridge can dispatch. Without both, reviews can write PASSED without execution evidence and the gate refuses to accept the verdict.</p>
       </section>
 
+      <section id="lock-recovery">
+        <h2>Lock recovery</h2>
+
+        <h3>Lock times out with &ldquo;cannot safely clear&rdquo; or reaper-mutex message</h3>
+        <p>When the fallback lock helper times out with either:</p>
+        <ul>
+          <li><code>acquire-lock: cannot safely clear &lt;path&gt;: it may be held by a process using flock, and this process has no usable flock to check.</code></li>
+          <li><code>acquire-lock: a reaper mutex is blocking lock cleanup: &lt;path&gt;.reap-mtx</code></li>
+        </ul>
+        <p>the lock path contains a leftover file that the current process cannot
+        clear automatically. This can happen when a process crashes between
+        creating a lock and publishing ownership, or when processes with
+        different locking capabilities (flock vs. fallback) share the same
+        lock path.</p>
+
+        <h4>Recovery steps</h4>
+        <ol>
+          <li><strong>Stop every GAIA process</strong> that uses the named lock path.
+          A timeout alone does not prove the original holder is dead.</li>
+          <li><strong>Inspect the file.</strong> If it is empty (zero bytes) or
+          contains a PID that is no longer running, it is safe to remove.</li>
+          <li><strong>Remove the leftover file</strong> (<code>rm</code> the lock
+          file and, if present, the <code>.reap-mtx</code> sibling).</li>
+          <li><strong>Restart</strong> the affected processes.</li>
+        </ol>
+
+        <h4>Prevention</h4>
+        <p>Make <code>util-linux</code> flock available on every process's
+        <code>PATH</code>, or configure all processes that share a lock path to
+        use the same locking mode. Installs mixing GAIA framework versions
+        must quiesce all GAIA processes before upgrading or recovering.</p>
+
+        <h3>Legacy <code>.lockdir</code> folder next to action-items.yaml</h3>
+        <p>Older writer versions used a directory-based lock
+        (<code>action-items.yaml.lockdir</code>) next to the data file. The
+        current writer uses file-based locking on
+        <code>action-items.yaml.lock</code> and <strong>never removes</strong>
+        a leftover <code>.lockdir</code> folder automatically. The folder is
+        harmless to the current writer (it acquires normally while the folder
+        exists), but leaving it in place does <strong>not</strong> make
+        concurrent old- and new-version writers safe&mdash;they use
+        independent lock mechanisms and cannot exclude each other.</p>
+
+        <h4>Recovery steps</h4>
+        <ol>
+          <li><strong>Stop every GAIA process</strong> that writes to
+          action-items.yaml.</li>
+          <li><strong>Remove the folder:</strong>
+          <code>rmdir .gaia/state/action-items.yaml.lockdir</code></li>
+          <li><strong>Restart</strong> the affected processes.</li>
+        </ol>
+        <p>Installs mixing GAIA framework versions must stop all GAIA
+        processes before upgrading so the old directory-based lock is never
+        held while the new file-based lock is active.</p>
+      </section>
+
       <footer class="page-footer">
         <p><a href="index.html">Back to home</a> · <a href="glossary.html">Glossary</a> · <a href="lifecycle-diagram.html">Lifecycle Diagram</a></p>
       </footer>

@@ -1163,7 +1163,7 @@ jobs:
     # Gate on diff-classify: skip for docs-only changes.
     if: needs.diff-classify.outputs.change_type != 'docs-only'
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
 
@@ -1210,9 +1210,13 @@ jobs:
           fi
           echo "OK: /bin/bash is version 3.x"
 
-      - name: Install bats via Homebrew
+      - name: Install bats and deps via Homebrew
         run: |
           brew install bats-core jq
+          # The action-items writer needs mikefarah yq v4 for structural
+          # verification. Install it so tests that exercise aiw_resolve do
+          # not skip or produce false failures.
+          brew install yq
 
       - name: Ensure BSD tools are ahead of Homebrew GNU tools in PATH
         run: |
@@ -1263,4 +1267,97 @@ jobs:
           bats tests/skills/bash32-portability-lint.bats
           echo "::endgroup::"
 
-          echo "Disposition: all selected macOS bash 3.2 checks completed successfully."
+          # --- Lock helper reaper overlap regression and race stability ---
+          # Must run under native macOS bash 3.2 + BSD tools, with NO skips.
+          # The GAIA_CI_MACOS_BASH32 env var is set so tests can assert the
+          # interpreter and tools at runtime (local runs on bash 5 are not
+          # broken because the assertions only fire when the flag is set).
+
+          export GAIA_CI_MACOS_BASH32=1
+
+          echo "::group::lock-helper reaper regression tests (no flock)"
+          # Confirm flock is absent at this point (fallback-only evidence).
+          if command -v flock >/dev/null 2>&1; then
+            echo "::error::flock is unexpectedly available before brew install"
+            exit 1
+          fi
+          _lh_out="$(bats --tap -f 'reaper rename-and-verify|two-reaper serialisation' \
+            plugins/gaia/tests/lock-helper.bats 2>&1)"
+          echo "$_lh_out"
+          # Fail if any test skipped or zero tests ran.
+          if echo "$_lh_out" | grep -qE '# skip|^ok .* # skip'; then
+            echo "::error::lock-helper reaper tests must not skip on macOS bash 3.2"
+            exit 1
+          fi
+          _lh_plan="$(echo "$_lh_out" | grep '^1\.\.' | head -1)"
+          _lh_n="${_lh_plan#1..}"
+          if [ -z "$_lh_n" ] || [ "$_lh_n" -eq 0 ] 2>/dev/null; then
+            echo "::error::lock-helper reaper tests: zero tests executed"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::mixed parallel race 50/50 under bash 3.2"
+          for _run in $(seq 1 50); do
+            _mp_out="$(bats --tap -f 'mixed parallel resolves and appends preserve all updates' \
+              plugins/gaia/tests/concurrent-sprint-lifecycle-scoped.bats 2>&1)"
+            if echo "$_mp_out" | grep -q '^not ok'; then
+              echo "$_mp_out"
+              echo "::error::mixed parallel race failed on run $_run/50"
+              exit 1
+            fi
+            if echo "$_mp_out" | grep -qE '# skip|^ok .* # skip'; then
+              echo "$_mp_out"
+              echo "::error::mixed parallel race must not skip on macOS bash 3.2 (run $_run/50)"
+              exit 1
+            fi
+            _mp_plan="$(echo "$_mp_out" | grep '^1\.\.' | head -1)"
+            _mp_n="${_mp_plan#1..}"
+            if [ -z "$_mp_n" ] || [ "$_mp_n" -eq 0 ] 2>/dev/null; then
+              echo "::error::mixed parallel race: zero tests executed on run $_run/50"
+              exit 1
+            fi
+          done
+          echo "50/50 mixed parallel race runs passed."
+          echo "::endgroup::"
+
+          echo "Disposition: fallback-only macOS bash 3.2 checks completed."
+
+      - name: Install util-linux flock for flock identity verification
+        run: brew install util-linux
+
+      - name: Flock identity check under macOS bash 3.2 with BSD tools
+        env:
+          GAIA_CI_MACOS_BASH32: '1'
+        run: |
+          set -euo pipefail
+
+          # Expose ONLY the brew-installed flock, not the rest of util-linux.
+          _flock_bin="$(brew --prefix util-linux)/bin/flock"
+          _flock_dir="$(mktemp -d)"
+          ln -s "$_flock_bin" "$_flock_dir/flock"
+          export PATH="$_flock_dir:$PATH"
+
+          echo "flock path: $(command -v flock)"
+          echo "bash version: $(/bin/bash -c 'echo $BASH_VERSION')"
+
+          _vt_out="$(bats --tap -f 'flock identity check yields VERIFIED' \
+            plugins/gaia/tests/lock-helper.bats 2>&1)"
+          echo "$_vt_out"
+
+          # Assert: non-zero plan, no skips.
+          _vt_plan="$(echo "$_vt_out" | grep '^1\.\.' | head -1)"
+          _vt_n="${_vt_plan#1..}"
+          if [ -z "$_vt_n" ] || [ "$_vt_n" -eq 0 ] 2>/dev/null; then
+            echo "::error::flock identity VERIFIED test: zero tests executed"
+            exit 1
+          fi
+          if echo "$_vt_out" | grep -qE '# skip|^ok .* # skip'; then
+            echo "::error::flock identity VERIFIED test must not skip"
+            exit 1
+          fi
+          if echo "$_vt_out" | grep -q '^not ok'; then
+            echo "::error::flock identity VERIFIED test failed"
+            exit 1
+          fi
+          echo "Disposition: flock identity VERIFIED under macOS bash 3.2."

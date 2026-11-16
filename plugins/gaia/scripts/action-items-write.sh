@@ -36,15 +36,35 @@
 set -uo pipefail
 
 # ---------------------------------------------------------------------------
-# Source the shared lock helper. Sourced inside a function guard so
-# LC_ALL=C export does not collide with callers that source us.
+# Source the shared lock helper. The helper exports LC_ALL=C at source time;
+# save and restore the caller's LC_ALL so sourcing this file does not leak
+# the export into the caller's environment.
 # ---------------------------------------------------------------------------
 _AIW_SCRIPTS_DIR="${BASH_SOURCE[0]%/*}"
+_AIW_SAVED_LC_ALL="${LC_ALL-__unset__}"
 # shellcheck source=lib/acquire-lock.sh
 source "${_AIW_SCRIPTS_DIR}/lib/acquire-lock.sh"
+if [ "$_AIW_SAVED_LC_ALL" = "__unset__" ]; then
+  unset LC_ALL
+else
+  LC_ALL="$_AIW_SAVED_LC_ALL"; export LC_ALL
+fi
+unset _AIW_SAVED_LC_ALL
 
 # Default lock timeout (seconds). Tests override via GAIA_AIW_LOCK_TIMEOUT.
 _AIW_LOCK_TIMEOUT="${GAIA_AIW_LOCK_TIMEOUT:-120}"
+
+# Cache yq-invariant checks at source time so they run once per process,
+# not once per resolve call under the lock.
+_AIW_YQ_BIN="$(command -v yq 2>/dev/null || true)"
+_AIW_YQ_FLAVOUR_OK=""
+if [ -n "$_AIW_YQ_BIN" ]; then
+  _aiw_yq_ver="$(yq --version 2>&1)" || true
+  case "$_aiw_yq_ver" in
+    *mikefarah*|*" v4."*|*" 4."*) _AIW_YQ_FLAVOUR_OK=1 ;;
+  esac
+  unset _aiw_yq_ver
+fi
 
 # Internal fd for the action-items lock. Chosen to avoid collision with
 # sprint-state.sh (fd 7, 8, 9) when both scripts are sourced together.
@@ -57,29 +77,44 @@ _AIW_LOCK_FD=6
 # override, and maps acquire_lock exit codes to the writer's stdout protocol.
 # Returns 0 on success, 1 on failure (with status=error already printed).
 #
-# The shared helper's fallback path has a transient failure mode: the
-# reaper can rm an ownerless lock file between a concurrent acquirer's
-# ln and its publication-inode stat, causing the publication check to
-# fail.  This wrapper retries on non-timeout failures within the
-# configured timeout so a transient refusal does not propagate as a
-# hard failure.
+# The shared helper's fallback path has two transient failure modes:
+#   (a) Subshells sharing $$ can collide on the temp-file name, causing
+#       the publication check to see a different process's content.
+#   (b) A separate-process reaper that judged the lock ownerless could
+#       delete the next holder's freshly linked lock between the link
+#       and the publication-inode stat.  This is closed by the reap
+#       mutex (mkdir serialisation) and rename-and-verify protocol in
+#       acquire-lock.sh.
+# This wrapper retries publication refusals (exit code 6) within the
+# remaining time, and fails immediately on permanent errors.
 # ---------------------------------------------------------------------------
 _aiw_lock() {
   local lock_file="$1" caller="$2"
   local _timeout="${GAIA_AIW_LOCK_TIMEOUT:-$_AIW_LOCK_TIMEOUT}"
 
-  # Clean up any leftover .lockdir from the old mkdir-based lock.
-  local _old_lockdir="${lock_file%.lock}.lockdir"
-  [ "${_old_lockdir}" = "${lock_file}" ] || rmdir "$_old_lockdir" 2>/dev/null || true
-
-  local _start _now _elapsed _al_rc
+  local _start _now _elapsed _remaining _al_rc
   _start="$(date +%s)"
+
+  # Temp file for capturing stderr from acquire_lock (created once,
+  # cleaned on every return path).
+  local _err_file=""
+  _err_file="$(mktemp 2>/dev/null)" || _err_file=""
 
   while true; do
     _al_rc=0
-    acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" || _al_rc=$?
+    if [ -n "$_err_file" ]; then
+      acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" 2>"$_err_file" || _al_rc=$?
+    else
+      # mktemp failed; let helper stderr pass straight through so
+      # the timeout diagnostic (naming .reap-mtx) is not lost.
+      acquire_lock "$lock_file" "$_timeout" "$_AIW_LOCK_FD" || _al_rc=$?
+    fi
 
     if [ "$_al_rc" -eq 0 ]; then
+      rm -f "$_err_file" 2>/dev/null || true
+      # A legacy .lockdir may exist from an older writer version. The
+      # writer never removes it automatically; manual recovery (after
+      # stopping all processes) is documented in troubleshooting.
       # Test-only hold hook: sleep inside the lock to simulate a slow
       # critical section for race reproduction.
       if [ -n "${GAIA_AIW_TEST_HOLD_SECONDS:-}" ]; then
@@ -89,28 +124,63 @@ _aiw_lock() {
     fi
 
     # Timeout: hard failure (the helper already waited the full duration).
+    # Forward the helper's stderr (which may contain a diagnostic naming
+    # a leftover reap-mutex file and the manual remedy) before removing
+    # the temp file. Stdout stays unchanged.
     if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_TIMEOUT" ]; then
+      if [ -n "$_err_file" ] && [ -s "$_err_file" ]; then
+        cat "$_err_file" >&2
+      fi
+      rm -f "$_err_file" 2>/dev/null || true
       printf 'status=error\nreason=%s: lock timeout\n' "$caller"
       return 1
     fi
 
-    # Parallel-execution gate: hard failure (flock is mandatory).
+    # Publication refusal (exit 6): transient — retry with only the
+    # remaining time before the original deadline. (Cause: see the
+    # function header — subshells sharing $$, or a separate-process
+    # reaper; both handled in the shared helper.)
+    if [ "$_al_rc" -eq "$ACQUIRE_LOCK_EXIT_PUBLISH" ]; then
+      _now="$(date +%s)"
+      _elapsed=$(( _now - _start ))
+      if [ "$_elapsed" -ge "$_timeout" ]; then
+        if [ -n "$_err_file" ] && [ -s "$_err_file" ]; then
+          cat "$_err_file" >&2
+        fi
+        rm -f "$_err_file" 2>/dev/null || true
+        printf 'status=error\nreason=%s: lock timeout\n' "$caller"
+        return 1
+      fi
+      _remaining=$(( _timeout - _elapsed ))
+      _timeout="$_remaining"
+      _start="$_now"
+      sleep 0.01 2>/dev/null || sleep 1
+      continue
+    fi
+
+    # Any other failure: permanent. Fail at once with the helper's reason.
+    local _reason=""
+    if [ -n "$_err_file" ] && [ -s "$_err_file" ]; then
+      _reason="$(head -1 "$_err_file")"
+    fi
+    rm -f "$_err_file" 2>/dev/null || true
+
+    # Report "parallel execution requires flock" when the parallel gate
+    # itself refused (flock absent or forced fallback), not for unrelated
+    # failures like permission denied when flock is present and usable.
     if [ "${GAIA_PARALLEL_EXECUTION:-}" = "1" ]; then
-      printf 'status=error\nreason=%s: lock unavailable (parallel execution requires flock)\n' "$caller"
-      return 1
+      if ! command -v flock >/dev/null 2>&1 || [ "${GAIA_LOCK_FORCE_FALLBACK:-}" = "1" ]; then
+        printf 'status=error\nreason=%s: lock unavailable (parallel execution requires flock)\n' "$caller"
+        return 1
+      fi
     fi
 
-    # Transient failure (e.g. the reaper rm'd an ownerless lock between
-    # our ln and the publication-inode stat): retry within the overall
-    # timeout.
-    _now="$(date +%s)"
-    _elapsed=$(( _now - _start ))
-    if [ "$_elapsed" -ge "$_timeout" ]; then
-      printf 'status=error\nreason=%s: lock timeout\n' "$caller"
-      return 1
+    if [ -n "$_reason" ]; then
+      printf 'status=error\nreason=%s: %s\n' "$caller" "$_reason"
+    else
+      printf 'status=error\nreason=%s: lock acquisition failed\n' "$caller"
     fi
-
-    sleep 0.05 2>/dev/null || sleep 1
+    return 1
   done
 }
 
@@ -1002,24 +1072,19 @@ aiw_resolve() {
   # --- yq structural verification (post-edit, pre-mv) ---
   # Refuses the edit if the awk output does not match the original file
   # structurally except in the expected fields of the target item.
-  # yq (mikefarah v4) is a framework prerequisite. Any violation, yq
-  # error, yq absence, or yq of another flavour refuses with rc 1 and
-  # the file untouched.
-  if ! command -v yq >/dev/null 2>&1; then
+  # yq (mikefarah v4) is a framework prerequisite. The availability and
+  # flavour checks are cached at source time (_AIW_YQ_BIN,
+  # _AIW_YQ_FLAVOUR_OK) so they do not fork under the lock.
+  if [ -z "$_AIW_YQ_BIN" ]; then
     rm -f "$tmp"
     printf 'status=error\nreason=aiw_resolve: yq is required but not found — file untouched\n'
     return 1
   fi
-  # Verify yq is mikefarah flavour (v4+): mikefarah's yq prints a version
-  # string containing "mikefarah" or a version starting with "v4".
-  local _yq_ver
-  _yq_ver="$(yq --version 2>&1)" || true
-  case "$_yq_ver" in
-    *mikefarah*|*" v4."*|*" 4."*) ;;
-    *) rm -f "$tmp"
-       printf 'status=error\nreason=aiw_resolve: yq is not mikefarah v4 (%s) — file untouched\n' "$_yq_ver"
-       return 1 ;;
-  esac
+  if [ -z "$_AIW_YQ_FLAVOUR_OK" ]; then
+    rm -f "$tmp"
+    printf 'status=error\nreason=aiw_resolve: yq is not mikefarah v4 — file untouched\n'
+    return 1
+  fi
   # Single-call structural verification. One yq process loads both the
   # original and the awk output via load(), computes every structural
   # invariant, and emits a compact JSON object of booleans and short

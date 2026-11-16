@@ -1527,11 +1527,9 @@ fi
 # trap that also releases is safe.
 _tss_release_lock() {
   release_lock 200 2>/dev/null || true
-  # Re-touch the sentinel so the lock file exists post-run.
-  # Under flock mode, the file persists (kernel-level lock released on fd
-  # close). Under fallback mode, release_lock removes the PID-carrying file
-  # and this touch restores a zero-byte sentinel.
-  touch "$STORY_STATUS_LOCK" 2>/dev/null || true
+  # No post-release sentinel: leaving an empty file at the lock path is
+  # unsafe when other processes may lack flock (they cannot probe for a
+  # holder and would time out under the fail-closed reaper rule).
 }
 
 # Acquire the cross-file lock via the shared helper (flock fast path, or the

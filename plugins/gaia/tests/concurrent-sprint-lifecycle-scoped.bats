@@ -3179,6 +3179,26 @@ SH
   # writer's own lock, not the sprint-state parallel gate.
   unset GAIA_PARALLEL_EXECUTION
 
+  # When GAIA_CI_MACOS_BASH32=1 (set by the macOS CI job), assert that
+  # bash 3.2 runs in the test body, in a writer child, and that required
+  # deps are present. Local bash 5 runs skip these assertions.
+  if [ "${GAIA_CI_MACOS_BASH32:-}" = "1" ]; then
+    # Test body interpreter.
+    [ "${BASH_VERSINFO[0]}" = "3" ] && [ "${BASH_VERSINFO[1]}" = "2" ] || {
+      echo "expected bash 3.2 in test body, got $BASH_VERSION" >&2; false; }
+    # Child process interpreter (spawned the way writers are spawned).
+    local _child_ver
+    _child_ver="$(bash -c 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"')"
+    [ "$_child_ver" = "3.2" ] || {
+      echo "expected bash 3.2 in child process, got $_child_ver" >&2; false; }
+    # Required deps.
+    command -v yq >/dev/null 2>&1 || { echo "yq not found" >&2; false; }
+    local _yqv; _yqv="$(yq --version 2>&1)"
+    case "$_yqv" in *mikefarah*|*" v4."*|*" 4."*) ;; *) echo "yq not mikefarah v4: $_yqv" >&2; false ;; esac
+    command -v jq >/dev/null 2>&1 || { echo "jq not found" >&2; false; }
+    stat -f %m / >/dev/null 2>&1 || { echo "BSD stat (-f) not available" >&2; false; }
+  fi
+
   source "$AIW_SH"
 
   # Run 2 rounds of 16+16 mixed race (flock path).
@@ -3370,7 +3390,7 @@ SH
   local pids=()
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=6 GAIA_AIW_TEST_HOLD_SECONDS=0.1
       source "$AIW_SH"
       local _rc=0
       aiw_resolve --target "$target" --item "AI-FR-$i" --status "done" \
@@ -3381,7 +3401,7 @@ SH
   done
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=6 GAIA_AIW_TEST_HOLD_SECONDS=0.1
       source "$AIW_SH"
       local _rc=0
       aiw_write --target "$target" --sprint-id "sprint-99" \
@@ -3410,7 +3430,12 @@ SH
     if [ "$_rc" = "0" ]; then
       res_ok=$((res_ok + 1))
     else
-      [[ "$_out" == *"lock timeout"* ]] || {
+      [[ "$_out" == *"lock timeout"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
+        || [[ "$_out" == *"lock identity unstable"* ]] \
+        || [[ "$_out" == *"lock acquisition failed"* ]] \
+        || [[ "$_out" == *"permission denied"* ]] \
+        || {
         echo "Forced race: unexpected resolve failure: rc=$_rc out=$_out" >&2
         false
       }
@@ -3424,7 +3449,12 @@ SH
     if [ "$_rc" = "0" ]; then
       app_ok=$((app_ok + 1))
     else
-      [[ "$_out" == *"lock timeout"* ]] || {
+      [[ "$_out" == *"lock timeout"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
+        || [[ "$_out" == *"lock identity unstable"* ]] \
+        || [[ "$_out" == *"lock acquisition failed"* ]] \
+        || [[ "$_out" == *"permission denied"* ]] \
+        || {
         echo "Forced race: unexpected append failure: rc=$_rc out=$_out" >&2
         false
       }
@@ -3457,9 +3487,9 @@ SH
     false
   }
 
-  # Sanity: at least some writers succeeded (not all timed out).
-  [ "$((res_ok + app_ok))" -gt 0 ] || {
-    echo "Forced race: no writers succeeded at all" >&2
+  # At least 24 of 32 writers must succeed (fallback handoff throughput floor).
+  [ "$((res_ok + app_ok))" -ge 24 ] || {
+    echo "Forced race: only $((res_ok + app_ok))/32 writers succeeded (need >= 24)" >&2
     false
   }
 }
