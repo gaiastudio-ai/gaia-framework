@@ -4780,6 +4780,9 @@ SHIMEOF
 @test "reused temp never collides across concurrent subshells of one process" {
   # 8 background subshells of one process acquire and release in a loop.
   # Assert unique temp names via the debug trace and no double holder.
+  # Also assert reuse WITHIN one acquisition: each acquisition emits
+  # exactly one tmp trace even when it retries (force retries with a
+  # held lock).
   local lock_file="$LOCK_DIR/reuse-temp.lock"
   local debug_log="$TEST_TMP/reuse-temp-debug.log"
   local overlap="$TEST_TMP/reuse-temp-overlap"
@@ -4814,7 +4817,7 @@ SHIMEOF
 
   [ ! -f "$overlap" ] || { echo "double holder detected" >&2; false; }
 
-  # Check temp names are unique.
+  # Check temp names are unique across concurrent subshells.
   local total distinct
   total="$(grep -c '^tmp ' "$debug_log" || true)"
   [ "$total" -ge 8 ] || { echo "too few temp traces: $total" >&2; false; }
@@ -4823,12 +4826,44 @@ SHIMEOF
     echo "temp collision: $total traced, $distinct unique" >&2
     false
   }
+
+  # Reuse within ONE acquisition: hold a lock so a second acquirer
+  # retries multiple times. It must emit exactly one tmp trace.
+  local reuse_lock="$LOCK_DIR/reuse-within.lock"
+  local reuse_log="$TEST_TMP/reuse-within-debug.log"
+  : > "$reuse_log"
+  local holder_done="$TEST_TMP/reuse-holder-done"
+  rm -f "$holder_done"
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s\n' "$holder_pid" "$(date +%s)" > "$reuse_lock"
+
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export ACQUIRE_LOCK_DEBUG=1
+    export ACQUIRE_LOCK_DEBUG_LOG="'"$reuse_log"'"
+    source "'"$HELPER"'"
+    acquire_lock "'"$reuse_lock"'" 2 9 2>/dev/null || true
+  '
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+
+  local reuse_tmp_count
+  reuse_tmp_count="$(grep -c '^tmp ' "$reuse_log" || true)"
+  [ "$reuse_tmp_count" -eq 1 ] || {
+    echo "expected exactly 1 tmp trace per acquisition, got $reuse_tmp_count" >&2
+    grep '^tmp ' "$reuse_log" >&2
+    false
+  }
 }
 
 @test "cleanup path: no .lock-tmp residue after acquire+release or timeout" {
   local lock_file="$LOCK_DIR/cleanup.lock"
+  local residue
 
-  # Test 1: after a successful acquire and release.
+  # Path 1: successful acquire and release.
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
@@ -4837,11 +4872,10 @@ SHIMEOF
     release_lock 9
   '
   [ "$status" -eq 0 ] || { echo "acquire failed: $output" >&2; false; }
-  local residue
   residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
   [ -z "$residue" ] || { echo "temp residue after release: $residue" >&2; false; }
 
-  # Test 2: after a timeout.
+  # Path 2: timeout (live holder).
   local held_lock="$LOCK_DIR/cleanup-held.lock"
   printf '%s %s\n' "$$" "$(date +%s)" > "$held_lock"
   run bash -c '
@@ -4850,23 +4884,192 @@ SHIMEOF
     source "'"$HELPER"'"
     acquire_lock "'"$held_lock"'" 1 9
   '
-  [ "$status" -ne 0 ]  # must have timed out
+  [ "$status" -ne 0 ]
   residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
   [ -z "$residue" ] || { echo "temp residue after timeout: $residue" >&2; false; }
+  rm -f "$held_lock"
 
-  # Test 3: a published lock is never removed by temp cleanup.
+  # Path 3: a published lock is never removed by temp cleanup.
   local pub_lock="$LOCK_DIR/cleanup-pub.lock"
   run bash -c '
     export PATH="'"$SAFE_PATH"'"
     export GAIA_LOCK_FORCE_FALLBACK=1
     source "'"$HELPER"'"
     acquire_lock "'"$pub_lock"'" 5 9 || exit 1
-    # Do NOT release — leave the published lock in place.
     echo "HELD"
   '
   [[ "$output" == *"HELD"* ]] || { echo "acquire failed: $output" >&2; false; }
   [ -f "$pub_lock" ] || { echo "published lock vanished" >&2; false; }
-  rm -f "$held_lock"
+
+  # Path 4: publication-refusal (exit 6) — directory at the lock path.
+  local pub_dir_lock="$LOCK_DIR/cleanup-pub-dir.lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    _al_pre_link_hook() { mkdir -p "$1" 2>/dev/null; }
+    acquire_lock "'"$pub_dir_lock"'" 2 9
+  '
+  [ "$status" -ne 0 ]
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after publication-refusal: $residue" >&2; false; }
+
+  # Path 5: strict type failure (exit 4) — symlink at the lock path.
+  local strict_lock="$LOCK_DIR/cleanup-strict.lock"
+  ln -s /dev/null "$strict_lock" 2>/dev/null || true
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$strict_lock"'" 2 9 --strict
+  '
+  [ "$status" -eq 4 ] || [ "$status" -ne 0 ]
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after strict type failure: $residue" >&2; false; }
+  rm -f "$strict_lock"
+
+  # Path 6: non-strict type enforcement failure — directory with foreign files.
+  local type_lock="$LOCK_DIR/cleanup-type.lock"
+  mkdir -p "$type_lock"
+  printf 'keep\n' > "$type_lock/foreign"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    acquire_lock "'"$type_lock"'" 2 9
+  '
+  [ "$status" -ne 0 ]
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after type enforcement failure: $residue" >&2; false; }
+  rm -rf "$type_lock"
+
+  # Path 7: strict identity mismatch (exit 5) — override _al_dev_ino.
+  local sid_lock="$LOCK_DIR/cleanup-sid.lock"
+  local foreign_lock="$LOCK_DIR/cleanup-sid-foreign.lock"
+  sleep 300 & local foreign_pid=$!
+  printf '%s %s foreign-nonce\n' "$foreign_pid" "$(date +%s)" > "$foreign_lock"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    # Path-based differentiation (each call in a $() subshell).
+    _al_dev_ino() {
+      case "$1" in
+        *.lock-tmp.*) printf "2:200" ;;
+        *)            printf "1:100" ;;
+      esac
+    }
+    acquire_lock "'"$sid_lock"'" 2 9 --strict
+  '
+  [ "$status" -eq 5 ] || { echo "expected exit 5, got $status" >&2; false; }
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue after strict identity mismatch: $residue" >&2; false; }
+  # Foreign lock must survive.
+  [ -f "$foreign_lock" ] || { echo "foreign lock removed by identity-mismatch cleanup" >&2; false; }
+  kill "$foreign_pid" 2>/dev/null; wait "$foreign_pid" 2>/dev/null || true
+  rm -f "$foreign_lock" "$sid_lock"
+}
+
+@test "strict fallback identity mismatch: exit 5, prompt, ownership-safe, no residue" {
+  # Force the strict-mode fallback dev:ino check to disagree and assert
+  # (a) exit status 5, (b) prompt termination, (c) ownership-safe cleanup.
+  local lock_file="$LOCK_DIR/strict-id-fail.lock"
+  local foreign_lock="$LOCK_DIR/strict-id-foreign.lock"
+
+  # Plant a foreign lock at a nearby path to prove it is never touched.
+  sleep 300 & local foreign_pid=$!
+  printf '%s %s foreign\n' "$foreign_pid" "$(date +%s)" > "$foreign_lock"
+
+  local start_s elapsed
+  start_s="$(date +%s)"
+  run bash -c '
+    export PATH="'"$SAFE_PATH"'"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "'"$HELPER"'"
+    # Override _al_dev_ino to return different values for the published
+    # lock vs. the temp file. Each call runs in a $() subshell, so a
+    # counter variable would be reset. Use path-based differentiation:
+    # the temp path contains ".lock-tmp.", the published lock does not.
+    _al_dev_ino() {
+      case "$1" in
+        *.lock-tmp.*) printf "2:200" ;;
+        *)            printf "1:100" ;;
+      esac
+    }
+    acquire_lock "'"$lock_file"'" 10 9 --strict
+  '
+  elapsed=$(( $(date +%s) - start_s ))
+
+  # (a) Exact exit status 5 (ACQUIRE_LOCK_EXIT_IDENTITY).
+  [ "$status" -eq 5 ] || { echo "expected exit 5, got $status" >&2; false; }
+
+  # (b) Prompt termination (well under the 10 s deadline).
+  [ "$elapsed" -lt 3 ] || { echo "took ${elapsed}s — not prompt" >&2; false; }
+
+  # (c) The diagnostic names the cause.
+  [[ "$output" == *"lock_identity_unstable"* ]] || {
+    echo "no identity_unstable diagnostic: $output" >&2; false
+  }
+
+  # (c) No temp residue.
+  local residue
+  residue="$(find "$LOCK_DIR" -maxdepth 1 -name '.lock-tmp.*' 2>/dev/null)"
+  [ -z "$residue" ] || { echo "temp residue: $residue" >&2; false; }
+
+  # (c) Foreign lock untouched.
+  [ -f "$foreign_lock" ] || { echo "foreign lock removed" >&2; false; }
+  grep -qF "foreign" "$foreign_lock" || { echo "foreign lock content changed" >&2; false; }
+  kill "$foreign_pid" 2>/dev/null; wait "$foreign_pid" 2>/dev/null || true
+  rm -f "$foreign_lock" "$lock_file"
+}
+
+@test "flock path: identity UNAVAILABLE once then live-holder contention exits 3 not 5" {
+  # The _al_last_exit latch must be reset after a successful identity +
+  # fd-size check. When the FIRST iteration encounters UNAVAILABLE (setting
+  # _al_last_exit to IDENTITY/5) and subsequent iterations see a live
+  # fallback holder (identity VERIFIED, fd-size non-empty, latch reset),
+  # the final timeout must be 3 (TIMEOUT), not the stale 5 (IDENTITY).
+  command -v flock >/dev/null 2>&1 || skip "flock not available"  # lint-pack:allow-skip
+  local lock_file="$LOCK_DIR/latch-reset.lock"
+  local holder_done="$TEST_TMP/latch-holder-done"
+  local flag="$TEST_TMP/latch-first-flag"
+  rm -f "$holder_done" "$flag"
+
+  # Plant a live fallback holder (non-empty PID file).
+  ( while [ ! -f "$holder_done" ]; do sleep 0.1; done ) &
+  local holder_pid=$!
+  printf '%s %s nonce\n' "$holder_pid" "$(date +%s)" > "$lock_file"
+
+  run bash -c '
+    source "'"$HELPER"'"
+    # First iteration: force UNAVAILABLE via a file-based flag.
+    _al_verify_fd_identity() {
+      if [ ! -f "'"$flag"'" ]; then
+        touch "'"$flag"'"
+        return 2  # UNAVAILABLE
+      fi
+      # Real check on subsequent iterations (call the original).
+      local _lf="$1" _fd="$2"
+      local _fd_path=""
+      if [ -e "/proc/self/fd/${_fd}" ]; then _fd_path="/proc/self/fd/${_fd}"
+      elif [ -e "/dev/fd/${_fd}" ]; then _fd_path="/dev/fd/${_fd}"
+      else return 2; fi
+      local _fd_ino="" _path_ino=""
+      _fd_ino="$(_al_inode "$_fd_path" 2>/dev/null)" || return 2
+      _path_ino="$(_al_inode "$_lf" 2>/dev/null)" || return 1
+      [ "$_fd_ino" = "$_path_ino" ] && return 0 || return 1
+    }
+    acquire_lock "'"$lock_file"'" 3 9 2>/dev/null
+    echo "rc=$?"
+  '
+  touch "$holder_done"
+  kill "$holder_pid" 2>/dev/null; wait "$holder_pid" 2>/dev/null || true
+
+  # Must be exit 3 (TIMEOUT from live-holder contention), not 5 (IDENTITY).
+  [[ "$output" == *"rc=3"* ]] || {
+    echo "expected rc=3 (timeout), got: $output" >&2; false
+  }
+  rm -f "$lock_file" "$flag"
 }
 
 @test "lazy capability probe: forced-fallback still probes when flock is usable" {
@@ -4914,7 +5117,7 @@ SHIMEOF
 @test "lazy capability probe: incompatible flock gives fallback in default, rejection in parallel" {
   local real_flock=""
   real_flock="$(command -v flock 2>/dev/null || true)"
-  [ -n "$real_flock" ] || skip "flock not available"
+  [ -n "$real_flock" ] || skip "flock not available"  # lint-pack:allow-skip
 
   local shim_dir="$TEST_TMP/lazy-incompat"
   mkdir -p "$shim_dir"
@@ -4955,7 +5158,7 @@ SHIMEOF
 @test "lazy capability probe: no fd 223 leak after incompatible flock probe" {
   local real_flock=""
   real_flock="$(command -v flock 2>/dev/null || true)"
-  [ -n "$real_flock" ] || skip "flock not available"
+  [ -n "$real_flock" ] || skip "flock not available"  # lint-pack:allow-skip
 
   local shim_dir="$TEST_TMP/lazy-fd-leak"
   mkdir -p "$shim_dir"

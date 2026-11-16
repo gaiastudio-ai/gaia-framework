@@ -1083,6 +1083,14 @@ _al_acquire_impl() {
         local _al_sz_rc=0
         _al_fd_size "$fd" || _al_sz_rc=$?
 
+        # Both identity and fd-size resolved: reset the latched exit
+        # code so an ordinary contention timeout (live holder holding
+        # until the deadline) returns TIMEOUT, not a stale IDENTITY.
+        if [ "$_al_sz_rc" -ne 2 ]; then
+          _al_last_exit="$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          _al_last_diag=""
+        fi
+
         if [ "$_al_sz_rc" -eq 2 ]; then
           # UNAVAILABLE — fail closed unconditionally. This process
           # lacking stat proves nothing about other processes on the host.
@@ -1207,7 +1215,7 @@ _al_acquire_impl() {
   umask "$_al_prev_umask"
 
   # Reaper throttle: track the last epoch at which the reaper ran so it
-  # fires at most once per 500 ms interval within the original deadline.
+  # fires at most once per second within the original deadline.
   local _al_last_reap_epoch=0
 
   while true; do
@@ -1290,11 +1298,22 @@ _al_acquire_impl() {
           _al_tmp_id="$(_al_dev_ino "$tmp_lock" 2>/dev/null)" || _al_tmp_id=""
           if [ -n "$_al_path_id" ] && [ -n "$_al_tmp_id" ] && \
              [ "$_al_path_id" != "$_al_tmp_id" ]; then
-            # Identity mismatch in fallback — cannot retry easily, fail.
-            # Remove published (temp and lock share inode, rm temp name).
+            # Identity mismatch in fallback — fail immediately.
+            # Cleanup: always remove our private temp name.
             rm -f "$tmp_lock" 2>/dev/null || true
-            rm -f "$lock_file" 2>/dev/null || true
-            continue
+            # Remove the published lock ONLY if it still holds our exact
+            # token (ownership-safe: a replacement holder's file is never
+            # touched).
+            if [ -f "$lock_file" ] && [ ! -L "$lock_file" ]; then
+              local _id_pub_line=""
+              read -r _id_pub_line < "$lock_file" 2>/dev/null || _id_pub_line=""
+              if [ "$_id_pub_line" = "$_al_full_token" ]; then
+                rm -f "$lock_file" 2>/dev/null || true
+              fi
+            fi
+            printf 'lock_identity_unstable: strict dev:ino mismatch (fallback): %s\n' \
+              "$lock_file" >&2
+            return "$ACQUIRE_LOCK_EXIT_IDENTITY"
           fi
         fi
         # Success: the temp and lock share an inode. Removing the temp
@@ -1339,7 +1358,7 @@ _al_acquire_impl() {
     # ln failed (EEXIST) — the lock path is occupied. The temp is kept
     # intact for the next retry (its inode and token are unchanged).
 
-    # Throttled reaper: run at most once per 500 ms within the deadline.
+    # Throttled reaper: run at most once per second within the deadline.
     local _al_reap_due=0
     if [ $(( now_epoch - _al_last_reap_epoch )) -ge 1 ] || [ "$_al_last_reap_epoch" -eq 0 ]; then
       _al_reap_due=1
