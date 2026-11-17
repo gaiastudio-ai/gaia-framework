@@ -707,15 +707,43 @@ STAKE
   _assert_gate_output
   _stripped_output | grep -q "design-record.yaml" || _stripped_output | grep -q ".gaia/state"
   _stripped_output | grep -qi "absent"
-  # Absent-record remediation should contain both DesignSync and Design artifact sentences
-  _stripped_output | grep -qF 'enable the DesignSync surface' \
-    || fail "absent-record remediation should mention DesignSync surface"
+  # Absent-record remediation names both surfaces for the design-system project
+  _stripped_output | grep -qF 'Artifact surface' \
+    || fail "absent-record remediation should mention the Artifact surface"
+  _stripped_output | grep -qF 'DesignSync surface' \
+    || fail "absent-record remediation should mention the DesignSync surface"
   _stripped_output | grep -qF 'ensure the Design artifact surface is available' \
-    || fail "absent-record remediation should mention Design artifact surface"
+    || fail "absent-record remediation should mention Design artifact surface for product project"
+  # /design-login must appear only as DesignSync remedy
+  _stripped_output | grep -qF '/design-login' \
+    || fail "absent-record remediation should mention /design-login as DesignSync remedy"
   # Old clause must not appear
   if _stripped_output | grep -qF 'If Claude Design is not connected'; then
     fail "old clause 'If Claude Design is not connected' should not appear"
   fi
+}
+
+@test "absent-record remediation names the built-in Artifact surface as default for new records" {
+  seed_config true
+  seed_probe_stub missing
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on absent record, got status=$status"
+  _assert_gate_output
+
+  # Must name the built-in Artifact surface as the default for new records
+  _stripped_output | grep -qF 'built-in Artifact surface' \
+    || fail "absent-record remediation should name the built-in Artifact surface"
+  _stripped_output | grep -q 'default for new records' \
+    || fail "absent-record remediation should say Artifact is the default for new records"
+
+  # Must also name DesignSync as the alternative
+  _stripped_output | grep -qF 'DesignSync surface' \
+    || fail "absent-record remediation should name the DesignSync surface"
+
+  # /design-login must only appear in the DesignSync remedy context
+  _stripped_output | grep -qF '/design-login' \
+    || fail "absent-record remediation should mention /design-login for DesignSync"
 }
 
 @test "(AC3) halt message names record path, state, and remediation for draft" {
@@ -3526,8 +3554,8 @@ _build_draft_record_with_surface() {
 @test "bash 3.2 compatibility — design-gate.sh has no associative arrays" {
   [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
 
-  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$GATE_SCRIPT"; then
-    fail "design-gate.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)"
+  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$GATE_SCRIPT"; then # lint-pack:allow bash4-constructs
+    fail "design-gate.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)" # lint-pack:allow bash4-constructs
   fi
 }
 

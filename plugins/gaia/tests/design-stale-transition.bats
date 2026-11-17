@@ -1297,7 +1297,7 @@ SHIMEOF
 @test "bash 3.2 compatibility — design-stale-transition.sh has no associative arrays" {
   [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
 
-  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$DRIVER_SCRIPT"; then
-    fail "design-stale-transition.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)"
+  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$DRIVER_SCRIPT"; then # lint-pack:allow bash4-constructs
+    fail "design-stale-transition.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)" # lint-pack:allow bash4-constructs
   fi
 }

@@ -462,7 +462,7 @@ design_gate_check() {
 
   if [ ! -f "$record_path" ]; then
     # MUTANT-ANCHOR: absent-fail-branch
-    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+    local _dg_absent_remediation="Create the design record with /gaia-create-ux. If the design integration is not connected in this session: for the design-system project, ensure the built-in Artifact surface is available (the default for new records), or enable the DesignSync surface. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions) for the DesignSync option. For the product design project, ensure the Design artifact surface is available."
     _dg_halt "$record_path" "absent" "$_dg_absent_remediation"
     return 1
   fi

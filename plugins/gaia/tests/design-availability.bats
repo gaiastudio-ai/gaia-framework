@@ -832,43 +832,72 @@ _assert_availability_identity() {
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  # Non-vacuity: the named diagnostic literal must exist first
-  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_cux" \
-    || fail "create-ux must contain the named diagnostic literal (non-vacuity guard)"
-  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
-    || fail "design-review must contain the named diagnostic literal (non-vacuity guard)"
+  # Extract the WHOLE artifact-branch text for both missing and unauthorized
+  # halts. Each halt paragraph has the form:
+  #   On `...`, halt. For `artifact` ...: "Artifact surface ...: ...". For `designsync`: ...
+  # We extract from the opening quote after "For `artifact`" through the
+  # closing `."` before `For `designsync``.
 
-  # Extract the artifact-branch text between the named diagnostic and the
-  # For `designsync` boundary. The halt paragraphs have the form:
-  #   ... "Artifact surface unavailable for artifact-managed record: ...". For `designsync`: ...
-  # We extract just the text from the diagnostic literal up to 'For `designsync`'.
-  local artifact_missing_cux artifact_missing_dr artifact_unauth_cux artifact_unauth_dr
-  artifact_missing_cux="$(echo "$section_cux" | grep -oF 'Artifact surface unavailable for artifact-managed record' || true)"
-  artifact_missing_dr="$(echo "$section_dr" | grep -oF 'Artifact surface unavailable for artifact-managed record' || true)"
-  artifact_unauth_cux="$(echo "$section_cux" | grep -oF 'Artifact surface unauthorized for artifact-managed record' || true)"
-  artifact_unauth_dr="$(echo "$section_dr" | grep -oF 'Artifact surface unauthorized for artifact-managed record' || true)"
+  # --- Missing halt: artifact branch ---
+  local art_miss_cux art_miss_dr
+  art_miss_cux="$(echo "$section_cux" | sed -n '/On.*missing.*halt/s/.*For .artifact.[^"]*"\([^"]*\)".*/\1/p')"
+  art_miss_dr="$(echo "$section_dr" | sed -n '/On.*missing.*halt/s/.*For .artifact.[^"]*"\([^"]*\)".*/\1/p')"
+  [ -n "$art_miss_cux" ] || fail "could not extract artifact missing branch from create-ux"
+  [ -n "$art_miss_dr" ] || fail "could not extract artifact missing branch from design-review"
 
-  # The named diagnostic literals themselves must not contain /design-login or DesignSync
-  # (they are fixed strings, so this is a tautological guard). The real check: the
-  # surrounding artifact-branch sentences (from the diagnostic to "For `designsync`")
-  # must be clean. Use sed to extract just the artifact branch from each halt paragraph.
-  local artifact_halt_cux artifact_halt_dr
-  artifact_halt_cux="$(echo "$section_cux" | sed -n 's/.*\(Artifact surface [^"]*\)" For .designsync.*/\1/p')"
-  artifact_halt_dr="$(echo "$section_dr" | sed -n 's/.*\(Artifact surface [^"]*\)" For .designsync.*/\1/p')"
-  [ -n "$artifact_halt_cux" ] || fail "could not extract artifact branch text from create-ux"
-  [ -n "$artifact_halt_dr" ] || fail "could not extract artifact branch text from design-review"
+  # Must contain the AC11 named diagnostic and the specific reason
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$art_miss_cux" \
+    || fail "create-ux artifact missing branch must contain the named diagnostic"
+  grep -qF 'could not be reached' <<<"$art_miss_cux" \
+    || fail "create-ux artifact missing branch must contain the specific reason"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$art_miss_dr" \
+    || fail "design-review artifact missing branch must contain the named diagnostic"
+  grep -qF 'could not be reached' <<<"$art_miss_dr" \
+    || fail "design-review artifact missing branch must contain the specific reason"
 
-  if grep -qF '/design-login' <<<"$artifact_halt_cux"; then
-    fail "create-ux artifact-branch halt text should not mention /design-login"
+  # Must NOT contain /design-login or DesignSync
+  if grep -qF '/design-login' <<<"$art_miss_cux"; then
+    fail "create-ux artifact missing branch should not mention /design-login"
   fi
-  if grep -qiF 'DesignSync' <<<"$artifact_halt_cux"; then
-    fail "create-ux artifact-branch halt text should not mention DesignSync"
+  if grep -qiF 'DesignSync' <<<"$art_miss_cux"; then
+    fail "create-ux artifact missing branch should not mention DesignSync"
   fi
-  if grep -qF '/design-login' <<<"$artifact_halt_dr"; then
-    fail "design-review artifact-branch halt text should not mention /design-login"
+  if grep -qF '/design-login' <<<"$art_miss_dr"; then
+    fail "design-review artifact missing branch should not mention /design-login"
   fi
-  if grep -qiF 'DesignSync' <<<"$artifact_halt_dr"; then
-    fail "design-review artifact-branch halt text should not mention DesignSync"
+  if grep -qiF 'DesignSync' <<<"$art_miss_dr"; then
+    fail "design-review artifact missing branch should not mention DesignSync"
+  fi
+
+  # --- Unauthorized halt: artifact branch ---
+  local art_unauth_cux art_unauth_dr
+  art_unauth_cux="$(echo "$section_cux" | sed -n '/On.*unauthorized.*halt/s/.*For .artifact.[^"]*"\([^"]*\)".*/\1/p')"
+  art_unauth_dr="$(echo "$section_dr" | sed -n '/On.*unauthorized.*halt/s/.*For .artifact.[^"]*"\([^"]*\)".*/\1/p')"
+  [ -n "$art_unauth_cux" ] || fail "could not extract artifact unauthorized branch from create-ux"
+  [ -n "$art_unauth_dr" ] || fail "could not extract artifact unauthorized branch from design-review"
+
+  # Must contain the AC11 named diagnostic form and the specific reason
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$art_unauth_cux" \
+    || fail "create-ux artifact unauthorized branch must contain the named diagnostic"
+  grep -qF 'not authorized' <<<"$art_unauth_cux" \
+    || fail "create-ux artifact unauthorized branch must contain the specific reason"
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$art_unauth_dr" \
+    || fail "design-review artifact unauthorized branch must contain the named diagnostic"
+  grep -qF 'not authorized' <<<"$art_unauth_dr" \
+    || fail "design-review artifact unauthorized branch must contain the specific reason"
+
+  # Must NOT contain /design-login or DesignSync
+  if grep -qF '/design-login' <<<"$art_unauth_cux"; then
+    fail "create-ux artifact unauthorized branch should not mention /design-login"
+  fi
+  if grep -qiF 'DesignSync' <<<"$art_unauth_cux"; then
+    fail "create-ux artifact unauthorized branch should not mention DesignSync"
+  fi
+  if grep -qF '/design-login' <<<"$art_unauth_dr"; then
+    fail "design-review artifact unauthorized branch should not mention /design-login"
+  fi
+  if grep -qiF 'DesignSync' <<<"$art_unauth_dr"; then
+    fail "design-review artifact unauthorized branch should not mention DesignSync"
   fi
 }
 
