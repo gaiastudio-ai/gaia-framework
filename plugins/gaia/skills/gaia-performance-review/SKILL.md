@@ -331,9 +331,7 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 **Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update \
-  --story "{story_key}" \
-  --gate "Performance Review" \
+${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Performance Review" \
   --verdict "{PASSED|FAILED}" \
   --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
   --report "$REPORT_PATH"

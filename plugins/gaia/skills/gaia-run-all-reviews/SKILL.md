@@ -206,8 +206,8 @@ HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-i
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} \
-  --gate "{gate_name}" --verdict {PASSED|FAILED} \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
+  --verdict {PASSED|FAILED} \
   --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]

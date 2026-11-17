@@ -375,9 +375,7 @@ Returns the per-story `…/epic-{slug}/{story_key}-{slug}/reviews/test-review-{s
 **Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA, the absolute report path, and execution-evidence (required for this test-execution gate). The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update \
-  --story "{story_key}" \
-  --gate "Test Review" \
+${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Test Review" \
   --verdict "{PASSED|FAILED}" \
   --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
   --report "$REPORT_PATH" \
