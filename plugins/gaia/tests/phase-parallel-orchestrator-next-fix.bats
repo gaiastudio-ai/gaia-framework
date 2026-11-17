@@ -73,7 +73,9 @@ _mk_repo() {
 }
 
 # _mk_yaml_with_titles <path> <spec...> — sprint yaml with custom titles.
-# Each spec is KEY:PHASE:TITLE (title words joined with spaces).
+# Each spec is KEY:PHASE:TITLE or KEY:PHASE:TITLE:STATUS (status defaults to
+# ready-for-dev). Titles must not contain colons (the last colon delimits the
+# optional status field).
 _mk_yaml_with_titles() {
   local out="$1"; shift
   mkdir -p "$(dirname "$out")"
@@ -83,18 +85,53 @@ _mk_yaml_with_titles() {
     printf 'total_points: 0\n'
     printf 'goals: []\n'
     printf 'items:\n'
-    local spec key phase title rest
+    local spec key phase title status rest rest2
     for spec in "$@"; do
       key="${spec%%:*}"
       rest="${spec#*:}"
       phase="${rest%%:*}"
-      title="${rest#*:}"
+      rest2="${rest#*:}"
+      # If rest2 contains another colon, the part after the last colon is status.
+      case "$rest2" in
+        *:*) title="${rest2%:*}"; status="${rest2##*:}" ;;
+        *)   title="$rest2"; status="ready-for-dev" ;;
+      esac
       printf '  - key: %s\n' "$key"
       printf "    title: '%s'\n" "$title"
-      printf '    status: ready-for-dev\n'
+      printf '    status: %s\n' "$status"
       printf '    points: 1\n'
       printf '    risk_level: low\n'
       printf '    phase: %s\n' "$phase"
+    done
+  } > "$out"
+  printf '%s' "$out"
+}
+
+# _mk_yaml_no_phases <path> <spec...> — sprint yaml with NO phase fields.
+# Each spec is KEY:TITLE or KEY:TITLE:STATUS (status defaults to ready-for-dev).
+# Titles must not contain colons (the last colon delimits the optional status).
+_mk_yaml_no_phases() {
+  local out="$1"; shift
+  mkdir -p "$(dirname "$out")"
+  {
+    printf 'sprint_id: test-sprint\n'
+    printf 'status: active\n'
+    printf 'total_points: 0\n'
+    printf 'goals: []\n'
+    printf 'items:\n'
+    local spec key title status rest
+    for spec in "$@"; do
+      key="${spec%%:*}"
+      rest="${spec#*:}"
+      case "$rest" in
+        *:*) title="${rest%:*}"; status="${rest##*:}" ;;
+        *)   title="$rest"; status="ready-for-dev" ;;
+      esac
+      printf '  - key: %s\n' "$key"
+      printf "    title: '%s'\n" "$title"
+      printf '    status: %s\n' "$status"
+      printf '    points: 1\n'
+      printf '    risk_level: low\n'
     done
   } > "$out"
   printf '%s' "$out"
@@ -630,4 +667,362 @@ SHIM
   # Barrier or dispatch — no premature sprint_complete (phase 2 still pending)
   [[ "$next_out" == *"barrier"* ]] || [[ "$next_out" == *"dispatch"* ]] \
     || { printf 'expected barrier or dispatch, got:\n%s\n' "$next_out" >&2; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Session event emission and concurrent-sprint isolation
+# ---------------------------------------------------------------------------
+
+# _spawn_stub — a reusable inline spawn_teammate override for tests that
+# need admission to succeed without the real substrate.
+_spawn_stub='
+  _ppo_load_dispatch_lib() {
+    spawn_teammate() {
+      local p=bash-dev k=""
+      while [ $# -gt 0 ]; do
+        case "$1" in --story-key) k="$2"; shift 2 ;; *) p="$1"; shift ;; esac
+      done
+      printf "tm-%s-%s\n" "$p" "$k"
+    }
+    return 0
+  }
+'
+
+@test "plan emits session event line with the resolved path" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-se1")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-se1.yaml" "K1:1:Alpha")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-se1"
+  mkdir -p "$GAIA_SESSION_DIR"
+  export PATH="${flock_dir}:$PATH"
+  local shim_dir="$TEST_TMP/bin-se1"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
+
+  [[ "$plan_out" == *"session=${GAIA_SESSION_DIR}"* ]] \
+    || { printf 'missing session= event line in plan output:\n%s\n' "$plan_out" >&2; return 1; }
+}
+
+@test "plan emits session event matching breadcrumb fallback when session dir unset" {
+  _source_orch
+  unset GAIA_SESSION_DIR
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-se2")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-se2.yaml" "K1:1:Alpha")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+  export PATH="${flock_dir}:$PATH"
+  local shim_dir="$TEST_TMP/bin-se2"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
+
+  local emitted_session
+  emitted_session="$(printf '%s\n' "$plan_out" | sed -n 's/^session=//p' | head -n1)"
+  [ -n "$emitted_session" ] \
+    || { printf 'no session= event in plan output:\n%s\n' "$plan_out" >&2; return 1; }
+
+  local breadcrumb_session
+  breadcrumb_session="$(cat "${TMPDIR:-/tmp}/.gaia-ppo-active" 2>/dev/null)"
+  [ "$emitted_session" = "$breadcrumb_session" ] \
+    || { printf 'session mismatch: event=%s breadcrumb=%s\n' "$emitted_session" "$breadcrumb_session" >&2; return 1; }
+}
+
+@test "next/status/record resolve via session dir in separate processes" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-se3")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-se3.yaml" "K1:1:Alpha")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-se3"
+  mkdir -p "$GAIA_SESSION_DIR"
+  local shim_dir="$TEST_TMP/bin-se3"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  # Plan in one process
+  bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" >/dev/null 2>&1
+
+  # Next in a SEPARATE process — must not refuse with "no plan"
+  local next_out
+  next_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+  [[ "$next_out" != *"no-plan"* ]] \
+    || { printf 'next refused with no-plan:\n%s\n' "$next_out" >&2; return 1; }
+  [[ "$next_out" == *"story=K1"* ]] \
+    || { printf 'story not dispatched in next:\n%s\n' "$next_out" >&2; return 1; }
+
+  # Status in a SEPARATE process — must not refuse
+  local status_out
+  status_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c ". '$ORCH' && ppo_status" 2>&1)"
+  [[ "$status_out" != *"no-plan"* ]] \
+    || { printf 'status refused with no-plan:\n%s\n' "$status_out" >&2; return 1; }
+
+  # Record in a SEPARATE process — must not refuse
+  local record_out
+  record_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c ". '$ORCH' && ppo_record_outcome K1 done" 2>&1)"
+  [[ "$record_out" == *"outcome=done"* ]] \
+    || { printf 'record did not produce done outcome:\n%s\n' "$record_out" >&2; return 1; }
+}
+
+@test "concurrent sprints under one tmpdir resolve separate sessions" {
+  _source_orch
+
+  local repo flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-cs")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+  local shim_dir="$TEST_TMP/bin-cs"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  # Sprint A with story K1
+  local yaml_a
+  yaml_a="$(_mk_yaml_with_titles "$TEST_TMP/sprint-cs-a.yaml" "K1:1:Alpha")"
+  # Sprint B with story K2
+  local yaml_b
+  yaml_b="$(_mk_yaml_with_titles "$TEST_TMP/sprint-cs-b.yaml" "K2:1:Beta")"
+
+  unset GAIA_SESSION_DIR
+
+  # Plan sprint A, capture session
+  local plan_a
+  plan_a="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml_a' --slots 2" 2>&1)"
+  local session_a
+  session_a="$(printf '%s\n' "$plan_a" | sed -n 's/^session=//p' | head -n1)"
+
+  # Plan sprint B (overwrites the breadcrumb), capture session
+  local plan_b
+  plan_b="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml_b' --slots 2" 2>&1)"
+  local session_b
+  session_b="$(printf '%s\n' "$plan_b" | sed -n 's/^session=//p' | head -n1)"
+
+  # Sessions must differ
+  [ -n "$session_a" ] && [ -n "$session_b" ] \
+    || { printf 'one or both sessions empty: a=%s b=%s\n' "$session_a" "$session_b" >&2; return 1; }
+  [ "$session_a" != "$session_b" ] \
+    || { printf 'sessions are identical: %s\n' "$session_a" >&2; return 1; }
+
+  # Next for sprint A with its own session dir must dispatch K1 (not K2)
+  local next_a
+  next_a="$(GAIA_SESSION_DIR="$session_a" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+  [[ "$next_a" == *"story=K1"* ]] \
+    || { printf 'sprint A next did not dispatch K1:\n%s\n' "$next_a" >&2; return 1; }
+  [[ "$next_a" != *"story=K2"* ]] \
+    || { printf 'sprint A next dispatched K2 (wrong sprint):\n%s\n' "$next_a" >&2; return 1; }
+}
+
+# ---------------------------------------------------------------------------
+# Done-story exclusion
+# ---------------------------------------------------------------------------
+
+@test "done story excluded from plan queue" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-ds1")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ds1.yaml" \
+    "K1:1:Alpha:done" "K2:1:Beta")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-ds1"
+  mkdir -p "$GAIA_SESSION_DIR"
+  local shim_dir="$TEST_TMP/bin-ds1"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  # Plan — assert done story is skipped in plan output
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
+  [[ "$plan_out" == *"event=story_skipped story=K1 reason=already-done"* ]] \
+    || { printf 'plan did not emit story_skipped for K1:\n%s\n' "$plan_out" >&2; return 1; }
+
+  # Next — assert K1 not dispatched, K2 dispatched
+  local next_out
+  next_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+  [[ "$next_out" != *"dispatch story=K1"* ]] \
+    || { printf 'K1 (done) was dispatched:\n%s\n' "$next_out" >&2; return 1; }
+  [[ "$next_out" == *"dispatch story=K2"* ]] \
+    || { printf 'K2 (live) was not dispatched:\n%s\n' "$next_out" >&2; return 1; }
+}
+
+@test "done story skipped in next emits event when status changes mid-run" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-ds2")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ds2.yaml" \
+    "K1:1:Alpha" "K2:1:Beta")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-ds2"
+  mkdir -p "$GAIA_SESSION_DIR"
+  local shim_dir="$TEST_TMP/bin-ds2"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  # Plan with both stories as ready-for-dev
+  bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" >/dev/null 2>&1
+
+  # Modify yaml: set K1 to done using key-scoped awk (not global sed)
+  awk -v key="K1" '
+    /key:/ { cur=$NF }
+    cur==key && /status:/ { sub(/ready-for-dev/, "done") }
+    {print}
+  ' "$yaml" > "${yaml}.tmp" && mv "${yaml}.tmp" "$yaml"
+
+  # Next — K1 should be skipped with event, K2 should dispatch
+  local next_out
+  next_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+  [[ "$next_out" == *"event=story_skipped story=K1 reason=already-done"* ]] \
+    || { printf 'next did not emit story_skipped for K1:\n%s\n' "$next_out" >&2; return 1; }
+  [[ "$next_out" != *"dispatch story=K1"* ]] \
+    || { printf 'K1 (now done) was dispatched:\n%s\n' "$next_out" >&2; return 1; }
+}
+
+@test "merged-not-done story is still admitted by the done guard" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-mnd")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-mnd.yaml" \
+    "K1:1:Alpha:review")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-mnd"
+  mkdir -p "$GAIA_SESSION_DIR"
+  local shim_dir="$TEST_TMP/bin-mnd"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
+
+  # Must NOT be skipped — review is not done
+  [[ "$plan_out" != *"event=story_skipped story=K1"* ]] \
+    || { printf 'K1 (review) was incorrectly skipped:\n%s\n' "$plan_out" >&2; return 1; }
+
+  local next_out
+  next_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+
+  # Must be dispatched — review status is not done
+  [[ "$next_out" == *"dispatch story=K1"* ]] || [[ "$next_out" == *"story=K1"* ]] \
+    || { printf 'K1 (review) was not dispatched:\n%s\n' "$next_out" >&2; return 1; }
+}
+
+@test "sequential worklist excludes done story in phases branch" {
+  _source_orch
+
+  local yaml
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-sq1.yaml" \
+    "K1:1:Alpha:done" "K2:1:Beta" "K3:2:Gamma")"
+
+  local worklist
+  worklist="$(ppo_plan_sequential --repo /dev/null --yaml "$yaml")"
+
+  [[ "$worklist" != *"K1"* ]] \
+    || { printf 'done story K1 in sequential worklist:\n%s\n' "$worklist" >&2; return 1; }
+  [[ "$worklist" == *"K2"* ]] \
+    || { printf 'live story K2 missing from sequential worklist:\n%s\n' "$worklist" >&2; return 1; }
+  [[ "$worklist" == *"K3"* ]] \
+    || { printf 'live story K3 missing from sequential worklist:\n%s\n' "$worklist" >&2; return 1; }
+}
+
+@test "sequential worklist excludes done story in fallback branch" {
+  _source_orch
+
+  local yaml
+  yaml="$(_mk_yaml_no_phases "$TEST_TMP/sprint-sq2.yaml" \
+    "K1:Alpha:done" "K2:Beta")"
+
+  local worklist
+  worklist="$(ppo_plan_sequential --repo /dev/null --yaml "$yaml")"
+
+  [[ "$worklist" != *"K1"* ]] \
+    || { printf 'done story K1 in fallback worklist:\n%s\n' "$worklist" >&2; return 1; }
+  [[ "$worklist" == *"K2"* ]] \
+    || { printf 'live story K2 missing from fallback worklist:\n%s\n' "$worklist" >&2; return 1; }
+}
+
+@test "all stories done emits sprint_complete with no dispatch" {
+  _source_orch
+
+  local repo yaml flock_dir
+  repo="$(_mk_repo "$TEST_TMP/repo-ad")"
+  yaml="$(_mk_yaml_with_titles "$TEST_TMP/sprint-ad.yaml" \
+    "K1:1:Alpha:done" "K2:1:Beta:done")"
+  flock_dir="$(_ensure_flock)" || { printf 'no flock provider (flock binary or python3 shim) available\n' >&2; return 1; }
+
+  export GAIA_SESSION_DIR="$TEST_TMP/session-ad"
+  mkdir -p "$GAIA_SESSION_DIR"
+  local shim_dir="$TEST_TMP/bin-ad"
+  _mk_dispatch_shim "$shim_dir"
+  export PATH="${flock_dir}:${shim_dir}:$PATH"
+  export GAIA_PPO_DISPATCH_CMD="true"
+  export BATS_TEST_FILENAME="${BATS_TEST_FILENAME}"
+
+  # Plan — assert both stories skipped
+  local plan_out
+  plan_out="$(bash -c ". '$ORCH' && ppo_plan --repo '$repo' --yaml '$yaml' --slots 2" 2>&1)"
+  [[ "$plan_out" == *"event=story_skipped story=K1"* ]] \
+    || { printf 'plan did not skip K1:\n%s\n' "$plan_out" >&2; return 1; }
+  [[ "$plan_out" == *"event=story_skipped story=K2"* ]] \
+    || { printf 'plan did not skip K2:\n%s\n' "$plan_out" >&2; return 1; }
+  [[ "$plan_out" != *"dispatch story="* ]] \
+    || { printf 'plan output contains a dispatch line:\n%s\n' "$plan_out" >&2; return 1; }
+
+  # Next — assert sprint_complete, no dispatch
+  local next_out
+  next_out="$(GAIA_SESSION_DIR="$GAIA_SESSION_DIR" bash -c "
+    . '$ORCH'
+    ${_spawn_stub}
+    ppo_next
+  " 2>&1)"
+  [[ "$next_out" == *"sprint_complete"* ]] \
+    || { printf 'next did not emit sprint_complete:\n%s\n' "$next_out" >&2; return 1; }
+  [[ "$next_out" != *"dispatch story="* ]] \
+    || { printf 'next dispatched a story when all are done:\n%s\n' "$next_out" >&2; return 1; }
 }

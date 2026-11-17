@@ -89,6 +89,10 @@
       <p>Steps 2-4 repeat until every story in every phase has reported a
       final outcome.</p>
 
+      <p>When two sprints share the same machine, each run captures the session
+      path from the plan step and passes it to every subsequent scheduler call,
+      so the two runs never read each other's state.</p>
+
       <h2>Turning concurrency on</h2>
 
       <p>Concurrency is <strong>opt-in</strong> on three independent switches.
