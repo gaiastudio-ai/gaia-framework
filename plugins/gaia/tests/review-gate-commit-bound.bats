@@ -3156,7 +3156,7 @@ STORY
   [ "$status" -eq 0 ]
 }
 
-# Val INFO-1: legacy-flat resolver warns on stderr; mismatch guard must still fire
+# Legacy-flat resolver warns on stderr; mismatch guard must still fire
 @test "code-review setup.sh detects key mismatch even when resolver emits stderr warnings" {
   local _K="E900-S912" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local _K2="E900-S913" # lint-pack:allow leaked-identifiers — synthetic fixture story key
@@ -3402,8 +3402,16 @@ STORY
   done
 }
 
-# AC9: all canonical gate writers pass --sha and --report
-@test "all canonical gate writers pass --sha and --report in gate-update code block" {
+# AC9: every review-gate.sh update call that writes a canonical gate row
+# must pass --sha "$_sha" (the pre-computed worktree HEAD). This scans
+# ALL such calls in each file, not just the first code block. Only lines
+# inside ```bash code blocks are checked (prose descriptions are skipped).
+_extract_code_blocks() {
+  # Emit only lines inside ```bash ... ``` fenced blocks from a file.
+  awk '/^[[:space:]]*```bash/{ in_block=1; next } /^[[:space:]]*```/{ in_block=0; next } in_block' "$1"
+}
+
+@test "every canonical gate-row write passes --sha in all 7 skills" {
   local -a gate_skills=(
     "gaia-code-review"
     "gaia-performance-review"
@@ -3413,33 +3421,60 @@ STORY
     "gaia-review-perf"
     "gaia-run-all-reviews"
   )
-  local -a test_gates=("gaia-qa-tests" "gaia-test-review")
   for skill in "${gate_skills[@]}"; do
     local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
     [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
-    # Extract the gate-update code block section
-    local section
-    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
-    if ! grep -q '\-\-sha' <<< "$section"; then
-      echo "FAIL: $skill gate-update block missing --sha"
-      return 1
-    fi
-    if ! grep -q '\-\-report' <<< "$section"; then
-      echo "FAIL: $skill gate-update block missing --report"
-      return 1
-    fi
+    # Join continuation lines (backslash-newline) into single logical lines,
+    # then check each review-gate.sh update call for --sha.
+    local joined
+    joined="$(_extract_code_blocks "$skill_md" | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}')"
+    local call_lines
+    call_lines="$(grep 'review-gate\.sh.*update' <<< "$joined" \
+      | grep -v '\-\-plan-id' \
+      | grep -v 'Mobile Review' || true)"
+    [ -z "$call_lines" ] && continue
+    while IFS= read -r line; do
+      # Must have --gate or --verdict to be a gate-writing call
+      if ! grep -q '\-\-gate\|\-\-verdict' <<< "$line"; then continue; fi
+      if ! grep -q '\-\-sha' <<< "$line"; then
+        echo "FAIL: $skill: review-gate.sh update call missing --sha: $line"
+        return 1
+      fi
+    done <<< "$call_lines"
   done
-  # Test-execution gates must also have --execution-evidence
-  for skill in "${test_gates[@]}"; do
+}
+
+@test "every canonical gate-row write passes --report in all 7 skills" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
     local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
-    local section
-    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
-    if ! grep -q '\-\-execution-evidence' <<< "$section"; then
-      echo "FAIL: $skill gate-update block missing --execution-evidence"
-      return 1
-    fi
+    [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
+    local joined
+    joined="$(_extract_code_blocks "$skill_md" | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}')"
+    local call_lines
+    call_lines="$(grep 'review-gate\.sh.*update' <<< "$joined" \
+      | grep -v '\-\-plan-id' \
+      | grep -v 'Mobile Review' || true)"
+    [ -z "$call_lines" ] && continue
+    while IFS= read -r line; do
+      if ! grep -q '\-\-gate\|\-\-verdict' <<< "$line"; then continue; fi
+      if ! grep -q '\-\-report' <<< "$line"; then
+        echo "FAIL: $skill: review-gate.sh update call missing --report: $line"
+        return 1
+      fi
+    done <<< "$call_lines"
   done
-  # run-all-reviews Substep 2.3 must have --execution-evidence for test gates
+}
+
+@test "test-execution gate-row writes pass --execution-evidence" {
   local rr_md="${PLUGIN_ROOT}/skills/gaia-run-all-reviews/SKILL.md"
   local rr_section
   rr_section="$(sed -n '/Substep 2\.3/,/Substep 2\.4\|^### /p' "$rr_md")"
@@ -3447,6 +3482,16 @@ STORY
     echo "FAIL: run-all-reviews Substep 2.3 missing --execution-evidence"
     return 1
   fi
+  # Individual skills
+  for skill in "gaia-qa-tests" "gaia-test-review"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    local section
+    section="$(sed -n '/_sha=\|[Gg]ate row update\|Invoke.*review-gate/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    if ! grep -q '\-\-execution-evidence' <<< "$section"; then
+      echo "FAIL: $skill gate-update block missing --execution-evidence"
+      return 1
+    fi
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -3535,10 +3580,10 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# RF-3: gate-write blocks must use STORY_WORKTREE_PATH, not STORY_WORKTREE
+# Gate-write blocks must use STORY_WORKTREE_PATH, not STORY_WORKTREE
 # ---------------------------------------------------------------------------
 
-@test "RF-3: canonical gate-write blocks use STORY_WORKTREE_PATH not STORY_WORKTREE" {
+@test "canonical gate-write blocks use STORY_WORKTREE_PATH not STORY_WORKTREE" {
   local -a gate_skills=(
     "gaia-code-review"
     "gaia-performance-review"
@@ -3567,10 +3612,10 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# RF-6: ARGUMENTS injection safety — setup.sh never evals content as code
+# ARGUMENTS injection safety — setup.sh never evals content as code
 # ---------------------------------------------------------------------------
 
-@test "RF-6: setup.sh does not execute shell metacharacters in ARGUMENTS" {
+@test "setup.sh does not execute shell metacharacters in ARGUMENTS" {
   local _K="E900-S917" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/rf6_inject"
   _seed_setup_fixture "$tmproot"
@@ -3602,7 +3647,7 @@ STORY
   [ ! -f "$tmproot/pwned3" ]
 }
 
-@test "RF-6: gaia-code-review SKILL.md Setup bang line does not pass ARGUMENTS" {
+@test "gaia-code-review SKILL.md Setup bang line does not pass ARGUMENTS" {
   local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"
   local setup_line
   setup_line="$(grep '^!' "$skill_md" | head -1)"
@@ -3614,10 +3659,10 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# RF-2: missing key: line in frontmatter → warn and continue, not silent skip
+# Missing key: line in frontmatter → warn and continue, not silent skip
 # ---------------------------------------------------------------------------
 
-@test "RF-2: setup.sh warns when story file has no key: line in frontmatter" {
+@test "setup.sh warns and continues when the story file has no key: line" {
   local _K="E900-S918" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/rf2_nokey"
   _seed_setup_fixture "$tmproot"
@@ -3647,10 +3692,10 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# RF-3 (complete): gate blocks must refuse when worktree HEAD cannot resolve
+# Gate blocks must refuse when worktree HEAD cannot resolve
 # ---------------------------------------------------------------------------
 
-@test "RF-3: all 7 gate-write blocks contain the worktree-head refusal guard" {
+@test "all 7 gate-write blocks contain the worktree-head refusal guard" {
   local -a gate_skills=(
     "gaia-code-review"
     "gaia-performance-review"
@@ -3716,7 +3761,7 @@ SNIP
   run bash "$script"
 }
 
-@test "RF-3 functional: STORY_WORKTREE_PATH unset → non-zero, no gate write" {
+@test "gate write refuses when STORY_WORKTREE_PATH is unset" {
   local tmproot="${TEST_TMP}/rf3func_a"
   mkdir -p "$tmproot"
   _run_gate_snippet "" "$tmproot"
@@ -3725,7 +3770,7 @@ SNIP
   [ ! -f "$tmproot/captured-sha" ]
 }
 
-@test "RF-3 functional: STORY_WORKTREE_PATH pointing at non-git dir → non-zero, no gate write" {
+@test "gate write refuses when STORY_WORKTREE_PATH points at a non-git dir" {
   local tmproot="${TEST_TMP}/rf3func_b"
   mkdir -p "$tmproot/not-a-repo"
   _run_gate_snippet "$tmproot/not-a-repo" "$tmproot"
@@ -3734,7 +3779,7 @@ SNIP
   [ ! -f "$tmproot/captured-sha" ]
 }
 
-@test "RF-3 functional: STORY_WORKTREE_PATH pointing at git repo → stub receives exact HEAD SHA" {
+@test "gate write passes exact HEAD SHA when STORY_WORKTREE_PATH is a git repo" {
   local tmproot="${TEST_TMP}/rf3func_c"
   mkdir -p "$tmproot/repo"
   git -C "$tmproot/repo" init -q

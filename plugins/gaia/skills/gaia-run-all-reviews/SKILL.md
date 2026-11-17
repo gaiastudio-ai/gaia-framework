@@ -117,7 +117,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
   - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
   When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
-- After each reviewer completes, update the Review Gate table via `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED}` (use the absolute plugin scripts path; this skill has no `scripts/` subdirectory — the scripts live in the global `plugins/gaia/scripts/` resolved via `${CLAUDE_PLUGIN_ROOT}`).
+- After each reviewer completes, update the Review Gate table via `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED} --sha "$_sha" --report <report-path>` where `_sha` is pre-computed from `STORY_WORKTREE_PATH` with the refusal guard (see Substep 2.3). Use the absolute plugin scripts path; this skill has no `scripts/` subdirectory — the scripts live in the global `plugins/gaia/scripts/` resolved via `${CLAUDE_PLUGIN_ROOT}`.
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
 - If `review-gate.sh` fails to update a row, log the failure and continue to the next reviewer.
 - If `review-skip-check.sh` returns malformed JSON (missing `skip` or `run` keys), HALT with a parse-error message identifying the failing script — do NOT silently treat all 6 as run (AC-EC3).
@@ -250,9 +250,8 @@ For each short_name in run:
      flags so the per-gate telemetry line records non-null timing:
 
      ```bash
-     bash scripts/review-gate.sh update \
-       --story {story_key} --gate "{gate_name}" --verdict {verdict} \
-       --report {report_path} \
+     bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
+       --verdict {verdict} --sha "$_sha" --report {report_path} \
        --started-at {gate_start_epoch_ms} \
        --token-estimate {token_estimate_from_throughput_telemetry} \
        --telemetry-round {round_ordinal} \
@@ -301,7 +300,7 @@ The consolidation steps are:
 
 1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {register_gate_name}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
 2. **Triage non-blocking entries.** Call `register-write.sh triage-nonblocking --story {key} --run-id {run_id}` to deterministically move non-blocking open entries to disposition `triage` with auto-derived owner and priority. Disagreement entries (mixed blocking ratings, no resolution) stay open.
-3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
+3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update --sha "$_sha" --report <report-path>`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--sha "$_sha"`, `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
 
    The per-gate analysis-results and execution-evidence paths live in `.gaia/state/review/<gate>/{story_key}/` (written by each gate's Phase 3A, not alongside the review report):
 
