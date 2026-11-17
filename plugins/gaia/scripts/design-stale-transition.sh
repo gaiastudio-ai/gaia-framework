@@ -134,10 +134,15 @@ fi
 # yes or ambiguous decision, including runs that later halt at Phase 3.
 printf 'scope=%s reason=%s\n' "$_scope" "$_scope_reason" >&2
 
+# Resolve PROJECT_ROOT using the same chain as design-record.sh (:37) and
+# design-gate.sh (:421). Export so the design-record.sh subprocess at Phase 2
+# inherits a consistent value.
+PROJECT_ROOT="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}"
+export PROJECT_ROOT
+
 # Read the design-system surface for surface-conditional remediation.
-# Uses the same project-root resolution as design-record.sh and design-gate.sh.
 _ds_surface=""
-_dr_path="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/state/design-record.yaml"
+_dr_path="${PROJECT_ROOT}/.gaia/state/design-record.yaml"
 if [ -f "$_dr_path" ]; then
   _ds_surface="$(yq '.design_system_project.surface // ""' "$_dr_path" 2>/dev/null || true)"
 fi
