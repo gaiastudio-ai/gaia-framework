@@ -51,9 +51,34 @@ while IFS= read -r line; do
   esac
 done <<<"$config_output"
 
-# ---------- 2. Validate gate (story file required) ----------
-# No specific gate validation needed beyond what the skill body does.
-# The skill body resolves the story file via glob and fails fast if missing.
+# ---------- 2. Story resolution fail-fast ----------
+# Resolve the story key from $1 (bang-line positional) or $ARGUMENTS
+# (dev-story defensive env var). When no key is supplied, resolution is
+# deferred to the skill body — setup exits 0 for backward compatibility.
+RESOLVE_STORY="$PLUGIN_SCRIPTS_DIR/resolve-story-file.sh"
+_story_key="${1:-${ARGUMENTS:-}}"
+if [ -n "$_story_key" ] && [ -x "$RESOLVE_STORY" ]; then
+  _resolved=""
+  _resolved="$("$RESOLVE_STORY" "$_story_key" 2>&1)" || {
+    _rc=$?
+    if [ "$_rc" -eq 1 ]; then
+      die "story file not found for key $_story_key"
+    elif [ "$_rc" -eq 2 ]; then
+      die "multiple story files matched key $_story_key"
+    else
+      die "resolve-story-file.sh failed with exit $_rc: $_resolved"
+    fi
+  }
+  # Frontmatter key-mismatch guard: compare the resolved file's key to
+  # the argument. Halt before any gate/register write on mismatch.
+  if [ -f "$_resolved" ]; then
+    _file_key="$(grep -m1 '^key:' "$_resolved" | sed 's/^key:[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"'"'")"
+    if [ -n "$_file_key" ] && [ "$_file_key" != "$_story_key" ]; then
+      die "story file frontmatter key '${_file_key}' does not match argument '${_story_key}'"
+    fi
+  fi
+  log "story file resolved: $_resolved"
+fi
 
 # ---------- 3. Load checkpoint state ----------
 if [ -x "$CHECKPOINT" ]; then

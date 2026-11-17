@@ -1621,6 +1621,26 @@ main() {
         fi
       fi
 
+      # Non-descendant SHA advisory warning. Never changes the exit code
+      # or blocks the write — purely informational stderr output. Skips
+      # silently when either SHA is not in the repo (shallow clone, pruned
+      # reflog) or outside a git work tree.
+      if [ "$resolved_sha" != "none" ] && [ -n "$resolved_sha" ]; then
+        local _prior_sha=""
+        _prior_sha="$(parse_review_gate_table "$STORY_FILE" 2>/dev/null \
+          | awk -F'\t' -v g="$gate_name" '$1 == g { print $4 }')" || _prior_sha=""
+        if [ -n "$_prior_sha" ] && [ "$_prior_sha" != "absent" ] && [ "$_prior_sha" != "none" ]; then
+          local _pp="${PROJECT_PATH:-.}"
+          if git -C "$_pp" cat-file -e "${_prior_sha}^{commit}" 2>/dev/null \
+             && git -C "$_pp" cat-file -e "${resolved_sha}^{commit}" 2>/dev/null; then
+            if ! git -C "$_pp" merge-base --is-ancestor "$_prior_sha" "$resolved_sha" 2>/dev/null; then
+              printf '%s: WARNING — new SHA %s is not a descendant of prior SHA %s for gate "%s" (possible rebase/force-push); row still written\n' \
+                "$SCRIPT_NAME" "$resolved_sha" "$_prior_sha" "$gate_name" >&2
+            fi
+          fi
+        fi
+      fi
+
       # If --plan-id is present, write to the ledger (NOT the Review Gate table).
       if [ -n "$plan_id" ]; then
         ledger_write "$story_key" "$gate_name" "$plan_id" "$verdict"

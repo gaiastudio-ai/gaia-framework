@@ -29,7 +29,7 @@ fi
 
 ## Mission
 
-You are running all 6 review workflows sequentially inline for a story. The story is resolved by `{story_key}` by searching for `{story_key}-*.md` under `docs/implementation-artifacts/` — both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`). You orchestrate each review in deterministic order, update the Review Gate table after each, and report a summary of all verdicts.
+You are running all 6 review workflows sequentially inline for a story. The story is resolved by `{story_key}` via the shared `scripts/resolve-story-file.sh` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). You orchestrate each review in deterministic order, update the Review Gate table after each, and report a summary of all verdicts.
 
 This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/workflows/4-implementation/run-all-reviews` workflow. It is a **thin orchestrator**: every mechanical step lives in a deterministic bash script, and the LLM only does per-reviewer judgment work.
 
@@ -42,7 +42,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 ### Worked Example
 
 ```text
-$ /gaia-run-all-reviews E58-S6
+$ /gaia-run-all-reviews {story_key}
 # Step 2.2: review-skip-check.sh emits {"skip":["code-review","qa-tests","security-review","test-automate","test-review"],"run":["review-perf"]}
 # Step 2.3: 1 LLM judgment fires (review-perf), gate row written PASSED
 # Step 2.4: 5 SKIPPED entries recorded for the summary block
@@ -50,7 +50,7 @@ $ /gaia-run-all-reviews E58-S6
 #           review-gate.sh review-gate-check exits 0 (COMPLETE)
 #           review-nudge.sh emits the progressive nudge block
 
-$ /gaia-run-all-reviews E58-S6 --force
+$ /gaia-run-all-reviews {story_key} --force
 # Step 2.2: review-skip-check.sh --force emits {"skip":[],"run":["code-review","qa-tests","security-review","test-automate","test-review","review-perf"]}
 # Step 2.3: all 6 LLM judgments fire; gate rows rewritten
 # Summary block: zero SKIPPED entries; six verdicts.
@@ -74,7 +74,7 @@ Run the six review sub-agents (code, security, QA tests, test automation, test r
 **First-time invocation.**
 
 ```
-/gaia-review-all E1-S1
+/gaia-review-all {story_key}
 ```
 
 This loads the story file, walks all six reviewers in canonical order, writes one review report per reviewer under `.gaia/artifacts/implementation-artifacts/.../reviews/`, updates the Review Gate table, and emits a locked summary block plus the progressive nudge for the next action.
@@ -97,7 +97,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force] [--bind-head <sha>]".
-- The story file MUST exist under `docs/implementation-artifacts/`. Resolve by searching both the legacy flat layout (`docs/implementation-artifacts/{story_key}-*.md`) and the canonical nested layout (`docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`); prefer the first lexicographic match. If zero matches across both layouts, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before running reviews".
 - `--force` and `--bind-head <sha>` are the ONLY supported flags. `--bind-head` re-runs every PASSED row bound to a commit other than `<sha>`. Any other flag (e.g., `--frce`) MUST be rejected with a usage error and a non-zero exit (AC-EC2).
 - Reviews MUST run in this exact canonical order — never reordered, never parallel:
@@ -136,7 +136,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/brain/brain-reliance-loader.sh gaia-run-all-reviews:review-entry --story-key "{story_key}"
 ```
 
-3. Resolve the story file by searching both layouts in order: first the legacy flat path `docs/implementation-artifacts/{story_key}-*.md`, then the canonical nested path `docs/implementation-artifacts/epic-*/stories/{story_key}-*.md`. Prefer the first lexicographic match. If zero matches across both layouts, HALT with "story not found" before invoking any helper script (AC-EC12).
+3. Resolve the story file via `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` (three-tier: per-story nested, legacy nested, legacy flat fallback). If zero matches, HALT with "story not found" before invoking any helper script. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch.
 4. Read the story file frontmatter and verify `status: review`.
 5. Read the current Review Gate table to confirm the section exists.
 
@@ -208,9 +208,12 @@ HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-i
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} \
   --gate "{gate_name}" --verdict {PASSED|FAILED} \
+  --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
 ```
+
+The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory, which may be the main checkout when running as a background reviewer.
 
 For test-execution gates (`QA Tests`, `Test Automation`, `Test Review`), `--execution-evidence` is REQUIRED in addition to `--report` — the gate will refuse the verdict otherwise. The dispatched skill is responsible for producing both files; the orchestrator only asserts their existence.
 

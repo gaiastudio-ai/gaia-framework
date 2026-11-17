@@ -6,6 +6,11 @@
 
 load 'test_helper.bash'
 
+setup_file() {
+  _litter_snapshot_before
+  printf '%s\n' "$BASH_VERSION" >&3
+}
+
 setup() {
   common_setup
   export PROJECT_PATH="${TEST_TMP}/project"
@@ -2979,4 +2984,436 @@ YAML
     --story E900-S105 --row "Code Review" --from "$sha_a" --to "$sha_b"
   [ "$status" -ne 0 ]
   grep -qi 'invalid scope glob\|refusing\|fail closed' <<< "$output"
+}
+
+# ---------------------------------------------------------------------------
+# Story-resolution + key-mismatch + caller-supplied SHA + non-descendant SHA
+# ---------------------------------------------------------------------------
+
+# AC1: code-review SKILL.md Critical Rules references resolve-story-file.sh
+@test "code-review SKILL.md Critical Rules references resolve-story-file.sh (not inline glob)" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"
+  [ -f "$skill_md" ]
+  local section
+  section="$(sed -n '/^## Critical Rules/,/^## [^C]/p' "$skill_md")"
+  grep -q 'resolve-story-file\.sh' <<< "$section"
+  # No inline flat-glob for story resolution (exclude resolver tier descriptions)
+  ! grep -v 'resolve-story-file\|fallback\|legacy' <<< "$section" | grep -q '{story_key}-\*\.md'
+}
+
+# AC2: performance-review SKILL.md Critical Rules references resolve-story-file.sh
+@test "performance-review SKILL.md Critical Rules references resolve-story-file.sh (not inline glob)" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-performance-review/SKILL.md"
+  [ -f "$skill_md" ]
+  local section
+  section="$(sed -n '/^## Critical Rules/,/^## [^C]/p' "$skill_md")"
+  grep -q 'resolve-story-file\.sh' <<< "$section"
+  ! grep -v 'resolve-story-file\|fallback\|legacy' <<< "$section" | grep -q '{story_key}-\*\.md'
+}
+
+# Helper: seed a minimal fixture project so resolve-config.sh succeeds
+# inside setup.sh. Follows the pattern from quality-gates.bats.
+_seed_setup_fixture() {
+  local root="$1"
+  mkdir -p "$root/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$root/.gaia/artifacts/test-artifacts"
+  mkdir -p "$root/.gaia/artifacts/planning-artifacts"
+  mkdir -p "$root/_memory/checkpoints"
+  mkdir -p "$root/skill/config"
+  cat > "$root/skill/config/project-config.yaml" <<YAML
+project_root: ${root}
+project_path: ${root}
+memory_path: ${root}/_memory
+checkpoint_path: ${root}/_memory/checkpoints
+installed_path: ${root}/_gaia
+framework_version: 1.227.0
+date: 2026-11-17
+test_artifacts: ${root}/.gaia/artifacts/test-artifacts
+planning_artifacts: ${root}/.gaia/artifacts/planning-artifacts
+implementation_artifacts: ${root}/.gaia/artifacts/implementation-artifacts
+YAML
+}
+
+# AC3a: setup.sh exits non-zero when story key has no matching file
+@test "code-review setup.sh exits non-zero when story key has no matching file" {
+  local _K="E900-S901" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac3a"
+  _seed_setup_fixture "$tmproot"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+# AC3b: setup.sh exits zero when story key resolves to nested-layout fixture (regression guard)
+@test "code-review setup.sh exits zero when story key resolves to nested-layout fixture" {
+  local _K="E900-S902" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac3b"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Test Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K"
+  [ "$status" -eq 0 ]
+}
+
+# AC4a: setup.sh exits non-zero on frontmatter key mismatch
+@test "code-review setup.sh exits non-zero on frontmatter key mismatch" {
+  local _K="E900-S903" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local _K2="E900-S904" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac4a"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K2}"
+title: "Mismatched Key"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not match"* ]]
+}
+
+# AC3+AC4 via ARGUMENTS env var — missing key (must fail)
+@test "code-review setup.sh fails when ARGUMENTS names a missing story key" {
+  local _K="E900-S905" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac3envmiss"
+  _seed_setup_fixture "$tmproot"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K" \
+    bash "$setup_sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+# AC3+AC4 via ARGUMENTS env var — matching key resolves (regression guard)
+@test "code-review setup.sh resolves story key from ARGUMENTS env var" {
+  local _K="E900-S911" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac3envok"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Env Arg Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+}
+
+# AC3e: no key at all — backward compatible, exits 0 (regression guard)
+@test "code-review setup.sh exits zero when no story key is provided (regression guard)" {
+  local tmproot="${TEST_TMP}/ac3e"
+  _seed_setup_fixture "$tmproot"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+}
+
+# AC4b: code-review SKILL.md Phase 1 contains key-mismatch halt prose
+@test "code-review SKILL.md Phase 1 contains key-mismatch halt prose" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"
+  local section
+  section="$(sed -n '/^### Phase 1/,/^### /p' "$skill_md")"
+  # Must mention key mismatch and halt
+  grep -qi 'frontmatter.*key.*does not match\|halting to prevent cross-story\|mismatch.*halt\|halt.*mismatch' <<< "$section"
+}
+
+# AC5 (prose): code-review gate-update code block passes --sha
+@test "code-review gate-update code block passes --sha (prose)" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"
+  # Extract from "Gate row update" to the next heading
+  local section
+  section="$(sed -n '/Gate row update/,/^### \|^## /p' "$skill_md")"
+  grep -q '\-\-sha' <<< "$section"
+}
+
+# AC5 (functional regression): explicit --sha records the caller SHA
+@test "explicit --sha records the caller SHA not CWD HEAD (regression)" {
+  local _K="E900-S906" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  local impl="${PROJECT_PATH}/docs/implementation-artifacts"
+  mkdir -p "$impl"
+  local story="${impl}/${_K}-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "SHA Test"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — |  |
+| QA Tests | UNVERIFIED | — |  |
+| Security Review | UNVERIFIED | — |  |
+| Test Automation | UNVERIFIED | — |  |
+| Test Review | UNVERIFIED | — |  |
+| Performance Review | UNVERIFIED | — |  |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  local explicit_sha
+  explicit_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'extra\n' > "$PROJECT_PATH/extra.txt"
+  git -C "$PROJECT_PATH" add extra.txt && git -C "$PROJECT_PATH" commit -q -m "extra"
+  local head_sha
+  head_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  [ "$explicit_sha" != "$head_sha" ]
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "$explicit_sha" \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  grep "Code Review" "$story" | grep -q "$explicit_sha"
+  ! grep "Code Review" "$story" | grep -q "$head_sha"
+}
+
+# AC7a: non-descendant SHA warning emitted to stderr
+@test "review-gate.sh emits non-descendant SHA warning to stderr" {
+  local _K="E900-S907" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  git -C "$PROJECT_PATH" checkout -q -b branch-a
+  printf 'a\n' > "$PROJECT_PATH/a.txt"
+  git -C "$PROJECT_PATH" add a.txt && git -C "$PROJECT_PATH" commit -q -m "a"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  git -C "$PROJECT_PATH" checkout -q -b branch-b HEAD~1
+  printf 'b\n' > "$PROJECT_PATH/b.txt"
+  git -C "$PROJECT_PATH" add b.txt && git -C "$PROJECT_PATH" commit -q -m "b"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  git -C "$PROJECT_PATH" checkout -q branch-a
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "$sha_b" \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"not a descendant"* ]]
+  grep "Code Review" "$story" | grep -q "$sha_b"
+}
+
+# AC7b: descendant SHA emits no warning
+@test "review-gate.sh emits no warning for descendant SHA" {
+  local _K="E900-S908" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  printf 'first\n' > "$PROJECT_PATH/first.txt"
+  git -C "$PROJECT_PATH" add first.txt && git -C "$PROJECT_PATH" commit -q -m "first"
+  local sha_a
+  sha_a="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  printf 'second\n' > "$PROJECT_PATH/second.txt"
+  git -C "$PROJECT_PATH" add second.txt && git -C "$PROJECT_PATH" commit -q -m "second"
+  local sha_b
+  sha_b="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "$sha_a")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "$sha_b" \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not a descendant"* ]]
+}
+
+# AC7c: unknown prior SHA — silent, row written
+@test "review-gate.sh silently writes row when prior SHA is unknown to repo" {
+  local _K="E900-S909" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  local real_sha
+  real_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+  local fake_sha="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "$fake_sha")"
+  git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "story"
+  real_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "$real_sha" \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not a descendant"* ]]
+  grep "Code Review" "$story" | grep -q "$real_sha"
+}
+
+# AC7d: non-git directory — silent, row written
+@test "review-gate.sh silently writes row outside a git work tree" {
+  local _K="E900-S910" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local non_git="${TEST_TMP}/non-git-ac7d"
+  mkdir -p "$non_git/docs/implementation-artifacts"
+  export PROJECT_PATH="$non_git"
+  local story="${non_git}/docs/implementation-artifacts/${_K}-test.md"
+  cat > "$story" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Non-Git Test"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | PASSED | cr.md | abc1234 |
+| QA Tests | PASSED | qa.md | abc1234 |
+| Security Review | PASSED | sec.md | abc1234 |
+| Test Automation | PASSED | ta.md | abc1234 |
+| Test Review | PASSED | tr.md | abc1234 |
+| Performance Review | PASSED | perf.md | abc1234 |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "1234567890abcdef1234567890abcdef12345678" \
+    --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not a descendant"* ]]
+}
+
+# AC8: all nine review skills use resolve-story-file.sh (no inline flat-glob)
+@test "all nine review skills use resolve-story-file.sh with no inline flat-glob for story resolution" {
+  local skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-test-automate"
+    "gaia-review-mobile"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
+    # Extract Critical Rules section (or Step 1 for run-all-reviews)
+    local section
+    if [ "$skill" = "gaia-run-all-reviews" ]; then
+      section="$(sed -n '/^### Step 1/,/^### Step 2/p' "$skill_md")"
+    else
+      section="$(sed -n '/^## Critical Rules/,/^## [^C]/p' "$skill_md")"
+    fi
+    # Must reference resolve-story-file.sh
+    if ! grep -q 'resolve-story-file\.sh' <<< "$section"; then
+      echo "FAIL: $skill Critical Rules/Step 1 does not reference resolve-story-file.sh"
+      return 1
+    fi
+    # Must NOT contain inline flat-glob for story resolution (the
+    # pattern {story_key}-*.md used as a resolution mechanism).
+    # Exclude lines that describe the resolver's own tiers or are inside
+    # code blocks quoting the resolver's legacy fallback.
+    if grep -v 'resolve-story-file\|fallback\|legacy' <<< "$section" | grep -q '{story_key}-\*\.md'; then
+      echo "FAIL: $skill Critical Rules/Step 1 still has inline {story_key}-*.md glob for resolution"
+      return 1
+    fi
+  done
+}
+
+# AC9: all canonical gate writers pass --sha and --report
+@test "all canonical gate writers pass --sha and --report in gate-update code block" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  local -a test_gates=("gaia-qa-tests" "gaia-test-review")
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
+    # Extract the gate-update code block section
+    local section
+    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    if ! grep -q '\-\-sha' <<< "$section"; then
+      echo "FAIL: $skill gate-update block missing --sha"
+      return 1
+    fi
+    if ! grep -q '\-\-report' <<< "$section"; then
+      echo "FAIL: $skill gate-update block missing --report"
+      return 1
+    fi
+  done
+  # Test-execution gates must also have --execution-evidence
+  for skill in "${test_gates[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    local section
+    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    if ! grep -q '\-\-execution-evidence' <<< "$section"; then
+      echo "FAIL: $skill gate-update block missing --execution-evidence"
+      return 1
+    fi
+  done
+  # run-all-reviews Substep 2.3 must have --execution-evidence for test gates
+  local rr_md="${PLUGIN_ROOT}/skills/gaia-run-all-reviews/SKILL.md"
+  local rr_section
+  rr_section="$(sed -n '/Substep 2\.3/,/Substep 2\.4\|^### /p' "$rr_md")"
+  if ! grep -q '\-\-execution-evidence' <<< "$rr_section"; then
+    echo "FAIL: run-all-reviews Substep 2.3 missing --execution-evidence"
+    return 1
+  fi
 }

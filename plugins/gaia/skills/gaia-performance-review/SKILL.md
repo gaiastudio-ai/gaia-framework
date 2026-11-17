@@ -30,7 +30,7 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-perf-deepdive [story-key]".
-- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before performance review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
@@ -128,7 +128,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-perf-deepdive [story-key]"
-- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any write.
 - Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
 - **Tool prereq probe.** For each tool listed in the stack-toolkit table row matched by the canonical stack name (complexity tool, bundle tool, ORM-pattern matcher, memory-pattern scanner): probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key. Probe for cached perf data: presence of `.lighthouseci/` (Lighthouse JSON output) and `pprof/` (Go heap profiles).
@@ -324,17 +324,19 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Malformed-payload handling.** On any of the above checks failing, the parent persists what it received with an explicit `[INCOMPLETE]` marker prepended to the report, and emits `verdict=BLOCKED` to `review-gate.sh`. Fork output untrustworthy → BLOCKED. The bats fixture covers this case explicitly.
 
-**Parent write to locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/performance-review-E<NN>-S<NNN>.md` per the naming convention. The path is **locked**: `performance-review-{story_key}.md` — no slug, no date suffix.
+**Parent write to locked path.** The parent context writes the rendered report to `.gaia/artifacts/implementation-artifacts/performance-review-{story_key}.md` per the naming convention. The path is **locked**: `performance-review-{story_key}.md` — no slug, no date suffix.
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
-**Gate row update.** Parent invokes the individual gate update (single-line form): `review-gate.sh update --story "{story_key}" --gate "Performance Review" --verdict "{PASSED|FAILED}"`. Equivalent multi-line form for readability:
+**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update \
   --story "{story_key}" \
   --gate "Performance Review" \
-  --verdict "{PASSED|FAILED}"
+  --verdict "{PASSED|FAILED}" \
+  --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
+  --report "$REPORT_PATH"
 ```
 
 Mapping per Phase 5 table. Confirm exit code 0.

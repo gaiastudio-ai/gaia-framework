@@ -22,7 +22,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 - **Check authentication and authorization patterns.** Review how identity is established, how sessions or tokens are managed, and how authorization decisions are made at every trust boundary — look for privilege escalation paths.
 - **Threat-model cross-reference.** When `.gaia/artifacts/planning-artifacts/threat-model.md` exists, OWASP findings MUST cross-reference modeled threats by threat ID via an optional `Related Threat` column. When the file is absent, the column is omitted entirely — no error, no warning, no behavioral change from current V2.
 - **Live-secret severity escalation.** Findings matching the live-secret pattern registry (AWS `AKIA...`, GCP service account JSON, GitHub PAT prefixes) MUST rank above generic hardcoded string findings.
-- **Optional Review Gate integration.** When a story in `review` status is identifiable from context, the skill MUST offer to write findings to the story's Review Gate `Security Review` row via `review-gate.sh`. This does NOT replace the pre-merge `/gaia-security-review` gate — it supplements it for anytime reviews.
+- **Optional Review Gate integration.** When a story in `review` status is identifiable from context, the skill MUST offer to write findings to the story's Review Gate `Security Review` row via `review-gate.sh`. This does NOT replace the pre-merge `/gaia-security-review` gate — it supplements it for anytime reviews. When resolving a story file, use the shared `scripts/resolve-story-file.sh` helper (three-tier: per-story nested, legacy nested, legacy flat). Do NOT inline-hardcode a glob. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any gate write.
 
 ## Inputs
 
@@ -415,7 +415,7 @@ This step is **optional** and **opt-in**. It bridges anytime reviews into the st
 Attempt to identify a candidate story in `review` status from any of these sources:
 
 1. **Explicit argument.** If the user passed a story key as part of `$ARGUMENTS` (e.g., `/gaia-review-security {story_key}`), use that key.
-2. **Branch name.** Run `git branch --show-current` and look for a `{story_key}` token matching the canonical pattern `E\d+-S\d+` (e.g., `feat/{story_key}-...`). Resolve the story file via `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`.
+2. **Branch name.** Run `git branch --show-current` and look for a `{story_key}` token matching the canonical story-key pattern (e.g., `feat/{story_key}-...`). Resolve the story file via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). After resolving, compare the resolved file's frontmatter `key:` to the extracted key; halt on mismatch before any write.
 3. **Current sprint context.** Read `.gaia/artifacts/planning-artifacts/sprint-status.yaml` (if present) and find any story whose `status` is `review`. If exactly one matches, propose that key. If multiple match, list them and ask the user to pick.
 
 If a candidate is found, verify its `status` is `review` by reading the story file YAML frontmatter. A story is **identifiable for Review Gate integration** only when status is exactly `review`.
@@ -450,10 +450,10 @@ The resolver resolves verdict from the register (no `--analysis-results` needed 
 
 **Legacy path.** Without a story key (and therefore no register) the reviewer maps findings to PASSED/FAILED per the shared blocker definition.
 
-Invoke the shared `review-gate.sh` script to update the story's `Security Review` row:
+Invoke the shared `review-gate.sh` script to update the story's `Security Review` row with the story worktree's HEAD SHA and the absolute report path. The `--sha` MUST be the HEAD of the story's own worktree — never from the fork's current working directory:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}"
+${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}" --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" --report "$REPORT_PATH"
 ```
 
 Confirm the update succeeded (exit code 0). Report the final status to the user. Note: sprint-status.yaml may now be out of sync. Run `/gaia-sprint-status` to reconcile.

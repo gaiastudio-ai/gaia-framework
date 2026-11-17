@@ -25,7 +25,7 @@ usage: /gaia-test-automate {story_key} --status
 ```
 
 **Arguments**
-- `{story_key}` — required (your story's key). Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for older projects).
+- `{story_key}` — required (your story's key). Resolves the story file via the shared `scripts/resolve-story-file.sh` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). After resolving, compares the resolved file's frontmatter `key:` to the argument; halts on mismatch before any write.
 
 **Output format (stdout)**
 ```
@@ -55,7 +55,7 @@ usage: /gaia-test-automate {story_key} --add-scenario
 - Stdout: the allocated `CS-NNN` ID, e.g. `CS-003`.
 - Side effects: row appended to the story's `## Custom Scenarios` table; entry appended to `custom/test-scenarios/index.yaml` under the `scenarios:` key.
 
-The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-review-qa` re-runs do not collide.
+The `CS-NNN` custom-scenario namespace is deliberately separate from the QA test-case namespace so `/gaia-review-qa` re-runs do not collide.
 
 **`custom/test-scenarios/index.yaml` schema.** Each entry under `scenarios:` carries the following canonical fields:
 
@@ -505,7 +505,7 @@ The Approval Gate runs in the **parent (main) context** — NOT in the fork. The
 
 **Pre-conditions:**
 - The plan file MUST exist at the path returned by `bash ${CLAUDE_PLUGIN_ROOT}/scripts/lib/resolve-test-artifact-per-story.sh test-automate-plan {story_key} --existing-only` (emitted by Phase 6). The resolver returns the new per-story home if present, else the legacy flat `.gaia/artifacts/test-artifacts/test-automate-plan-{story_key}.md` if present, else exit 1 with no stdout (indicating Phase 6 didn't produce a plan — Approval Gate is NOT entered).
-- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`.
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch.
 - The verdict from Phase 5 MUST be APPROVE or REQUEST_CHANGES (BLOCKED short-circuited at Phase 6 — Approval Gate is NOT entered).
 
 ### Step 1 — Read and validate plan file
