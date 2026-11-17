@@ -94,7 +94,7 @@ make_no_flock_path() {
     --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
 
   [ "$status" -eq 0 ]
-  [[ "$stderr" != *"not found"* ]]
+  case "$stderr" in *"not found"*) echo "unexpected 'not found' on stderr: $stderr" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -173,7 +173,7 @@ WRAPPER
   run --separate-stderr "$BASH32" "$TEST_TMP/fd8-caller.sh" "$LIB"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"FD8_OK"* ]]
+  case "$output" in *FD8_OK*) ;; *) echo "FD8_OK missing from output: $output" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -194,7 +194,7 @@ WRAPPER
     --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
 
   [ "$status" -ne 0 ]
-  [[ "$stderr" != *"failed to acquire lock"* ]]
+  case "$stderr" in *"failed to acquire lock"*) echo "unexpected lock diagnostic on stderr: $stderr" >&2; return 1 ;; esac
   [ -n "$stderr" ]
 }
 
@@ -217,7 +217,7 @@ WRAPPER
   run --separate-stderr bash "$TEST_TMP/fd8-caller.sh" "$LIB"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"FD8_OK"* ]]
+  case "$output" in *FD8_OK*) ;; *) echo "FD8_OK missing from output: $output" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -346,6 +346,6 @@ WRAPPER
 
   [ "$status" -ne 0 ]
   [ ! -f "$TEST_TMP/yq-ran" ]
-  [[ "${stderr:-}" != *"failed to acquire lock"* ]]
+  case "${stderr:-}" in *"failed to acquire lock"*) echo "unexpected lock diagnostic on stderr: ${stderr:-}" >&2; return 1 ;; esac
   [[ "$stderr" == *"jq"* ]]
 }
