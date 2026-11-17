@@ -4031,7 +4031,7 @@ _run_extracted_gate() {
   {
     printf '#!/usr/bin/env bash\nset -euo pipefail\n'
     printf 'cd "%s" || exit 99\n' "$cwd"
-    printf 'export PROJECT_PATH="${PROJECT_PATH:-%s}"\n' "$cwd"
+    printf '[ -n "${PROJECT_PATH:-}" ] && export PROJECT_PATH || true\n'
     printf 'REPORT_PATH="/tmp/fake-report.md"\n'
     printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
     printf '%s\n' "$gate_code"
@@ -4161,11 +4161,11 @@ _run_extracted_gate() {
   local stale_sha
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   # Export the STALE STORY_WORKTREE_PATH — the block must ignore it
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
   unset STORY_WORKTREE_PATH
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
@@ -4194,10 +4194,10 @@ _run_extracted_gate() {
   local stale_sha
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
   unset STORY_WORKTREE_PATH
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
@@ -4213,9 +4213,9 @@ _run_extracted_gate() {
   local tmproot="${TEST_TMP}/gwb_e_cr"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
   [ ! -f "$tmproot/captured-sha" ]
   [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
@@ -4226,9 +4226,9 @@ _run_extracted_gate() {
   local tmproot="${TEST_TMP}/gwb_e_rar"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
   [ ! -f "$tmproot/captured-sha" ]
   [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
@@ -4338,10 +4338,10 @@ _run_extracted_gate() {
   local stale_sha
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
   unset STORY_WORKTREE_PATH
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
@@ -4356,9 +4356,9 @@ _run_extracted_gate() {
   local tmproot="${TEST_TMP}/gwb_e_sra"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
-  _setup_gate_stubs "$tmproot"
+  _setup_real_plugin_stubs "$tmproot"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
+    _run_extracted_gate_real "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
   [ ! -f "$tmproot/captured-sha" ]
   [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
@@ -4420,26 +4420,29 @@ STORY
 # RF-14: standalone checkpoint-based resolution (JSON parsing)
 # ---------------------------------------------------------------------------
 
-@test "gate-write snippet resolves worktree from JSON checkpoint fixture" {
+@test "gate-write snippet resolves worktree from checkpoint via find-worktree" {
   local _K="E900-S952" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/gwb_cp"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
-  local wt="$tmproot/wt"
-  _seed_worktree_fixture "$wt" "$_K"
+  # Create the worktree on the story branch inside the main repo
+  git -C "$tmproot/main" worktree add "$tmproot/wt" -b "feat/${_K}-cp-test" 2>/dev/null
+  printf 'wt\n' > "$tmproot/wt/file.txt"
+  git -C "$tmproot/wt" add file.txt
+  git -C "$tmproot/wt" commit -q -m "wt commit"
   local expected_sha
-  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
 
-  _setup_gate_stubs "$tmproot"
-  # Stub resume-checkpoint.sh to emit JSON like the real one
-  cat > "$tmproot/fake-plugin/scripts/resume-checkpoint.sh" <<STUB
-#!/usr/bin/env bash
-cat <<'JSON'
-{"key_variables":{"story_key":"${_K}","worktree_path":"${wt}"},"step":"review"}
+  # Create a checkpoint fixture so find-worktree's checkpoint path finds it
+  local cp_root="$tmproot/main/.gaia/memory/checkpoints/gaia-dev-story"
+  mkdir -p "$cp_root"
+  cat > "$cp_root/latest-step-review.json" <<JSON
+{"key_variables":{"story_key":"${_K}","worktree_path":"${tmproot}/wt"},"step":"review"}
 JSON
-STUB
-  chmod +x "$tmproot/fake-plugin/scripts/resume-checkpoint.sh"
-  _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
+
+  _setup_real_plugin_stubs "$tmproot"
+  PROJECT_PATH="$tmproot/main" PROJECT_ROOT="$tmproot/main" \
+    _run_extracted_gate_real "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
   local captured
@@ -4447,7 +4450,7 @@ STUB
   [ "$captured" = "$expected_sha" ]
 }
 
-@test "gate-write snippet resolves worktree from non-git cwd via repo worktree list" {
+@test "gate-write snippet resolves worktree from non-git cwd via find-worktree" {
   local _K="E900-S953" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/gwb_nongit_cwd"
   mkdir -p "$tmproot/main"
@@ -4460,11 +4463,10 @@ STUB
   local expected_sha
   expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
 
-  _setup_gate_stubs "$tmproot"
-  # Run from a NON-git directory; the block must use PROJECT_PATH to find worktrees
+  _setup_real_plugin_stubs "$tmproot"
   mkdir -p "$tmproot/nongit"
   PROJECT_PATH="$tmproot/main" \
-    _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/nongit"
+    _run_extracted_gate_real "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/nongit"
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
   local captured
@@ -4530,4 +4532,176 @@ STUB
     echo "FAIL: $blocks_with_sha blocks use --sha but only $blocks_with_guard have _wt_arg guard"
     return 1
   fi
+}
+
+# ---------------------------------------------------------------------------
+# RF-14 closure: standalone via find-worktree from non-git CWD, PROJECT_PATH unset
+# ---------------------------------------------------------------------------
+
+# Helper: set up a fake plugin root that delegates to the REAL plugin tree
+# for everything (so find-worktree works) except review-gate.sh, which is
+# a stub that records --sha.
+_setup_real_plugin_stubs() {
+  local tmproot="$1"
+  local real_plugin="$PLUGIN_ROOT"
+  local fake="$tmproot/fake-plugin"
+  mkdir -p "$fake"
+  # Symlink everything from the real plugin root
+  ln -sf "$real_plugin/scripts" "$fake/scripts"
+  ln -sf "$real_plugin/skills" "$fake/skills"
+  ln -sf "$real_plugin/agents" "$fake/agents" 2>/dev/null || true
+  ln -sf "$real_plugin/knowledge" "$fake/knowledge" 2>/dev/null || true
+  # Override review-gate.sh with a stub that captures --sha
+  mkdir -p "$fake/scripts-override"
+  cat > "$fake/scripts-override/review-gate.sh" <<STUB
+#!/usr/bin/env bash
+while [ \$# -gt 0 ]; do
+  case "\$1" in --sha) shift; printf '%s' "\$1" > "${tmproot}/captured-sha"; shift ;; *) shift ;; esac
+done
+exit 0
+STUB
+  chmod +x "$fake/scripts-override/review-gate.sh"
+}
+
+# Helper: run extracted gate with the real plugin tree (find-worktree works),
+# but review-gate.sh calls go to the stub.
+_run_extracted_gate_real() {
+  local skill_name="$1" story_key="$2" wt_val="$3" tmproot="$4" cwd="${5:-$tmproot}"
+  local skill_md="$PLUGIN_ROOT/skills/$skill_name/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$story_key" "$wt_val")"
+  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output for $skill_name"; return 1; }
+  # Replace the review-gate.sh call with the stub path
+  gate_code="$(printf '%s' "$gate_code" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g" | sed "s|bash scripts/review-gate\.sh|bash ${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")"
+  local script="$tmproot/gate-test-real-${skill_name}.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'cd "%s" || exit 99\n' "$cwd"
+    printf '[ -n "${PROJECT_PATH:-}" ] && export PROJECT_PATH || true\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$script"
+  chmod +x "$script"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run bash "$script"
+}
+
+@test "gate-write snippet resolves worktree via find-worktree from non-git cwd with PROJECT_PATH unset" {
+  local _K="E900-S960" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_findwt"
+  # Create a git repo that will serve as the code repo
+  mkdir -p "$tmproot/code-repo"
+  _init_git "$tmproot/code-repo"
+  # Add a linked worktree for the story
+  git -C "$tmproot/code-repo" worktree add "$tmproot/wt" -b "feat/${_K}-findwt" 2>/dev/null
+  printf 'wt\n' > "$tmproot/wt/file.txt"
+  git -C "$tmproot/wt" add file.txt
+  git -C "$tmproot/wt" commit -q -m "wt commit"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
+
+  _setup_real_plugin_stubs "$tmproot"
+
+  # Create a config fixture so find-worktree's config-path fallback resolves
+  # the code repo when PROJECT_PATH is unset.
+  mkdir -p "$tmproot/nongit/.gaia/config"
+  cat > "$tmproot/nongit/.gaia/config/project-config.yaml" <<YAML
+project:
+  name: test
+YAML
+  # The resolve-config.sh used by find-worktree needs CLAUDE_SKILL_DIR or
+  # PROJECT_ROOT to find config. Set PROJECT_ROOT to the non-git dir so
+  # find-worktree resolves code-repo from config.
+  # Create config at BOTH .gaia/config/ (for _discover_shared_config) and
+  # skill/config/ (for resolve-config.sh CLAUDE_SKILL_DIR fallback).
+  mkdir -p "$tmproot/nongit/.gaia/config" "$tmproot/nongit/skill/config" "$tmproot/nongit/_memory/checkpoints"
+  local _cfg_body
+  _cfg_body="$(cat <<YAML
+project_root: ${tmproot}/nongit
+project_path: ${tmproot}/code-repo
+memory_path: ${tmproot}/nongit/_memory
+checkpoint_path: ${tmproot}/nongit/_memory/checkpoints
+installed_path: ${tmproot}/nongit/_gaia
+framework_version: 1.227.0
+date: 2026-11-18
+YAML
+)"
+  printf '%s\n' "$_cfg_body" > "$tmproot/nongit/.gaia/config/project-config.yaml"
+  printf '%s\n' "$_cfg_body" > "$tmproot/nongit/skill/config/project-config.yaml"
+
+  # Run from a NON-git directory with PROJECT_PATH UNSET.
+  # Build the script inline so we can pass the right env vars directly.
+  unset PROJECT_PATH
+  local skill_md="$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$_K" "")"
+  gate_code="$(printf '%s' "$gate_code" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")"
+  local script="$tmproot/gate-findwt.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'unset PROJECT_PATH PROJECT_CONFIG CLAUDE_PROJECT_ROOT\n'
+    printf 'cd "%s" || exit 99\n' "$tmproot/nongit"
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$script"
+  chmod +x "$script"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+  CLAUDE_SKILL_DIR="$tmproot/nongit/skill" \
+  PROJECT_ROOT="$tmproot/nongit" \
+    run bash "$script"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+}
+
+@test "gate-write snippet via find-worktree refuses when no match from non-git cwd" {
+  local _K="E900-S961" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_findwt_none"
+  # Create a git repo with NO matching worktree
+  mkdir -p "$tmproot/code-repo"
+  _init_git "$tmproot/code-repo"
+
+  _setup_real_plugin_stubs "$tmproot"
+
+  mkdir -p "$tmproot/nongit/.gaia/config" "$tmproot/nongit/skill/config" "$tmproot/nongit/_memory/checkpoints"
+  local _cfg_body2
+  _cfg_body2="$(cat <<YAML
+project_root: ${tmproot}/nongit
+project_path: ${tmproot}/code-repo
+memory_path: ${tmproot}/nongit/_memory
+checkpoint_path: ${tmproot}/nongit/_memory/checkpoints
+installed_path: ${tmproot}/nongit/_gaia
+framework_version: 1.227.0
+date: 2026-11-18
+YAML
+)"
+  printf '%s\n' "$_cfg_body2" > "$tmproot/nongit/.gaia/config/project-config.yaml"
+  printf '%s\n' "$_cfg_body2" > "$tmproot/nongit/skill/config/project-config.yaml"
+
+  unset PROJECT_PATH
+  local skill_md="$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$_K" "")"
+  gate_code="$(printf '%s' "$gate_code" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")"
+  local script="$tmproot/gate-findwt-none.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'unset PROJECT_PATH PROJECT_CONFIG CLAUDE_PROJECT_ROOT\n'
+    printf 'cd "%s" || exit 99\n' "$tmproot/nongit"
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$script"
+  chmod +x "$script"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+  CLAUDE_SKILL_DIR="$tmproot/nongit/skill" \
+  PROJECT_ROOT="$tmproot/nongit" \
+    run bash "$script"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
 }

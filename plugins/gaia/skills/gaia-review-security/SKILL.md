@@ -464,22 +464,14 @@ if [ -n "$_wt_arg" ]; then
   case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "--worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
   STORY_WORKTREE_PATH="$_wt_arg"
 else
-  _cp_wt="" _cp_key=""
-  if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
-    _cp_key="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.story_key // empty' 2>/dev/null)" || _cp_key=""
-    _cp_wt="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.worktree_path // empty' 2>/dev/null)" || _cp_wt=""
-  fi
-  if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    STORY_WORKTREE_PATH="$_cp_wt"
-  else
-    _wt_path="$(git -C "${PROJECT_PATH:-.}" worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
-    if [ -n "$_wt_path" ]; then
-      STORY_WORKTREE_PATH="$_wt_path"
-    else
-      echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2
-      exit 1
-    fi
-  fi
+  _wt_path="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh" find-worktree --story-key "{story_key}" 2>/dev/null)" \
+    || { echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2; exit 1; }
+  [ -d "$_wt_path" ] || { echo "resolved worktree path does not exist: $_wt_path" >&2; exit 1; }
+  git -C "$_wt_path" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "resolved worktree is not a git work tree: $_wt_path" >&2; exit 1; }
+  _wt_branch="$(git -C "$_wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+  STORY_WORKTREE_PATH="$_wt_path"
 fi
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
