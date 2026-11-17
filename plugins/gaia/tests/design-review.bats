@@ -1634,6 +1634,125 @@ _sweep_prewrite_guards() {
     fail "found $bare_count references to scripts/design-record.sh but only $rooted_count are plugin-rooted"
 }
 
+# =========================================================================
+# Structural: rebind in verb list, force-iteration mediation, YOLO halt
+# =========================================================================
+
+@test "structural: SKILL.md sole-writer verb list includes rebind" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # The sole-writer discipline rule lists sanctioned verbs
+  local discipline_block
+  discipline_block="$(awk '/[Ss]ole.writer.*discipline/,/^-/' "$SKILL_MD")"
+  [ -n "$discipline_block" ] || {
+    # Fallback: search entire file for verb list mentioning rebind
+    grep -q 'rebind' "$SKILL_MD" || fail "rebind not found anywhere in SKILL.md"
+    # Even if found elsewhere, it should be in the sole-writer verb list
+    discipline_block="$(grep -A 5 'verbs:' "$SKILL_MD" || true)"
+  }
+  [[ "$discipline_block" == *"rebind"* ]] || \
+    fail "sole-writer verb list should include rebind"
+}
+
+@test "structural: stale-resume precondition has AskUserQuestion for force-iteration reason" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found in SKILL.md"
+  [ -n "$step1_line" ] || fail "Step 1 heading not found in SKILL.md"
+
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+
+  grep -qi 'AskUserQuestion' <<<"$precondition_block" || \
+    fail "stale-resume should use AskUserQuestion to prompt for force-iteration reason"
+}
+
+@test "structural: stale-resume mentions minimum 10 character reason" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found"
+  [ -n "$step1_line" ] || fail "Step 1 not found"
+
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+
+  grep -qiE '10.*char|minimum.*10|at least 10' <<<"$precondition_block" || \
+    fail "stale-resume should mention 10-character minimum for the reason"
+}
+
+@test "structural: YOLO mode halts on stale-resume step" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found"
+  [ -n "$step1_line" ] || fail "Step 1 not found"
+
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+
+  grep -qiE 'YOLO.*halt|halt.*YOLO|not auto.answered|YOLO.*not' <<<"$precondition_block" || \
+    fail "stale-resume should state YOLO mode halts (not auto-answered)"
+}
+
+@test "structural: stale-resume mentions design-not-updated stays stale" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found"
+  [ -n "$step1_line" ] || fail "Step 1 not found"
+
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+
+  grep -qiE 'stays stale|remain.*stale|not updated.*stale|stale.*not proceed' <<<"$precondition_block" || \
+    fail "stale-resume should document that declining keeps the record stale"
+}
+
+@test "structural: SKILL.md has rebind mediation section" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  grep -qiE 'rebind.*mediat|mediat.*rebind' "$SKILL_MD" || \
+    fail "SKILL.md should have a rebind mediation section"
+}
+
+@test "structural: rebind mediation uses AskUserQuestion for confirmation" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  # Find the rebind section
+  local rebind_section
+  rebind_section="$(awk '/[Rr]ebind/,/^###/' "$SKILL_MD" | head -50)"
+  [ -n "$rebind_section" ] || fail "no rebind section found in SKILL.md"
+
+  grep -qiE 'AskUserQuestion|user.*confirm|confirm.*user' <<<"$rebind_section" || \
+    fail "rebind mediation should use AskUserQuestion for confirmation"
+}
+
+@test "structural: stale-resume precondition includes --force-iteration flag" {
+  [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
+
+  local precondition_line step1_line
+  precondition_line="$(grep -niE 'precondition.*stale|stale.*resume|stale.*precondition' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  step1_line="$(grep -n '### Step 1' "$SKILL_MD" | head -1 | cut -d: -f1 || true)"
+  [ -n "$precondition_line" ] || fail "stale-resume precondition not found"
+  [ -n "$step1_line" ] || fail "Step 1 not found"
+
+  local precondition_block
+  precondition_block="$(awk "NR>=$precondition_line && NR<$step1_line" "$SKILL_MD")"
+
+  grep -q '\-\-force-iteration' <<<"$precondition_block" || \
+    fail "stale-resume should mention --force-iteration flag"
+}
+
 @test "no bare scripts/lib/escape-boundary-markers.sh reference in SKILL.md" {
   [ -f "$SKILL_MD" ] || fail "SKILL.md does not exist: $SKILL_MD"
 
