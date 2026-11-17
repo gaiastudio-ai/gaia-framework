@@ -2207,24 +2207,31 @@ SHIMEOF
     *) skip "/bin/bash is version $binbash_ver, not 3.2 — bash 3.2 compat test requires macOS /bin/bash" ;;
   esac
 
-  # Create a bash shim that delegates to /bin/bash with BASH_ENV set so the
-  # target interpreter itself reports its version, PID, and $0 at startup.
-  # BASH_ENV is sourced by every non-interactive bash in its own process, so
-  # this captures the actual interpreter that runs ci-wait.sh — not a
-  # separate subprocess.
+  # Two-part logging mechanism that works on bash 3.2 and 5.x:
+  #
+  # The shim (#!/bin/sh) records "SHIM <pid> <args...>" — its $$ and "$@"
+  # capture the script path reliably since $0 is the shim itself.  It then
+  # exports BASH_ENV and exec's /bin/bash.  exec replaces the process image
+  # without changing the PID, so the BASH_ENV script records "ENV <pid>
+  # <BASH_VERSION>" using the same $$.
+  #
+  # bash 3.2 sources BASH_ENV before $0 is set to the script name, so the
+  # old approach (reading $0 in BASH_ENV) broke on macOS.  Recording the
+  # script path in the shim and correlating by PID avoids that entirely.
   local bash32_bin="$TEST_TMP/bash32-bin"
   mkdir -p "$bash32_bin"
 
-  local bash_env_log="$TEST_TMP/bash32-env.log"
-  : > "$bash_env_log"
+  local bash32_log="$TEST_TMP/bash32-interp.log"
+  : > "$bash32_log"
 
   local bash_env_script="$TEST_TMP/bash32-env.sh"
   cat > "$bash_env_script" <<ENVEOF
-printf '%s %s %s\n' "\$BASH_VERSION" "\$\$" "\$0" >> "$bash_env_log"
+printf 'ENV %s %s\n' "\$\$" "\$BASH_VERSION" >> "$bash32_log"
 ENVEOF
 
   cat > "$bash32_bin/bash" <<SHIMEOF
 #!/bin/sh
+printf 'SHIM %s %s\n' "\$\$" "\$*" >> "$bash32_log"
 export BASH_ENV="$bash_env_script"
 exec /bin/bash "\$@"
 SHIMEOF
@@ -2242,25 +2249,51 @@ SHIMEOF
   [ "$status" -eq 0 ]
   case "$output" in *"passed"*) ;; *) echo "expected 'passed' in output" >&2; return 1 ;; esac
 
-  # Assert the interpreter log was written and is non-empty
-  [ -s "$bash_env_log" ] || { echo "BASH_ENV log empty or missing — shim was not invoked" >&2; return 1; }
+  # On any assertion failure below, dump the full log for diagnostics
+  _dump_log() { echo "--- bash32-interp.log ---" >&2; cat "$bash32_log" >&2; echo "--- end ---" >&2; }
 
-  # Assert at least one line's $0 names ci-wait.sh (the script's own interpreter reported)
-  local found_ci_wait=0
+  # Assert the log was written and is non-empty
+  [ -s "$bash32_log" ] || { _dump_log; echo "interpreter log empty or missing — shim was not invoked" >&2; return 1; }
+
+  # Find a SHIM line whose args include ci-wait.sh and extract its PID
+  local shim_pid=""
   while IFS= read -r line; do
     case "$line" in
-      *ci-wait.sh*) found_ci_wait=1 ;;
+      SHIM\ *)
+        case "$line" in
+          *ci-wait.sh*) shim_pid="${line#SHIM }"; shim_pid="${shim_pid%% *}" ;;
+        esac
+        ;;
     esac
-  done < "$bash_env_log"
-  [ "$found_ci_wait" -eq 1 ] || { echo "no log line names ci-wait.sh — the script interpreter did not report" >&2; return 1; }
+  done < "$bash32_log"
+  [ -n "$shim_pid" ] || { _dump_log; echo "no SHIM line names ci-wait.sh" >&2; return 1; }
 
-  # Assert every recorded version starts with 3.2
-  local ver=""
+  # Find an ENV line with the same PID and verify its version starts with 3.2
+  local matched_env=0
   while IFS= read -r line; do
-    ver="${line%% *}"
-    case "$ver" in
-      3.2.*) ;;
-      *) echo "expected bash 3.2.*, recorded version $ver in line: $line" >&2; return 1 ;;
+    case "$line" in
+      ENV\ "${shim_pid}"\ *)
+        local env_ver="${line##ENV "${shim_pid}" }"
+        case "$env_ver" in
+          3.2.*) matched_env=1 ;;
+          *) _dump_log; echo "ENV line for PID $shim_pid has version $env_ver, expected 3.2.*" >&2; return 1 ;;
+        esac
+        ;;
     esac
-  done < "$bash_env_log"
+  done < "$bash32_log"
+  [ "$matched_env" -eq 1 ] || { _dump_log; echo "no ENV line found for SHIM PID $shim_pid" >&2; return 1; }
+
+  # Assert every ENV line's version starts with 3.2
+  while IFS= read -r line; do
+    case "$line" in
+      ENV\ *)
+        local env_rest="${line#ENV }"
+        local env_ver="${env_rest#* }"
+        case "$env_ver" in
+          3.2.*) ;;
+          *) _dump_log; echo "expected bash 3.2.*, recorded version $env_ver in line: $line" >&2; return 1 ;;
+        esac
+        ;;
+    esac
+  done < "$bash32_log"
 }
