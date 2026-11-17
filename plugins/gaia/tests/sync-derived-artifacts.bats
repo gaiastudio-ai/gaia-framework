@@ -9907,8 +9907,6 @@ UX
 
   # The table must be intact: header, separator, Alpha, Card — all
   # before the code fence.
-  local doc_content
-  doc_content="$(cat "$doc_dir/ux-design.md")"
 
   # Alpha must appear BEFORE the backtick fence
   local alpha_line fence_line
