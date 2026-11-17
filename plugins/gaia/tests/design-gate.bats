@@ -3394,3 +3394,140 @@ _assert_no_raw_control_in_reason() {
   fi
 }
 
+# ===========================================================================
+# Surface-conditional remediation — design_system_project.surface routing
+# ===========================================================================
+
+# Helper: build a draft v2 record with explicit design_system_project.surface.
+_build_draft_record_with_surface() {
+  local surface="$1"
+  _init_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  surface="$surface" yq -i '.design_system_project.surface = strenv(surface)' "$rec"
+}
+
+@test "halt remediation for artifact-surface record does not mention /design-login or DesignSync" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _build_draft_record_with_surface "artifact"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on draft, got status=$status"
+  _assert_gate_output
+
+  # Artifact-surface remediation must NOT contain /design-login or DesignSync
+  if _stripped_output | grep -qF '/design-login'; then
+    fail "artifact-surface remediation should not mention /design-login"
+  fi
+  if _stripped_output | grep -qiF 'DesignSync'; then
+    fail "artifact-surface remediation should not mention DesignSync"
+  fi
+
+  # Artifact-surface remediation must name the Artifact surface
+  _stripped_output | grep -qi 'Artifact surface' \
+    || fail "artifact-surface remediation should name the Artifact surface"
+}
+
+@test "halt remediation for designsync-surface record mentions /design-login" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _build_draft_record_with_surface "designsync"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on draft, got status=$status"
+  _assert_gate_output
+
+  _stripped_output | grep -qF '/design-login' \
+    || fail "designsync-surface remediation should mention /design-login"
+}
+
+@test "coverage clause for artifact-surface record does not mention /design-login" {
+  seed_ui_project available
+  _build_approved_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+  yq -i '.design_system_project.reference = "ds-ref-001"' "$rec"
+  yq -i '.design_system_project.type = "design-system"' "$rec"
+  yq -i '.design_system_project.discovered_via = "project-artifacts"' "$rec"
+  yq -i '.product_design_project.reference = "pd-ref-001"' "$rec"
+  yq -i '.product_design_project.type = "product-design"' "$rec"
+  yq -i '.product_design_project.surface = "artifact"' "$rec"
+  yq -i '.product_design_project.discovered_via = "created"' "$rec"
+  yq -i '.review_coverage = ["product-design"]' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should fail on incomplete coverage, got status=$status"
+  _assert_gate_output
+
+  # Must name the Artifact surface positively
+  _stripped_output | grep -qi 'Artifact surface' \
+    || fail "artifact-surface coverage clause should name the Artifact surface"
+
+  if _stripped_output | grep -qF '/design-login'; then
+    fail "artifact-surface coverage clause should not mention /design-login"
+  fi
+}
+
+@test "v1 record (missing surface) uses designsync remediation with /design-login" {
+  # Regression guard — this passes on current code because remediation
+  # unconditionally includes /design-login. Kept to verify the v1 fallback.
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+  _init_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  # Force schema_version to 1.0 and remove any surface field
+  yq -i '.schema_version = "1.0"' "$rec"
+  yq -i 'del(.design_system_project.surface)' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on draft, got status=$status"
+  _assert_gate_output
+
+  _stripped_output | grep -qF '/design-login' \
+    || fail "v1 record remediation should mention /design-login"
+}
+
+@test "v1 record and artifact-surface v2 record produce different remediation" {
+  seed_config true
+  seed_roster
+  seed_probe_stub available
+
+  # Capture v1 remediation
+  _init_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "1.0"' "$rec"
+  yq -i 'del(.design_system_project.surface)' "$rec"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on v1 draft, got status=$status"
+  _assert_gate_output
+  local v1_output="$output"
+
+  # Rebuild for v2 artifact
+  rm -f "$TEST_TMP/.gaia/state/design-record.yaml"
+  _build_draft_record_with_surface "artifact"
+
+  run run_gate
+  [ "$status" -eq 1 ] || fail "gate should halt on v2 artifact draft, got status=$status"
+  _assert_gate_output
+  local v2_output="$output"
+
+  # The two outputs must differ — the surface-conditional logic branches
+  if [ "$v1_output" = "$v2_output" ]; then
+    fail "v1 and v2-artifact remediation should differ but are identical"
+  fi
+}
+
+@test "bash 3.2 compatibility — design-gate.sh has no associative arrays" {
+  [ -f "$GATE_SCRIPT" ] || fail "design-gate.sh not found"
+
+  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$GATE_SCRIPT"; then
+    fail "design-gate.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)"
+  fi
+}
+

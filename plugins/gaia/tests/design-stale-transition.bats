@@ -1184,3 +1184,120 @@ SHIMEOF
 
   [ "$status" -eq 2 ] || fail "scope without value should exit 2 but exited $status"
 }
+
+# ===========================================================================
+# Surface-conditional remediation — design_system_project.surface routing
+# ===========================================================================
+
+@test "unauthorized remediation for artifact surface does not mention /design-login" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+
+  local stderr_file="$TEST_TMP/stderr-unauth-artifact.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration unauthorized \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "unauthorized should halt (non-zero) but got 0"
+
+  if grep -qiF '/design-login' "$stderr_file"; then
+    fail "artifact-surface unauthorized remediation should not mention /design-login"
+  fi
+}
+
+@test "unauthorized remediation for designsync surface mentions /design-login" {
+  # Regression guard — passes on current code
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+
+  local stderr_file="$TEST_TMP/stderr-unauth-designsync.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration unauthorized \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "unauthorized should halt (non-zero) but got 0"
+
+  grep -qiF '/design-login' "$stderr_file" \
+    || fail "designsync-surface unauthorized remediation should mention /design-login"
+}
+
+@test "missing remediation for artifact surface names the Artifact surface" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+
+  local stderr_file="$TEST_TMP/stderr-missing-artifact.txt"
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration missing \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "missing should halt (non-zero) but got 0"
+
+  grep -qi 'Artifact surface' "$stderr_file" \
+    || fail "artifact-surface missing remediation should name the Artifact surface"
+  if grep -qiF 'DesignSync' "$stderr_file"; then
+    fail "artifact-surface missing remediation should not mention DesignSync"
+  fi
+}
+
+@test "artifact fail-closed fallback exits non-zero with Artifact remediation and no illegal-value error" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+
+  local stderr_file="$TEST_TMP/stderr-failclosed.txt"
+  local rc=0
+  # Run WITHOUT --integration: triggers the probe fallback path
+  env -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "artifact fail-closed fallback should exit non-zero but got 0"
+
+  # Must produce Artifact-surface remediation, not DesignSync
+  grep -qi 'Artifact surface' "$stderr_file" \
+    || fail "artifact fail-closed remediation should name the Artifact surface"
+
+  # Must NOT produce the illegal --integration-source error from design-record.sh
+  if grep -qF 'illegal --integration-source' "$stderr_file"; then
+    fail "artifact fail-closed path should not trigger illegal --integration-source error"
+  fi
+}
+
+@test "bash 3.2 compatibility — design-stale-transition.sh has no associative arrays" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  if grep -qE 'declare[[:space:]]+-A|readarray|mapfile' "$DRIVER_SCRIPT"; then
+    fail "design-stale-transition.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)"
+  fi
+}

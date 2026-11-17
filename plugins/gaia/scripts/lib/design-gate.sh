@@ -515,6 +515,12 @@ design_gate_check() {
     return 1
   fi
 
+  # Read design-system surface for surface-conditional remediation.
+  # v1 records (schema_version 1.0) have no surface — treat as designsync.
+  local _dg_ds_surface
+  _dg_ds_surface="$(yq '.design_system_project.surface // ""' "$record_path" 2>/dev/null || true)"
+  [ -n "$_dg_ds_surface" ] || _dg_ds_surface="designsync"
+
   local verdict="fail"
   local state_remediation=""
   state_remediation="$(_dg_evaluate_state "$design_state" "$drec_script" "$PROJECT_ROOT")" && verdict="pass"
@@ -530,7 +536,15 @@ design_gate_check() {
     _dg_pdp_type="$(jq -r '.pdp | type' <<<"$_dg_cov_json" 2>/dev/null || printf 'null')"
     _dg_dsp_ref="$(jq -r '.dsp // empty' <<<"$_dg_cov_json" 2>/dev/null || true)"
 
-    local _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+    local _dg_cov_clause
+    case "$_dg_ds_surface" in
+      artifact)
+        _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, ensure the Artifact surface is available. For the product design project, ensure the Design artifact surface is available."
+        ;;
+      *)
+        _dg_cov_clause="If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+        ;;
+    esac
 
     # Validate product_design_project type: must be null, absent, or a map
     if [ -n "$_dg_pdp_type" ] && [ "$_dg_pdp_type" != "null" ] && [ "$_dg_pdp_type" != "object" ]; then
@@ -587,7 +601,15 @@ design_gate_check() {
 
   # ---- Halt on non-approved applicable paths ----
 
-  local _dg_halt_remediation="${state_remediation} If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+  local _dg_halt_remediation
+  case "$_dg_ds_surface" in
+    artifact)
+      _dg_halt_remediation="${state_remediation} If the design integration is not connected in this session: for the design-system project, ensure the Artifact surface is available. For the product design project, ensure the Design artifact surface is available."
+      ;;
+    *)
+      _dg_halt_remediation="${state_remediation} If the design integration is not connected in this session: for the design-system project, enable the DesignSync surface. For the product design project, ensure the Design artifact surface is available. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions)."
+      ;;
+  esac
   _dg_halt "$record_path" "$design_state" "$_dg_halt_remediation"  # MUTANT-ANCHOR: probe-fail-branch
   return 1
 }

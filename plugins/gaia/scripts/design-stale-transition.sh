@@ -134,6 +134,16 @@ fi
 # yes or ambiguous decision, including runs that later halt at Phase 3.
 printf 'scope=%s reason=%s\n' "$_scope" "$_scope_reason" >&2
 
+# Read the design-system surface for surface-conditional remediation.
+# Uses the same project-root resolution as design-record.sh and design-gate.sh.
+_ds_surface=""
+_dr_path="${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-${PROJECT_PATH:-.}}}/.gaia/state/design-record.yaml"
+if [ -f "$_dr_path" ]; then
+  _ds_surface="$(yq '.design_system_project.surface // ""' "$_dr_path" 2>/dev/null || true)"
+fi
+# v1 records or absent field: treat as designsync (legacy default)
+[ -n "$_ds_surface" ] || _ds_surface="designsync"
+
 # ---------------------------------------------------------------------------
 # Phase 1: resolve integration state
 # ---------------------------------------------------------------------------
@@ -149,7 +159,9 @@ else
   _resolved_state="missing"  # MUTANT-ANCHOR: probe-fallback-default
   _resolved_source="probed"
 
-  if [ -f "$PROBE_SCRIPT" ]; then
+  if [ "$_ds_surface" = "artifact" ]; then
+    : # Artifact-managed records: the DesignSync bridge cannot classify the Artifact surface
+  elif [ -f "$PROBE_SCRIPT" ]; then
     _probe_stderr="$(mktemp -t dst-probe-stderr.XXXXXX)"
     trap 'rm -f "$_probe_stderr" 2>/dev/null || true' EXIT
 
@@ -201,12 +213,26 @@ case "$_resolved_state" in
     exit 0
     ;;
   unauthorized)
-    printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is unauthorized in this session. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions).\n' >&2
+    case "$_ds_surface" in
+      artifact)
+        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface is unauthorized in this session. Ensure the Artifact surface is authorized for this session.\n' >&2
+        ;;
+      *)
+        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is unauthorized in this session. Run /design-login (API-token sessions), or grant design access when prompted (claude.ai sessions).\n' >&2
+        ;;
+    esac
     _relay_and_clean_probe_stderr
     exit 1
     ;;
   *)
-    printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is not available in this session. Enable the Claude Design integration, or use a Claude Code session that exposes the design tool surface.\n' >&2
+    case "$_ds_surface" in
+      artifact)
+        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface is not available in this session. Ensure the Artifact surface is reachable.\n' >&2
+        ;;
+      *)
+        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is not available in this session. Enable the Claude Design integration, or use a Claude Code session that exposes the design tool surface.\n' >&2
+        ;;
+    esac
     _relay_and_clean_probe_stderr
     exit 1
     ;;

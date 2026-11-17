@@ -147,16 +147,38 @@ _assert_availability_identity() {
     fail "design-review missing and unauthorized remediations must differ"
   fi
 
-  # The unauthorized remediation must contain the exact dual-path wording
-  local _expected_dual="Run \`/design-login\` (API-token sessions), or grant design access when prompted (claude.ai sessions)"
+  # --- Artifact-surface unauthorized branch ---
+  # Non-vacuity: the named diagnostic literal must be present
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_cux" \
+    || fail "create-ux unauthorized should contain the artifact named diagnostic"
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_dr" \
+    || fail "design-review unauthorized should contain the artifact named diagnostic"
+
+  # Extract just the artifact branch text (from the diagnostic to 'For `designsync`')
+  local art_unauth_cux art_unauth_dr
+  art_unauth_cux="$(echo "$unauth_cux" | sed -n 's/.*\(Artifact surface unauthorized for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
+  art_unauth_dr="$(echo "$unauth_dr" | sed -n 's/.*\(Artifact surface unauthorized for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
+  [ -n "$art_unauth_cux" ] || fail "could not extract artifact unauthorized branch from create-ux"
+  [ -n "$art_unauth_dr" ] || fail "could not extract artifact unauthorized branch from design-review"
+
+  # Artifact branch must NOT mention /design-login or DesignSync
+  if grep -qF '/design-login' <<<"$art_unauth_cux"; then
+    fail "create-ux artifact unauthorized branch should not mention /design-login"
+  fi
+  if grep -qF '/design-login' <<<"$art_unauth_dr"; then
+    fail "design-review artifact unauthorized branch should not mention /design-login"
+  fi
+
+  # --- DesignSync unauthorized branch ---
+  # The full paragraph must still contain the designsync dual-path wording
   grep -qF '/design-login' <<<"$unauth_cux" \
-    || fail "create-ux unauthorized remediation should mention /design-login"
+    || fail "create-ux unauthorized remediation should mention /design-login for designsync"
   grep -q 'API-token sessions' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say API-token sessions"
   grep -q 'grant design access when prompted' <<<"$unauth_cux" \
     || fail "create-ux unauthorized remediation should say grant design access when prompted"
   grep -qF '/design-login' <<<"$unauth_dr" \
-    || fail "design-review unauthorized remediation should mention /design-login"
+    || fail "design-review unauthorized remediation should mention /design-login for designsync"
   grep -q 'API-token sessions' <<<"$unauth_dr" \
     || fail "design-review unauthorized remediation should say API-token sessions"
   grep -q 'grant design access when prompted' <<<"$unauth_dr" \
@@ -762,4 +784,144 @@ _assert_availability_identity() {
     || fail "design-lifecycle.html should mention design-login"
   grep -qi 'grant.*design access' "$doc_page" \
     || fail "design-lifecycle.html should mention granting design access"
+}
+
+# =========================================================================
+# Surface-conditional halt text — named diagnostic and surface routing
+# =========================================================================
+
+@test "artifact-surface missing halt uses named diagnostic literal in create-ux and design-review" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_cux" \
+    || fail "create-ux missing halt should contain the named diagnostic literal"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
+    || fail "design-review missing halt should contain the named diagnostic literal"
+}
+
+@test "artifact-surface unauthorized halt uses named diagnostic form in create-ux and design-review" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$section_cux" \
+    || fail "create-ux unauthorized halt should contain the named diagnostic form"
+  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$section_dr" \
+    || fail "design-review unauthorized halt should contain the named diagnostic form"
+}
+
+@test "artifact-branch halt text has no /design-login or DesignSync" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  # Non-vacuity: the named diagnostic literal must exist first
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_cux" \
+    || fail "create-ux must contain the named diagnostic literal (non-vacuity guard)"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
+    || fail "design-review must contain the named diagnostic literal (non-vacuity guard)"
+
+  # Extract the artifact-branch text between the named diagnostic and the
+  # For `designsync` boundary. The halt paragraphs have the form:
+  #   ... "Artifact surface unavailable for artifact-managed record: ...". For `designsync`: ...
+  # We extract just the text from the diagnostic literal up to 'For `designsync`'.
+  local artifact_missing_cux artifact_missing_dr artifact_unauth_cux artifact_unauth_dr
+  artifact_missing_cux="$(echo "$section_cux" | grep -oF 'Artifact surface unavailable for artifact-managed record' || true)"
+  artifact_missing_dr="$(echo "$section_dr" | grep -oF 'Artifact surface unavailable for artifact-managed record' || true)"
+  artifact_unauth_cux="$(echo "$section_cux" | grep -oF 'Artifact surface unauthorized for artifact-managed record' || true)"
+  artifact_unauth_dr="$(echo "$section_dr" | grep -oF 'Artifact surface unauthorized for artifact-managed record' || true)"
+
+  # The named diagnostic literals themselves must not contain /design-login or DesignSync
+  # (they are fixed strings, so this is a tautological guard). The real check: the
+  # surrounding artifact-branch sentences (from the diagnostic to "For `designsync`")
+  # must be clean. Use sed to extract just the artifact branch from each halt paragraph.
+  local artifact_halt_cux artifact_halt_dr
+  artifact_halt_cux="$(echo "$section_cux" | sed -n 's/.*\(Artifact surface [^"]*\)" For .designsync.*/\1/p')"
+  artifact_halt_dr="$(echo "$section_dr" | sed -n 's/.*\(Artifact surface [^"]*\)" For .designsync.*/\1/p')"
+  [ -n "$artifact_halt_cux" ] || fail "could not extract artifact branch text from create-ux"
+  [ -n "$artifact_halt_dr" ] || fail "could not extract artifact branch text from design-review"
+
+  if grep -qF '/design-login' <<<"$artifact_halt_cux"; then
+    fail "create-ux artifact-branch halt text should not mention /design-login"
+  fi
+  if grep -qiF 'DesignSync' <<<"$artifact_halt_cux"; then
+    fail "create-ux artifact-branch halt text should not mention DesignSync"
+  fi
+  if grep -qF '/design-login' <<<"$artifact_halt_dr"; then
+    fail "design-review artifact-branch halt text should not mention /design-login"
+  fi
+  if grep -qiF 'DesignSync' <<<"$artifact_halt_dr"; then
+    fail "design-review artifact-branch halt text should not mention DesignSync"
+  fi
+}
+
+@test "designsync-surface halt text keeps /design-login in create-ux and design-review" {
+  # Regression guard — passes on current code
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  grep -qF '/design-login' <<<"$section_cux" \
+    || fail "create-ux should still mention /design-login for designsync path"
+  grep -qF '/design-login' <<<"$section_dr" \
+    || fail "design-review should still mention /design-login for designsync path"
+}
+
+@test "attestation preamble is surface-conditional in both edit-ux and add-feature" {
+  [ -f "$SKILL_MD_UX" ] || fail "edit-ux SKILL.md not found"
+  [ -f "$SKILL_MD_AF" ] || fail "add-feature SKILL.md not found"
+
+  # Extract the attestation block between design-attestation begin/end markers
+  local att_ux att_af
+  att_ux="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$SKILL_MD_UX")"
+  att_af="$(awk '/<!-- design-attestation begin -->/{p=1;next} /<!-- design-attestation end -->/{p=0} p' "$SKILL_MD_AF")"
+  [ -n "$att_ux" ] || fail "attestation block missing from edit-ux SKILL.md"
+  [ -n "$att_af" ] || fail "attestation block missing from add-feature SKILL.md"
+
+  # Both must contain the built-in Artifact list call reference
+  grep -qF 'Artifact `list`' <<<"$att_ux" \
+    || fail "edit-ux attestation block should reference built-in Artifact list call"
+  grep -qF 'Artifact `list`' <<<"$att_af" \
+    || fail "add-feature attestation block should reference built-in Artifact list call"
+
+  # Both must contain a DesignSync list_projects reference
+  grep -qF 'list_projects' <<<"$att_ux" \
+    || fail "edit-ux attestation block should reference list_projects"
+  grep -qF 'list_projects' <<<"$att_af" \
+    || fail "add-feature attestation block should reference list_projects"
+
+  # The opening sentence (first non-empty line) must NOT contain bare list_projects
+  # — it should be surface-neutral
+  local first_line_ux first_line_af
+  first_line_ux="$(echo "$att_ux" | grep -v '^$' | head -1)"
+  first_line_af="$(echo "$att_af" | grep -v '^$' | head -1)"
+
+  if grep -qF 'list_projects' <<<"$first_line_ux"; then
+    fail "edit-ux attestation opening should not contain bare list_projects (must be surface-neutral)"
+  fi
+  if grep -qF 'list_projects' <<<"$first_line_af"; then
+    fail "add-feature attestation opening should not contain bare list_projects (must be surface-neutral)"
+  fi
 }

@@ -62,7 +62,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 ### Step 2 — Design-System Discovery
 
-**Availability check.** Before the first application-level Claude Design call, determine whether the integration is available in this session. Make a single cheap Claude Design call (`list_projects`) to classify the outcome:
+**Availability check.** Read `design_system_project.surface` from the design record (default `artifact` when no record exists; v1 records default to `designsync`). When `artifact`, make a built-in Artifact `list` call; when `designsync`, make a Claude Design `list_projects` call. Classify the outcome:
 
 <!-- design-availability begin -->
 - `available` — the call succeeded.
@@ -70,13 +70,11 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 - `missing` — the call failed for any other reason (timeout, tool not found, etc.).
 <!-- design-availability end -->
 
-`available` means a response was returned, regardless of its content — an empty project list is still `available`. An unusable Design type detected later by the quickstart is a separate halt, not `missing`.
+`available` means a response was returned, regardless of its content — an empty project list is still `available`. An unusable Design type detected later by the quickstart is a separate halt, not `missing`. On `available`, proceed normally.
 
-On `missing`, halt with: "The Claude Design integration could not be reached in this session (absent, or unreachable within the timeout) and is therefore treated as unavailable. To enable it, use a Claude Code session that exposes the DesignSync tool surface."
+On `missing`, halt. For `artifact` (or no record): "Artifact surface unavailable for artifact-managed record: the built-in Artifact surface could not be reached (absent or unreachable). Ensure the Artifact surface is available." For `designsync`: "The Claude Design integration could not be reached and is treated as unavailable. Use a session that exposes the DesignSync tool surface."
 
-On `unauthorized`, halt with: "The Claude Design integration is available but not authorized for this session. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
-
-On `available`, proceed normally — no halt.
+On `unauthorized`, halt. For `artifact` (or no record): "Artifact surface unauthorized for artifact-managed record: the built-in Artifact surface is not authorized. Ensure the Artifact surface is authorized." For `designsync`: "The Claude Design integration is not authorized. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
 
 The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
 
