@@ -99,6 +99,33 @@ make_no_flock_path() {
   export PATH="$shim_dir:$new_path"
 }
 
+# make_lock_observer — place a jq shim first on PATH that records whether the
+# mkdir lock directory exists when the lib invokes jq (inside the critical
+# section).  Sets _LOCK_OBSERVE_MARKER to the observation file path.
+# Must be called AFTER make_no_flock_path (which symlinks the real jq).
+make_lock_observer() {
+  local real_jq
+  real_jq="$(command -v jq)"
+  local observer_dir="$TEST_TMP/lock-observer"
+  mkdir -p "$observer_dir"
+  _LOCK_OBSERVE_MARKER="$TEST_TMP/lock-observer-result"
+  rm -f "$_LOCK_OBSERVE_MARKER"
+  export _LOCK_OBSERVE_DIR="${LIFECYCLE_OVERRIDES_LOCK}.d"
+  export _LOCK_OBSERVE_MARKER
+  export _REAL_JQ="$real_jq"
+  cat > "$observer_dir/jq" <<'SHIMEOF'
+#!/bin/sh
+if [ -d "$_LOCK_OBSERVE_DIR" ]; then
+  printf 'HELD\n' > "$_LOCK_OBSERVE_MARKER"
+else
+  printf 'NOT_HELD\n' > "$_LOCK_OBSERVE_MARKER"
+fi
+exec "$_REAL_JQ" "$@"
+SHIMEOF
+  chmod +x "$observer_dir/jq"
+  export PATH="$observer_dir:$PATH"
+}
+
 # ---------------------------------------------------------------------------
 # Test 1: flock path under bash 3.2 exits 0 and appends bypass
 # ---------------------------------------------------------------------------
@@ -145,6 +172,7 @@ make_no_flock_path() {
 @test "mkdir fallback under bash 3.2 without flock" {
   need_bash32
   make_no_flock_path
+  make_lock_observer
 
   # Run the lib under bash 3.2 with BASH_ENV printing BASH_VERSION from the
   # same process.
@@ -159,6 +187,19 @@ make_no_flock_path() {
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
   [ "$count" -eq 1 ]
+  # The mkdir lock directory must have been held during the append
+  [ -f "$_LOCK_OBSERVE_MARKER" ]
+  local observed
+  observed="$(cat "$_LOCK_OBSERVE_MARKER")"
+  case "$observed" in
+    HELD) ;;
+    *) printf 'mkdir lock directory was not held during append (observed: %s)\n' "$observed" >&2; return 1 ;;
+  esac
+  # The lock directory must be cleaned up after the call returns
+  if [ -d "${LIFECYCLE_OVERRIDES_LOCK}.d" ]; then
+    printf 'mkdir lock directory still exists after append returned\n' >&2
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -166,6 +207,7 @@ make_no_flock_path() {
 # ---------------------------------------------------------------------------
 @test "mkdir fallback under bash 5 without flock" {
   make_no_flock_path
+  make_lock_observer
 
   run --separate-stderr bash "$LIB" append \
     --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
@@ -175,6 +217,19 @@ make_no_flock_path() {
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
   [ "$count" -eq 1 ]
+  # The mkdir lock directory must have been held during the append
+  [ -f "$_LOCK_OBSERVE_MARKER" ]
+  local observed
+  observed="$(cat "$_LOCK_OBSERVE_MARKER")"
+  case "$observed" in
+    HELD) ;;
+    *) printf 'mkdir lock directory was not held during append (observed: %s)\n' "$observed" >&2; return 1 ;;
+  esac
+  # The lock directory must be cleaned up after the call returns
+  if [ -d "${LIFECYCLE_OVERRIDES_LOCK}.d" ]; then
+    printf 'mkdir lock directory still exists after append returned\n' >&2
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
