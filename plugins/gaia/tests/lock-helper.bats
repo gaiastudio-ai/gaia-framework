@@ -5544,10 +5544,12 @@ _mtx_seed_derive() {
 @test "reaper mutex write failure after exclusive creation leaves no leftover" {
   # When the exclusively created mutex temp exists but writing the
   # token fails, the reaper must clean up: no mutex, no leftover temp
-  # in the lock dir, stale lock not reaped, stderr diagnostic present.
-  # The shim returns a path whose parent does not exist, so the shell
-  # redirect fails for any user including root (no CAP_DAC_OVERRIDE
-  # bypass). rm -f on the nonexistent path is a silent no-op.
+  # in the lock dir, stale lock not reaped, and emit the specific
+  # write-failure diagnostic. The shim returns a path whose parent
+  # does not exist, so the shell redirect fails for any user including
+  # root (no CAP_DAC_OVERRIDE bypass). The shim records the injected
+  # path so the leftover check verifies the ACTUAL path, not just a
+  # glob. rm -f on the nonexistent path is a silent no-op.
   #
   # Supports _TEST_HELPER_OVERRIDE for red-phase verification.
   local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
@@ -5563,6 +5565,7 @@ _mtx_seed_derive() {
     || { echo "cannot backdate" >&2; false; }
 
   local err_file="$TEST_TMP/mtx-wfail-err"
+  local injected_path_file="$TEST_TMP/mtx-wfail-injected"
   (
     export PATH="$SAFE_PATH"
     export GAIA_LOCK_FORCE_FALLBACK=1
@@ -5570,10 +5573,13 @@ _mtx_seed_derive() {
     source "$h"
     # Shim: for the reap-mutex pattern, return a path under a
     # nonexistent subdirectory. printf > fails (ENOENT) for any user.
+    # Record the injected path so the outer test can check it.
     mktemp() {
       case "$1" in
         *reap-mtx-tmp*)
-          printf '%s' "${1%/*}/no-such-dir/.reap-mtx-tmp.XXXXXX"
+          local _injected="${1%/*}/no-such-dir/.reap-mtx-tmp.XXXXXX"
+          printf '%s' "$_injected" > "$injected_path_file"
+          printf '%s' "$_injected"
           ;;
         *) command mktemp "$@" ;;
       esac
@@ -5587,14 +5593,25 @@ _mtx_seed_derive() {
   read -r pid_check _ < "$lock_file" 2>/dev/null || pid_check=""
   [ "$pid_check" = "$dead_pid" ] || {
     echo "stale lock was reaped (pid=$pid_check, expected $dead_pid)" >&2; false; }
+  # No mutex must exist.
   [ ! -f "${lock_file}.reap-mtx" ] || {
     echo "mutex left behind" >&2; false; }
+  # The injected temp path must not exist (cleaned up or never created).
+  local injected=""
+  read -r injected < "$injected_path_file" 2>/dev/null || injected=""
+  if [ -n "$injected" ] && [ -e "$injected" ]; then
+    echo "injected temp path still exists: $injected" >&2; false
+  fi
+  # No .reap-mtx-tmp.* residue anywhere in the lock dir.
   local leftover
   leftover="$(find "$LOCK_DIR" -name '.reap-mtx-tmp.*' 2>/dev/null)"
   [ -z "$leftover" ] || {
-    echo "temp leftover: $leftover" >&2; false; }
-  # Stderr diagnostic must be present (write-failure or timeout).
-  [ -s "$err_file" ] || {
-    echo "no stderr diagnostic emitted" >&2; false; }
-  rm -f "$lock_file" "${lock_file}.reap-mtx" "$err_file"
+    echo "temp leftover in lock dir: $leftover" >&2; false; }
+  # Stderr must contain the specific write-failure diagnostic.
+  grep -q 'cannot write reap-mutex token' "$err_file" 2>/dev/null || {
+    echo "missing write-failure diagnostic in stderr:" >&2
+    cat "$err_file" >&2
+    false
+  }
+  rm -f "$lock_file" "${lock_file}.reap-mtx" "$err_file" "$injected_path_file"
 }
