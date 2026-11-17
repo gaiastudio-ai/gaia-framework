@@ -4369,10 +4369,11 @@ _run_extracted_gate() {
 # ---------------------------------------------------------------------------
 
 @test "review-gate.sh update refuses --sha with explicitly empty value" {
+  local _K="E900-S950" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local story
-  story="$(_seed_story_4col "$PROJECT_PATH" "E900-S950" "abc1234")"
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "abc1234")"
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
-    --story E900-S950 --gate "Code Review" --verdict PASSED \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
     --sha "" --report-missing-reason "test fixture"
   [ "$status" -ne 0 ]
   [[ "$output" == *"empty"* ]] || [[ "$output" == *"blank"* ]]
@@ -4381,14 +4382,15 @@ _run_extracted_gate() {
 }
 
 @test "review-gate.sh update still auto-binds HEAD when --sha is omitted" {
+  local _K="E900-S951" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   _init_git "$PROJECT_PATH"
   local impl="${PROJECT_PATH}/docs/implementation-artifacts"
   mkdir -p "$impl"
-  local story="${impl}/E900-S951-test.md"
-  cat > "$story" <<'STORY'
+  local story="${impl}/${_K}-test.md"
+  cat > "$story" <<STORY
 ---
 template: 'story'
-key: "E900-S951"
+key: "${_K}"
 title: "Test"
 status: review
 ---
@@ -4403,14 +4405,14 @@ status: review
 | Test Review | UNVERIFIED | — |  |
 | Performance Review | UNVERIFIED | — |  |
 
-> Story moves to `done` only when ALL reviews show PASSED.
+> Story moves to \`done\` only when ALL reviews show PASSED.
 STORY
   git -C "$PROJECT_PATH" add . && git -C "$PROJECT_PATH" commit -q -m "add story"
   local expected_sha
   expected_sha="$(git -C "$PROJECT_PATH" rev-parse HEAD)"
 
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
-    --story E900-S951 --gate "Code Review" --verdict PASSED \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
     --report-missing-reason "test fixture"
   [ "$status" -eq 0 ]
   grep "Code Review" "$story" | grep -q "$expected_sha"
