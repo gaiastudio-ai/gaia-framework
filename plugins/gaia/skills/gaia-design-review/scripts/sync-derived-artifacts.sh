@@ -244,10 +244,13 @@ function check_fence(line,   raw, ch, i, flen, rest, j) {
 # candidate is cleared (a header before a fence or section boundary
 # can never pair with a separator after it). A section-end heading
 # that contains | is never held as a candidate.
-# After a return of 0 when a candidate was pending, the candidate
-# was just text; the caller can read the former candidate from
-# _tbl_prev_cand (set before clearing) and must re-evaluate the
-# current line.
+# After a return of 0 or 1 when a candidate was pending, the old
+# candidate was just text; the caller can read it from
+# _tbl_prev_cand (set before clearing). On return 1 a new
+# candidate replaced the old one; on return 0 the current line
+# had no |. Callers that rewrite the document must print
+# _tbl_prev_cand whenever _tbl_had_cand is set, for every
+# return value (including 1 and -1), not only 0.
 # Globals: _tbl_have_cand, _tbl_cand_line, _tbl_sep_piped,
 #          _tbl_prev_cand, _tbl_had_cand (true when the call found
 #          and cleared a candidate that was not a header).
@@ -525,7 +528,12 @@ _batch_add_components() {
             saw_sep = 1
             next
           }
-          if (ev == 1) next
+          if (ev == 1) {
+            # A new candidate displaced a prior one — print the displaced
+            # line so it is not lost from the rewritten document.
+            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+            next
+          }
           # ev == 0: ordinary line (or section-end) — if a candidate
           # was cleared, print it; then fall through to remaining rules
           if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand

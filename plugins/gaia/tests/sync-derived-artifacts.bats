@@ -9688,6 +9688,298 @@ UX
 
 
 # =========================================================================
+# Writer: consecutive pipe-bearing lines above a table must be preserved
+# =========================================================================
+
+@test "writer preserves two consecutive pipe lines above a table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/rf11-two-pipe"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Inputs: a | b
+Outputs: c | d
+
+| Name | Desc |
+|---|---|
+| nav | x |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-two-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-two-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Both pipe-bearing text lines must appear exactly once
+  local c1 c2
+  c1="$(grep -c 'Inputs: a | b' "$doc_dir/ux-design.md" || true)"
+  c2="$(grep -c 'Outputs: c | d' "$doc_dir/ux-design.md" || true)"
+  [ "$c1" -eq 1 ] || fail "Inputs line count: expected 1, got $c1"
+  [ "$c2" -eq 1 ] || fail "Outputs line count: expected 1, got $c2"
+
+  # Order preserved: Inputs before Outputs before table header
+  local n_inputs n_outputs n_header
+  n_inputs="$(grep -n 'Inputs: a | b' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n_outputs="$(grep -n 'Outputs: c | d' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n_header="$(grep -n '| Name | Desc |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$n_inputs" -lt "$n_outputs" ] || fail "Inputs ($n_inputs) not before Outputs ($n_outputs)"
+  [ "$n_outputs" -lt "$n_header" ] || fail "Outputs ($n_outputs) not before header ($n_header)"
+
+  # Table header not duplicated
+  local hdr_count
+  hdr_count="$(grep -c '| Name | Desc |' "$doc_dir/ux-design.md")"
+  [ "$hdr_count" -eq 1 ] || fail "header duplicated: count $hdr_count"
+
+  # New component added to table
+  grep -q '| btn |' "$doc_dir/ux-design.md" || fail "btn not added to table"
+}
+
+@test "writer preserves three consecutive pipe lines above a table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/rf11-three-pipe"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Alpha: a | b
+Beta: c | d
+Gamma: e | f
+
+| Name | Desc |
+|---|---|
+| nav | x |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-three-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-three-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # All three pipe-bearing text lines preserved exactly once
+  local c1 c2 c3
+  c1="$(grep -c 'Alpha: a | b' "$doc_dir/ux-design.md" || true)"
+  c2="$(grep -c 'Beta: c | d' "$doc_dir/ux-design.md" || true)"
+  c3="$(grep -c 'Gamma: e | f' "$doc_dir/ux-design.md" || true)"
+  [ "$c1" -eq 1 ] || fail "Alpha count: expected 1, got $c1"
+  [ "$c2" -eq 1 ] || fail "Beta count: expected 1, got $c2"
+  [ "$c3" -eq 1 ] || fail "Gamma count: expected 1, got $c3"
+
+  # Order: Alpha < Beta < Gamma < header
+  local n1 n2 n3 nh
+  n1="$(grep -n 'Alpha: a | b' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n2="$(grep -n 'Beta: c | d' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n3="$(grep -n 'Gamma: e | f' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  nh="$(grep -n '| Name | Desc |' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$n1" -lt "$n2" ] || fail "Alpha ($n1) not before Beta ($n2)"
+  [ "$n2" -lt "$n3" ] || fail "Beta ($n2) not before Gamma ($n3)"
+  [ "$n3" -lt "$nh" ] || fail "Gamma ($n3) not before header ($nh)"
+
+  # Table header not duplicated
+  local hdr_count
+  hdr_count="$(grep -c '| Name | Desc |' "$doc_dir/ux-design.md")"
+  [ "$hdr_count" -eq 1 ] || fail "header duplicated: count $hdr_count"
+
+  # Component added
+  grep -q '| btn |' "$doc_dir/ux-design.md" || fail "btn not added"
+}
+
+@test "writer preserves pipe line before plain line and table" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A single pipe-bearing line followed by a plain line before the table.
+  # Exercises the ev==0 path where _tbl_had_cand is set.
+  local doc_dir="$TEST_TMP/rf11-pipe-plain"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Sizes: sm | md | lg
+See the design spec for details.
+
+| Name | Desc |
+|---|---|
+| nav | x |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-pp-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-pp-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Pipe line and plain line both preserved exactly once
+  local cp cd
+  cp="$(grep -c 'Sizes: sm | md | lg' "$doc_dir/ux-design.md")"
+  cd="$(grep -c 'See the design spec' "$doc_dir/ux-design.md")"
+  [ "$cp" -eq 1 ] || fail "Sizes line count: expected 1, got $cp"
+  [ "$cd" -eq 1 ] || fail "plain line count: expected 1, got $cd"
+
+  grep -q '| btn |' "$doc_dir/ux-design.md" || fail "btn not added"
+}
+
+@test "writer preserves held pipe line before fence" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A single pipe-bearing line immediately before a code fence.
+  # Exercises the ev==-1 path where _tbl_had_cand is set.
+  local doc_dir="$TEST_TMP/rf11-pipe-fence"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Sizes: sm | md | lg
+```
+code block
+```
+
+| Name | Desc |
+|---|---|
+| nav | x |
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-pf-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-pf-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Pipe line preserved exactly once
+  local cp
+  cp="$(grep -c 'Sizes: sm | md | lg' "$doc_dir/ux-design.md")"
+  [ "$cp" -eq 1 ] || fail "Sizes line count: expected 1, got $cp"
+
+  grep -q '| btn |' "$doc_dir/ux-design.md" || fail "btn not added"
+}
+
+@test "writer preserves held pipe line before section-end heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # A single pipe-bearing line followed by a section-end heading with
+  # no table in the section. This exercises bullet mode (no table means
+  # _count_table_cols returns 0). The test pins that the writer never
+  # drops or duplicates either line in this layout.
+  local doc_dir="$TEST_TMP/rf11-pipe-secend"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Sizes: sm | md | lg
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["btn"]}' > "$TEST_TMP/rf11-se-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-se-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Pipe line preserved exactly once
+  local cp
+  cp="$(grep -c 'Sizes: sm | md | lg' "$doc_dir/ux-design.md")"
+  [ "$cp" -eq 1 ] || fail "Sizes line count: expected 1, got $cp"
+
+  # Section-end heading not duplicated
+  local ch
+  ch="$(grep -c '## 9\. Next Section' "$doc_dir/ux-design.md")"
+  [ "$ch" -eq 1 ] || fail "section-end heading count: expected 1, got $ch"
+
+  # Order: pipe line before section-end heading
+  local np nh
+  np="$(grep -n 'Sizes: sm | md | lg' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  nh="$(grep -n '## 9\. Next Section' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$np" -lt "$nh" ] || fail "pipe line ($np) not before heading ($nh)"
+
+  # New component added as bullet (no table → bullet mode)
+  grep -q '^- btn' "$doc_dir/ux-design.md" || fail "btn not added as bullet"
+}
+
+@test "writer preserves two consecutive pipe lines before section-end heading" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Two consecutive pipe-bearing lines followed by a section-end heading,
+  # no table in the section. Bullet mode — the locator is not active, so
+  # this pins that the bullet writer preserves each line exactly once.
+  local doc_dir="$TEST_TMP/rf11-twopipe-secend"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+Inputs: a | b
+Outputs: c | d
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["btn"]}' > "$TEST_TMP/rf11-2se-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-2se-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Both pipe-bearing lines preserved exactly once
+  local c1 c2
+  c1="$(grep -c 'Inputs: a | b' "$doc_dir/ux-design.md" || true)"
+  c2="$(grep -c 'Outputs: c | d' "$doc_dir/ux-design.md" || true)"
+  [ "$c1" -eq 1 ] || fail "Inputs line count: expected 1, got $c1"
+  [ "$c2" -eq 1 ] || fail "Outputs line count: expected 1, got $c2"
+
+  # Section-end heading not duplicated
+  local ch
+  ch="$(grep -c '## 9\. Next Section' "$doc_dir/ux-design.md")"
+  [ "$ch" -eq 1 ] || fail "section-end heading count: expected 1, got $ch"
+
+  # Order: Inputs < Outputs < heading
+  local n1 n2 nh
+  n1="$(grep -n 'Inputs: a | b' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n2="$(grep -n 'Outputs: c | d' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  nh="$(grep -n '## 9\. Next Section' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$n1" -lt "$n2" ] || fail "Inputs ($n1) not before Outputs ($n2)"
+  [ "$n2" -lt "$nh" ] || fail "Outputs ($n2) not before heading ($nh)"
+
+  # New component added as bullet
+  grep -q '^- btn' "$doc_dir/ux-design.md" || fail "btn not added as bullet"
+}
+
+
+# =========================================================================
 # Awk implementation parity — identical output across available awk variants
 # =========================================================================
 
