@@ -2117,3 +2117,150 @@ SHIMEOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"passed"* ]]
 }
+
+# ===========================================================================
+# Review-fix-cycle tests: RF-1 (counter reset), RF-3 (jq error handling),
+# RF-2 (bash 3.2 compatibility).
+# ===========================================================================
+
+# --- RF-1(a): cross-check failures must accumulate toward the limit ---
+@test "repeated cross-check failures reach the consecutive failure limit" {
+  # Required checks always return all-terminal pass; the cross-check
+  # all-checks call always fails.  The failure counter must reach
+  # MAX_CONSECUTIVE_FAILURES and die — not reset every loop iteration.
+  local i
+  for i in 0 1 2 3 4 5 6 7; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  for i in 0 1 2 3 4 5 6 7; do
+    _write_fixture all "$i" "" 1
+  done
+
+  export CI_WAIT_SLEEP_BUDGET=10
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+  [[ "$stderr" == *"CI polling failed 5 consecutive times"* ]]
+}
+
+# --- RF-1(b): genuine cross-check success resets the counter ---
+@test "cross-check success resets failure counter between error bursts" {
+  # Pattern: 3 cross-check failures, then success (should reset counter),
+  # then 3 more failures, then success → eventually passes.
+  # Without the success-reset, the second burst would take the counter
+  # from 3→6, which exceeds the limit of 5.
+  local i
+  for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  _write_fixture all 0 "" 1
+  _write_fixture all 1 "" 1
+  _write_fixture all 2 "" 1
+  _write_fixture all 3 "$_XC_ALL_TERM"
+  _write_fixture all 4 "" 1
+  _write_fixture all 5 "" 1
+  _write_fixture all 6 "" 1
+  _write_fixture all 7 "$_XC_ALL_TERM"
+
+  export CI_WAIT_SLEEP_BUDGET=15
+  _install_sleep_shim
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- RF-3: jq error on cross-check rollup retries instead of aborting ---
+@test "malformed rollup shape in cross-check retries instead of aborting" {
+  # The pr-view rollup returns statusCheckRollup as a boolean (not an
+  # array), which causes the rollup jq filter to error.  Under the fix
+  # this routes through the transient-retry path instead of aborting via
+  # set -e.  The second poll gets a valid rollup and passes.
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+    _write_fixture all "$i" "$_XC_ALL_TERM"
+  done
+  # Poll 0: malformed rollup shape (boolean, not array — jq cannot iterate)
+  _write_prview_indexed 0 '{"mergeStateStatus":"CLEAN","statusCheckRollup":true}'
+  # Poll 1+: valid rollup
+  _write_prview_indexed 1 '{"mergeStateStatus":"CLEAN","statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]}'
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+# --- RF-2: bash 3.2 compatibility via PATH shim ---
+@test "cross-check scenario runs under bash 3.2 interpreter when available" {
+  # On Linux /bin/bash is typically 5.x — skip with explicit message.
+  # On macOS /bin/bash is 3.2.57 — the test must run (not skip).
+  local binbash_ver=""
+  local binbash_ec=0
+  binbash_ver=$(/bin/bash -c 'printf "%s" "$BASH_VERSION"' 2>/dev/null) || binbash_ec=$?
+  if [ "$binbash_ec" -ne 0 ]; then
+    skip "/bin/bash not available"
+  fi
+  case "$binbash_ver" in
+    3.2.*) ;;
+    *) skip "/bin/bash is version $binbash_ver, not 3.2 — bash 3.2 compat test requires macOS /bin/bash" ;;
+  esac
+
+  # Create a bash shim that delegates to /bin/bash with BASH_ENV set so the
+  # target interpreter itself reports its version, PID, and $0 at startup.
+  # BASH_ENV is sourced by every non-interactive bash in its own process, so
+  # this captures the actual interpreter that runs ci-wait.sh — not a
+  # separate subprocess.
+  local bash32_bin="$TEST_TMP/bash32-bin"
+  mkdir -p "$bash32_bin"
+
+  local bash_env_log="$TEST_TMP/bash32-env.log"
+  : > "$bash_env_log"
+
+  local bash_env_script="$TEST_TMP/bash32-env.sh"
+  cat > "$bash_env_script" <<ENVEOF
+printf '%s %s %s\n' "\$BASH_VERSION" "\$\$" "\$0" >> "$bash_env_log"
+ENVEOF
+
+  cat > "$bash32_bin/bash" <<SHIMEOF
+#!/bin/sh
+export BASH_ENV="$bash_env_script"
+exec /bin/bash "\$@"
+SHIMEOF
+  chmod +x "$bash32_bin/bash"
+
+  # Put the bash shim first, then the test stubs, then the system PATH
+  export PATH="$bash32_bin:$TEST_TMP/bin:$ORIG_PATH"
+
+  # Set up the cross-check scenario (two-poll stability)
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$_XC_ALL_TERM"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  case "$output" in *"passed"*) ;; *) echo "expected 'passed' in output" >&2; return 1 ;; esac
+
+  # Assert the interpreter log was written and is non-empty
+  [ -s "$bash_env_log" ] || { echo "BASH_ENV log empty or missing — shim was not invoked" >&2; return 1; }
+
+  # Assert at least one line's $0 names ci-wait.sh (the script's own interpreter reported)
+  local found_ci_wait=0
+  while IFS= read -r line; do
+    case "$line" in
+      *ci-wait.sh*) found_ci_wait=1 ;;
+    esac
+  done < "$bash_env_log"
+  [ "$found_ci_wait" -eq 1 ] || { echo "no log line names ci-wait.sh — the script interpreter did not report" >&2; return 1; }
+
+  # Assert every recorded version starts with 3.2
+  local ver=""
+  while IFS= read -r line; do
+    ver="${line%% *}"
+    case "$ver" in
+      3.2.*) ;;
+      *) echo "expected bash 3.2.*, recorded version $ver in line: $line" >&2; return 1 ;;
+    esac
+  done < "$bash_env_log"
+}

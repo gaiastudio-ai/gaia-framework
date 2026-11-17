@@ -522,11 +522,18 @@ while true; do
     checks_json="$all_stdout"
   fi
 
-  # Reset consecutive failures only after a successful parse
-  CONSECUTIVE_FAILURES=0
+  # When use_all_checks=1, no cross-check runs on this iteration so
+  # the consecutive-failure counter resets now.  When use_all_checks=0,
+  # the cross-check runs next; the reset is deferred until after that
+  # operation succeeds — repeated cross-check failures must accumulate
+  # toward the limit instead of silently resetting each loop.
+  if [ "$use_all_checks" -eq 1 ]; then
+    CONSECUTIVE_FAILURES=0
+  fi
 
   # Also handle empty --required response
   if [ -z "$checks_json" ]; then
+    CONSECUTIVE_FAILURES=0
     sleep "$POLL_INTERVAL"
     continue
   fi
@@ -555,6 +562,7 @@ while true; do
   # Pending checks → keep polling
   if [ "$pending_count" -gt 0 ]; then
     log "CI checks in progress (${pending_count} pending, elapsed: ${SECONDS}s)..."
+    CONSECUTIVE_FAILURES=0
     # Reset two-poll stability on non-terminal poll
     PREV_TERMINAL_NAMES=""
     STABILITY_COUNT=0
@@ -568,6 +576,7 @@ while true; do
   if [ "$done_count" -lt "$total_count" ]; then
     other_count=$((total_count - done_count))
     log "CI checks in progress (${other_count} in non-terminal bucket, elapsed: ${SECONDS}s)..."
+    CONSECUTIVE_FAILURES=0
     PREV_TERMINAL_NAMES=""
     STABILITY_COUNT=0
     sleep "$POLL_INTERVAL"
@@ -622,7 +631,10 @@ while true; do
       else
         "pass"
       end
-    ' 2>/dev/null)
+    ' 2>/dev/null) || {
+      _transient_retry "Cross-check jq error." "cross-check error: jq parse failure"
+      continue
+    }
 
     case "$xc_all_result" in
       pass)
@@ -630,6 +642,7 @@ while true; do
         ;;
       pending)
         log "cross-check: required check still in progress in all-checks (elapsed: ${SECONDS}s)..."
+        CONSECUTIVE_FAILURES=0
         PREV_TERMINAL_NAMES=""
         STABILITY_COUNT=0
         sleep "$POLL_INTERVAL"
@@ -685,23 +698,31 @@ while true; do
           empty
         end
       ] | length
-    ' 2>/dev/null)
+    ' 2>/dev/null) || {
+      _transient_retry "Cross-check rollup jq error." "cross-check error: rollup jq failure"
+      continue
+    }
 
     case "$xc_rollup_pending" in
       ''|*[!0-9]*)
-        # Non-numeric output (jq error) — treat as 0 (pass-through)
-        xc_rollup_pending=0
+        # Non-numeric output — transient error, not a silent pass-through
+        _transient_retry "Cross-check rollup produced non-numeric output." "cross-check error: unexpected rollup output"
+        continue
         ;;
     esac
 
     if [ "$xc_rollup_pending" -gt 0 ]; then
       log "cross-check: required check still pending in rollup (elapsed: ${SECONDS}s)..."
+      CONSECUTIVE_FAILURES=0
       PREV_TERMINAL_NAMES=""
       STABILITY_COUNT=0
       sleep "$POLL_INTERVAL"
       continue
     fi
   fi
+
+  # Cross-check passed (or was not needed): reset failure counter.
+  CONSECUTIVE_FAILURES=0
 
   # --- All checks terminal — apply two-poll stability rule ---
   current_names=$(_extract_names_sorted "$checks_json")
