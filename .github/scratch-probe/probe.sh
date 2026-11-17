@@ -42,7 +42,7 @@ OLDLIB="$OUT/old-lifecycle-overrides.sh"; git show "$OLD_SHA:$LIBP" > "$OLDLIB"
 echo "old lib sha256=$(shasum -a 256 "$OLDLIB" | cut -d' ' -f1) (blob $(git hash-object "$OLDLIB"))"
 ST="$OUT/t1b-state"; mkdir -p "$ST"
 PATH="$FLOCKSHIM:$SHIM:$PATH" LIFECYCLE_OVERRIDES_FILE="$ST/lifecycle-overrides.yaml" LIFECYCLE_OVERRIDES_LOCK="$ST/lifecycle-overrides.yaml.lock" \
-  /bin/bash -c 'set -euo pipefail; echo "BASH_VERSION=$BASH_VERSION"; source "$1"; lifecycle_append_bypass --skill /gaia-trace --reason "probe reason" --sprint-id sprint-probe; echo REACHED_AFTER' _ "$OLDLIB" >"$OUT/t1b.out" 2>"$OUT/t1b.err"; rc=$?
+  /bin/bash -c 'set -euo pipefail; echo "BASH_VERSION=$BASH_VERSION"; source "$1"; lifecycle_append_bypass --skill /gaia-trace --reason "probe reason" --sprint-id sprint-990; echo REACHED_AFTER' _ "$OLDLIB" >"$OUT/t1b.out" 2>"$OUT/t1b.err"; rc=$?
 echo "rc=$rc"; echo "stdout:"; cat "$OUT/t1b.out"; echo "stderr:"; cat "$OUT/t1b.err"; echo "state dir:"; ls -la "$ST"
 [ "$rc" -eq 127 ] && pass "1b exit 127" || fail "1b exit $rc (want 127)"
 grep -q 'not found' "$OUT/t1b.err" && pass "1b stderr has 'not found'" || fail "1b stderr lacks 'not found'"
@@ -53,7 +53,7 @@ grep -q 'probe reason' "$ST/lifecycle-overrides.yaml" 2>/dev/null && fail "1b re
 echo "=== Candidate lib under the same conditions (control)"
 ST2="$OUT/t1c-state"; mkdir -p "$ST2"
 PATH="$FLOCKSHIM:$SHIM:$PATH" LIFECYCLE_OVERRIDES_FILE="$ST2/lifecycle-overrides.yaml" LIFECYCLE_OVERRIDES_LOCK="$ST2/lifecycle-overrides.yaml.lock" \
-  /bin/bash -c 'set -euo pipefail; source "$1"; lifecycle_append_bypass --skill /gaia-trace --reason "probe reason" --sprint-id sprint-probe; echo REACHED_AFTER' _ "$PWD/$LIBP" >"$OUT/t1c.out" 2>"$OUT/t1c.err"; rc=$?
+  /bin/bash -c 'set -euo pipefail; source "$1"; lifecycle_append_bypass --skill /gaia-trace --reason "probe reason" --sprint-id sprint-990; echo REACHED_AFTER' _ "$PWD/$LIBP" >"$OUT/t1c.out" 2>"$OUT/t1c.err"; rc=$?
 echo "rc=$rc"; cat "$OUT/t1c.out" "$OUT/t1c.err"
 [ "$rc" -eq 0 ] && grep -q REACHED_AFTER "$OUT/t1c.out" && grep -q 'probe reason' "$ST2/lifecycle-overrides.yaml" && ! grep -q 'not found' "$OUT/t1c.err" \
   && pass "candidate appends under bash 3.2 (flock path)" || fail "candidate control failed"
@@ -61,7 +61,7 @@ echo "rc=$rc"; cat "$OUT/t1c.out" "$OUT/t1c.err"
 echo "=== Task 8b: real create-arch setup.sh --bypass caller path under /bin/bash 3.2 (isolated fixture)"
 for mode in flock mkdir; do
   FX="$OUT/fixture-$mode"; mkdir -p "$FX/.gaia/state" "$FX/.gaia/config"
-  printf 'sprint_id: "sprint-probe"\nstatus: active\nstories: []\n' > "$FX/.gaia/state/sprint-status.yaml"
+  printf 'sprint_id: "sprint-990"\nstatus: active\nstories: []\n' > "$FX/.gaia/state/sprint-status.yaml"
   printf 'project_name: probe\n' > "$FX/.gaia/config/project-config.yaml"
   if [ "$mode" = flock ]; then P="$FLOCKSHIM:$SHIM:$PATH"; else P="$SHIM:$(printf '%s' "$PATH" | tr ':' '\n' | while read -r d; do [ -x "$d/flock" ] || printf '%s:' "$d"; done)"; fi
   echo "-- mode=$mode flock resolves to: $(PATH="$P" command -v flock || echo none); bash resolves to: $(PATH="$P" command -v bash)"
