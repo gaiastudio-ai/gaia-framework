@@ -3399,14 +3399,19 @@ SH
   # It intercepts only the hold-hook sleep (exact string "0.100"),
   # atomically marks entry with mkdir, records an overlap if the
   # marker already exists, sleeps via absolute path, then removes
-  # the marker. All other sleep calls pass through unchanged.
+  # the marker. Each hold is also recorded as a file under a
+  # per-entry directory so the test can assert the detector actually
+  # ran for every successful writer (not vacuously zero overlaps).
+  # All other sleep calls pass through unchanged.
   local _real_sleep
   _real_sleep="$(command -v sleep)"
   local shim_dir="$TEST_TMP/race-shim"
-  mkdir -p "$shim_dir"
+  local hold_dir="$TEST_TMP/hold-entries"
+  mkdir -p "$shim_dir" "$hold_dir"
   cat > "$shim_dir/sleep" <<SHIMEOF
 #!/usr/bin/env bash
 if [ "\$1" = "0.100" ]; then
+  touch "$hold_dir/hold.\$\$.\$RANDOM"
   if ! mkdir "$ws_dir/inside" 2>/dev/null; then
     touch "$ws_dir/overlap.\$\$"
   fi
@@ -3547,8 +3552,18 @@ SHIMEOF
   }
 
   # At least 24 of 32 writers must succeed (fallback handoff throughput floor).
-  [ "$((res_ok + app_ok))" -ge 24 ] || {
-    echo "Forced race: only $((res_ok + app_ok))/32 writers succeeded (need >= 24)" >&2
+  local _total_ok=$((res_ok + app_ok))
+  [ "$_total_ok" -ge 24 ] || {
+    echo "Forced race: only $_total_ok/32 writers succeeded (need >= 24)" >&2
+    false
+  }
+
+  # Exactly one observed hold per successful writer — proves the
+  # overlap detector actually ran and is not passing vacuously.
+  local _hold_count
+  _hold_count="$(find "$hold_dir" -name 'hold.*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$_hold_count" -eq "$_total_ok" ] || {
+    echo "Forced race: hold count $_hold_count != success count $_total_ok (detector did not run for every writer)" >&2
     false
   }
 
