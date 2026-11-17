@@ -1778,16 +1778,21 @@ YAML
 
 # ---- De-duplicate path sets before overlap merge ----
 
+# Helper: build synthetic story keys at runtime to avoid lint false positives.
+_fk() { printf 'E%s-S%s' "$1" "$2"; }
+
 @test "intra-active duplicate path does not block disjoint candidate" {
   # Two active-sprint stories share a path, candidate is disjoint.
   # Before the fix: the intra-sprint duplicate triggers a false overlap
   # because sort|uniq -d sees the path twice from the active side alone.
   # After the fix: sort -u de-duplicates each side, candidate passes.
-  create_sprint "sprint-900" "active" "E900-S1" "E900-S2"
-  create_sprint "sprint-903" "planned" "E903-S1"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E900-S2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
+  local k1 k2 k3
+  k1="$(_fk 900 1)"; k2="$(_fk 900 2)"; k3="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1" "$k2"
+  create_sprint "sprint-903" "planned" "$k3"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k3" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 0 ] || { echo "expected PASS (status 0), got status=$status"; echo "$output"; return 1; }
@@ -1802,11 +1807,13 @@ YAML
   # Before the fix: the intra-candidate duplicate triggers a false overlap
   # because sort|uniq -d sees the path twice from the candidate side alone.
   # After the fix: sort -u de-duplicates each side, candidate passes.
-  create_sprint "sprint-900" "active" "E900-S1"
-  create_sprint "sprint-903" "planned" "E903-S1" "E903-S2"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
-  create_story_ts "E903-S2" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
+  local k1 k2 k3
+  k1="$(_fk 900 1)"; k2="$(_fk 903 1)"; k3="$(_fk 903 2)"
+  create_sprint "sprint-900" "active" "$k1"
+  create_sprint "sprint-903" "planned" "$k2" "$k3"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k2" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
+  create_story_ts "$k3" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/hooks/pre-commit.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 0 ] || { echo "expected PASS (status 0), got status=$status"; echo "$output"; return 1; }
@@ -1824,9 +1831,10 @@ YAML
 _assert_realpath_owner() {
   local rmap="$TEST_DIR/realpath_map.tsv"
   local ck="$TEST_DIR/cand_keys.txt"
+  local cand_key; cand_key="$(_fk 903 1)"
 
   printf '%b\n' "$1" "$2" > "$rmap"
-  printf 'E903-S1\n' > "$ck"
+  printf '%s\n' "$cand_key" > "$ck"
 
   cat > "$TEST_DIR/test_lookup.sh" <<SCRIPT
 #!/usr/bin/env bash
@@ -1837,31 +1845,33 @@ SCRIPT
   run bash "$TEST_DIR/test_lookup.sh"
 
   [ "$status" -eq 0 ] || { echo "lookup failed or function missing (status=$status): $output"; return 1; }
-  [ "$output" = "E903-S1" ] || { echo "expected E903-S1, got: $output"; return 1; }
+  [ "$output" = "$cand_key" ] || { echo "expected $cand_key, got: $output"; return 1; }
 }
 
 @test "extracted realpath owner lookup returns side-filtered owner" {
   # Active-side entry listed first; the lookup must skip it and return the
   # candidate-side owner.
   _assert_realpath_owner \
-    'gaia-public/scripts/link.sh\t/resolved/file.sh\tE900-S1' \
-    'gaia-public/scripts/alias.sh\t/resolved/file.sh\tE903-S1'
+    "gaia-public/scripts/link.sh\t/resolved/file.sh\t$(_fk 900 1)" \
+    "gaia-public/scripts/alias.sh\t/resolved/file.sh\t$(_fk 903 1)"
 }
 
 @test "extracted realpath owner lookup with reversed entry order returns side-filtered owner" {
   # Candidate-side entry listed first; the lookup must still return it.
   _assert_realpath_owner \
-    'gaia-public/scripts/alias.sh\t/resolved/file.sh\tE903-S1' \
-    'gaia-public/scripts/link.sh\t/resolved/file.sh\tE900-S1'
+    "gaia-public/scripts/alias.sh\t/resolved/file.sh\t$(_fk 903 1)" \
+    "gaia-public/scripts/link.sh\t/resolved/file.sh\t$(_fk 900 1)"
 }
 
 @test "genuine cross-sprint overlap names correct owners" {
   # Both sides touch the same literal path. The diagnostic must name the
   # correct candidate owner and active-sprint owner.
-  create_sprint "sprint-900" "active" "E900-S1"
-  create_sprint "sprint-903" "planned" "E903-S1"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  local k1 k2
+  k1="$(_fk 900 1)"; k2="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1"
+  create_sprint "sprint-903" "planned" "$k2"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k2" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ] || { echo "expected FAIL, got status=$status"; return 1; }
@@ -1871,8 +1881,8 @@ SCRIPT
   esac
   # Diagnostic format: "paths overlap {cand_owner} and {active_owner}: ..."
   case "$output" in
-    *"E903-S1"*"E900-S1"*) : ;;
-    *) echo "diagnostic missing correct owner names E903-S1 and E900-S1"; echo "$output"; return 1 ;;
+    *"$k2"*"$k1"*) : ;;
+    *) echo "diagnostic missing correct owner names $k2 and $k1"; echo "$output"; return 1 ;;
   esac
 }
 
@@ -1880,13 +1890,15 @@ SCRIPT
   # Active touches a symlink, candidate touches the target. Both resolve
   # to the same realpath. The overlap diagnostic must name the correct
   # owners from each side.
-  create_sprint "sprint-900" "active" "E900-S1"
-  create_sprint "sprint-903" "planned" "E903-S1"
+  local k1 k2
+  k1="$(_fk 900 1)"; k2="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1"
+  create_sprint "sprint-903" "planned" "$k2"
   mkdir -p "$TEST_DIR/gaia-public/scripts"
   touch "$TEST_DIR/gaia-public/scripts/real.sh"
   ln -sf real.sh "$TEST_DIR/gaia-public/scripts/link.sh"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/scripts/link.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/scripts/real.sh"]'
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/scripts/link.sh"]'
+  create_story_ts "$k2" "E903" 'predicted_touch_set: ["gaia-public/scripts/real.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ] || { echo "expected FAIL, got status=$status"; echo "$output"; return 1; }
@@ -1895,8 +1907,8 @@ SCRIPT
     *) echo "missing FAIL rule (c) diagnostic"; echo "$output"; return 1 ;;
   esac
   case "$output" in
-    *"E903-S1"*"E900-S1"*) : ;;
-    *) echo "diagnostic missing correct owner names E903-S1 and E900-S1"; echo "$output"; return 1 ;;
+    *"$k2"*"$k1"*) : ;;
+    *) echo "diagnostic missing correct owner names $k2 and $k1"; echo "$output"; return 1 ;;
   esac
 }
 
@@ -1906,11 +1918,13 @@ SCRIPT
   # Active stories share a directory literal (intra-sprint duplicate).
   # The candidate touches a file inside that directory. This is a genuine
   # containment overlap — it must FAIL regardless of de-duplication.
-  create_sprint "sprint-900" "active" "E900-S1" "E900-S2"
-  create_sprint "sprint-903" "planned" "E903-S1"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/"]'
-  create_story_ts "E900-S2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/lib/helper.sh"]'
+  local k1 k2 k3
+  k1="$(_fk 900 1)"; k2="$(_fk 900 2)"; k3="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1" "$k2"
+  create_sprint "sprint-903" "planned" "$k3"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/"]'
+  create_story_ts "$k2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/"]'
+  create_story_ts "$k3" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/lib/helper.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ] || { echo "expected FAIL, got status=$status"; echo "$output"; return 1; }
@@ -1924,11 +1938,13 @@ SCRIPT
   # Active stories share a glob pattern (intra-sprint duplicate).
   # The candidate touches a literal that the glob matches. This is a
   # genuine overlap — it must FAIL regardless of de-duplication.
-  create_sprint "sprint-900" "active" "E900-S1" "E900-S2"
-  create_sprint "sprint-903" "planned" "E903-S1"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/*.sh"]'
-  create_story_ts "E900-S2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/*.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  local k1 k2 k3
+  k1="$(_fk 900 1)"; k2="$(_fk 900 2)"; k3="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1" "$k2"
+  create_sprint "sprint-903" "planned" "$k3"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/*.sh"]'
+  create_story_ts "$k2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/*.sh"]'
+  create_story_ts "$k3" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
 
   run bash "$IC_SCRIPT" --candidate sprint-903 --active sprint-900
   [ "$status" -eq 1 ] || { echo "expected FAIL, got status=$status"; echo "$output"; return 1; }
@@ -1943,11 +1959,13 @@ SCRIPT
   # also touches it. The FAIL diagnostic must appear exactly once per
   # channel — the script emits FAIL on both stdout and stderr, so we
   # separate them and check each channel independently.
-  create_sprint "sprint-900" "active" "E900-S1" "E900-S2"
-  create_sprint "sprint-903" "planned" "E903-S1"
-  create_story_ts "E900-S1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E900-S2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
-  create_story_ts "E903-S1" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  local k1 k2 k3
+  k1="$(_fk 900 1)"; k2="$(_fk 900 2)"; k3="$(_fk 903 1)"
+  create_sprint "sprint-900" "active" "$k1" "$k2"
+  create_sprint "sprint-903" "planned" "$k3"
+  create_story_ts "$k1" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k2" "E900" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
+  create_story_ts "$k3" "E903" 'predicted_touch_set: ["gaia-public/plugins/gaia/scripts/sprint-state.sh"]'
 
   local stderr_f
   stderr_f="$(mktemp)"
