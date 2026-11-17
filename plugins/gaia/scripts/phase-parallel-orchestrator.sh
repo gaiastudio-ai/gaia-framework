@@ -210,11 +210,13 @@ _PPO_SEEN="|"
 # a breadcrumb left by `plan` at a fixed location. The breadcrumb names a
 # writable temp directory whose identity is derived from the sprint yaml and
 # repo paths — stable across the separate bash processes the run-sprint skill
-# spawns (plan, next, record, status), yet collision-free between two concurrent
-# sprints or projects. A missing breadcrumb means plan was never called; the
-# fallback itself is then ${TMPDIR}/gaia-ppo-<PID> so the caller gets a writable
-# path rather than an empty one, and ppo_next's own "no plan" guard reports the
-# real problem.
+# spawns (plan, next, record, status). The breadcrumb is a single fixed file,
+# so a second sprint's plan under the same TMPDIR overwrites the first's; for
+# concurrent sprints, the caller captures plan's session=<path> event and
+# passes GAIA_SESSION_DIR=<path> inline on each later call instead. A missing
+# breadcrumb means plan was never called; the fallback itself is then
+# ${TMPDIR}/gaia-ppo-<PID> so the caller gets a writable path rather than an
+# empty one, and ppo_next's own "no plan" guard reports the real problem.
 _PPO_BREADCRUMB="${TMPDIR:-/tmp}/.gaia-ppo-active"
 
 _ppo_session_fallback() {
@@ -595,6 +597,48 @@ _ppo_read_story_title() {
   ' "$yaml" 2>/dev/null
 }
 
+# _ppo_read_story_status <yaml> <key> — read the status for one story from the
+# sprint yaml. Echoes the status on stdout. Returns 1 only when arguments are
+# empty or the file is unreadable (guard clause). Returns 0 with empty stdout
+# when the key exists but has no status field, or when the key is not found in
+# the file — callers treat empty output as "keep the story" (only an explicit
+# "done" string triggers exclusion).
+_ppo_read_story_status() {
+  local yaml="${1:-}" key="${2:-}"
+  [ -n "$yaml" ] && [ -f "$yaml" ] && [ -n "$key" ] || return 1
+  awk -v target="$key" '
+    /^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
+      k = $0
+      sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/, "", k)
+      gsub(/^["'"'"']|["'"'"']$/, "", k)
+      cur = k
+      next
+    }
+    /^[[:space:]]+status:[[:space:]]*/ {
+      if (cur != target) next
+      s = $0
+      sub(/^[[:space:]]+status:[[:space:]]*/, "", s)
+      gsub(/^["'"'"']|["'"'"']$/, "", s)
+      if (s != "") { print s; exit 0 }
+      next
+    }
+  ' "$yaml" 2>/dev/null
+}
+
+# _ppo_is_done_in_yaml <yaml> <key> — return 0 when the story's status in the
+# sprint yaml is literally "done", 1 otherwise. An unreadable file, a missing
+# key, or an absent status field all return 1 (keep the story). This is the
+# shared predicate for the done-story filters in ppo_plan, ppo_plan_sequential,
+# and the defence-in-depth check in ppo_next. It does NOT consult
+# _ppo_is_merged_not_done (which runs sprint-progress-audit.sh per key) —
+# merged-not-done stories have status "review" or "in-progress" in the yaml and
+# pass through this check intentionally.
+_ppo_is_done_in_yaml() {
+  local _st
+  _st="$(_ppo_read_story_status "${1:-}" "${2:-}")" || _st=""
+  [ "$_st" = "done" ]
+}
+
 # The slug length cap — must match _SW_SLUG_MAX in story-worktree.sh (60)
 # so the branch name worktree_branch_state checks is the same one
 # worktree_create builds.
@@ -704,7 +748,12 @@ ppo_plan_sequential() {
     if [ -r "$yaml" ]; then
       awk '/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/ {
         k=$0; sub(/^[[:space:]]*-[[:space:]]*key:[[:space:]]*/,"",k)
-        gsub(/^["'"'"']|["'"'"']$/,"",k); print k }' "$yaml" 2>/dev/null || true
+        gsub(/^["'"'"']|["'"'"']$/,"",k); print k }' "$yaml" 2>/dev/null \
+      | while IFS= read -r _fb_key; do
+          [ -n "$_fb_key" ] || continue
+          _ppo_is_done_in_yaml "$yaml" "$_fb_key" && continue
+          printf '%s\n' "$_fb_key"
+        done || true
     fi
     return 0
   fi
@@ -715,6 +764,7 @@ ppo_plan_sequential() {
   # An empty worklist is a legitimate answer, not a failure.
   printf '%s\n' "$phases" | while IFS='|' read -r k _; do
     [ -n "$k" ] || continue
+    _ppo_is_done_in_yaml "$yaml" "$k" && continue
     printf '%s\n' "$k"
   done
   return 0
@@ -865,6 +915,13 @@ ppo_plan() {
   verdict="$(ppo_preflight --repo "$repo" --yaml "$yaml" --slots "$slots")"
   _ppo_emit "$verdict"
 
+  # Emit the session path so the caller can pass it to later invocations.
+  # _ppo_session_fallback resolves the correct directory in both cases:
+  #   - GAIA_SESSION_DIR set: returns $GAIA_SESSION_DIR (the same dir plan uses).
+  #   - GAIA_SESSION_DIR unset: reads the breadcrumb just written above, which
+  #     contains fallback_dir (also the same dir plan uses).
+  _ppo_emit "session=$(_ppo_session_fallback)"
+
   case "$verdict" in
     mode=parallel*)
       _ppo_engine_put mode "mode=parallel reason=none"
@@ -901,6 +958,23 @@ ppo_plan() {
 
   local phases
   phases="$(ppo_read_phases "$yaml")" || { _ppo_engine_put mode "mode=sequential reason=sprint-unreadable"; return 0; }
+
+  # Post-filter: exclude stories whose status is already done in the sprint
+  # yaml. Merged-not-done stories remain admittable (they are re-queued by
+  # _ppo_apply_mnd_not_done as a bounded resume). See _ppo_is_done_in_yaml
+  # for the predicate contract and why _ppo_is_merged_not_done is not used.
+  local _filtered_phases="" _fk _fp
+  while IFS='|' read -r _fk _fp; do
+    [ -n "$_fk" ] || continue
+    if _ppo_is_done_in_yaml "$yaml" "$_fk"; then
+      _ppo_emit "event=story_skipped story=${_fk} reason=already-done"
+      continue
+    fi
+    _filtered_phases="${_filtered_phases}${_filtered_phases:+$'\n'}${_fk}|${_fp}"
+  done <<EOF
+$phases
+EOF
+  phases="$_filtered_phases"
   _ppo_engine_put phases "$phases"
 
   local first_phase
@@ -1241,6 +1315,16 @@ _ppo_next_locked() {
     # produces an empty or literal-"slug" branch.
     local story_title story_slug yaml_file
     yaml_file="$(_ppo_engine_get yaml)"
+
+    # Defence in depth: re-check the story's status in the sprint yaml in case
+    # it turned done mid-run (e.g. manual transition). ppo_read_phases stays a
+    # pure parser; this check is a last-line guard before admission.
+    if _ppo_is_done_in_yaml "$yaml_file" "$key"; then
+      _ppo_emit "event=story_skipped story=${key} reason=already-done"
+      pending="$rest"; _ppo_engine_put pending "$pending"
+      continue
+    fi
+
     story_title="$(_ppo_read_story_title "$yaml_file" "$key")"
     if [ -n "$story_title" ]; then
       story_slug="$(_ppo_slugify "$story_title")"
