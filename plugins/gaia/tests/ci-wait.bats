@@ -43,6 +43,21 @@ _write_prview() {
   fi
 }
 
+# _write_prview_indexed INDEX JSON [EXIT_CODE] [STDERR]
+# Writes a poll-indexed pr view fixture.  The gh stub tries indexed
+# fixtures first (synced to the poll counter via the snapshot file left
+# by the preceding --required call), falling back to the unindexed
+# fixture, then to the default {"baseRefName":"main"}.
+_write_prview_indexed() {
+  local idx="$1" json="$2" ec="${3:-0}" stderr="${4:-}"
+  local f="$TEST_TMP/gh-fixture-prview-${idx}"
+  printf '%s\n' "$json" > "$f"
+  printf '%s\n' "$ec" >> "$f"
+  if [ -n "$stderr" ]; then
+    printf '%s\n' "$stderr" >> "$f"
+  fi
+}
+
 # _write_config CONTENT — write a minimal resolver-compatible project config
 _write_config() {
   local content="$1"
@@ -90,6 +105,10 @@ _count_pr_checks_calls() {
 _ALL_PASS='[{"name":"build","bucket":"pass","state":"SUCCESS"},{"name":"lint","bucket":"skipping","state":"NEUTRAL"}]'
 _ALL_PASS_WITH_OPT_FAIL='[{"name":"build","bucket":"pass","state":"SUCCESS"},{"name":"lint","bucket":"skipping","state":"NEUTRAL"},{"name":"optional-lint","bucket":"fail","state":"FAILURE"}]'
 
+# Cross-check test fixtures — single-build-check variants with extended fields
+_XC_REQ_PASS='[{"name":"build","bucket":"pass","state":"SUCCESS"}]'
+_XC_ALL_TERM='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"}]'
+
 # _install_sleep_shim — write a sleep shim that counts calls and terminates
 # the parent process past a call budget. The shim's $PPID is ci-wait.sh
 # because sleep is a direct child of the script process.
@@ -122,6 +141,29 @@ printf '%s\n' "$*" >> "${TEST_TMP}/gh-calls.log"
 
 # --- pr view ---
 if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ]; then
+  # Try indexed fixture first (synced to poll counter via snapshot)
+  snapshot_file="${TEST_TMP}/gh-poll-snapshot"
+  if [ -f "$snapshot_file" ]; then
+    idx=$(cat "$snapshot_file")
+    f="${TEST_TMP}/gh-fixture-prview-${idx}"
+    if [ ! -f "$f" ]; then
+      local_idx=$((idx - 1))
+      while [ "$local_idx" -ge 0 ]; do
+        f="${TEST_TMP}/gh-fixture-prview-${local_idx}"
+        [ -f "$f" ] && break
+        local_idx=$((local_idx - 1))
+      done
+    fi
+    if [ -f "$f" ]; then
+      stdout=$(sed -n '1p' "$f")
+      ec=$(sed -n '2p' "$f")
+      stderr=$(sed -n '3p' "$f")
+      [ -n "$stderr" ] && printf '%s\n' "$stderr" >&2
+      printf '%s\n' "$stdout"
+      exit "${ec:-0}"
+    fi
+  fi
+  # Existing unindexed fixture fallback
   f="${TEST_TMP}/gh-fixture-prview"
   if [ -f "$f" ]; then
     stdout=$(sed -n '1p' "$f")
@@ -1840,4 +1882,238 @@ STUB
   local orphan_pids=""
   orphan_pids=$(pgrep -f "$marker" 2>/dev/null) || true
   [ -z "$orphan_pids" ]
+}
+
+# ===========================================================================
+# Cross-check tests: required-checks pass must cross-verify the full
+# all-checks endpoint and statusCheckRollup before declaring "passed".
+# ===========================================================================
+
+# --- Red tests: FAIL on current code (defect present), PASS after fix ---
+
+@test "required checks pass while in-progress run exists in all-checks" {
+  local all_mixed='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"},{"name":"build","bucket":"pending","state":"IN_PROGRESS","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  local all_resolved='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  _write_fixture all 0 "$all_mixed"
+  _write_fixture all 1 "$all_mixed"
+  _write_fixture all 2 "$all_resolved"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "rollup pending blocks pass even when required checks terminal" {
+  local rollup_pending='{"mergeStateStatus":"CLEAN","statusCheckRollup":[{"name":"build","status":"IN_PROGRESS"}]}'
+  local i
+  for i in 0 1 2 3 4 5 6; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+    _write_fixture all "$i" "$_XC_ALL_TERM"
+    _write_prview_indexed "$i" "$rollup_pending"
+  done
+
+  # Real-sleep shim so SECONDS advances past the timeout budget
+  cat > "$TEST_TMP/bin/sleep" <<'SHIMEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "${TEST_TMP:-/tmp}/sleep-args.log"
+count_file="${TEST_TMP:-/tmp}/sleep-count"
+if [ ! -f "$count_file" ]; then printf '0' > "$count_file"; fi
+n=$(cat "$count_file")
+n=$((n + 1))
+printf '%s' "$n" > "$count_file"
+if [ "$n" -gt 10 ]; then
+  kill -TERM $PPID 2>/dev/null || true
+  exit 1
+fi
+/bin/sleep 1
+exit 0
+SHIMEOF
+  chmod +x "$TEST_TMP/bin/sleep"
+
+  export CI_WAIT_TIMEOUT_SECONDS=3
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+}
+
+@test "queued check with null startedAt blocks pass in cross-check" {
+  local all_queued='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"},{"name":"build","bucket":"pending","state":"QUEUED","startedAt":null,"workflow":"CI"}]'
+  local all_resolved='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  _write_fixture all 0 "$all_queued"
+  _write_fixture all 1 "$all_queued"
+  _write_fixture all 2 "$all_resolved"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "two workflows same required name pending in one blocks pass" {
+  local req_pass='[{"name":"integration-tests","bucket":"pass","state":"SUCCESS"}]'
+  local all_two_wf='[{"name":"integration-tests","bucket":"pending","state":"IN_PROGRESS","startedAt":"2026-01-01T00:00:00Z","workflow":"deploy"},{"name":"integration-tests","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"ci"}]'
+  local all_resolved='[{"name":"integration-tests","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:00:30Z","workflow":"deploy"},{"name":"integration-tests","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"ci"}]'
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$req_pass"
+  done
+  _write_fixture all 0 "$all_two_wf"
+  _write_fixture all 1 "$all_two_wf"
+  _write_fixture all 2 "$all_resolved"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "cross-check non-zero exit resets stability counter" {
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  _write_fixture all 0 "" 1
+  _write_fixture all 1 "$_XC_ALL_TERM"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "cross-check timeout exits immediately" {
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "" 142
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+}
+
+@test "cross-check invalid JSON resets stability counter" {
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+  done
+  _write_fixture all 0 "not_valid_json"
+  _write_fixture all 1 "$_XC_ALL_TERM"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "latest run fail in all-checks while required shows pass causes failure" {
+  local all_fail_latest='[{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"},{"name":"build","bucket":"fail","state":"FAILURE","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$all_fail_latest"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 1 ]
+}
+
+# --- Green regression guards: PASS on both current and fixed code ---
+
+@test "merge state blocked without pending rollup still passes" {
+  local rollup_blocked='{"mergeStateStatus":"BLOCKED","statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]}'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$_XC_ALL_TERM"
+  _write_prview_indexed 0 "$rollup_blocked"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+@test "merge state unstable without pending rollup still passes" {
+  local rollup_unstable='{"mergeStateStatus":"UNSTABLE","statusCheckRollup":[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]}'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$_XC_ALL_TERM"
+  _write_prview_indexed 0 "$rollup_unstable"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+@test "superseded older pending does not block when newer run terminal" {
+  local all_superseded='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"},{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$all_superseded"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+@test "superseded older fail does not block when newer run passes" {
+  local all_superseded='[{"name":"build","bucket":"fail","state":"FAILURE","startedAt":"2026-01-01T00:00:00Z","workflow":"CI"},{"name":"build","bucket":"pass","state":"SUCCESS","startedAt":"2026-01-01T00:01:00Z","workflow":"CI"}]'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$all_superseded"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+@test "cross-check rollup missing key passes through" {
+  local no_rollup='{"mergeStateStatus":"CLEAN"}'
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "$_XC_ALL_TERM"
+  _write_prview_indexed 0 "$no_rollup"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
+}
+
+@test "pending StatusContext rollup node with required name blocks pass" {
+  local rollup_ctx_pending='{"mergeStateStatus":"CLEAN","statusCheckRollup":[{"context":"build","state":"PENDING"}]}'
+  local rollup_ctx_expected='{"mergeStateStatus":"CLEAN","statusCheckRollup":[{"context":"build","state":"EXPECTED"}]}'
+  local rollup_ctx_done='{"mergeStateStatus":"CLEAN","statusCheckRollup":[{"context":"build","state":"SUCCESS"}]}'
+  local i
+  for i in 0 1 2 3 4 5; do
+    _write_fixture required "$i" "$_XC_REQ_PASS"
+    _write_fixture all "$i" "$_XC_ALL_TERM"
+  done
+  _write_prview_indexed 0 "$rollup_ctx_pending"
+  _write_prview_indexed 1 "$rollup_ctx_expected"
+  _write_prview_indexed 2 "$rollup_ctx_done"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  local rc
+  rc=$(_count_required_calls)
+  [ "$rc" -ge 3 ]
+}
+
+@test "empty all-checks list in cross-check passes through" {
+  _write_fixture required 0 "$_XC_REQ_PASS"
+  _write_fixture required 1 "$_XC_REQ_PASS"
+  _write_fixture all 0 "[]"
+
+  run --separate-stderr "$CI_WAIT" 1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"passed"* ]]
 }
