@@ -3403,12 +3403,37 @@ STORY
 }
 
 # AC9: every review-gate.sh update call that writes a canonical gate row
-# must pass --sha "$_sha" (the pre-computed worktree HEAD). This scans
-# ALL such calls in each file, not just the first code block. Only lines
-# inside ```bash code blocks are checked (prose descriptions are skipped).
+# must pass --sha (the pre-computed worktree HEAD). Scans BOTH code blocks
+# AND prose lines in each file. Plan-ledger writes (--plan-id) and
+# review-mobile's non-canonical gate are excluded.
 _extract_code_blocks() {
-  # Emit only lines inside ```bash ... ``` fenced blocks from a file.
   awk '/^[[:space:]]*```bash/{ in_block=1; next } /^[[:space:]]*```/{ in_block=0; next } in_block' "$1"
+}
+
+# Canonical gate names for filtering prose mentions
+_CANONICAL_GATES='Code Review|QA Tests|Security Review|Test Automation|Test Review|Performance Review'
+
+# Helper: extract all gate-writing review-gate.sh update mentions from a
+# SKILL.md, in both code blocks AND prose. Returns one logical line per
+# call (continuation lines joined). Excludes plan-ledger and non-canonical.
+_extract_gate_update_calls() {
+  local file="$1"
+  # 1. Code blocks: join continuations, filter
+  _extract_code_blocks "$file" \
+    | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}' \
+    | grep 'review-gate\.sh.*update' \
+    | grep -v '\-\-plan-id' \
+    | grep -v 'Mobile Review' \
+    | grep -E "\-\-gate|\-\-verdict" || true
+  # 2. Prose lines (outside code blocks): any line mentioning
+  #    review-gate.sh update with a canonical gate name
+  awk '/^[[:space:]]*```/{ in_block=!in_block; next } !in_block' "$file" \
+    | grep 'review-gate\.sh.*update' \
+    | grep -v '\-\-plan-id' \
+    | grep -v 'Mobile Review' \
+    | grep -v 'fails to update' \
+    | grep -E "$_CANONICAL_GATES" \
+    | grep -E '\-\-gate|\-\-verdict' || true
 }
 
 @test "every canonical gate-row write passes --sha in all 7 skills" {
@@ -3424,20 +3449,12 @@ _extract_code_blocks() {
   for skill in "${gate_skills[@]}"; do
     local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
     [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
-    # Join continuation lines (backslash-newline) into single logical lines,
-    # then check each review-gate.sh update call for --sha.
-    local joined
-    joined="$(_extract_code_blocks "$skill_md" | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}')"
     local call_lines
-    call_lines="$(grep 'review-gate\.sh.*update' <<< "$joined" \
-      | grep -v '\-\-plan-id' \
-      | grep -v 'Mobile Review' || true)"
+    call_lines="$(_extract_gate_update_calls "$skill_md")"
     [ -z "$call_lines" ] && continue
     while IFS= read -r line; do
-      # Must have --gate or --verdict to be a gate-writing call
-      if ! grep -q '\-\-gate\|\-\-verdict' <<< "$line"; then continue; fi
       if ! grep -q '\-\-sha' <<< "$line"; then
-        echo "FAIL: $skill: review-gate.sh update call missing --sha: $line"
+        echo "FAIL: $skill: review-gate.sh update missing --sha: $(echo "$line" | head -c 120)"
         return 1
       fi
     done <<< "$call_lines"
@@ -3457,17 +3474,12 @@ _extract_code_blocks() {
   for skill in "${gate_skills[@]}"; do
     local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
     [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
-    local joined
-    joined="$(_extract_code_blocks "$skill_md" | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}')"
     local call_lines
-    call_lines="$(grep 'review-gate\.sh.*update' <<< "$joined" \
-      | grep -v '\-\-plan-id' \
-      | grep -v 'Mobile Review' || true)"
+    call_lines="$(_extract_gate_update_calls "$skill_md")"
     [ -z "$call_lines" ] && continue
     while IFS= read -r line; do
-      if ! grep -q '\-\-gate\|\-\-verdict' <<< "$line"; then continue; fi
       if ! grep -q '\-\-report' <<< "$line"; then
-        echo "FAIL: $skill: review-gate.sh update call missing --report: $line"
+        echo "FAIL: $skill: review-gate.sh update missing --report: $(echo "$line" | head -c 120)"
         return 1
       fi
     done <<< "$call_lines"
