@@ -4577,3 +4577,88 @@ EOF
   state="$(yq '.design_state' "$RECORD")"
   [ "$state" = "stale" ] || fail "state should be stale after rebind, got: $state"
 }
+
+# ===========================================================================
+# integration_source fail-closed enum value
+# ===========================================================================
+
+@test "transition with integration-source fail-closed is accepted and persisted" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state missing --integration-source fail-closed
+  [ "$status" -eq 0 ] || fail "transition with integration-source fail-closed should succeed but got: $output"
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$RECORD")"
+  [ "$audit_source" = "fail-closed" ] || fail "audit integration_source should be fail-closed but is $audit_source"
+}
+
+@test "transition with integration-source fail-closed passes schema validation" {
+  assert_script_exists
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state missing --integration-source fail-closed
+  [ "$status" -eq 0 ] || fail "transition should succeed but got: $output"
+
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot proceed"
+  [ "$status" -eq 0 ] || fail "schema validation failed after fail-closed transition: $output"
+}
+
+@test "existing attested and probed records still validate after fail-closed addition" {
+  assert_script_exists
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+
+  # Test attested
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state available --integration-source attested
+  [ "$status" -eq 0 ]
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent"
+  [ "$status" -eq 0 ] || fail "attested record should validate: $output"
+
+  # Test probed — rebuild record
+  rm -f "$RECORD"
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state missing --integration-source probed
+  [ "$status" -eq 0 ]
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent"
+  [ "$status" -eq 0 ] || fail "probed record should validate: $output"
+}
+
+@test "invalid integration-source still refused with updated legal-values text" {
+  assert_script_exists
+
+  run "$SCRIPT" init --reference test --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ]
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ]
+
+  run "$SCRIPT" transition --to stale --actor ci \
+    --integration-state available --integration-source fabricated
+  [ "$status" -ne 0 ] || fail "should refuse invalid integration-source"
+
+  [[ "$output" == *"fabricated"* ]] || fail "diagnostic should name the invalid value"
+  [[ "$output" == *"fail-closed"* ]] || fail "legal values list should include fail-closed"
+}

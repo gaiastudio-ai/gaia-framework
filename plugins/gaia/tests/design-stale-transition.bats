@@ -1301,3 +1301,132 @@ SHIMEOF
     fail "design-stale-transition.sh must not use declare -A, readarray, or mapfile (bash 3.2 compat)" # lint-pack:allow bash4-constructs
   fi
 }
+
+# ===========================================================================
+# Persisted audit integration_source per path
+# ===========================================================================
+
+@test "artifact fail-closed path persists integration_source as fail-closed" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+
+  local rc=0
+  env -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "artifact fail-closed should halt"
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$rec")"
+  [ "$audit_source" = "fail-closed" ] \
+    || fail "artifact fail-closed path should persist integration_source=fail-closed but got $audit_source"
+}
+
+@test "missing-probe path persists integration_source as fail-closed" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "designsync"' "$rec"
+
+  # Copy the scripts dir to a temp location and remove the probe from the copy
+  local no_probe_dir="$TEST_TMP/no-probe-scripts"
+  cp -R "$SCRIPTS_DIR" "$no_probe_dir"
+  rm -f "$no_probe_dir/design-probe.sh"
+
+  local rc=0
+  env -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$no_probe_dir/design-stale-transition.sh" \
+      --decision yes --actor test-agent \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "missing-probe path should halt"
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$rec")"
+  [ "$audit_source" = "fail-closed" ] \
+    || fail "missing-probe path should persist integration_source=fail-closed but got $audit_source"
+}
+
+@test "real probe path persists integration_source as probed" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  _make_spy_scripts
+
+  local rc=0
+  env -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$SPY_SCRIPTS_DIR/design-stale-transition.sh" \
+      --decision yes --actor test-agent \
+    2>/dev/null || rc=$?
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_source" = "probed" ] \
+    || fail "real probe path should persist integration_source=probed but got $audit_source"
+}
+
+@test "attested path persists integration_source as attested" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+
+  local rc=0
+  env PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent --integration available \
+    2>/dev/null || rc=$?
+
+  [ "$rc" -eq 0 ] || fail "attested available should succeed"
+
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$TEST_TMP/.gaia/state/design-record.yaml")"
+  [ "$audit_source" = "attested" ] \
+    || fail "attested path should persist integration_source=attested but got $audit_source"
+}
+
+@test "artifact fail-closed halt text names the real cause" {
+  [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
+
+  seed_config true
+  seed_roster
+  _build_indev_record
+  local rec="$TEST_TMP/.gaia/state/design-record.yaml"
+  yq -i '.schema_version = "2.0"' "$rec"
+  yq -i '.design_system_project.surface = "artifact"' "$rec"
+
+  local stderr_file="$TEST_TMP/stderr-artifact-fc.txt"
+  local rc=0
+  env -u DESIGN_PROBE_BRIDGE_CMD -u DESIGN_PROBE_ALLOW_BRIDGE_CMD \
+    PROJECT_ROOT="$TEST_TMP" \
+    bash "$DRIVER_SCRIPT" \
+      --decision yes --actor test-agent \
+    2>"$stderr_file" || rc=$?
+
+  [ "$rc" -ne 0 ] || fail "artifact fail-closed should halt"
+
+  # Must say the Artifact surface cannot be probed and the skill must pass --integration
+  grep -qi 'cannot be probed' "$stderr_file" \
+    || fail "artifact fail-closed halt should say Artifact surface cannot be probed"
+  grep -qF -- '--integration' "$stderr_file" \
+    || fail "artifact fail-closed halt should mention --integration"
+}

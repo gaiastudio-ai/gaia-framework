@@ -346,8 +346,8 @@
           },
           "integration_source": {
             "type": "string",
-            "enum": ["attested", "probed"],
-            "description": "How the integration state was determined."
+            "enum": ["attested", "probed", "fail-closed"],
+            "description": "How the integration state was determined: attested (the skill's attestation), probed (the bash probe ran and classified), fail-closed (no attestation and no probe ran; state defaults to missing)."
           },
           "sprint_id": {
             "type": "string",

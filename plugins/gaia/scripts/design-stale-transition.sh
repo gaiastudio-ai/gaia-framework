@@ -162,11 +162,12 @@ if [ "$_integration_seen" -eq 1 ]; then  # MUTANT-ANCHOR: attestation-guard
 else
   # Probe fallback — fail-closed
   _resolved_state="missing"  # MUTANT-ANCHOR: probe-fallback-default
-  _resolved_source="probed"
+  _resolved_source="fail-closed"
 
   if [ "$_ds_surface" = "artifact" ]; then
     : # Artifact-managed records: the DesignSync bridge cannot classify the Artifact surface
   elif [ -f "$PROBE_SCRIPT" ]; then
+    _resolved_source="probed"
     _probe_stderr="$(mktemp -t dst-probe-stderr.XXXXXX)"
     trap 'rm -f "$_probe_stderr" 2>/dev/null || true' EXIT
 
@@ -232,7 +233,7 @@ case "$_resolved_state" in
   *)
     case "$_ds_surface" in
       artifact)
-        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface is not available in this session. Ensure the Artifact surface is reachable.\n' >&2
+        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface cannot be probed from a bash script. The skill must pass --integration <state> from its own availability check.\n' >&2
         ;;
       *)
         printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is not available in this session. Enable the Claude Design integration, or use a Claude Code session that exposes the design tool surface.\n' >&2
