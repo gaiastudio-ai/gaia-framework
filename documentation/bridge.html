@@ -88,8 +88,9 @@
           <code>UNVERIFIED</code>. With the bridge enabled, a
           <code>PASSED</code> verdict on one of these gates is only accepted
           when it is accompanied by an execution-evidence file whose contents
-          confirm a clean run. The gate reads three fields from that file and
-          refuses <code>PASSED</code> if any of them indicate a problem.
+          confirm a clean run. The gate inspects several per-suite fields in
+          that file and refuses <code>PASSED</code> if any of them indicate a
+          problem.
         </p>
         <p>
           This closes a gate-integrity hole: without the content check, a
@@ -124,10 +125,11 @@
               <td><code>bridge_enabled: true</code></td>
               <td>
                 A <code>PASSED</code> verdict on a test-execution gate
-                requires an execution-evidence file, and that file's contents
-                are inspected. Evidence showing a non-zero exit code, any
-                failed tests, or a skipped suite causes the gate to refuse
-                <code>PASSED</code>.
+                requires an execution-evidence file with at least one
+                required suite, and that file's contents are inspected.
+                Evidence showing a non-zero exit code, missing exit codes,
+                any failed tests, a skipped run, or no evaluated required
+                suite causes the gate to refuse <code>PASSED</code>.
               </td>
             </tr>
           </tbody>
@@ -165,7 +167,9 @@
         <p>
           When the bridge is enabled, a <code>PASSED</code> test-execution
           gate is recorded with a path to an execution-evidence JSON file.
-          The review gate reads exactly three fields from that file:
+          The evidence is a JSON object with a <code>suites</code> array.
+          Each entry in the array must be an object describing one test tier.
+          The gate reads the following fields:
         </p>
         <table>
           <thead>
@@ -173,61 +177,113 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>exit_code</code></td>
+              <td><code>suites[]</code></td>
+              <td>array of objects</td>
+              <td>
+                One entry per test tier. Every entry must be a JSON object
+                (strings, numbers, and nulls are rejected). Must be a JSON
+                array when present; a non-array value is refused.
+              </td>
+            </tr>
+            <tr>
+              <td><code>suites[].name</code></td>
+              <td>string</td>
+              <td>Human-readable tier name (used in diagnostics).</td>
+            </tr>
+            <tr>
+              <td><code>suites[].required</code></td>
+              <td>boolean</td>
+              <td>
+                Whether this tier is required for a passing verdict.
+                <code>true</code> (default when absent) means the gate
+                evaluates this suite; <code>false</code> means the tier is
+                optional and its results do not block <code>PASSED</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>suites[].exit_code</code></td>
               <td>integer</td>
               <td>
-                The process exit code of the test run. <code>0</code> means
-                the run succeeded. Defaults to <code>0</code> when absent.
+                The process exit code for this tier. <code>0</code> means the
+                tier passed. Any non-zero value (positive or negative,
+                including signal-killed processes) is treated as a failure.
+                <strong>Required on every required suite</strong> &mdash; a
+                required suite that omits <code>exit_code</code> is refused
+                (missing evidence is not the same as passing evidence).
               </td>
             </tr>
             <tr>
               <td><code>suites[].fail_count</code></td>
-              <td>array of objects</td>
+              <td>integer</td>
               <td>
-                Per-suite failure counts. The gate <em>sums</em>
-                <code>fail_count</code> across every entry in
-                <code>suites</code>. A missing count is treated as
-                <code>0</code>.
+                Number of failed tests in this tier. The gate sums
+                <code>fail_count</code> across required suites. A missing
+                count is treated as <code>0</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>suites[].timeout</code></td>
+              <td>boolean</td>
+              <td>
+                Whether the tier was killed by a timeout. <code>true</code>
+                on a required suite yields a <code>BLOCKED</code> verdict in
+                the verdict resolver.
+              </td>
+            </tr>
+            <tr>
+              <td><code>suites[].skip_reason</code></td>
+              <td>string (optional)</td>
+              <td>
+                Present on placeholder suites that were not actually
+                exercised (e.g. &ldquo;no command declared&rdquo;). A suite
+                with <code>skip_reason</code> does not count as an evaluated
+                required suite.
               </td>
             </tr>
             <tr>
               <td><code>skipped</code></td>
               <td>boolean</td>
               <td>
-                Whether the suite was skipped (not actually exercised). A real
-                run stamps <code>false</code>; <code>true</code> means
-                &ldquo;tier not run&rdquo; and is not a passing signal.
-                Defaults to <code>false</code> when absent.
+                Top-level flag: whether the entire run was skipped. A real
+                run stamps <code>false</code>; only strict boolean
+                <code>true</code> means &ldquo;not run&rdquo; (values like
+                <code>0</code> or <code>""</code> are not treated as
+                skipped).
               </td>
             </tr>
           </tbody>
         </table>
         <p>
           A clean run that the gate will accept as <code>PASSED</code> looks
-          like this:
+          like this (at least one required suite with <code>exit_code: 0</code>):
         </p>
         <pre><code>{
-  "exit_code": 0,
   "skipped": false,
   "suites": [
-    { "name": "unit",        "fail_count": 0 },
-    { "name": "integration", "fail_count": 0 }
+    { "name": "unit",        "required": true,  "exit_code": 0, "fail_count": 0, "timeout": false },
+    { "name": "integration", "required": true,  "exit_code": 0, "fail_count": 0, "timeout": false },
+    { "name": "visual",      "required": false, "exit_code": 1, "fail_count": 3, "timeout": false }
   ]
 }</code></pre>
         <p>
-          Any additional fields you include (timestamps, durations, a
-          command string, per-suite pass counts) are ignored by the gate and
-          safe to add for your own auditing &mdash; only the three fields
-          above affect the verdict.
+          In the example above, the optional &ldquo;visual&rdquo; tier failed
+          but did not block <code>PASSED</code> because it is marked
+          <code>required: false</code>. The two required tiers both have
+          <code>exit_code: 0</code>.
+        </p>
+        <p>
+          Additional fields (timestamps, durations, command strings,
+          per-suite pass counts) are ignored by the gate and safe to add for
+          your own auditing.
         </p>
       </section>
 
       <section id="refuse-rules">
         <h2>When the gate refuses PASSED</h2>
         <p>
-          With the bridge enabled, the gate refuses to record
-          <code>PASSED</code> &mdash; and tells you why &mdash; when the
-          evidence shows any of:
+          The gate refuses to record <code>PASSED</code> &mdash; and tells
+          you why &mdash; when the evidence shows any of the following. The
+          checks run in the order shown; the first match fires.
         </p>
         <table>
           <thead>
@@ -235,24 +291,71 @@
           </thead>
           <tbody>
             <tr>
-              <td><code>exit_code</code> is not <code>0</code></td>
+              <td><code>--plan-id</code> passed on a test-execution gate (QA Tests, Test Automation, Test Review), including a sprint-scoped auto-generated plan identifier</td>
               <td>
-                Refuses <code>PASSED</code> (red suite). Fix the failing tests
-                and re-capture evidence, or record <code>FAILED</code>.
+                Refused with a diagnostic. Test-execution gates do not accept
+                plan-keyed verdicts; use a plan-only gate (e.g.
+                test-automate-plan) for plan approvals. This refusal applies
+                even when a valid execution-evidence file is supplied and even
+                when the proof-of-execution off-switch is set.
               </td>
             </tr>
             <tr>
-              <td>summed <code>suites[].fail_count</code> is greater than 0</td>
+              <td><code>--report-missing-reason</code> with <code>PASSED</code> on a test-execution gate</td>
               <td>
-                Refuses <code>PASSED</code> (failing tests). Fix and
-                re-capture, or record <code>FAILED</code>.
+                The verdict is coerced to <code>UNVERIFIED</code> and the
+                reason text is written into the Report column. This coercion
+                applies even when the proof-of-execution off-switch is set.
               </td>
             </tr>
             <tr>
-              <td><code>skipped</code> is <code>true</code></td>
+              <td><code>.suites</code> present but not a JSON array</td>
               <td>
-                Refuses <code>PASSED</code> (suite did not run). Run the suite
-                and re-capture, or record <code>UNVERIFIED</code>.
+                Refused (malformed evidence shape).
+              </td>
+            </tr>
+            <tr>
+              <td>Any entry in <code>suites</code> is not a JSON object (e.g. a string, number, or null)</td>
+              <td>
+                Refused (non-object entry). Fix the evidence file.
+              </td>
+            </tr>
+            <tr>
+              <td>No required suite evaluated (all suites are optional, the suites array is empty, or the suites key is missing; placeholder suites with <code>skip_reason</code> do not count as evaluated)</td>
+              <td>
+                Refused. A project with no configured required test tier
+                cannot record a test-execution gate as <code>PASSED</code>.
+                The remedy is to configure at least one required tier in your
+                test environment, or record plan approvals on a plan-only
+                gate.
+              </td>
+            </tr>
+            <tr>
+              <td>A required suite is missing the <code>exit_code</code> key</td>
+              <td>
+                Refused (the diagnostic names each suite without the key).
+                Missing evidence is not the same as passing evidence.
+              </td>
+            </tr>
+            <tr>
+              <td>Any required suite has a non-zero <code>exit_code</code> (positive or negative, including signal-killed processes)</td>
+              <td>
+                Refused (red suite). Fix the failing tests and re-capture
+                evidence, or record <code>FAILED</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Summed <code>fail_count</code> across required suites is greater than 0</td>
+              <td>
+                Refused (failing tests). Fix and re-capture, or record
+                <code>FAILED</code>.
+              </td>
+            </tr>
+            <tr>
+              <td><code>skipped</code> is strictly <code>true</code></td>
+              <td>
+                Refused (run was not exercised). Run the suite and
+                re-capture, or record <code>UNVERIFIED</code>.
               </td>
             </tr>
           </tbody>
@@ -273,7 +376,10 @@
             can disable the content check entirely via the
             <code>REVIEW_GATE_PROOF_OF_EXECUTION=off</code> environment
             override. Both are escape hatches &mdash; the default, enabled
-            behaviour is the evidence-backed path above.
+            behaviour is the evidence-backed path above. Note that the
+            <code>--plan-id</code> refusal and the
+            <code>--report-missing-reason</code> coercion still apply when
+            the off-switch is set.
           </p>
         </div>
       </section>
@@ -285,21 +391,38 @@
           execution-evidence file would record:
         </p>
         <pre><code>{
-  "exit_code": 1,
   "skipped": false,
   "suites": [
-    { "name": "unit",        "fail_count": 0 },
-    { "name": "integration", "fail_count": 2 }
+    { "name": "unit",        "required": true,  "exit_code": 0, "fail_count": 0, "timeout": false },
+    { "name": "integration", "required": true,  "exit_code": 1, "fail_count": 2, "timeout": false }
   ]
 }</code></pre>
         <p>
           Attempting to record this gate as <code>PASSED</code> is refused on
-          two counts: <code>exit_code</code> is <code>1</code> and the summed
-          <code>fail_count</code> is <code>2</code>. The correct action is to
+          two counts: the integration suite has a non-zero
+          <code>exit_code</code> and the summed <code>fail_count</code>
+          across required suites is <code>2</code>. The correct action is to
           fix the two failing integration tests, re-run, and re-capture
           evidence showing <code>exit_code: 0</code> with all
           <code>fail_count</code> values at <code>0</code> &mdash; or to
           record the gate as <code>FAILED</code> until the fix lands.
+        </p>
+        <h3>Placeholder suites</h3>
+        <p>
+          When a tier is configured but has no runner command, the bridge
+          emits a placeholder suite with a <code>skip_reason</code>:
+        </p>
+        <pre><code>{
+  "skipped": false,
+  "suites": [
+    { "name": "e2e", "required": true, "exit_code": 0, "fail_count": 0, "timeout": false, "skip_reason": "no command declared" }
+  ]
+}</code></pre>
+        <p>
+          A placeholder does not count as an evaluated required suite. If
+          every required suite is a placeholder (or if the suites array is
+          empty), the gate refuses <code>PASSED</code> with &ldquo;no
+          required suite evaluated.&rdquo;
         </p>
       </section>
 
