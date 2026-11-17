@@ -40,10 +40,10 @@ _lifecycle_overrides_lock() {
 
 _lifecycle_bootstrap_if_absent() {
   local f
-  f="$(_lifecycle_overrides_file)"
+  f="$(_lifecycle_overrides_file)" || return $?
   if [ ! -f "$f" ]; then
-    mkdir -p "$(dirname "$f")"
-    printf '%s\n' "bypasses: []" > "$f"
+    mkdir -p "$(dirname "$f")" || return $?
+    printf '%s\n' "bypasses: []" > "$f" || return $?
   fi
 }
 
@@ -111,13 +111,13 @@ lifecycle_append_bypass() {
   fi
 
   local recorded_at recorded_by
-  recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  recorded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return $?
   recorded_by="${USER:-unknown}"
 
   local f lock
   f="$(_lifecycle_overrides_file)"
   lock="$(_lifecycle_overrides_lock)"
-  mkdir -p "$(dirname "$f")"
+  mkdir -p "$(dirname "$f")" || return $?
 
   # Flock + atomic tempfile + mv. Use flock(1) when available; fall back to
   # mkdir-based lock when not.
@@ -126,20 +126,26 @@ lifecycle_append_bypass() {
   trap 'rm -f "$tmp"' RETURN
 
   _do_append() {
-    _lifecycle_bootstrap_if_absent
+    _lifecycle_bootstrap_if_absent || return $?
     # Compose entry as JSON; merge into existing list with yq.
+    # Declaration and assignment are separate so local does not mask jq's
+    # exit status (the combined form always returns 0).
     local entry_json
     entry_json="$(jq -n --arg s "$skill" --arg r "$reason" --arg at "$recorded_at" --arg by "$recorded_by" --arg sid "$sprint_id" \
-      '{skill:$s, reason:$r, recorded_at:$at, recorded_by:$by, sprint_id:$sid}')"
+      '{skill:$s, reason:$r, recorded_at:$at, recorded_by:$by, sprint_id:$sid}')" || return $?
+    # Last command — its exit status is the function's return status.
     yq -i ".bypasses += [$entry_json]" "$f"
   }
 
   if command -v flock >/dev/null 2>&1; then
-    # Linux flock semantics.
-    exec {LOCK_FD}>"$lock"
-    flock -w 5 "$LOCK_FD" || { printf 'lifecycle_append_bypass: failed to acquire lock at %s\n' "$lock" >&2; return 1; }
-    _do_append
-    exec {LOCK_FD}>&-
+    # Subshell + redirection: fd 9 is scoped to the subshell, so no caller
+    # fd collision and no bash 4+ exec {var} syntax needed.  Lock failure
+    # diagnostic stays inside the subshell; _do_append failures propagate
+    # their own status verbatim via explicit || return $? guards.
+    (
+      flock -w 5 9 || { printf 'lifecycle_append_bypass: failed to acquire lock at %s\n' "$lock" >&2; exit 1; }
+      _do_append
+    ) 9>"$lock" || return $?
   else
     # macOS lacks flock by default. Use mkdir-based lock (atomic per POSIX).
     local lockdir="${lock}.d"
@@ -153,7 +159,7 @@ lifecycle_append_bypass() {
       sleep 0.1
     done
     trap 'rmdir "'"$lockdir"'" 2>/dev/null || true; rm -f "'"$tmp"'"' RETURN
-    _do_append
+    _do_append || return $?
   fi
 }
 
