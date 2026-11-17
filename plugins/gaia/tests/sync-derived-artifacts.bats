@@ -9694,7 +9694,7 @@ UX
 @test "writer preserves two consecutive pipe lines above a table" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/rf11-two-pipe"
+  local doc_dir="$TEST_TMP/two-pipe-above-table"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9715,8 +9715,8 @@ Outputs: c | d
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-two-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-two-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/two-pipe-table-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/two-pipe-table-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Both pipe-bearing text lines must appear exactly once
@@ -9746,7 +9746,7 @@ UX
 @test "writer preserves three consecutive pipe lines above a table" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/rf11-three-pipe"
+  local doc_dir="$TEST_TMP/three-pipe-above-table"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9768,8 +9768,8 @@ Gamma: e | f
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-three-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-three-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/three-pipe-table-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/three-pipe-table-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # All three pipe-bearing text lines preserved exactly once
@@ -9805,7 +9805,7 @@ UX
 
   # A single pipe-bearing line followed by a plain line before the table.
   # Exercises the ev==0 path where _tbl_had_cand is set.
-  local doc_dir="$TEST_TMP/rf11-pipe-plain"
+  local doc_dir="$TEST_TMP/pipe-before-plain"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9826,8 +9826,8 @@ See the design spec for details.
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-pp-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-pp-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/pipe-plain-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/pipe-plain-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Pipe line and plain line both preserved exactly once
@@ -9845,7 +9845,7 @@ UX
 
   # A single pipe-bearing line immediately before a code fence.
   # Exercises the ev==-1 path where _tbl_had_cand is set.
-  local doc_dir="$TEST_TMP/rf11-pipe-fence"
+  local doc_dir="$TEST_TMP/pipe-before-fence"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9868,8 +9868,8 @@ code block
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/rf11-pf-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-pf-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["nav","btn"]}' > "$TEST_TMP/pipe-fence-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/pipe-fence-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Pipe line preserved exactly once
@@ -9887,7 +9887,7 @@ UX
   # no table in the section. This exercises bullet mode (no table means
   # _count_table_cols returns 0). The test pins that the writer never
   # drops or duplicates either line in this layout.
-  local doc_dir="$TEST_TMP/rf11-pipe-secend"
+  local doc_dir="$TEST_TMP/pipe-before-section-end"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9903,8 +9903,8 @@ Sizes: sm | md | lg
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["btn"]}' > "$TEST_TMP/rf11-se-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-se-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["btn"]}' > "$TEST_TMP/pipe-secend-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/pipe-secend-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Pipe line preserved exactly once
@@ -9933,7 +9933,7 @@ UX
   # Two consecutive pipe-bearing lines followed by a section-end heading,
   # no table in the section. Bullet mode — the locator is not active, so
   # this pins that the bullet writer preserves each line exactly once.
-  local doc_dir="$TEST_TMP/rf11-twopipe-secend"
+  local doc_dir="$TEST_TMP/twopipe-before-section-end"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -9950,8 +9950,8 @@ Outputs: c | d
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["btn"]}' > "$TEST_TMP/rf11-2se-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf11-2se-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["btn"]}' > "$TEST_TMP/twopipe-secend-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/twopipe-secend-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
 
   # Both pipe-bearing lines preserved exactly once
@@ -9986,7 +9986,7 @@ UX
 @test "unclosed backtick fence: bullet sync inserts before the fence and is idempotent" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/rf12-bt"
+  local doc_dir="$TEST_TMP/unclosed-backtick-fence"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -10010,10 +10010,10 @@ UX
   local fence_before
   fence_before="$(sed -n '/^```/,$p' "$doc_dir/ux-design.md")"
 
-  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-bt-snap.json"
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/unclosed-bt-snap.json"
 
   # Sync 1
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-bt-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
 
   # Fenced region unchanged
@@ -10040,14 +10040,14 @@ UX
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
   # Sync 2 — idempotent
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-bt-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
   sha2="$(_sha256_file "$doc_dir/ux-design.md")"
   [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
 
   # Sync 3 — still idempotent
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-bt-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
   local sha3
   sha3="$(_sha256_file "$doc_dir/ux-design.md")"
@@ -10061,7 +10061,7 @@ UX
 @test "unclosed tilde fence: bullet sync inserts before the fence and is idempotent" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/rf12-tilde"
+  local doc_dir="$TEST_TMP/unclosed-tilde-fence"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -10083,10 +10083,10 @@ UX
   local fence_before
   fence_before="$(sed -n '/^~~~/,$p' "$doc_dir/ux-design.md")"
 
-  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-tilde-snap.json"
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/unclosed-tilde-snap.json"
 
   # Sync 1
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-tilde-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
 
   local fence_after
@@ -10102,14 +10102,14 @@ UX
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
   # Sync 2
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-tilde-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
   sha2="$(_sha256_file "$doc_dir/ux-design.md")"
   [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
 
   # Sync 3
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-tilde-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
   local sha3
   sha3="$(_sha256_file "$doc_dir/ux-design.md")"
@@ -10122,7 +10122,7 @@ UX
 @test "unclosed backtick fence with info string: bullet sync inserts before the fence" {
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
-  local doc_dir="$TEST_TMP/rf12-info"
+  local doc_dir="$TEST_TMP/unclosed-infostr-fence"
   mkdir -p "$doc_dir"
   # Use printf to avoid the heredoc delimiter looking like a fence closer
   printf '%s\n' \
@@ -10137,10 +10137,10 @@ UX
   local fence_before
   fence_before="$(sed -n '/^```python/,$p' "$doc_dir/ux-design.md")"
 
-  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-info-snap.json"
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/unclosed-infostr-snap.json"
 
   # Sync 1
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-infostr-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
 
   local fence_after
@@ -10156,13 +10156,13 @@ UX
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
 
   # Syncs 2 and 3 — idempotent
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-infostr-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
   sha2="$(_sha256_file "$doc_dir/ux-design.md")"
   [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
 
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/unclosed-infostr-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
   local sha3
   sha3="$(_sha256_file "$doc_dir/ux-design.md")"
@@ -10176,7 +10176,7 @@ UX
   [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
 
   # Balanced fence: bullets go after the fence, before section-end.
-  local doc_dir="$TEST_TMP/rf12-balanced"
+  local doc_dir="$TEST_TMP/balanced-bullet-fence"
   mkdir -p "$doc_dir"
   cat > "$doc_dir/ux-design.md" <<'UX'
 ---
@@ -10196,8 +10196,8 @@ balanced code
 ## 9. Next Section
 UX
 
-  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-bal-snap.json"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bal-snap.json" "$doc_dir/ux-design.md"
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/balanced-bullet-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/balanced-bullet-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync failed: $output"
 
   # card appears exactly once, after the fence closer, before section-end
@@ -10215,7 +10215,7 @@ UX
   # Idempotent
   local sha1
   sha1="$(_sha256_file "$doc_dir/ux-design.md")"
-  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bal-snap.json" "$doc_dir/ux-design.md"
+  run "$SYNC_SCRIPT" "$TEST_TMP/balanced-bullet-snap.json" "$doc_dir/ux-design.md"
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   local sha2
   sha2="$(_sha256_file "$doc_dir/ux-design.md")"
