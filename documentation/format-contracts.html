@@ -265,23 +265,28 @@ CI consumption.
         <p>
           <strong>Consumed by:</strong> test-execution review gates when the
           Test Execution Bridge is enabled. The execution-evidence file is a
-          small JSON object the review gate inspects to decide whether a
+          JSON object with a <code>suites</code> array (one entry per test
+          tier) that the review gate inspects to decide whether a
           <code>PASSED</code> verdict is allowed:
         </p>
         <pre><code>{
-  "exit_code": 0,
   "skipped": false,
   "suites": [
-    { "name": "unit",        "fail_count": 0 },
-    { "name": "integration", "fail_count": 0 }
+    { "name": "unit",        "required": true,  "exit_code": 0, "fail_count": 0, "timeout": false },
+    { "name": "integration", "required": true,  "exit_code": 0, "fail_count": 0, "timeout": false }
   ]
 }</code></pre>
         <p>
-          The gate reads <code>exit_code</code>,
-          <code>suites[].fail_count</code> (summed), and <code>skipped</code>,
-          and refuses <code>PASSED</code> if the run was red or skipped. The
-          full contract &mdash; every field, the refuse-conditions, and how to
-          enable the bridge &mdash; is documented on the
+          The gate evaluates each required suite's <code>exit_code</code>
+          (must be present and zero, including negative values),
+          <code>fail_count</code> (summed across required suites), and the
+          top-level <code>skipped</code> flag (strictly <code>true</code>
+          only). Optional suites (<code>required: false</code>) do not block
+          <code>PASSED</code>. At least one required suite must be
+          evaluated; placeholder suites with a <code>skip_reason</code> do
+          not count. The full contract &mdash; every field, the
+          refuse-conditions, and how to enable the bridge &mdash; is
+          documented on the
           <a href="bridge.html">Test Execution Bridge</a> page.
         </p>
       </section>

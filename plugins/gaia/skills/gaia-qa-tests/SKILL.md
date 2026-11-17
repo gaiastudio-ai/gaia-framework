@@ -146,7 +146,7 @@ Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `
 2. **AC parser (markdown-aware, NOT raw regex).** Use a YAML/markdown-aware parser (`mistune`, `remark`, or robust YAML extractor) to handle backticks, code blocks, pipe characters, and asterisks. Extract Given/When/Then text content per AC. Flag malformed ACs as `status: warning, category: ac-quality` for ACs without Given/When/Then structure. Zero-AC story → `status: failed` with finding "No acceptance criteria found in story"; resolver maps to REQUEST_CHANGES via precedence rule 2 (LLM-cannot-override).
 
 3. **AC-coverage analyzer (dual-strategy matching).** Two-pass match per AC:
-   - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/E65-S4-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
+   - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/{story_key}-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
    - **Fallback match** — Given/When/Then pattern match against test description string. Example: AC text "Given invalid email, when submit, then reject" matches a test named `'should reject invalid email when submitted'`.
    - **Cross-story attribution scoping.** Only tests with the current `story_key` in path or test name count toward coverage. Tests without explicit story_key attribution are reported separately under `unattributed_tests[]`, NOT counted as coverage.
 
@@ -355,13 +355,20 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
 ```
 
-**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+**Legacy path.** Without a story key (and therefore no register), write the LLM findings to disk first, then invoke the resolver:
 
 ```bash
+# Write LLM findings to disk for the legacy-path resolver call.
+_review_dir="${PROJECT_ROOT:-.}/.gaia/state/review/qa-tests/{story_key}"
+mkdir -p "$_review_dir"
+cat > "$_review_dir/llm-findings.json" <<'FINDINGS_EOF'
+{"findings": [ <array of {severity, message, ...} objects from the LLM review phase> ]}
+FINDINGS_EOF
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .gaia/state/review/qa-tests/{story_key}/analysis-results.json \
-  --llm-findings .gaia/state/review/qa-tests/{story_key}/llm-findings.json \
-  [--execution-evidence .gaia/state/review/qa-tests/{story_key}/execution-evidence.json]
+  --analysis-results "$_review_dir/analysis-results.json" \
+  --llm-findings "$_review_dir/llm-findings.json" \
+  [--execution-evidence "$_review_dir/execution-evidence.json"]
 ```
 
 The resolver applies strict first-match-wins precedence:
