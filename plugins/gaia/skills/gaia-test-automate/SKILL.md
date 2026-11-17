@@ -25,7 +25,7 @@ usage: /gaia-test-automate {story_key} --status
 ```
 
 **Arguments**
-- `{story_key}` — required, e.g. `E28-S66`. Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for older projects).
+- `{story_key}` — required (your story's key). Resolves the story file via the canonical `.gaia/artifacts/implementation-artifacts/{story_key}-*.md` glob (with legacy `docs/implementation-artifacts/` fallback for older projects).
 
 **Output format (stdout)**
 ```
@@ -62,7 +62,7 @@ The `CS-NNN` namespace is deliberately separate from Vera's `TC-NNN` so `/gaia-r
 | Field          | Type    | Notes                                                                 |
 |----------------|---------|-----------------------------------------------------------------------|
 | `id`           | string  | `CS-NNN`, zero-padded to three digits. Allocated atomically.          |
-| `story_key`    | string  | Owning story (e.g. `E72-S3`).                                          |
+| `story_key`    | string  | Owning story (the key passed to the command).                           |
 | `description`  | string  | Short human-readable scenario description.                             |
 | `tier`         | enum    | `unit` \| `integration` \| `e2e`.                                      |
 | `priority`     | enum    | `P0` \| `P1` \| `P2` \| `P3`.                                          |
@@ -410,12 +410,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
   --analysis-results .gaia/state/review/test-automate/{story_key}/analysis-results.json
 ```
 
-**Legacy path.** Without a story key (and therefore no register), the existing invocation is preserved:
+**Legacy path.** Without a story key (and therefore no register), write the LLM findings to disk first, then invoke the resolver:
 
 ```bash
+# Write LLM findings to disk for the legacy-path resolver call.
+_review_dir="${PROJECT_ROOT:-.}/.gaia/state/review/test-automate/{story_key}"
+mkdir -p "$_review_dir"
+cat > "$_review_dir/llm-findings.json" <<'FINDINGS_EOF'
+{"findings": [ <array of {severity, message, ...} objects from the LLM review phase> ]}
+FINDINGS_EOF
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/verdict-resolver.sh \
-  --analysis-results .gaia/state/review/test-automate/{story_key}/analysis-results.json \
-  --llm-findings .gaia/state/review/test-automate/{story_key}/llm-findings.json
+  --analysis-results "$_review_dir/analysis-results.json" \
+  --llm-findings "$_review_dir/llm-findings.json"
 ```
 
 The resolver applies strict first-match-wins precedence:
