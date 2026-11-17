@@ -24,6 +24,7 @@ LC_ALL=C; export LC_ALL
 #   check-convergence  Compute convergence from summary fields
 #   verify-integrity   Validate the chained digest
 #   set-product-project  Bind a product-design project to an existing record
+#   rebind             Migrate a design-system project reference to the Artifact surface
 
 # ---------------------------------------------------------------------------
 # Bootstrap: shared helpers
@@ -188,6 +189,22 @@ _assert_sync_mode() {
   printf 'design-record.sh: unknown sync_mode value "%s"\n' "$value" >&2
   printf 'design-record.sh: legal values: react-components, brand-style\n' >&2
   exit 1
+}
+
+# _assert_surface VALUE CONTEXT — validate and default the --surface flag.
+# Prints the validated value to stdout. If "__UNSET__", defaults to "designsync".
+# Invalid values die with CONTEXT prefix.
+_assert_surface() {
+  local _val="$1" _context="$2"
+  if [ "$_val" != "__UNSET__" ]; then
+    case "$_val" in
+      designsync|artifact) ;;
+      *) _die "$_context: unknown --surface value \"$_val\" — legal values: designsync, artifact" ;;
+    esac
+    printf '%s' "$_val"
+  else
+    printf '%s' "designsync"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -577,15 +594,24 @@ _locked_mutate() {
     _validate_project_references "$tmp"
 
     # Apply mutation callback
+    _DR_NOOP=0
     "$callback" "$tmp" "$@"
 
-    # Cross-validation after callback, before publish
-    _validate_project_references "$tmp"
+    # No-op path: callback signalled that no mutation is needed.
+    # Clean up and exit without writing (preserves record byte-identical).
+    if [ "$_DR_NOOP" = 1 ]; then
+      rm -f "$tmp" 2>/dev/null || true
+      _DR_TMP=""
+      _DR_DONE=1
+    else
+      # Cross-validation after callback, before publish
+      _validate_project_references "$tmp"
 
-    # Atomic publish: mv is atomic on POSIX within a single filesystem
-    mv -f "$tmp" "$RECORD_PATH" || _die "atomic publish failed"
-    _DR_TMP=""
-    _DR_DONE=1
+      # Atomic publish: mv is atomic on POSIX within a single filesystem
+      mv -f "$tmp" "$RECORD_PATH" || _die "atomic publish failed"
+      _DR_TMP=""
+      _DR_DONE=1
+    fi
   )
 }
 
@@ -1075,7 +1101,7 @@ validate_record() {
 # Refuses when a record already exists (protecting the audit trail) and when
 # the record path is a symlink (preventing writes through symlinks).
 cmd_init() {
-  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" pd_discovered_via="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__"
+  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" pd_discovered_via="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__" surface="__UNSET__"
   _parse_opts \
     --reference reference \
     --ds-reference ds_reference \
@@ -1085,6 +1111,7 @@ cmd_init() {
     --questionnaire-record questionnaire_record \
     --sync-mode sync_mode \
     --actor actor \
+    --surface surface \
     -- "$@"
 
   # --ds-reference wins over --reference when both given
@@ -1119,6 +1146,8 @@ cmd_init() {
   else
     pd_discovered_via="existing"
   fi
+
+  surface="$(_assert_surface "$surface" "init")"
 
   # Questionnaire-record: required on created path; -f validated whenever supplied
   if [ "$discovered_via" = "created" ] && [ "$questionnaire_record" = "__UNSET__" ]; then
@@ -1187,6 +1216,7 @@ EOF
   # design_system_project mirrors project
   _CI_REF="$reference" yq -i '.design_system_project.reference = strenv(_CI_REF)' "$tmp"
   _CI_DV="$discovered_via" yq -i '.design_system_project.discovered_via = strenv(_CI_DV)' "$tmp"
+  _CI_SURF="$surface" yq -i '.design_system_project.surface = strenv(_CI_SURF)' "$tmp"
 
   # sync_mode
   _CI_SM="$sync_mode" yq -i '.sync_mode = strenv(_CI_SM)' "$tmp"
@@ -1249,8 +1279,8 @@ cmd_status() {
 
 # cmd_transition — state-machine transition.
 cmd_transition() {
-  local to="" actor="" int_state="" int_source=""
-  _parse_opts --to to --actor actor --integration-state int_state --integration-source int_source -- "$@"
+  local to="" actor="" int_state="" int_source="" force_iteration=""
+  _parse_opts --to to --actor actor --integration-state int_state --integration-source int_source --force-iteration force_iteration -- "$@"
 
   if [ -z "$to" ]; then
     printf 'design-record.sh: transition: --to required\n' >&2
@@ -1297,11 +1327,11 @@ cmd_transition() {
     _ensure_roster || true
   fi
 
-  _locked_mutate _do_transition "$to" "$actor" "$int_state" "$int_source"
+  _locked_mutate _do_transition "$to" "$actor" "$int_state" "$int_source" "$force_iteration"
 }
 
 _do_transition() {
-  local tmp="$1" to="$2" actor="$3" int_state="${4:-}" int_source="${5:-}"
+  local tmp="$1" to="$2" actor="$3" int_state="${4:-}" int_source="${5:-}" force_iteration="${6:-}"
 
   local current_state current_iter
   current_state="$(yq '.design_state' "$tmp")"
@@ -1318,7 +1348,29 @@ _do_transition() {
   # remain keyed to the old iteration, so they no longer satisfy convergence.
   local new_iter="$current_iter"
   if [ "$to" = "review" ] && { [ "$current_state" = "review" ] || [ "$current_state" = "stale" ]; }; then
-    new_iter=$((current_iter + 1))
+    # Null-iteration normalization: null, empty, or the literal string "null"
+    # are treated as 0 so the bump yields 1. Non-integer garbage is refused.
+    if [ -z "$current_iter" ] || [ "$current_iter" = "null" ]; then
+      current_iter=0
+    else
+      case "$current_iter" in
+        *[!0-9]*)
+          _die "non-integer iteration value \"$current_iter\" in design record — fix the record before transitioning"
+          ;;
+      esac
+    fi
+
+    # Force-iteration guard: stale-to-review requires an explicit reason
+    if [ "$current_state" = "stale" ]; then
+      if [ -z "$force_iteration" ]; then
+        _die "stale-to-review requires --force-iteration '<reason>' (at least 10 characters) confirming the design was updated"
+      fi
+      if [ "${#force_iteration}" -lt 10 ]; then
+        _die "stale-to-review --force-iteration reason must be at least 10 characters (got ${#force_iteration})"
+      fi
+    fi
+
+    new_iter=$((10#$current_iter + 1))
     yq -i ".iteration = $new_iter" "$tmp"
   fi
 
@@ -1330,6 +1382,11 @@ _do_transition() {
       "integration_state=${int_state}" "integration_source=${int_source}"
   else
     _append_audit "$tmp" "state-transition" "$actor" "from=${current_state}" "to=${to}"
+  fi
+
+  # Record the force-iteration override as an additional audit entry
+  if [ -n "$force_iteration" ] && [ "$current_state" = "stale" ] && [ "$to" = "review" ]; then
+    _append_audit "$tmp" "force-iteration-override" "$actor" "reason=${force_iteration}"
   fi
 }
 
@@ -1564,7 +1621,7 @@ EOF
 # Refuses unless the current applicability is not-applicable. Validates inputs
 # the same way cmd_init does. Resets design_state to draft and iteration to 1.
 cmd_reopen_applicable() {
-  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" pd_discovered_via="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__"
+  local reference="" ds_reference="__UNSET__" pd_reference="__UNSET__" pd_discovered_via="__UNSET__" discovered_via="" questionnaire_record="__UNSET__" actor="" sync_mode="__UNSET__" surface="__UNSET__"
   _parse_opts \
     --reference reference \
     --ds-reference ds_reference \
@@ -1574,6 +1631,7 @@ cmd_reopen_applicable() {
     --questionnaire-record questionnaire_record \
     --sync-mode sync_mode \
     --actor actor \
+    --surface surface \
     -- "$@"
 
   # --ds-reference wins over --reference when both given
@@ -1606,6 +1664,8 @@ cmd_reopen_applicable() {
     pd_discovered_via="existing"
   fi
 
+  surface="$(_assert_surface "$surface" "reopen-applicable")"
+
   # Questionnaire-record: required on created path; -f validated whenever supplied
   if [ "$discovered_via" = "created" ] && [ "$questionnaire_record" = "__UNSET__" ]; then
     _die "reopen-applicable: --questionnaire-record is required when --discovered-via is \"created\""
@@ -1633,11 +1693,11 @@ cmd_reopen_applicable() {
     _die "reopen-applicable: record applicability is '$current_app', not 'not-applicable' — this verb only transitions from not-applicable"
   fi
 
-  _locked_mutate _do_reopen_applicable "$reference" "$discovered_via" "$questionnaire_record" "$actor" "$pd_reference" "$sync_mode" "$pd_discovered_via"
+  _locked_mutate _do_reopen_applicable "$reference" "$discovered_via" "$questionnaire_record" "$actor" "$pd_reference" "$sync_mode" "$pd_discovered_via" "$surface"
 }
 
 _do_reopen_applicable() {
-  local tmp="$1" reference="$2" discovered_via="$3" questionnaire_record="$4" actor="$5" pd_reference="${6:-__UNSET__}" sync_mode="${7:-__UNSET__}" pd_discovered_via="${8:-existing}"
+  local tmp="$1" reference="$2" discovered_via="$3" questionnaire_record="$4" actor="$5" pd_reference="${6:-__UNSET__}" sync_mode="${7:-__UNSET__}" pd_discovered_via="${8:-existing}" surface="${9:-designsync}"
 
   # Double-check applicability inside the lock
   local current_app
@@ -1657,10 +1717,10 @@ _do_reopen_applicable() {
   _RA_QR="$questionnaire_record" yq -i '.project.questionnaire_record = strenv(_RA_QR)' "$tmp"
 
   # design_system_project mirrors project
-  _RA_REF="$reference" yq -i '
+  _RA_REF="$reference" _RA_SURF="$surface" yq -i '
     .design_system_project.reference = strenv(_RA_REF) |
     .design_system_project.type = "design-system" |
-    .design_system_project.surface = "designsync"
+    .design_system_project.surface = strenv(_RA_SURF)
   ' "$tmp"
   _RA_DV="$discovered_via" yq -i '.design_system_project.discovered_via = strenv(_RA_DV)' "$tmp"
 
@@ -1903,6 +1963,157 @@ _do_record_review_coverage() {
   _append_audit "$tmp" "review-coverage-recorded" "${USER:-unknown}" "coverage=${coverage_json}"
 }
 
+# cmd_rebind — migrate a design-system project reference to the Artifact surface.
+# Two-phase: --dry-run prints plan, --execute performs the mutation.
+cmd_rebind() {
+  local project="" target="" dry_run=false execute=false discovered_via="rebind" actor=""
+
+  # Dedicated parse loop — _parse_opts assumes value flags; --dry-run and
+  # --execute are boolean.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --project)        project="$2";        shift 2 ;;
+      --target)         target="$2";         shift 2 ;;
+      --discovered-via) discovered_via="$2"; shift 2 ;;
+      --actor)          actor="$2";          shift 2 ;;
+      --dry-run)        dry_run=true;        shift   ;;
+      --execute)        execute=true;        shift   ;;
+      *)                _die "rebind: unknown option: $1" ;;
+    esac
+  done
+
+  # Exactly one of --dry-run / --execute is required
+  if "$dry_run" && "$execute"; then
+    _die "rebind requires exactly one of --dry-run or --execute"
+  fi
+  if ! "$dry_run" && ! "$execute"; then
+    _die "rebind requires exactly one of --dry-run or --execute"
+  fi
+
+  # Required args
+  [ -n "$project" ] || _die "rebind: --project required"
+  [ -n "$target" ]  || _die "rebind: --target required"
+  actor="${actor:-${USER:-unknown}}"
+
+  # Only design_system_project is accepted
+  if [ "$project" != "design_system_project" ]; then
+    _die "rebind: --project must be design_system_project (got \"$project\")"
+  fi
+
+  # Sentinel rejection on target
+  _assert_not_sentinel "$target" "rebind --target"
+
+  # Enum validation: discovered_via must be a valid value for ds project
+  _assert_discovered_via "$discovered_via" "project-artifacts integration-list created rebind" "rebind"
+
+  _preflight_mutate
+
+  if "$dry_run"; then
+    # Dry-run: evaluate on a migrated read-only copy without writing
+    _rebind_dry_run "$target"
+    return $?
+  fi
+
+  _locked_mutate _do_rebind "$target" "$actor" "$discovered_via"
+}
+
+# _rebind_dry_run TARGET — print the rebind plan from a migrated read-only
+# copy so v1 records dry-run correctly. No lock, no write.
+_rebind_dry_run() {
+  local target="$1"
+  local _dryrun_tmp
+  _dryrun_tmp=$(mktemp "${RECORD_PATH}.dryrun.XXXXXX")
+  cp "$RECORD_PATH" "$_dryrun_tmp"
+  _migrate_v1_to_v2 "$_dryrun_tmp"
+
+  local ds_null ds_ref ds_surface pd_ref current_state
+  ds_null="$(yq '.design_system_project == null' "$_dryrun_tmp")"
+  if [ "$ds_null" = "true" ]; then
+    rm -f "$_dryrun_tmp" 2>/dev/null || true
+    _die "rebind: design_system_project is null — rebind requires an existing design-system project"
+  fi
+
+  ds_ref="$(yq '.design_system_project.reference' "$_dryrun_tmp")"
+  ds_surface="$(yq '.design_system_project.surface' "$_dryrun_tmp")"
+  pd_ref="$(yq '.product_design_project.reference // ""' "$_dryrun_tmp")"
+  current_state="$(yq '.design_state' "$_dryrun_tmp")"
+  rm -f "$_dryrun_tmp" 2>/dev/null || true
+
+  if [ -n "$pd_ref" ] && [ "$target" = "$pd_ref" ]; then
+    _die "rebind: --target must not equal product_design_project.reference (\"$pd_ref\") — that would cross-wire the two project references"
+  fi
+  if [ "$current_state" = "review" ]; then
+    _die "rebind refused: design record is in review state; complete or cancel the review first"
+  fi
+  if [ "$ds_surface" = "artifact" ] && [ "$ds_ref" = "$target" ]; then
+    printf 'rebind: already on target surface (artifact) with reference %s — no change\n' "$target"
+    return 0
+  fi
+
+  printf 'rebind dry-run:\n'
+  printf '  old_reference: %s\n' "$ds_ref"
+  printf '  new_reference: %s\n' "$target"
+  printf '  old_surface:   %s\n' "$ds_surface"
+  printf '  new_surface:   artifact\n'
+  return 0
+}
+
+_do_rebind() {
+  local tmp="$1" target="$2" actor="$3" discovered_via="$4"
+
+  # All checks run on the locked, migrated snapshot (migration already
+  # applied by _locked_mutate before the callback).
+
+  # Null design_system_project check
+  local ds_null
+  ds_null="$(yq '.design_system_project == null' "$tmp")"
+  if [ "$ds_null" = "true" ]; then
+    _die "rebind: design_system_project is null — rebind requires an existing design-system project"
+  fi
+
+  # Read current values from the locked snapshot
+  local ds_ref ds_surface pd_ref current_state
+  ds_ref="$(yq '.design_system_project.reference' "$tmp")"
+  ds_surface="$(yq '.design_system_project.surface' "$tmp")"
+  pd_ref="$(yq '.product_design_project.reference // ""' "$tmp")"
+  current_state="$(yq '.design_state' "$tmp")"
+
+  # Cross-reference guard: target must not equal product_design_project reference
+  if [ -n "$pd_ref" ] && [ "$target" = "$pd_ref" ]; then
+    _die "rebind: --target must not equal product_design_project.reference (\"$pd_ref\") — that would cross-wire the two project references"
+  fi
+
+  # Review-state refusal
+  if [ "$current_state" = "review" ]; then
+    _die "rebind refused: design record is in review state; complete or cancel the review first"
+  fi
+
+  # Idempotent no-op: already on artifact surface with the same reference.
+  # Leave the record byte-identical and append no audit entry.
+  if [ "$ds_surface" = "artifact" ] && [ "$ds_ref" = "$target" ]; then
+    printf 'rebind: already on target surface (artifact) with reference %s — no change\n' "$target"
+    _DR_NOOP=1
+    return 0
+  fi
+
+  local old_reference="$ds_ref"
+
+  # Set ds reference/surface/discovered_via, mirror project.reference, go stale
+  _RB_TARGET="$target" _RB_DV="$discovered_via" yq -i '
+    .design_system_project.reference = strenv(_RB_TARGET) |
+    .design_system_project.surface = "artifact" |
+    .design_system_project.discovered_via = strenv(_RB_DV) |
+    .project.reference = strenv(_RB_TARGET) |
+    .design_state = "stale"
+  ' "$tmp"
+
+  # Append rebind audit entry
+  _append_audit "$tmp" "rebind" "$actor" \
+    "old_reference=${old_reference}" \
+    "new_reference=${target}" \
+    "discovered_via=${discovered_via}"
+}
+
 # ---------------------------------------------------------------------------
 # main — dispatch verbs
 # ---------------------------------------------------------------------------
@@ -1927,8 +2138,9 @@ main() {
     verify-integrity)     cmd_verify_integrity "$@" ;;
     set-product-project)        cmd_set_product_project "$@" ;;
     record-review-coverage)     cmd_record_review_coverage "$@" ;;
+    rebind)                     cmd_rebind "$@" ;;
     *)
-      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity, set-product-project, record-review-coverage"
+      _die "unknown verb: $verb — valid verbs: init, show, status, transition, approve, add-review, add-override, not-applicable, init-not-applicable, reopen-applicable, check-convergence, verify-integrity, set-product-project, record-review-coverage, rebind"
       ;;
   esac
 }
