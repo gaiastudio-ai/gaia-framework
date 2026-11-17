@@ -5216,3 +5216,385 @@ SHIMEOF
   [ "$rc" -eq 0 ] || { echo "failed to acquire (rc=$rc)" >&2; false; }
   [ "$elapsed" -lt 8 ] || { echo "took ${elapsed}s — timed out" >&2; false; }
 }
+
+# --- Reaper mutex exclusive-creation regression tests ---
+#
+# The reaper's mutex temp file must be created exclusively (mktemp with
+# O_CREAT|O_EXCL) so that two same-process reapers can never collide on
+# a shared temp path. Without exclusive creation, two subshells sharing
+# $$ can draw the same $RANDOM suffix, one overwrites the other's token,
+# and the mutex is orphaned because the owner's self-check fails.
+
+# Derive RANDOM-seed parameters at runtime so the tests work on any bash
+# version (the LCG differs between 3.2 and 5.x). _mtx_seed_derive
+# replays the 3-draw sequence (2 for token, 1 for temp suffix) that the
+# helper performs between the _al_reap_window_hook and the temp-name
+# assignment — zero intervening RANDOM draws in that gap (verified by
+# inspection: only _al_inode, comparisons, and local declarations).
+# It then finds two seeds whose third draw (temp suffix) collides while
+# their token draws (draws 1-2) differ, via sort+awk over 0..20000.
+#
+# Sets: _SEED_A  _TOKEN_A  _R3  _SEED_B  _TOKEN_B
+# Fails loudly (not skip) if no colliding pair is found.
+_mtx_seed_derive() {
+  local _pair
+  _pair="$(
+    set +o pipefail  # awk exits early; SIGPIPE on the feeder is expected
+    local _s _r1 _r2 _r3
+    for _s in $(seq 0 20000); do
+      RANDOM=$_s; _r1=$RANDOM; _r2=$RANDOM; _r3=$RANDOM
+      printf '%s %s %s%s\n' "$_r3" "$_s" "$_r1" "$_r2"
+    done | sort -k1,1n -k3,3 | awk '
+      prev_r3=="" { prev_r3=$1; prev_s=$2; prev_t=$3; next }
+      $1==prev_r3 && $3!=prev_t {
+        print prev_s, $2, $1, prev_t, $3; exit
+      }
+      { prev_r3=$1; prev_s=$2; prev_t=$3 }
+    '
+  )"
+  [ -n "$_pair" ] || {
+    echo "FAIL: no colliding seed pair found in 0..20000 for this bash LCG" >&2
+    false
+    return
+  }
+  read -r _SEED_A _SEED_B _R3 _TOKEN_A _TOKEN_B <<< "$_pair"
+}
+
+@test "reaper mutex temp uses exclusive creation, not a predictable path" {
+  # Derives RANDOM seeds at runtime so the predicted temp suffix is
+  # correct for this bash version's LCG. Between the _al_reap_window_hook
+  # and the first $RANDOM draw (the mutex token) there are zero intervening
+  # RANDOM draws in the helper — only _al_inode, comparisons, and local
+  # declarations. The token draws 2 values and the temp suffix draws 1
+  # (3 total from the reseeded state).
+  # A marker file planted at the predicted path survives only if the
+  # helper uses exclusive mktemp; a plain printf > overwrites it.
+  #
+  # Supports _TEST_HELPER_OVERRIDE for red-phase verification.
+  local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
+  _mtx_seed_derive
+  local seed_a="$_SEED_A" r3="$_R3"
+
+  local lock_file="$LOCK_DIR/mtx-excl.lock"
+  local mutex="${lock_file}.reap-mtx"
+
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  local predicted="${LOCK_DIR}/.reap-mtx-tmp.$$.${r3}"
+  printf 'COLLISION_MARKER\n' > "$predicted"
+
+  (
+    export PATH="$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    _al_reap_window_hook() { RANDOM=$seed_a; }
+    acquire_lock "$lock_file" 5 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+  )
+
+  # The mutex must be cleaned up by its owner (not orphaned).
+  [ ! -f "$mutex" ] || {
+    echo "mutex orphaned (token: $(cat "$mutex" 2>/dev/null))" >&2; false; }
+
+  # The marker file must survive: mktemp created a different temp.
+  local survived=0
+  if [ -f "$predicted" ]; then
+    local content=""
+    read -r content < "$predicted" 2>/dev/null || content=""
+    [ "$content" = "COLLISION_MARKER" ] && survived=1
+  fi
+
+  rm -f "$predicted" "$lock_file" "$mutex"
+
+  [ "$survived" -eq 1 ] || {
+    echo "reaper used the predicted temp path (not exclusive mktemp)" >&2
+    false
+  }
+}
+
+@test "concurrent same-process reapers: correct mutex ownership and cleanup" {
+  # Derives two RANDOM seeds at runtime whose third draw (temp suffix)
+  # collides but whose token draws differ — works on any bash LCG.
+  # Two subshells of the same process reap simultaneously; an
+  # ln-override delay forces:
+  #   A.printf -> B.printf (overwrites on old code) -> A.ln -> B.ln(fail)
+  # On the old code A links a file carrying B's token; the token
+  # self-check fails and the mutex is orphaned. On the fix each reaper
+  # gets its own mktemp path, so the mutex carries the linker's token.
+  #
+  # Supports _TEST_HELPER_OVERRIDE env var for red-phase demonstration
+  # against a detached copy of the pre-fix helper.
+  _mtx_seed_derive
+  local seed_a="$_SEED_A" seed_b="$_SEED_B"
+
+  local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
+  local lock_file="$LOCK_DIR/mtx-ownership.lock"
+  local mutex="${lock_file}.reap-mtx"
+  local barrier="$TEST_TMP/mtx-own"
+  local result_a="$TEST_TMP/mtx-own-result-a"
+  local result_b="$TEST_TMP/mtx-own-result-b"
+
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  rm -f "$barrier".{a,b} "$result_a" "$result_b"
+
+  # Build per-reaper PATH directories with an ln wrapper that delays
+  # on the mutex-temp pattern. Using a PATH-based wrapper (not a
+  # function override) avoids a bash 3.2 set -e bug where
+  # `if ! function()` exits the shell on a non-zero return.
+  local real_ln
+  real_ln="$(command -v ln)"
+  local shim_a="$TEST_TMP/ln-shim-a" shim_b="$TEST_TMP/ln-shim-b"
+  mkdir -p "$shim_a" "$shim_b"
+  printf '#!/bin/sh\ncase "$1" in *reap-mtx-tmp*) sleep 1;; esac\nexec "%s" "$@"\n' \
+    "$real_ln" > "$shim_a/ln"
+  chmod +x "$shim_a/ln"
+  printf '#!/bin/sh\ncase "$1" in *reap-mtx-tmp*) sleep 2;; esac\nexec "%s" "$@"\n' \
+    "$real_ln" > "$shim_b/ln"
+  chmod +x "$shim_b/ln"
+
+  # Reaper A: delays ln by 1 s so B's printf can overwrite.
+  (
+    export PATH="$shim_a:$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    _al_reap_window_hook() {
+      RANDOM=$seed_a
+      touch "$barrier.a"
+      local _t=0
+      while [ ! -f "$barrier.b" ] && [ "$_t" -lt 100 ]; do
+        sleep 0.05; _t=$((_t + 1)); done
+    }
+    _al_reap_pre_rm_hook() {
+      local _mc=""
+      read -r _mc < "$mutex" 2>/dev/null || _mc=""
+      printf '%s\n%s\n' "$_mc" "$_mtx_token" > "$result_a"
+    }
+    acquire_lock "$lock_file" 8 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+  ) &
+  local pid_a=$!
+
+  # Reaper B: delays ln by 2 s so A links first.
+  (
+    export PATH="$shim_b:$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    _al_reap_window_hook() {
+      RANDOM=$seed_b
+      touch "$barrier.b"
+      local _t=0
+      while [ ! -f "$barrier.a" ] && [ "$_t" -lt 100 ]; do
+        sleep 0.05; _t=$((_t + 1)); done
+      sleep 0.1
+    }
+    _al_reap_pre_rm_hook() {
+      local _mc=""
+      read -r _mc < "$mutex" 2>/dev/null || _mc=""
+      printf '%s\n%s\n' "$_mc" "$_mtx_token" > "$result_b"
+    }
+    acquire_lock "$lock_file" 8 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+  ) &
+  local pid_b=$!
+
+  wait "$pid_a" 2>/dev/null || true
+  wait "$pid_b" 2>/dev/null || true
+
+  # Exactly one reaper should have held the mutex (the first to ln).
+  local winner="" mtx_val="" own_val=""
+  if [ -f "$result_a" ]; then
+    winner="A"
+    mtx_val="$(sed -n '1p' "$result_a")"
+    own_val="$(sed -n '2p' "$result_a")"
+  elif [ -f "$result_b" ]; then
+    winner="B"
+    mtx_val="$(sed -n '1p' "$result_b")"
+    own_val="$(sed -n '2p' "$result_b")"
+  fi
+  [ -n "$winner" ] || {
+    echo "no reaper held the mutex (pre-rm hook never fired)" >&2; false; }
+
+  # (a) While the reaper held the mutex, it must have contained
+  #     exactly that reaper's own token.
+  [ "$mtx_val" = "$own_val" ] || {
+    echo "ownership mismatch: mutex had [$mtx_val], reaper $winner owns [$own_val]" >&2
+    false
+  }
+
+  # (b) After the reap, the mutex must be gone and no temp leftover.
+  [ ! -f "$mutex" ] || {
+    echo "mutex orphaned after reap (content: $(cat "$mutex" 2>/dev/null))" >&2
+    false
+  }
+  local leftover
+  leftover="$(find "$LOCK_DIR" -name '.reap-mtx-tmp.*' 2>/dev/null)"
+  [ -z "$leftover" ] || {
+    echo "temp leftover: $leftover" >&2; false; }
+
+  rm -f "$lock_file" "$mutex" "$barrier".{a,b} "$result_a" "$result_b"
+}
+
+@test "pre-existing foreign reap mutex is not removed by another reaper" {
+  # A mutex left by a dead owner must survive when a different reaper
+  # tries to reap the same lock: the new reaper's ln to the mutex
+  # path fails (EEXIST) and it backs off without touching the file.
+  local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
+  local lock_file="$LOCK_DIR/mtx-foreign.lock"
+  local mutex="${lock_file}.reap-mtx"
+
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  # Pre-create a foreign-owned mutex.
+  printf '99998 foreign-nonce\n' > "$mutex"
+
+  (
+    export PATH="$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    acquire_lock "$lock_file" 2 9 2>/dev/null || true
+  )
+
+  # (c) The foreign mutex must survive.
+  [ -f "$mutex" ] || {
+    echo "foreign mutex was removed by another reaper" >&2; false; }
+  local token=""
+  read -r token < "$mutex" 2>/dev/null || token=""
+  [ "$token" = "99998 foreign-nonce" ] || {
+    echo "foreign mutex content changed: [$token]" >&2; false; }
+  rm -f "$lock_file" "$mutex"
+}
+
+@test "reaper mutex creation failure leaves no leftover and does not reap" {
+  # When the exclusive temp for the mutex cannot be created, the
+  # reaper must decline: no mutex, no temp leftover, stale lock
+  # not reaped.
+  #
+  # Supports _TEST_HELPER_OVERRIDE for red-phase verification.
+  local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
+  local lock_file="$LOCK_DIR/mtx-noreap.lock"
+
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  (
+    export PATH="$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    # Shim: fail only the reap-mutex temp pattern; pass everything else.
+    mktemp() {
+      case "$1" in
+        *reap-mtx-tmp*) return 1 ;;
+        *) command mktemp "$@" ;;
+      esac
+    }
+    acquire_lock "$lock_file" 2 9 2>/dev/null || true
+  )
+
+  # Stale lock must NOT have been reaped.
+  [ -f "$lock_file" ] || {
+    echo "lock file removed" >&2; false; }
+  local pid_check=""
+  read -r pid_check _ < "$lock_file" 2>/dev/null || pid_check=""
+  [ "$pid_check" = "$dead_pid" ] || {
+    echo "stale lock was reaped (pid=$pid_check, expected $dead_pid)" >&2; false; }
+  # No mutex must exist.
+  [ ! -f "${lock_file}.reap-mtx" ] || {
+    echo "mutex left behind" >&2; false; }
+  # No reap-mtx-tmp leftover.
+  local leftover
+  leftover="$(find "$LOCK_DIR" -name '.reap-mtx-tmp.*' 2>/dev/null)"
+  [ -z "$leftover" ] || {
+    echo "temp leftover: $leftover" >&2; false; }
+  rm -f "$lock_file" "${lock_file}.reap-mtx"
+}
+
+@test "reaper mutex write failure after exclusive creation leaves no leftover" {
+  # When the exclusively created mutex temp exists but writing the
+  # token fails, the reaper must clean up: no mutex, no leftover temp
+  # in the lock dir, stale lock not reaped, stderr diagnostic present.
+  # The shim returns a path whose parent does not exist, so the shell
+  # redirect fails for any user including root (no CAP_DAC_OVERRIDE
+  # bypass). rm -f on the nonexistent path is a silent no-op.
+  #
+  # Supports _TEST_HELPER_OVERRIDE for red-phase verification.
+  local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
+  local lock_file="$LOCK_DIR/mtx-wfail.lock"
+
+  # Guaranteed-dead PID.
+  bash -c 'exit 0' &
+  local dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+
+  printf '%s 1000000000\n' "$dead_pid" > "$lock_file"
+  touch -t 202001010000 "$lock_file" \
+    || { echo "cannot backdate" >&2; false; }
+
+  local err_file="$TEST_TMP/mtx-wfail-err"
+  (
+    export PATH="$SAFE_PATH"
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    export GAIA_LOCK_REAP_SECONDS=1
+    source "$h"
+    # Shim: for the reap-mutex pattern, return a path under a
+    # nonexistent subdirectory. printf > fails (ENOENT) for any user.
+    mktemp() {
+      case "$1" in
+        *reap-mtx-tmp*)
+          printf '%s' "${1%/*}/no-such-dir/.reap-mtx-tmp.XXXXXX"
+          ;;
+        *) command mktemp "$@" ;;
+      esac
+    }
+    acquire_lock "$lock_file" 2 9 2>"$err_file" || true
+  )
+
+  [ -f "$lock_file" ] || {
+    echo "lock file removed" >&2; false; }
+  local pid_check=""
+  read -r pid_check _ < "$lock_file" 2>/dev/null || pid_check=""
+  [ "$pid_check" = "$dead_pid" ] || {
+    echo "stale lock was reaped (pid=$pid_check, expected $dead_pid)" >&2; false; }
+  [ ! -f "${lock_file}.reap-mtx" ] || {
+    echo "mutex left behind" >&2; false; }
+  local leftover
+  leftover="$(find "$LOCK_DIR" -name '.reap-mtx-tmp.*' 2>/dev/null)"
+  [ -z "$leftover" ] || {
+    echo "temp leftover: $leftover" >&2; false; }
+  # Stderr diagnostic must be present (write-failure or timeout).
+  [ -s "$err_file" ] || {
+    echo "no stderr diagnostic emitted" >&2; false; }
+  rm -f "$lock_file" "${lock_file}.reap-mtx" "$err_file"
+}

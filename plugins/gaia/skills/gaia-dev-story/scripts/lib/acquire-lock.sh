@@ -804,13 +804,21 @@ _al_try_reap() {
       # naming the leftover file and the manual remedy.
       local _reap_mutex="${lock_file}.reap-mtx"
       local _mtx_token="$$ $RANDOM$RANDOM"
-      local _mtx_tmp="${lock_dir}/.reap-mtx-tmp.$$.$RANDOM"
+      local _mtx_tmp=""
 
       # Refuse a symlink at the mutex path.
       [ ! -L "$_reap_mutex" ] || rm -f "$_reap_mutex" 2>/dev/null || true
 
-      printf '%s\n' "$_mtx_token" > "$_mtx_tmp" 2>/dev/null || {
-        rm -f "$_mtx_tmp" 2>/dev/null || true
+      # Create the temp exclusively via mktemp (O_CREAT|O_EXCL) in the
+      # lock's directory (same filesystem, so the hard link stays atomic).
+      # Exclusive creation guarantees two same-process reapers never
+      # collide on a shared temp name, even on bash 3.2 where subshells
+      # share $$ and can draw the same $RANDOM suffix.
+      _mtx_tmp="$(mktemp "${lock_dir}/.reap-mtx-tmp.XXXXXX" 2>/dev/null)" || {
+        # mktemp failed (directory unwritable, out of inodes, etc.).
+        # Fail closed: no mutex taken, no reaping.
+        printf 'acquire-lock: cannot create reap-mutex temp under %s\n' \
+          "$lock_dir" >&2
         if [ "$_reap_probe_held" = "1" ]; then
           "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
           eval "exec 222<&-" 2>/dev/null || true
@@ -818,9 +826,24 @@ _al_try_reap() {
         rm -f "$shadow" 2>/dev/null || true
         return 0
       }
+
+      if ! { printf '%s\n' "$_mtx_token" > "$_mtx_tmp"; } 2>/dev/null; then
+        # Write failed. Remove only the temp we created.
+        printf 'acquire-lock: cannot write reap-mutex token to %s\n' \
+          "$_mtx_tmp" >&2
+        rm -f "$_mtx_tmp" 2>/dev/null || true
+        if [ "$_reap_probe_held" = "1" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+          eval "exec 222<&-" 2>/dev/null || true
+        fi
+        rm -f "$shadow" 2>/dev/null || true
+        return 0
+      fi
+
       if ! ln "$_mtx_tmp" "$_reap_mutex" 2>/dev/null; then
         # Mutex already exists (live, stalled, or dead owner). Back off;
         # do not attempt to reclaim. The acquirer retries until timeout.
+        # Remove only the temp we created.
         rm -f "$_mtx_tmp" 2>/dev/null || true
         if [ "$_reap_probe_held" = "1" ]; then
           "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
