@@ -84,9 +84,12 @@ if [ -n "$_story_key" ] && [ -x "$RESOLVE_STORY" ]; then
   rm -f "$_resolve_errf"
   # Frontmatter key-mismatch guard: compare the resolved file's key to
   # the argument. Halt before any gate/register write on mismatch.
+  # A missing key: line is not a mismatch — warn and continue.
   if [ -f "$_resolved" ]; then
-    _file_key="$(grep -m1 '^key:' "$_resolved" | sed 's/^key:[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"'"'")"
-    if [ -n "$_file_key" ] && [ "$_file_key" != "$_story_key" ]; then
+    _file_key="$(grep -m1 '^key:' "$_resolved" 2>/dev/null | sed 's/^key:[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr -d '"'"'" || true)"
+    if [ -z "$_file_key" ]; then
+      log "WARNING: cannot verify frontmatter key — no key: line in $_resolved"
+    elif [ "$_file_key" != "$_story_key" ]; then
       die "story file frontmatter key '${_file_key}' does not match argument '${_story_key}'"
     fi
   fi

@@ -11,7 +11,7 @@ orchestration_class: reviewer
 
 ## Setup
 
-!${CLAUDE_PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh ${ARGUMENTS}
+!${CLAUDE_PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh
 
 ## Mission
 
@@ -367,12 +367,12 @@ This returns the NEW canonical per-story home `…/epic-{slug}/{story_key}-{slug
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
-**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory, which may be the main checkout when running as a background reviewer.
+**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator to the story's worktree). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Code Review" \
   --verdict "{PASSED|FAILED}" \
-  --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
+  --sha "$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse HEAD)" \
   --report "$REPORT_PATH"
 ```
 

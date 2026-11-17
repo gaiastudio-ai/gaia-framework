@@ -3533,3 +3533,115 @@ STORY
   [ "$status" -ne 0 ]
   [[ "$output" == *"not found"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# RF-3: gate-write blocks must use STORY_WORKTREE_PATH, not STORY_WORKTREE
+# ---------------------------------------------------------------------------
+
+@test "RF-3: canonical gate-write blocks use STORY_WORKTREE_PATH not STORY_WORKTREE" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
+    local section
+    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    # Must use STORY_WORKTREE_PATH
+    if ! grep -q 'STORY_WORKTREE_PATH' <<< "$section"; then
+      echo "FAIL: $skill gate block missing STORY_WORKTREE_PATH"
+      return 1
+    fi
+    # Must NOT contain the old STORY_WORKTREE fallback pattern
+    if grep -q 'STORY_WORKTREE:-' <<< "$section"; then
+      echo "FAIL: $skill gate block still uses STORY_WORKTREE:- fallback"
+      return 1
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# RF-6: ARGUMENTS injection safety — setup.sh never evals content as code
+# ---------------------------------------------------------------------------
+
+@test "RF-6: setup.sh does not execute shell metacharacters in ARGUMENTS" {
+  local _K="E900-S917" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/rf6_inject"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Injection Test"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  # Canary: ARGUMENTS contains backticks, $(), ;, < metacharacters after the key.
+  # None must execute — the pwned* files must NOT be created.
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="${_K} "'`touch '"$tmproot"'/pwned1` $(touch '"$tmproot"'/pwned2); touch '"$tmproot"'/pwned3 <x' \
+    bash "$setup_sh"
+  # Setup should succeed (key resolved) or fail benignly — never execute injected code
+  [ ! -f "$tmproot/pwned1" ]
+  [ ! -f "$tmproot/pwned2" ]
+  [ ! -f "$tmproot/pwned3" ]
+}
+
+@test "RF-6: gaia-code-review SKILL.md Setup bang line does not pass ARGUMENTS" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"
+  local setup_line
+  setup_line="$(grep '^!' "$skill_md" | head -1)"
+  # Must reference setup.sh
+  [[ "$setup_line" == *"setup.sh"* ]]
+  # Must NOT pass ${ARGUMENTS} (setup.sh reads ARGUMENTS from its env)
+  [[ "$setup_line" != *'${ARGUMENTS}'* ]]
+  [[ "$setup_line" != *'$ARGUMENTS'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# RF-2: missing key: line in frontmatter → warn and continue, not silent skip
+# ---------------------------------------------------------------------------
+
+@test "RF-2: setup.sh warns when story file has no key: line in frontmatter" {
+  local _K="E900-S918" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/rf2_nokey"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  # Story file WITHOUT a key: line in frontmatter
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+title: "No Key Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K"
+  # Must exit 0 (missing key is not a mismatch — warn and continue)
+  [ "$status" -eq 0 ]
+  # Must emit a warning about being unable to verify the key
+  [[ "$output" == *"cannot verify frontmatter key"* ]] || [[ "$output" == *"no key: line"* ]]
+}

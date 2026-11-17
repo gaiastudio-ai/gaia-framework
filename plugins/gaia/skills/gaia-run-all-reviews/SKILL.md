@@ -208,12 +208,12 @@ HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-i
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
   --verdict {PASSED|FAILED} \
-  --sha "$(git -C "${STORY_WORKTREE:-${PROJECT_PATH:-.}}" rev-parse HEAD)" \
+  --sha "$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse HEAD)" \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
 ```
 
-The `--sha` MUST be the HEAD of the story's own worktree, obtained via `git -C <story-worktree> rev-parse HEAD` — never from the fork's current working directory, which may be the main checkout when running as a background reviewer.
+The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator to the story's worktree). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 For test-execution gates (`QA Tests`, `Test Automation`, `Test Review`), `--execution-evidence` is REQUIRED in addition to `--report` — the gate will refuse the verdict otherwise. The dispatched skill is responsible for producing both files; the orchestrator only asserts their existence.
 
