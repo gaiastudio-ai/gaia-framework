@@ -99,20 +99,25 @@ make_no_flock_path() {
   export PATH="$shim_dir:$new_path"
 }
 
-# make_lock_observer — place a jq shim first on PATH that records whether the
-# mkdir lock directory exists when the lib invokes jq (inside the critical
-# section).  Sets _LOCK_OBSERVE_MARKER to the observation file path.
-# Must be called AFTER make_no_flock_path (which symlinks the real jq).
+# make_lock_observer — place jq and yq shims first on PATH that record whether
+# the mkdir lock directory exists when the lib invokes jq (entry build) and
+# yq -i (file write) inside the critical section.  Sets _LOCK_OBSERVE_MARKER
+# (jq observation) and _WRITE_OBSERVE_MARKER (yq -i observation).
+# Must be called AFTER make_no_flock_path (which symlinks the real tools).
 make_lock_observer() {
-  local real_jq
+  local real_jq real_yq
   real_jq="$(command -v jq)"
+  real_yq="$(command -v yq)"
   local observer_dir="$TEST_TMP/lock-observer"
   mkdir -p "$observer_dir"
   _LOCK_OBSERVE_MARKER="$TEST_TMP/lock-observer-result"
-  rm -f "$_LOCK_OBSERVE_MARKER"
+  _WRITE_OBSERVE_MARKER="$TEST_TMP/write-observer-result"
+  rm -f "$_LOCK_OBSERVE_MARKER" "$_WRITE_OBSERVE_MARKER"
   export _LOCK_OBSERVE_DIR="${LIFECYCLE_OVERRIDES_LOCK}.d"
   export _LOCK_OBSERVE_MARKER
+  export _WRITE_OBSERVE_MARKER
   export _REAL_JQ="$real_jq"
+  export _REAL_YQ="$real_yq"
   cat > "$observer_dir/jq" <<'SHIMEOF'
 #!/bin/sh
 if [ -d "$_LOCK_OBSERVE_DIR" ]; then
@@ -123,6 +128,25 @@ fi
 exec "$_REAL_JQ" "$@"
 SHIMEOF
   chmod +x "$observer_dir/jq"
+  # yq shim: observe lock state only for in-place writes (args contain -i).
+  # Read-back calls from the test body (e.g. yq '.bypasses | length') pass
+  # through without overwriting the marker.
+  cat > "$observer_dir/yq" <<'SHIMEOF'
+#!/bin/sh
+_is_inplace=false
+for _a in "$@"; do
+  case "$_a" in -i) _is_inplace=true; break ;; esac
+done
+if "$_is_inplace"; then
+  if [ -d "$_LOCK_OBSERVE_DIR" ]; then
+    printf 'HELD\n' > "$_WRITE_OBSERVE_MARKER"
+  else
+    printf 'NOT_HELD\n' > "$_WRITE_OBSERVE_MARKER"
+  fi
+fi
+exec "$_REAL_YQ" "$@"
+SHIMEOF
+  chmod +x "$observer_dir/yq"
   export PATH="$observer_dir:$PATH"
 }
 
@@ -187,13 +211,21 @@ SHIMEOF
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
   [ "$count" -eq 1 ]
-  # The mkdir lock directory must have been held during the append
+  # The mkdir lock directory must have been held during the entry build
   [ -f "$_LOCK_OBSERVE_MARKER" ]
   local observed
   observed="$(cat "$_LOCK_OBSERVE_MARKER")"
   case "$observed" in
     HELD) ;;
-    *) printf 'mkdir lock directory was not held during append (observed: %s)\n' "$observed" >&2; return 1 ;;
+    *) printf 'mkdir lock directory was not held during entry build (observed: %s)\n' "$observed" >&2; return 1 ;;
+  esac
+  # The mkdir lock directory must have been held during the file write
+  [ -f "$_WRITE_OBSERVE_MARKER" ]
+  local write_observed
+  write_observed="$(cat "$_WRITE_OBSERVE_MARKER")"
+  case "$write_observed" in
+    HELD) ;;
+    *) printf 'mkdir lock directory was not held during file write (observed: %s)\n' "$write_observed" >&2; return 1 ;;
   esac
   # The lock directory must be cleaned up after the call returns
   if [ -d "${LIFECYCLE_OVERRIDES_LOCK}.d" ]; then
@@ -217,13 +249,21 @@ SHIMEOF
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
   [ "$count" -eq 1 ]
-  # The mkdir lock directory must have been held during the append
+  # The mkdir lock directory must have been held during the entry build
   [ -f "$_LOCK_OBSERVE_MARKER" ]
   local observed
   observed="$(cat "$_LOCK_OBSERVE_MARKER")"
   case "$observed" in
     HELD) ;;
-    *) printf 'mkdir lock directory was not held during append (observed: %s)\n' "$observed" >&2; return 1 ;;
+    *) printf 'mkdir lock directory was not held during entry build (observed: %s)\n' "$observed" >&2; return 1 ;;
+  esac
+  # The mkdir lock directory must have been held during the file write
+  [ -f "$_WRITE_OBSERVE_MARKER" ]
+  local write_observed
+  write_observed="$(cat "$_WRITE_OBSERVE_MARKER")"
+  case "$write_observed" in
+    HELD) ;;
+    *) printf 'mkdir lock directory was not held during file write (observed: %s)\n' "$write_observed" >&2; return 1 ;;
   esac
   # The lock directory must be cleaned up after the call returns
   if [ -d "${LIFECYCLE_OVERRIDES_LOCK}.d" ]; then
