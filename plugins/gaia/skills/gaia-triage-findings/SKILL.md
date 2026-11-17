@@ -80,6 +80,12 @@ The extractor emits pipe-delimited rows
 consumes these rows — it MUST NOT `Read` whole story files for the Findings
 scan.
 
+If the extractor exits non-zero for a story, capture the error message from
+stderr, skip that story's extraction, and continue with the remaining stories.
+Before proceeding to sub-step 1c, list every failing story key with its error
+message and direct the user to inspect those Findings tables. Triage proceeds
+with the successfully extracted stories.
+
 **1c. Filter + halt.** Skip findings already marked `[TRIAGED]` or
 `[DISMISSED]` (the extractor already excludes `[TRIAGED]`/`[DISMISSED]` bug
 rows; the LLM applies the same skip to any remaining marked rows). If no
@@ -343,7 +349,7 @@ In each source story's Findings table, append triage markers to processed findin
 
 After findings are triaged and marked (Step 5), run the **tech-debt phase** — the capability merged in from the retired `/gaia-tech-debt-review` skill. It aggregates, classifies, scores, and ages the project's technical debt into a rolling `tech-debt-dashboard.md`. The phase is non-interactive (no prompts) and writes a dashboard, mirroring the legacy auto-output contract.
 
-**5b.1 — Scan debt candidates (reuse the S4 extractor — no second scanner).** For each story in the scan set (sprint-scoped by default, `--all` for the full sweep), extract candidates via the SAME `scripts/extract-findings.sh` used in Step 1 — the merged phase introduces NO new scanner. Read ONLY frontmatter + `## Findings` (token-budget mandate, inherited from the extractor).
+**5b.1 — Scan debt candidates (reuse the S4 extractor — no second scanner).** For each story in the scan set (sprint-scoped by default, `--all` for the full sweep), extract candidates via the SAME `scripts/extract-findings.sh` used in Step 1 — the merged phase introduces NO new scanner. Read ONLY frontmatter + `## Findings` (token-budget mandate, inherited from the extractor). If the extractor exits non-zero for a story, capture the error, skip that story, and continue with the remaining stories. Before the next sub-step, list every failing story key with its error message. The tech-debt phase proceeds with the successfully extracted stories.
 
 **5b.2 — Validate triage targets (byte-identical marker read).** For every finding marked `[TRIAGED -> {target_key}]`, look up the target story's status by sourcing `scripts/triaged-marker.sh` and matching with `triaged_match_regex` (the SAME literal Step 5 wrote — this is the byte-equality contract, tested by the marker bats). Classify each target:
 - target `done` → **STALE TARGET** (debt likely added after implementation — needs re-triage).
