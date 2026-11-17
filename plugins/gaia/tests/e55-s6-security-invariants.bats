@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # e55-s6-security-invariants.bats
 #
-# Story: E55-S6 — Security-controls bash port (TB-10) — un-bypassable by YOLO.
+# Security-controls bash port — un-bypassable by YOLO.
 #
 # Verifies the three security invariants exposed by
 # plugins/gaia/scripts/lib/dev-story-security-invariants.sh:
@@ -12,10 +12,16 @@
 # guard against an accidental removal of the source line).
 #
 # Critical contract: the lib MUST NOT branch on YOLO mode anywhere — a
-# code-search regression locks this in (TC-DSH-17 + Test Scenario 11).
+# code-search regression locks this in (see the YOLO-bypass regression guard below).
 
 load 'test_helper.bash'
 
+setup_file() {
+  _litter_snapshot_before
+  # Print BASH_VERSION to fd 3 (bats TAP stream) so CI logs evidence the
+  # shell version for bash-compatibility verification.
+  printf '# BASH_VERSION=%s\n' "$BASH_VERSION" >&3 || true
+}
 setup() { common_setup; _make_local_git_repo; }
 teardown() { common_teardown; }
 
@@ -176,7 +182,7 @@ EOF
   [[ "$output" == *"not found"* ]]
 }
 
-# E55-S9 — discovery ladder: when CWD is a sub-tree of a project whose
+# Discovery ladder: when CWD is a sub-tree of a project whose
 # config/ lives at an ancestor (the gaia-public/ shape), assert_pr_target_-
 # from_chain MUST walk upward to find the config rather than false-flagging.
 @test "assert_pr_target_from_chain: discovers config via upward walk" {
@@ -209,7 +215,96 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Regression guards (TC-DSH-17 + Scenario 11)
+# Canonical .gaia/config/ discovery (config ladder fix)
+# ---------------------------------------------------------------------------
+
+@test "assert_pr_target_from_chain: discovers config at .gaia/config/ (canonical path)" {
+  mkdir -p "$TEST_TMP/proj/.gaia/config"
+  cat > "$TEST_TMP/proj/.gaia/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/proj"
+  unset PROJECT_CONFIG
+  unset CLAUDE_PROJECT_ROOT
+  run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert_pr_target_from_chain: CLAUDE_PROJECT_ROOT finds .gaia/config/ directly" {
+  mkdir -p "$TEST_TMP/proj/.gaia/config" "$TEST_TMP/elsewhere"
+  cat > "$TEST_TMP/proj/.gaia/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/elsewhere"
+  unset PROJECT_CONFIG
+  CLAUDE_PROJECT_ROOT="$TEST_TMP/proj" \
+    run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert_pr_target_from_chain: walk-up from subdirectory finds .gaia/config/ at ancestor" {
+  mkdir -p "$TEST_TMP/anc/.gaia/config" "$TEST_TMP/anc/sub/deep"
+  cat > "$TEST_TMP/anc/.gaia/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/anc/sub/deep"
+  unset PROJECT_CONFIG
+  unset CLAUDE_PROJECT_ROOT
+  run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
+@test "assert_pr_target_from_chain: .gaia/config/ wins over legacy config/ when both exist" {
+  mkdir -p "$TEST_TMP/proj/.gaia/config" "$TEST_TMP/proj/config"
+  cat > "$TEST_TMP/proj/.gaia/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: main
+      branch: main
+EOF
+  cat > "$TEST_TMP/proj/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: develop
+      branch: develop
+EOF
+  cd "$TEST_TMP/proj"
+  unset PROJECT_CONFIG
+  unset CLAUDE_PROJECT_ROOT
+  # Canonical .gaia/config/ value ("main") must win.
+  run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain main"
+  [ "$status" -eq 0 ]
+  # Verify legacy value ("develop") is NOT what was used.
+  run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain develop"
+  [ "$status" -ne 0 ]
+}
+
+@test "assert_pr_target_from_chain: CLAUDE_PROJECT_ROOT with no config falls through to walk-up" {
+  mkdir -p "$TEST_TMP/proj/.gaia/config" "$TEST_TMP/empty-root"
+  cat > "$TEST_TMP/proj/.gaia/config/project-config.yaml" <<'EOF'
+ci_cd:
+  promotion_chain:
+    - id: staging
+      branch: staging
+EOF
+  cd "$TEST_TMP/proj"
+  unset PROJECT_CONFIG
+  CLAUDE_PROJECT_ROOT="$TEST_TMP/empty-root" \
+    run bash -c "source '$INVARIANTS_SH' && assert_pr_target_from_chain staging"
+  [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# Regression guards (source-line + YOLO-bypass)
 # ---------------------------------------------------------------------------
 
 @test "regression: pr-create.sh sources lib/dev-story-security-invariants.sh" {
