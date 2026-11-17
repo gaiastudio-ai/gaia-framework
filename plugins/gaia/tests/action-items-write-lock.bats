@@ -688,6 +688,32 @@ _seed_file() {
   }
 }
 
+@test "sourcing the writer with LC_ALL set to a non-C value restores it" {
+  # The writer's lock helper exports LC_ALL=C internally. After
+  # sourcing, the caller's LC_ALL must be restored to its original
+  # non-C value. Supports _TEST_AIW_OVERRIDE for red-phase checks.
+  local _w="${_TEST_AIW_OVERRIDE:-$AIW_SH}"
+  local out
+  out="$(
+    export LC_ALL=en_US.UTF-8
+    source "$_w"
+    printf 'AFTER=%s\n' "${LC_ALL}"
+    # Verify the helper functions are still callable.
+    local _lf="$TEST_TMP/lc-nonc-test.lock"
+    GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$_lf" 5 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+    printf 'CALLABLE\n'
+  )" 2>/dev/null  # suppress any locale-not-found warnings
+  [[ "$out" == *"AFTER=en_US.UTF-8"* ]] || {
+    echo "LC_ALL not restored to non-C value after sourcing the writer: $out" >&2
+    false
+  }
+  [[ "$out" == *"CALLABLE"* ]] || {
+    echo "acquire_lock / release_lock not callable after LC_ALL restore: $out" >&2
+    false
+  }
+}
+
 # ================================================================
 # Permanent lock failure: fails at once, not after the full timeout
 # ================================================================
