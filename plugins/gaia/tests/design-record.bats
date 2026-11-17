@@ -816,8 +816,8 @@ ROGUE
   run "$SCRIPT" transition --to "stale" --actor "test-actor"
   [ "$status" -eq 0 ] || fail "in-dev->stale failed: $output"
 
-  # stale -> review
-  run "$SCRIPT" transition --to "review" --actor "test-actor"
+  # stale -> review (force-iteration required)
+  run "$SCRIPT" transition --to "review" --actor "test-actor" --force-iteration "design was updated after stale"
   [ "$status" -eq 0 ] || fail "stale->review failed: $output"
 
   local final_state
@@ -877,10 +877,10 @@ ROGUE
   done
   run "$SCRIPT" transition --to "stale" --actor "d"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" transition --to "review" --actor "e"
+  run "$SCRIPT" transition --to "review" --actor "e" --force-iteration "design was updated for stale-resume"
   [ "$status" -eq 0 ]
 
-  [ "$(yq '.audit | length' "$RECORD")" -eq 5 ]
+  [ "$(yq '.audit | length' "$RECORD")" -eq 6 ]
 
   # Remove the middle entry outside the writer
   yq -i 'del(.audit[2])' "$RECORD"
@@ -2005,7 +2005,7 @@ FIXTURE
   [ "$status" -eq 0 ]
 
   # Transition stale -> review: should bump iteration to 2
-  run "$SCRIPT" transition --to review --actor ci
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design was updated for convergence test"
   [ "$status" -eq 0 ]
 
   local iter
@@ -2205,7 +2205,7 @@ FIXTURE
   [ "$status" -eq 0 ]
 
   # Original: stale -> review should bump iteration
-  run "$SCRIPT" transition --to review --actor ci
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design was updated for mutant test"
   [ "$status" -eq 0 ]
   local orig_iter
   orig_iter="$(yq '.iteration' "$RECORD")"
@@ -2237,7 +2237,7 @@ FIXTURE
   chmod +x "$mutant_script"
   if cmp -s "$SCRIPT" "$mutant_script"; then fail "patch did not apply"; fi
 
-  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" transition --to review --actor ci
+  run env PROJECT_ROOT="$TEST_TMP" "$mutant_script" transition --to review --actor ci --force-iteration "design was updated for mutant test"
   [ "$status" -eq 0 ]
 
   local mutant_iter
@@ -3944,4 +3944,636 @@ _write_nested_json() {
     fail "expected diagnostic for audit[2] with boolean digest, got: $output"
   [[ "$output" != *"fast-path verification failed"* ]] || \
     fail "fallback warning present for boolean digest: $output"
+}
+
+
+# =========================================================================
+# Schema: surface enum and audit events for rebind / force-iteration
+# =========================================================================
+
+@test "schema: surface enum includes both designsync and artifact" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  local surface_enum
+  surface_enum="$(jq -r '.properties.design_system_project.oneOf[1].properties.surface.enum | sort | join(",")' "$SCHEMA")"
+  [ "$surface_enum" = "artifact,designsync" ] || \
+    fail "expected surface enum [artifact, designsync], got: $surface_enum"
+}
+
+@test "schema: record with unknown surface value is rejected by real validator" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  # Build a minimal schema-valid record, then inject an invalid surface value
+  # and validate through the production schema-validation pipeline.
+  assert_script_exists
+  run "$SCRIPT" init --reference "test-ref" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+  # Set the ds project block with an invalid surface
+  yq -i '.design_system_project = {"reference":"ds-ref","type":"design-system","surface":"unknown","discovered_via":"project-artifacts"}' "$RECORD"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot validate"
+  [ "$status" -ne 0 ] || fail "record with surface 'unknown' should be rejected by schema"
+}
+
+@test "schema: record with surface artifact passes real validator" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  # Build a record via the real writer so it is baseline-valid, then set a
+  # valid surface value and confirm the validator accepts it.
+  assert_script_exists
+  run "$SCRIPT" init --reference "test-ref" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "init failed: $output"
+  yq -i '.design_system_project = {"reference":"ds-ref","type":"design-system","surface":"artifact","discovered_via":"project-artifacts"}' "$RECORD"
+
+  source "$SCRIPTS_DIR/lib/validate-artifact-schema.sh"
+  run validate_artifact_schema "$SCHEMA" "$RECORD"
+  [ "$status" -ne 3 ] || fail "schema validation backend absent — cannot validate"
+  [ "$status" -eq 0 ] || fail "record with surface 'artifact' should pass schema: $output"
+}
+
+@test "schema: audit event enum includes rebind and force-iteration-override" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  local events
+  events="$(jq -r '.properties.audit.items.properties.event.enum | join(",")' "$SCHEMA")"
+  [[ "$events" == *"rebind"* ]] || fail "audit event enum missing rebind, got: $events"
+  [[ "$events" == *"force-iteration-override"* ]] || fail "audit event enum missing force-iteration-override, got: $events"
+}
+
+@test "schema: audit entry declares old_reference and new_reference properties" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  local has_old has_new
+  has_old="$(jq '.properties.audit.items.properties | has("old_reference")' "$SCHEMA")"
+  has_new="$(jq '.properties.audit.items.properties | has("new_reference")' "$SCHEMA")"
+  [ "$has_old" = "true" ] || fail "audit entry missing old_reference property"
+  [ "$has_new" = "true" ] || fail "audit entry missing new_reference property"
+}
+
+@test "schema: design_system_project discovered_via enum includes rebind" {
+  [ -f "$SCHEMA" ] || fail "design-record.schema.json does not exist"
+
+  local dv_enum
+  dv_enum="$(jq -r '.properties.design_system_project.oneOf[1].properties.discovered_via.enum | join(",")' "$SCHEMA")"
+  [[ "$dv_enum" == *"rebind"* ]] || fail "discovered_via enum missing rebind, got: $dv_enum"
+}
+
+
+# =========================================================================
+# Force-iteration guard on stale-to-review
+# =========================================================================
+
+@test "force-iteration: stale-to-review without flag is refused" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -ne 0 ] || fail "stale-to-review should be refused without --force-iteration"
+  [[ "$output" == *"stale-to-review requires --force-iteration"* ]] || \
+    fail "expected force-iteration diagnostic, got: $output"
+}
+
+@test "force-iteration: 9-char reason is refused" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "nine char"
+  [ "$status" -ne 0 ] || fail "9-char reason should be refused"
+  [[ "$output" == *"10 characters"* ]] || \
+    fail "expected minimum-length diagnostic, got: $output"
+}
+
+@test "force-iteration: exactly 10-char reason is accepted" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "ten chars!"
+  [ "$status" -eq 0 ] || fail "10-char reason should be accepted: $output"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "review" ] || fail "expected review state, got: $state"
+}
+
+@test "force-iteration: valid reason bumps iteration and produces two audit entries" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+
+  local pre_iter
+  pre_iter="$(yq '.iteration' "$RECORD")"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design was updated after stale"
+  [ "$status" -eq 0 ] || fail "transition with valid force-iteration failed: $output"
+
+  local post_iter
+  post_iter="$(yq '.iteration' "$RECORD")"
+  [ "$post_iter" -gt "$pre_iter" ] || fail "iteration should have bumped"
+
+  # Two audit entries: state-transition then force-iteration-override
+  local count
+  count="$(yq '.audit | length' "$RECORD")"
+  [ "$count" -eq 2 ] || fail "expected 2 audit entries, got $count"
+
+  local first_event second_event
+  first_event="$(yq '.audit[0].event' "$RECORD")"
+  second_event="$(yq '.audit[1].event' "$RECORD")"
+  [ "$first_event" = "state-transition" ] || fail "first audit entry should be state-transition, got: $first_event"
+  [ "$second_event" = "force-iteration-override" ] || fail "second audit entry should be force-iteration-override, got: $second_event"
+
+  local reason
+  reason="$(yq '.audit[1].reason' "$RECORD")"
+  [[ "$reason" == *"design was updated after stale"* ]] || \
+    fail "force-iteration-override entry should contain the reason, got: $reason"
+}
+
+@test "force-iteration: draft-to-review without flag still succeeds" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" transition --to review --actor ci
+  [ "$status" -eq 0 ] || fail "draft-to-review should not need --force-iteration: $output"
+}
+
+
+# =========================================================================
+# Null-iteration guard (stale-to-review with malformed iteration)
+# =========================================================================
+
+@test "null-iteration: yaml null iteration treated as 0 before bump" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Overwrite iteration to null
+  yq -i '.iteration = null' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: null iteration test"
+  [ "$status" -eq 0 ] || fail "null iteration stale-to-review should succeed: $output"
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 1 ] || fail "iteration should be 1 after null->bump, got: $iter"
+}
+
+@test "null-iteration: missing iteration key treated as 0 before bump" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Remove iteration key entirely
+  yq -i 'del(.iteration)' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: missing iteration test"
+  [ "$status" -eq 0 ] || fail "missing iteration stale-to-review should succeed: $output"
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 1 ] || fail "iteration should be 1 after missing->bump, got: $iter"
+}
+
+@test "null-iteration: literal string null treated as 0 before bump" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Write the literal string "null" (not yaml null)
+  _V="null" yq -i '.iteration = strenv(_V)' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: string null test"
+  [ "$status" -eq 0 ] || fail "string-null iteration stale-to-review should succeed: $output"
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 1 ] || fail "iteration should be 1 after string-null->bump, got: $iter"
+}
+
+@test "null-iteration: non-integer garbage abc is refused with clear diagnostic" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Write non-integer garbage
+  _V="abc" yq -i '.iteration = strenv(_V)' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: garbage iteration test"
+  [ "$status" -ne 0 ] || fail "non-integer iteration should be refused"
+  # Should produce a clear diagnostic, not an arithmetic crash
+  [[ "$output" != *"unbound variable"* ]] || fail "should not crash with unbound variable"
+  # The diagnostic must specifically mention the non-integer iteration value,
+  # not just the word "iteration" appearing in a flag name
+  [[ "$output" == *"non-integer"* ]] || [[ "$output" == *"invalid iteration"* ]] || \
+    [[ "$output" == *"not a valid"* ]] || [[ "$output" == *"abc"* ]] || \
+    fail "diagnostic should name the malformed iteration value, got: $output"
+}
+
+
+# =========================================================================
+# Rebind verb
+# =========================================================================
+
+# Helper: seed a v2 record suitable for rebind tests.
+# Creates a full state-machine record (review state) with both project refs.
+_seed_rebind_record() {
+  local state="${1:-draft}" ds_ref="${2:-https://ds.example.com/project/ds-123}"
+  local pd_ref="${3:-https://claude.ai/artifact/pd-456}"
+  mkdir -p "$STATE_DIR"
+  cat > "$RECORD" <<EOF
+schema_version: "2.0"
+applicability: applicable
+design_state: "$state"
+iteration: 1
+project:
+  reference: "$ds_ref"
+  discovered_via: "created"
+  questionnaire_record: ".gaia/artifacts/planning-artifacts/ux-design/design-questionnaire.md"
+design_system_project:
+  reference: "$ds_ref"
+  type: "design-system"
+  surface: "designsync"
+  discovered_via: "project-artifacts"
+product_design_project:
+  reference: "$pd_ref"
+  type: "design"
+  surface: "artifact"
+  discovered_via: "project-artifacts"
+reviews: []
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+EOF
+  seed_roster_gaia
+}
+
+@test "rebind: dry-run prints plan without mutation" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --dry-run
+  [ "$status" -eq 0 ] || fail "rebind dry-run should succeed: $output"
+
+  # Assert the exact old_reference and new_reference lines are distinct values
+  [[ "$output" == *"old_reference: https://ds.example.com/project/ds-123"* ]] || \
+    fail "dry-run should print old_reference line with the original ds reference"
+  [[ "$output" == *"new_reference: https://claude.ai/artifact/new-ds-789"* ]] || \
+    fail "dry-run should print new_reference line with the target reference"
+  [[ "$output" == *"old_surface:   designsync"* ]] || fail "dry-run should print old surface"
+  [[ "$output" == *"new_surface:   artifact"* ]] || fail "dry-run should print exact new_surface line"
+
+  # Record must not be mutated
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "rebind: execute changes reference, surface, state, and appends audit" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --execute --actor "test-rebind-actor"
+  [ "$status" -eq 0 ] || fail "rebind execute should succeed: $output"
+
+  # Reference changed
+  local ds_ref
+  ds_ref="$(yq '.design_system_project.reference' "$RECORD")"
+  [ "$ds_ref" = "https://claude.ai/artifact/new-ds-789" ] || fail "ds reference should be updated, got: $ds_ref"
+
+  # Surface changed to artifact
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "surface should be artifact, got: $surface"
+
+  # discovered_via set to rebind
+  local dv
+  dv="$(yq '.design_system_project.discovered_via' "$RECORD")"
+  [ "$dv" = "rebind" ] || fail "discovered_via should be rebind, got: $dv"
+
+  # Legacy project.reference mirrored
+  local legacy_ref
+  legacy_ref="$(yq '.project.reference' "$RECORD")"
+  [ "$legacy_ref" = "https://claude.ai/artifact/new-ds-789" ] || fail "legacy project.reference should be mirrored, got: $legacy_ref"
+
+  # State transitions to stale
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "stale" ] || fail "state should be stale after rebind, got: $state"
+
+  # Audit entry with event rebind
+  local last_event
+  last_event="$(yq '.audit[-1].event' "$RECORD")"
+  [ "$last_event" = "rebind" ] || fail "last audit event should be rebind, got: $last_event"
+
+  # Audit entry has old_reference and new_reference
+  local old_ref new_ref
+  old_ref="$(yq '.audit[-1].old_reference' "$RECORD")"
+  new_ref="$(yq '.audit[-1].new_reference' "$RECORD")"
+  [ "$old_ref" = "https://ds.example.com/project/ds-123" ] || fail "audit old_reference wrong: $old_ref"
+  [ "$new_ref" = "https://claude.ai/artifact/new-ds-789" ] || fail "audit new_reference wrong: $new_ref"
+
+  # Audit entry has discovered_via
+  local audit_dv
+  audit_dv="$(yq '.audit[-1].discovered_via' "$RECORD")"
+  [ "$audit_dv" = "rebind" ] || fail "audit discovered_via should be rebind, got: $audit_dv"
+
+  # Audit entry has actor and timestamp
+  local audit_actor audit_at
+  audit_actor="$(yq '.audit[-1].actor' "$RECORD")"
+  audit_at="$(yq '.audit[-1].at' "$RECORD")"
+  [ "$audit_actor" = "test-rebind-actor" ] || fail "audit actor should be test-rebind-actor, got: $audit_actor"
+  [[ "$audit_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]] || fail "audit timestamp should be ISO-8601, got: $audit_at"
+}
+
+@test "rebind: boolean --dry-run as last argument parses correctly" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  # --dry-run as the very last argument (no trailing value)
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --dry-run
+  [ "$status" -eq 0 ] || fail "rebind with --dry-run as last arg should succeed: $output"
+  [[ "$output" == *"new-ds-789"* ]] || fail "dry-run output missing"
+}
+
+@test "rebind: review state refused with diagnostic" {
+  assert_script_exists
+  _seed_rebind_record "review"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --execute
+  [ "$status" -ne 0 ] || fail "rebind should be refused in review state"
+  [[ "$output" == *"rebind refused: design record is in review state"* ]] || \
+    fail "expected review-state diagnostic, got: $output"
+}
+
+@test "rebind: idempotent when already on artifact surface with same reference" {
+  assert_script_exists
+  _seed_rebind_record "draft" "https://claude.ai/artifact/new-ds-789"
+  # Set surface to artifact already
+  yq -i '.design_system_project.surface = "artifact"' "$RECORD"
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --execute
+  [ "$status" -eq 0 ] || fail "idempotent rebind should succeed: $output"
+  [[ "$output" == *"already on target surface"* ]] || \
+    fail "should report already on target surface, got: $output"
+
+  # No mutation
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+@test "rebind: --project product_design_project is refused" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  run "$SCRIPT" rebind --project product_design_project --target "https://claude.ai/artifact/new-789" --execute
+  [ "$status" -ne 0 ] || fail "rebind with --project product_design_project should be refused"
+  [[ "$output" == *"--project must be design_system_project"* ]] || \
+    fail "expected project-guard diagnostic, got: $output"
+}
+
+@test "rebind: --target equal to product_design_project reference is refused" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  # The pd_ref is https://claude.ai/artifact/pd-456
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/pd-456" --execute
+  [ "$status" -ne 0 ] || fail "rebind targeting the pd reference should be refused"
+  [[ "$output" == *"cross-wire the two project references"* ]] || \
+    fail "expected cross-wire diagnostic, got: $output"
+}
+
+@test "rebind: null design_system_project is refused" {
+  assert_script_exists
+  # Seed a real v2 not-applicable record with design_system_project: null
+  mkdir -p "$STATE_DIR"
+  cat > "$RECORD" <<'EOF'
+schema_version: "2.0"
+applicability: not-applicable
+design_state: draft
+iteration: 1
+project:
+  reference: "not-applicable"
+  discovered_via: "project-artifacts"
+  questionnaire_record: "not-applicable"
+design_system_project: null
+product_design_project: null
+reviews: []
+approvals: []
+overrides: []
+audit: []
+audit_head:
+  count: 0
+  last_digest: ""
+EOF
+  seed_roster_gaia
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-789" --execute
+  [ "$status" -ne 0 ] || fail "rebind on null design_system_project should be refused"
+  [[ "$output" == *"design_system_project is null"* ]] || \
+    fail "expected null-ds diagnostic, got: $output"
+}
+
+@test "rebind: same reference from designsync flips surface to artifact" {
+  assert_script_exists
+  _seed_rebind_record "draft" "https://ds.example.com/project/ds-123"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://ds.example.com/project/ds-123" --execute
+  [ "$status" -eq 0 ] || fail "rebind same ref should succeed: $output"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "surface should flip to artifact, got: $surface"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "stale" ] || fail "state should be stale after rebind, got: $state"
+}
+
+@test "rebind: appears in valid-verbs error message" {
+  assert_script_exists
+
+  run "$SCRIPT" not-a-real-verb
+  [ "$status" -ne 0 ] || fail "unknown verb should fail"
+  [[ "$output" == *"rebind"* ]] || fail "valid-verbs error should list rebind, got: $output"
+}
+
+@test "rebind: in-lock review re-check blocks concurrent transition" {
+  assert_script_exists
+
+  # This is a structural test: the rebind function body must contain a review
+  # state check inside the lock callback (_do_rebind) with the exact diagnostic.
+  local body
+  body="$(_extract_fn_body '_do_rebind' "$SCRIPT")"
+  [[ "$body" == *"rebind refused"* ]] || fail "_do_rebind should contain the 'rebind refused' diagnostic for in-lock review re-check"
+}
+
+@test "rebind: neither --dry-run nor --execute is refused with diagnostic" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789"
+  [ "$status" -ne 0 ] || fail "rebind without --dry-run or --execute should be refused"
+  [[ "$output" == *"rebind requires exactly one of --dry-run or --execute"* ]] || \
+    fail "expected flag-required diagnostic, got: $output"
+}
+
+@test "rebind: both --dry-run and --execute is refused with diagnostic" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --dry-run --execute
+  [ "$status" -ne 0 ] || fail "rebind with both --dry-run and --execute should be refused"
+  [[ "$output" == *"rebind requires exactly one of --dry-run or --execute"* ]] || \
+    fail "expected flag-required diagnostic, got: $output"
+}
+
+@test "static: cmd_rebind enforces one-of dry-run/execute and delegates via locked mutate" {
+  assert_script_exists
+
+  local body
+  body="$(_extract_fn_body cmd_rebind "$SCRIPT")"
+
+  # Must enforce exactly-one-of --dry-run / --execute
+  [[ "$body" == *'rebind requires exactly one of --dry-run or --execute'* ]] || \
+    fail "cmd_rebind missing one-of --dry-run/--execute guard"
+
+  # Must call _preflight_mutate before the lock
+  grep -q '_preflight_mutate' <<<"$body" || \
+    fail "cmd_rebind does not call _preflight_mutate"
+
+  # Must delegate mutation through _locked_mutate _do_rebind
+  grep -q '_locked_mutate _do_rebind' <<<"$body" || \
+    fail "cmd_rebind does not delegate via _locked_mutate _do_rebind"
+}
+
+# =========================================================================
+# --surface flag on init and reopen-applicable
+# =========================================================================
+
+@test "init: --surface artifact sets surface to artifact on ds project" {
+  assert_script_exists
+  seed_roster_gaia
+
+  run "$SCRIPT" init --reference "https://ds.example.com/project/123" --discovered-via "project-artifacts" --surface artifact
+  [ "$status" -eq 0 ] || fail "init with --surface artifact failed: $output"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "expected surface artifact, got: $surface"
+}
+
+@test "init: no --surface flag defaults to designsync" {
+  assert_script_exists
+  seed_roster_gaia
+
+  run "$SCRIPT" init --reference "https://ds.example.com/project/123" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "init without --surface failed: $output"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "designsync" ] || fail "expected default surface designsync, got: $surface"
+}
+
+@test "reopen-applicable: --surface artifact sets surface on ds project" {
+  assert_script_exists
+  seed_roster_gaia
+
+  # Create a not-applicable record first, then reopen with --surface artifact
+  run "$SCRIPT" init-not-applicable
+  [ "$status" -eq 0 ] || fail "init-not-applicable failed: $output"
+
+  run "$SCRIPT" reopen-applicable --reference "https://ds.example.com/project/123" --discovered-via "project-artifacts" --surface artifact
+  [ "$status" -eq 0 ] || fail "reopen-applicable with --surface artifact failed: $output"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "expected surface artifact, got: $surface"
+}
+
+@test "reopen-applicable: no --surface flag defaults to designsync" {
+  assert_script_exists
+  seed_roster_gaia
+
+  run "$SCRIPT" init-not-applicable
+  [ "$status" -eq 0 ] || fail "init-not-applicable failed: $output"
+
+  run "$SCRIPT" reopen-applicable --reference "https://ds.example.com/project/123" --discovered-via "project-artifacts"
+  [ "$status" -eq 0 ] || fail "reopen-applicable without --surface failed: $output"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "designsync" ] || fail "expected default surface designsync, got: $surface"
+}
+
+
+# =========================================================================
+# rebind --discovered-via enum validation
+# =========================================================================
+
+@test "rebind: bogus --discovered-via value is refused without mutation" {
+  assert_script_exists
+  _seed_rebind_record "draft"
+
+  capture_record_state "$RECORD"
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --discovered-via "bogus" --execute
+  [ "$status" -ne 0 ] || fail "rebind with bogus discovered_via should be refused"
+  [[ "$output" == *"bogus"* ]] || fail "diagnostic should name the bad value, got: $output"
+
+  assert_record_unchanged "$RECORD" "$PRE_SHA" "$PRE_INODE" "$PRE_MTIME" "$PRE_SIZE"
+}
+
+
+# =========================================================================
+# null-iteration: zero-padded octal values
+# =========================================================================
+
+@test "null-iteration: zero-padded 08 treated as base-10 on stale-to-review" {
+  assert_script_exists
+  seed_minimal_record "stale" 1
+  seed_roster_gaia
+  # Write zero-padded iteration that crashes bash octal arithmetic
+  _V="08" yq -i '.iteration = strenv(_V)' "$RECORD"
+
+  run "$SCRIPT" transition --to review --actor ci --force-iteration "design updated: zero-padded 08 test"
+  [ "$status" -eq 0 ] || fail "zero-padded 08 stale-to-review should succeed: $output"
+
+  local iter
+  iter="$(yq '.iteration' "$RECORD")"
+  [ "$iter" -eq 9 ] || fail "iteration should be 9 after 08->bump, got: $iter"
+}
+
+
+# =========================================================================
+# rebind: v1.0 record is migrated then rebound successfully
+# =========================================================================
+
+@test "rebind: v1.0 record is migrated then rebound successfully" {
+  assert_script_exists
+  seed_minimal_record "draft" 1
+  seed_roster_gaia
+
+  run "$SCRIPT" rebind --project design_system_project --target "https://claude.ai/artifact/new-ds-789" --execute --actor "test-v1-rebind"
+  [ "$status" -eq 0 ] || fail "rebind on v1.0 record should succeed after migration: $output"
+
+  # Verify the record is now v2 with correct references
+  local sv
+  sv="$(yq '.schema_version' "$RECORD")"
+  [ "$sv" = "2.0" ] || fail "schema_version should be 2.0 after migration, got: $sv"
+
+  local ds_ref
+  ds_ref="$(yq '.design_system_project.reference' "$RECORD")"
+  [ "$ds_ref" = "https://claude.ai/artifact/new-ds-789" ] || fail "ds reference should be updated, got: $ds_ref"
+
+  local surface
+  surface="$(yq '.design_system_project.surface' "$RECORD")"
+  [ "$surface" = "artifact" ] || fail "surface should be artifact, got: $surface"
+
+  local state
+  state="$(yq '.design_state' "$RECORD")"
+  [ "$state" = "stale" ] || fail "state should be stale after rebind, got: $state"
 }

@@ -5909,3 +5909,179 @@ JSON
   "
   [ "$status" -ne 0 ] || fail "forged suffix should be refused"
 }
+
+
+# ===========================================================================
+# Pre-write target verification — --project-role / --expected-type
+# ===========================================================================
+
+# _seed_design_record_v2_with_surface FILE DS_REF PD_REF DS_SURFACE
+# Writes a v2 design-record with an explicit surface on the ds project.
+_seed_design_record_v2_with_surface() {
+  local file="$1"
+  local ds_ref="${2:-https://ds.example.com/project/123}"
+  local pd_ref="${3:-https://claude.ai/artifact/456}"
+  local ds_surface="${4:-designsync}"
+  cat > "$file" <<YAML
+schema_version: "2.0"
+design_system_project:
+  reference: "$ds_ref"
+  type: "design-system"
+  surface: "$ds_surface"
+  discovered_via: project-artifacts
+product_design_project:
+  reference: "$pd_ref"
+  type: "product-design"
+  surface: "artifact"
+  discovered_via: project-artifacts
+YAML
+}
+
+@test "verify-target: --project-role design_system_project with matching metadata passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/456" "artifact"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/ds-789" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/ds-789, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/ds-789' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -eq 0 ] || fail "matching ds project-role verification should pass: $output"
+}
+
+@test "verify-target: --project-role design_system_project with mismatched type halts" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/456" "artifact"
+
+  # Metadata says type "Design" but we expect "Design System"
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/ds-789" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/ds-789, an Artifact of type "Design".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/ds-789' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -ne 0 ] || fail "mismatched type should halt"
+  [[ "$output" == *"Artifact type must be exactly 'Design System'"* ]] || \
+    fail "expected type-mismatch diagnostic, got: $output"
+}
+
+@test "verify-target: omitted --project-role defaults to product_design_project and Design" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/456, an Artifact of type "Design".'
+
+  # Existing callers do not pass --project-role — they should still work
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml'
+  "
+  [ "$status" -eq 0 ] || fail "backward-compat (no --project-role) should pass: $output"
+}
+
+@test "verify-target: designsync surface unaffected by --project-role flag" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2 "$TEST_TMP/design-record.yaml"
+  _make_ds_meta "$TEST_TMP/ds-metadata.json" "https://ds.example.com/project/123"
+
+  # Even with --project-role present, designsync path should work as before
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target designsync 'https://ds.example.com/project/123' \
+      --metadata-file '$TEST_TMP/ds-metadata.json' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -eq 0 ] || fail "designsync path should be unaffected by --project-role: $output"
+}
+
+
+# ===========================================================================
+# verify-target: design_system_project reference mismatch and cross-wire
+# ===========================================================================
+
+@test "verify-target: design_system_project reference mismatch halts with diagnostic" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  # Metadata points at a DIFFERENT reference than what design_system_project has
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/WRONG-REF" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/WRONG-REF, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/WRONG-REF' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -ne 0 ] || fail "reference mismatch should halt"
+  [[ "$output" == *"reference mismatch"* ]] || [[ "$output" == *"design_system_project.reference"* ]] || \
+    fail "diagnostic should mention reference mismatch, got: $output"
+}
+
+@test "verify-target: cross-wire design_system_project using product_design reference halts" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  # Reference equals the product_design_project reference — cross-wire
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/pd-456" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/pd-456, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/pd-456' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -ne 0 ] || fail "cross-wire should halt"
+  [[ "$output" == *"cross-wire"* ]] || \
+    fail "diagnostic should mention cross-wire, got: $output"
+}
+
+@test "verify-target: positive control for design_system_project role passes" {
+  [ -f "$VERIFY_SCRIPT" ] || fail "verify-publication-target.sh does not exist"
+  _seed_design_record_v2_with_surface "$TEST_TMP/design-record.yaml" \
+    "https://claude.ai/artifact/ds-789" "https://claude.ai/artifact/pd-456" "artifact"
+
+  _make_art_meta "$TEST_TMP/artifact-meta.txt" "https://claude.ai/artifact/ds-789" \
+    "[Artifact aaaaaaaa-0000-0000-0000-000000000000 (version 2) — owned by you, private]" \
+    'Files saved under "/d" from version 2 of https://claude.ai/artifact/ds-789, an Artifact of type "Design System".'
+
+  run bash -c "
+    source '$VERIFY_SCRIPT'
+    verify_publication_target artifact 'https://claude.ai/artifact/ds-789' \
+      --metadata-file '$TEST_TMP/artifact-meta.txt' \
+      --design-record '$TEST_TMP/design-record.yaml' \
+      --project-role design_system_project \
+      --expected-type 'Design System'
+  "
+  [ "$status" -eq 0 ] || fail "positive control for DS role should pass: $output"
+}
