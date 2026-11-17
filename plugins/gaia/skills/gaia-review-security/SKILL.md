@@ -453,7 +453,10 @@ The resolver resolves verdict from the register (no `--analysis-results` needed 
 Invoke the shared `review-gate.sh` script to update the story's `Security Review` row with the story worktree's HEAD SHA and the absolute report path. The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}" --sha "$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse HEAD)" --report "$REPORT_PATH"
+_sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
+  && [ "${#_sha}" -eq 40 ] \
+  || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
+${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
 ```
 
 Confirm the update succeeded (exit code 0). Report the final status to the user. Note: sprint-status.yaml may now be out of sync. Run `/gaia-sprint-status` to reconcile.

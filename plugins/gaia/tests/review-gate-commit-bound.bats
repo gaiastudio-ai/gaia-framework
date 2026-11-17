@@ -3552,7 +3552,7 @@ STORY
     local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
     [ -f "$skill_md" ] || { echo "MISSING: $skill_md"; return 1; }
     local section
-    section="$(sed -n '/[Gg]ate row update\|review-gate\.sh update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    section="$(sed -n '/_sha=\|[Gg]ate row update\|Invoke.*review-gate/,/review-gate-check\|^### \|^## /p' "$skill_md")"
     # Must use STORY_WORKTREE_PATH
     if ! grep -q 'STORY_WORKTREE_PATH' <<< "$section"; then
       echo "FAIL: $skill gate block missing STORY_WORKTREE_PATH"
@@ -3644,4 +3644,112 @@ STORY
   [ "$status" -eq 0 ]
   # Must emit a warning about being unable to verify the key
   [[ "$output" == *"cannot verify frontmatter key"* ]] || [[ "$output" == *"no key: line"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# RF-3 (complete): gate blocks must refuse when worktree HEAD cannot resolve
+# ---------------------------------------------------------------------------
+
+@test "RF-3: all 7 gate-write blocks contain the worktree-head refusal guard" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    local section
+    # Extract the gate-update section including the SHA pre-computation guard.
+    # Use _sha= as start anchor (the guard) through the next heading or gate-check.
+    section="$(sed -n '/_sha=\|[Gg]ate row update\|Invoke.*review-gate/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+    # Must contain the pre-validation guard (resolve + length check before gate call)
+    if ! grep -q 'rev-parse --verify' <<< "$section"; then
+      echo "FAIL: $skill gate block missing rev-parse --verify guard"
+      return 1
+    fi
+    if ! grep -q 'refusing to record' <<< "$section"; then
+      echo "FAIL: $skill gate block missing refusal message"
+      return 1
+    fi
+    # Must NOT have rev-parse inlined in the --sha argument of review-gate.sh
+    # (the SHA must be pre-computed and validated before the gate call)
+    if grep 'review-gate\.sh.*update' <<< "$section" | grep -q 'rev-parse'; then
+      echo "FAIL: $skill still inlines rev-parse in the review-gate.sh call"
+      return 1
+    fi
+  done
+}
+
+# Helper: build a gate-write snippet from a SKILL.md's code block
+# and run it with a stub review-gate.sh that records the --sha it receives.
+_run_gate_snippet() {
+  local worktree_path="$1" tmproot="$2"
+  local stub_gate="$tmproot/stub-review-gate.sh"
+  local sha_capture="$tmproot/captured-sha"
+  # Stub review-gate.sh: just capture the --sha value
+  cat > "$stub_gate" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --sha) shift; printf '%s' "$1" > "$SHA_CAPTURE"; shift ;; *) shift ;; esac
+done
+exit 0
+STUB
+  chmod +x "$stub_gate"
+  # Run the pre-validation + gate call pattern from the SKILL.md blocks.
+  # This replicates what the LLM executes from the prose instructions.
+  local script="$tmproot/gate-snippet.sh"
+  cat > "$script" <<SNIP
+#!/usr/bin/env bash
+set -euo pipefail
+export STORY_WORKTREE_PATH="${worktree_path}"
+export SHA_CAPTURE="${sha_capture}"
+_sha="\$(git -C "\${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set}" rev-parse --verify HEAD^{commit})" \\
+  && [ "\${#_sha}" -eq 40 ] \\
+  || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
+"${stub_gate}" update --story "test" --gate "Code Review" --verdict PASSED --sha "\$_sha" --report "/dev/null"
+SNIP
+  chmod +x "$script"
+  run bash "$script"
+}
+
+@test "RF-3 functional: STORY_WORKTREE_PATH unset → non-zero, no gate write" {
+  local tmproot="${TEST_TMP}/rf3func_a"
+  mkdir -p "$tmproot"
+  _run_gate_snippet "" "$tmproot"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"STORY_WORKTREE_PATH"* ]] || [[ "$output" == *"cannot resolve"* ]]
+  [ ! -f "$tmproot/captured-sha" ]
+}
+
+@test "RF-3 functional: STORY_WORKTREE_PATH pointing at non-git dir → non-zero, no gate write" {
+  local tmproot="${TEST_TMP}/rf3func_b"
+  mkdir -p "$tmproot/not-a-repo"
+  _run_gate_snippet "$tmproot/not-a-repo" "$tmproot"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot resolve"* ]]
+  [ ! -f "$tmproot/captured-sha" ]
+}
+
+@test "RF-3 functional: STORY_WORKTREE_PATH pointing at git repo → stub receives exact HEAD SHA" {
+  local tmproot="${TEST_TMP}/rf3func_c"
+  mkdir -p "$tmproot/repo"
+  git -C "$tmproot/repo" init -q
+  git -C "$tmproot/repo" config user.email "test@test.local"
+  git -C "$tmproot/repo" config user.name "Test"
+  printf 'init\n' > "$tmproot/repo/README.md"
+  git -C "$tmproot/repo" add README.md
+  git -C "$tmproot/repo" commit -q -m "init"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/repo" rev-parse HEAD)"
+
+  _run_gate_snippet "$tmproot/repo" "$tmproot"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
 }

@@ -370,10 +370,11 @@ This returns the NEW canonical per-story home `…/epic-{slug}/{story_key}-{slug
 **Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator to the story's worktree). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 ```bash
+_sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
+  && [ "${#_sha}" -eq 40 ] \
+  || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
 ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Code Review" \
-  --verdict "{PASSED|FAILED}" \
-  --sha "$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse HEAD)" \
-  --report "$REPORT_PATH"
+  --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
 ```
 
 Mapping per Phase 5 table. Confirm exit code 0.
