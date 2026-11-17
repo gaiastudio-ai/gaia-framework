@@ -3973,40 +3973,33 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# Standalone worktree resolution from SKILL.md gate-write block
+# Gate-write snippet extraction and execution from SKILL.md
 # ---------------------------------------------------------------------------
 
-# Helper: extract the first bash code block after "Gate row update" in a SKILL.md.
+# Helper: extract the first bash code block after "Gate row update" (or the
+# Invoke.*review-gate pattern for review-security/review-perf) in a SKILL.md.
+# Substitutes the documented placeholders so the block is runnable.
 _extract_gate_block() {
-  local skill_md="$1" story_key="$2"
+  local skill_md="$1" story_key="$2" worktree_val="$3"
   awk '
-    /[Gg]ate row update/ { found = 1 }
-    found && /^```bash$/ { in_b = 1; next }
-    found && in_b && /^```$/ { exit }
+    /[Gg]ate row update|Invoke.*review-gate.*update.*story|proof-of-execution contract/ { found = 1 }
+    found && /^[[:space:]]*```bash$/ { in_b = 1; next }
+    found && in_b && /^[[:space:]]*```$/ { exit }
     found && in_b { print }
-  ' "$skill_md" | sed "s/{story_key}/$story_key/g" \
-    | sed 's/{PASSED|FAILED}/PASSED/g'
+  ' "$skill_md" \
+    | sed "s/{story_key}/$story_key/g" \
+    | sed "s/{worktree}/$(printf '%s' "$worktree_val" | sed 's/[&/\]/\\&/g')/g" \
+    | sed 's/{PASSED|FAILED}/PASSED/g' \
+    | sed 's/{verdict}/PASSED/g' \
+    | sed 's/{gate_name}/Code Review/g' \
+    | sed 's/<absolute-path-to-per-review-report>/"\/tmp\/fake-report.md"/g' \
+    | sed 's/\[--execution-evidence.*\]//g'
 }
 
-# (d) standalone: worktree list entry matches → records that worktree HEAD
-@test "gate-write snippet resolves worktree standalone via worktree list" {
-  local _K="E900-S930" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/wt_standalone"
-  mkdir -p "$tmproot"
-
-  # Create main repo
-  mkdir -p "$tmproot/main"
-  _init_git "$tmproot/main"
-
-  # Add a linked worktree on the story's branch
-  git -C "$tmproot/main" worktree add "$tmproot/wt" -b "feat/${_K}-standalone-test" 2>/dev/null
-  printf 'wt content\n' > "$tmproot/wt/file.txt"
-  git -C "$tmproot/wt" add file.txt
-  git -C "$tmproot/wt" commit -q -m "worktree commit"
-  local expected_sha
-  expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
-
-  # Stub resume-checkpoint.sh → no checkpoint (exit 1)
+# Helper: set up the stub plugin root with fake resume-checkpoint.sh and
+# a review-gate.sh that records every argument it receives.
+_setup_gate_stubs() {
+  local tmproot="$1"
   mkdir -p "$tmproot/fake-plugin/scripts"
   cat > "$tmproot/fake-plugin/scripts/resume-checkpoint.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -4014,91 +4007,256 @@ exit 1
 STUB
   chmod +x "$tmproot/fake-plugin/scripts/resume-checkpoint.sh"
 
-  # Stub review-gate.sh → capture --sha
-  local sha_capture="$tmproot/captured-sha"
   cat > "$tmproot/fake-plugin/scripts/review-gate.sh" <<STUB
 #!/usr/bin/env bash
 while [ \$# -gt 0 ]; do
-  case "\$1" in --sha) shift; printf '%s' "\$1" > "${sha_capture}"; shift ;; *) shift ;; esac
+  case "\$1" in --sha) shift; printf '%s' "\$1" > "${tmproot}/captured-sha"; shift ;; *) shift ;; esac
 done
 exit 0
 STUB
   chmod +x "$tmproot/fake-plugin/scripts/review-gate.sh"
+}
 
-  # Extract the gate-write block from the SKILL.md
+# Helper: build and run the extracted gate-write snippet.
+# Usage: _run_extracted_gate <skill_name> <story_key> <worktree_value> <tmproot> [<cwd>]
+# Sets $status and $output via bats `run`.
+_run_extracted_gate() {
+  local skill_name="$1" story_key="$2" wt_val="$3" tmproot="$4" cwd="${5:-$tmproot}"
+  local skill_md="$PLUGIN_ROOT/skills/$skill_name/SKILL.md"
   local gate_code
-  gate_code="$(_extract_gate_block "$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md" "$_K")"
-  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output"; return 1; }
-
-  # Build a runnable script from the extracted block
+  gate_code="$(_extract_gate_block "$skill_md" "$story_key" "$wt_val")"
+  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output for $skill_name"; return 1; }
+  local script="$tmproot/gate-test-${skill_name}.sh"
   {
     printf '#!/usr/bin/env bash\nset -euo pipefail\n'
     printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
     printf '%s\n' "$gate_code"
-  } > "$tmproot/gate-test.sh"
-  chmod +x "$tmproot/gate-test.sh"
-
-  # Run from the main repo (so git worktree list finds the linked worktree)
-  cd "$tmproot/main"
+  } > "$script"
+  chmod +x "$script"
+  cd "$cwd"
   CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
-    run bash "$tmproot/gate-test.sh"
+    run bash "$script"
+}
+
+# (a) {worktree} = valid fixture worktree → stub receives that worktree HEAD
+@test "gate-write snippet with valid worktree records correct SHA (code-review)" {
+  local _K="E900-S930" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_a_cr"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/wt"
+  _seed_worktree_fixture "$wt" "$_K"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$wt" "$tmproot" "$tmproot/main"
   [ "$status" -eq 0 ]
-  [ -f "$sha_capture" ]
+  [ -f "$tmproot/captured-sha" ]
   local captured
-  captured="$(cat "$sha_capture")"
+  captured="$(cat "$tmproot/captured-sha")"
   [ "$captured" = "$expected_sha" ]
 }
 
-# (d) standalone: no matching worktree entry → refuses, no gate write
-@test "gate-write snippet refuses standalone when no matching worktree exists" {
-  local _K="E900-S931" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/wt_standalone_none"
-  mkdir -p "$tmproot"
+@test "gate-write snippet with valid worktree records correct SHA (run-all-reviews)" {
+  local _K="E900-S932" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_a_rar"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/wt"
+  _seed_worktree_fixture "$wt" "$_K"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-run-all-reviews" "$_K" "$wt" "$tmproot" "$tmproot/main"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+}
 
-  # Create a git repo with NO worktree matching the story key
+# (b) {worktree} with spaces → works
+@test "gate-write snippet with worktree path containing spaces records correct SHA" {
+  local _K="E900-S933" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_b"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/path with spaces/wt"
+  _seed_worktree_fixture "$wt" "$_K"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$wt" "$tmproot" "$tmproot/main"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+}
+
+# (c) {worktree} = missing dir → non-zero, no stub call
+@test "gate-write snippet with missing worktree dir refuses" {
+  local _K="E900-S934" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_c_miss"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$tmproot/does-not-exist" "$tmproot" "$tmproot/main"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"does not exist"* ]] || [[ "$output" == *"not a directory"* ]]
+}
+
+# (c) {worktree} = non-git dir → non-zero, no stub call
+@test "gate-write snippet with non-git worktree dir refuses" {
+  local _K="E900-S935" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_c_nongit"
+  mkdir -p "$tmproot/main" "$tmproot/plain-dir"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$tmproot/plain-dir" "$tmproot" "$tmproot/main"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"not a git"* ]] || [[ "$output" == *"not a work tree"* ]]
+}
+
+# (c) {worktree} = wrong branch → non-zero, no stub call
+@test "gate-write snippet with wrong-branch worktree refuses" {
+  local _K="E900-S936" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local _OTHER="E900-S999" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_c_branch"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/wt-other"
+  _seed_worktree_fixture "$wt" "$_OTHER"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$wt" "$tmproot" "$tmproot/main"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"branch"* ]] || [[ "$output" == *"does not match"* ]]
+}
+
+# (d) empty {worktree}, stale STORY_WORKTREE_PATH exported pointing at another repo,
+#     and a matching worktree list entry → uses the worktree-list entry, NOT the stale export
+@test "gate-write snippet ignores stale STORY_WORKTREE_PATH and uses worktree list (code-review)" {
+  local _K="E900-S937" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_d_cr"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
 
-  # Stub resume-checkpoint.sh → no checkpoint
-  mkdir -p "$tmproot/fake-plugin/scripts"
-  cat > "$tmproot/fake-plugin/scripts/resume-checkpoint.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-  chmod +x "$tmproot/fake-plugin/scripts/resume-checkpoint.sh"
+  # Create the CORRECT linked worktree
+  git -C "$tmproot/main" worktree add "$tmproot/real-wt" -b "feat/${_K}-standalone" 2>/dev/null
+  printf 'real\n' > "$tmproot/real-wt/file.txt"
+  git -C "$tmproot/real-wt" add file.txt
+  git -C "$tmproot/real-wt" commit -q -m "real wt commit"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/real-wt" rev-parse HEAD)"
 
-  # Stub review-gate.sh → capture --sha (should NOT be called)
-  local sha_capture="$tmproot/captured-sha"
-  cat > "$tmproot/fake-plugin/scripts/review-gate.sh" <<STUB
-#!/usr/bin/env bash
-while [ \$# -gt 0 ]; do
-  case "\$1" in --sha) shift; printf '%s' "\$1" > "${sha_capture}"; shift ;; *) shift ;; esac
-done
-exit 0
-STUB
-  chmod +x "$tmproot/fake-plugin/scripts/review-gate.sh"
+  # Create a STALE repo that STORY_WORKTREE_PATH will point at
+  mkdir -p "$tmproot/stale-repo"
+  _init_git "$tmproot/stale-repo"
+  local stale_sha
+  stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
-  # Extract the gate-write block
-  local gate_code
-  gate_code="$(_extract_gate_block "$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md" "$_K")"
-  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output"; return 1; }
+  _setup_gate_stubs "$tmproot"
+  # Export the STALE STORY_WORKTREE_PATH — the block must ignore it
+  export STORY_WORKTREE_PATH="$tmproot/stale-repo"
+  _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
+  unset STORY_WORKTREE_PATH
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  # Must be the REAL worktree HEAD, not the stale export
+  [ "$captured" = "$expected_sha" ]
+  [ "$captured" != "$stale_sha" ]
+}
 
-  {
-    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
-    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
-    printf '%s\n' "$gate_code"
-  } > "$tmproot/gate-test.sh"
-  chmod +x "$tmproot/gate-test.sh"
+@test "gate-write snippet ignores stale STORY_WORKTREE_PATH and uses worktree list (run-all-reviews)" {
+  local _K="E900-S938" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_d_rar"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
 
-  cd "$tmproot/main"
-  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
-    run bash "$tmproot/gate-test.sh"
+  git -C "$tmproot/main" worktree add "$tmproot/real-wt" -b "feat/${_K}-standalone" 2>/dev/null
+  printf 'real\n' > "$tmproot/real-wt/file.txt"
+  git -C "$tmproot/real-wt" add file.txt
+  git -C "$tmproot/real-wt" commit -q -m "real wt commit"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/real-wt" rev-parse HEAD)"
+
+  mkdir -p "$tmproot/stale-repo"
+  _init_git "$tmproot/stale-repo"
+  local stale_sha
+  stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
+
+  _setup_gate_stubs "$tmproot"
+  export STORY_WORKTREE_PATH="$tmproot/stale-repo"
+  _run_extracted_gate "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
+  unset STORY_WORKTREE_PATH
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+  [ "$captured" != "$stale_sha" ]
+}
+
+# (e) empty {worktree}, no match → refuses, no stub call
+@test "gate-write snippet with empty worktree and no match refuses (code-review)" {
+  local _K="E900-S939" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_e_cr"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
-  # Must NOT have called review-gate.sh (no SHA captured)
-  [ ! -f "$sha_capture" ]
-  # Must emit the STANDALONE RESOLUTION refusal (not the generic :? message).
-  # The proper message names the story key and says --worktree or worktree list.
+  [ ! -f "$tmproot/captured-sha" ]
   [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
+}
+
+@test "gate-write snippet with empty worktree and no match refuses (run-all-reviews)" {
+  local _K="E900-S940" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_e_rar"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-run-all-reviews" "$_K" "" "$tmproot" "$tmproot/main"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
+}
+
+# Every canonical gate-write block starts with _wt_arg="{worktree}"
+@test "every canonical gate-write block has the _wt_arg worktree assignment line" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    local block
+    block="$(awk '
+      /[Gg]ate row update|Invoke.*review-gate.*update.*story|proof-of-execution contract/ { found = 1 }
+      found && /^[[:space:]]*```bash$/ { in_b = 1; next }
+      found && in_b && /^[[:space:]]*```$/ { exit }
+      found && in_b { print }
+    ' "$skill_md")"
+    if ! grep -q '_wt_arg=.*{worktree}' <<< "$block"; then
+      echo "FAIL: $skill gate block missing _wt_arg=\"{worktree}\" line"
+      return 1
+    fi
+    if ! grep -q 'unset STORY_WORKTREE_PATH' <<< "$block"; then
+      echo "FAIL: $skill gate block missing unset STORY_WORKTREE_PATH"
+      return 1
+    fi
+  done
 }
 
 # ---------------------------------------------------------------------------

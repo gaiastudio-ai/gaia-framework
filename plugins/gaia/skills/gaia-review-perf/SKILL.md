@@ -157,7 +157,16 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
   - FAILED stays FAILED
 - Invoke the shared `review-gate.sh` script to update the story's Review Gate table with the story worktree's HEAD SHA and the absolute report path. When `--worktree <path>` was passed by the orchestrator, `STORY_WORKTREE_PATH` is set to that value. When running standalone (no `--worktree`), resolve the worktree deterministically: (1) the dev-story checkpoint `worktree_path` for this story key, (2) the single `git worktree list --porcelain` entry whose branch is `refs/heads/feat/{story_key}-…`, (3) refuse with a clear message. If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit after resolution, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`:
   ```bash
-  if [ -z "${STORY_WORKTREE_PATH:-}" ]; then
+  _wt_arg="{worktree}"   # value of --worktree from this skill's arguments; empty when not given
+  unset STORY_WORKTREE_PATH
+  if [ -n "$_wt_arg" ]; then
+    [ -d "$_wt_arg" ] || { echo "--worktree path does not exist or is not a directory: $_wt_arg" >&2; exit 1; }
+    git -C "$_wt_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+      || { echo "--worktree path is not a git work tree: $_wt_arg" >&2; exit 1; }
+    _wt_branch="$(git -C "$_wt_arg" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "--worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+    STORY_WORKTREE_PATH="$_wt_arg"
+  else
     _cp_wt="" _cp_key=""
     if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
       _cp_key="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*story_key:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"

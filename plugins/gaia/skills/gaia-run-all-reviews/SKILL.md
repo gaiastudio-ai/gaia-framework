@@ -207,6 +207,33 @@ HALT on any non-zero exit from a `register-write.sh` subcommand, except `round-i
 **Substep 2.3 — Run the `run` slice (Skill dispatch + report assertion + gate write).** For each canonical short-name in `run` (in canonical order), **dispatch the corresponding per-review skill via the Skill tool** (NEVER inline-judge). After the skill returns, **assert the per-review report file exists on disk** before writing the verdict. The verdict write itself uses the proof-of-execution contract:
 
 ```bash
+_wt_arg="{worktree}"   # value of --worktree resolved from round-start step 1; empty when not available
+unset STORY_WORKTREE_PATH
+if [ -n "$_wt_arg" ]; then
+  [ -d "$_wt_arg" ] || { echo "--worktree path does not exist or is not a directory: $_wt_arg" >&2; exit 1; }
+  git -C "$_wt_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "--worktree path is not a git work tree: $_wt_arg" >&2; exit 1; }
+  _wt_branch="$(git -C "$_wt_arg" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "--worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+  STORY_WORKTREE_PATH="$_wt_arg"
+else
+  _cp_wt="" _cp_key=""
+  if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
+    _cp_key="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*story_key:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+    _cp_wt="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*worktree_path:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+  fi
+  if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    STORY_WORKTREE_PATH="$_cp_wt"
+  else
+    _wt_path="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
+    if [ -n "$_wt_path" ]; then
+      STORY_WORKTREE_PATH="$_wt_path"
+    else
+      echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2
+      exit 1
+    fi
+  fi
+fi
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
