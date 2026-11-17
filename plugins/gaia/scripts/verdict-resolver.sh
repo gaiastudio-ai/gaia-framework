@@ -363,6 +363,10 @@ fi
 # Skip when --register is given (LLM findings go through the register).
 LLM_OK=0
 if [ -z "$REGISTER" ]; then
+  if [ ! -f "$LLM" ]; then
+    printf '%s: LLM-findings path is not a regular file: %s\n' "$SCRIPT_NAME" "$LLM" >&2
+    emit "BLOCKED"
+  fi
   if [ ! -r "$LLM" ]; then
     printf '%s: LLM-findings file not readable: %s\n' "$SCRIPT_NAME" "$LLM" >&2
     emit "BLOCKED"
@@ -386,6 +390,15 @@ if [ -z "$REGISTER" ]; then
     else
       printf '%s: LLM-findings JSON has wrong shape (expected single object with findings array): %s\n' "$SCRIPT_NAME" "$LLM" >&2
     fi
+    emit "BLOCKED"
+  fi
+  # Element-level validation: every findings entry must be an object with
+  # a severity key. Catches null, empty-object, and missing-severity entries.
+  # Empty arrays pass (jq `all` on empty is true).
+  if ! jq -e '
+    .findings | all(type == "object" and has("severity"))
+  ' "$LLM" >/dev/null 2>&1; then
+    printf '%s: LLM-findings entries must be objects with a severity key: %s\n' "$SCRIPT_NAME" "$LLM" >&2
     emit "BLOCKED"
   fi
   LLM_OK=1
@@ -427,16 +440,23 @@ fi
 # Runs even without --analysis-results (register-only skills with execution
 # evidence must still honour the timed-out-suite rule).
 if [ "$EE_OK" = "1" ]; then
-  if jq -e '
-    (.skipped // false) | not
-  ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
-    if jq -e '
-      [.suites[]?
-        | select(.required != false)
-        | select((.timeout // false) == true)
-      ] | length > 0
-    ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
-      printf '%s: required test suite timed out -> BLOCKED\n' "$SCRIPT_NAME" >&2
+  if jq -e '(.skipped == true) | not' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+    # Reject non-object entries in suites array (strings, numbers, nulls).
+    if jq -e '[.suites[]? | select(type != "object")] | length > 0' \
+       "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      printf '%s: non-object entry in suites array -> BLOCKED\n' "$SCRIPT_NAME" >&2
+      emit "BLOCKED"
+    fi
+    # Required-suite timeout: check presence first, then extract names.
+    # The trigger (count > 0) must not depend on name extraction — a jq
+    # error in the name list must never cause the rule to fall through.
+    if jq -e '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == true)] | length > 0' \
+       "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      _timed_suites="$(jq -r '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == true) | (.name // "unnamed" | tostring)] | join(", ")
+      ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _timed_suites="(name extraction failed)"
+      printf '%s: required test suite timed out: %s -> BLOCKED\n' "$SCRIPT_NAME" "$_timed_suites" >&2
       emit "BLOCKED"
     fi
   fi
@@ -451,17 +471,17 @@ fi
 
 # --- 2a. execution-evidence: required-tier failure -> REQUEST_CHANGES ---
 if [ "$EE_OK" = "1" ]; then
-  if jq -e '
-    (.skipped // false) | not
-  ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
-    if jq -e '
-      [.suites[]?
-        | select(.required != false)
+  if jq -e '(.skipped == true) | not' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+    # Required-suite failure: check presence first, then extract names.
+    if jq -e '[.suites[]? | select(type == "object") | select(.required != false)
         | select((.timeout // false) == false)
-        | select((.exit_code // 0) != 0)
-      ] | length > 0
-    ' "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
-      printf '%s: required test suite failed (non-zero exit) -> REQUEST_CHANGES\n' "$SCRIPT_NAME" >&2
+        | select((.exit_code // 0) != 0)] | length > 0' \
+       "$EXECUTION_EVIDENCE" >/dev/null 2>&1; then
+      _failed_suites="$(jq -r '[.suites[]? | select(type == "object") | select(.required != false)
+        | select((.timeout // false) == false)
+        | select((.exit_code // 0) != 0) | (.name // "unnamed" | tostring)] | join(", ")
+      ' "$EXECUTION_EVIDENCE" 2>/dev/null)" || _failed_suites="(name extraction failed)"
+      printf '%s: required test suite failed (non-zero exit): %s -> REQUEST_CHANGES\n' "$SCRIPT_NAME" "$_failed_suites" >&2
       emit "REQUEST_CHANGES"
     fi
   fi
@@ -505,10 +525,9 @@ else
     # Check for critical-severity findings. A jq runtime error (e.g.
     # malformed entry inside the findings array) is BLOCKED, not silently
     # treated as "no criticals found".
-    _llm_crit_err=""
     _llm_crit_result=""
     if _llm_crit_result="$(jq -e '
-      [.findings[] | select((.severity // "") | ascii_downcase == "critical")] | length > 0
+      [.findings[] | select((.severity // "") | gsub("^[\\s\\t]+|[\\s\\t]+$"; "") | ascii_downcase == "critical")] | length > 0
     ' "$LLM" 2>&1)"; then
       emit "REQUEST_CHANGES"
     elif [ "$_llm_crit_result" = "false" ]; then

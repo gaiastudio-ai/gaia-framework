@@ -450,11 +450,20 @@ test_execution: {}'
   _mk_project P1
   run _mutation_subcmd
   [ "$status" -eq 0 ]
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'QA Tests' --verdict PASSED --report-missing-reason fixture" # lint-pack:allow leaked-identifiers — fixture story key in test
+  # QA Tests and Test Review are test-execution gates: supply a real report
+  # and execution-evidence with a required green suite so the gate records
+  # PASSED (report-missing-reason alone would be coerced to UNVERIFIED).
+  local _gate_report="$T/gate-report.md"
+  local _gate_ev="$T/gate-evidence.json"
+  printf '# Review report\n' > "$_gate_report"
+  printf '{"suites":[{"name":"unit","required":true,"exit_code":0,"fail_count":0,"timeout":false}],"skipped":false}\n' > "$_gate_ev"
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'QA Tests' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'Test Review' --verdict PASSED --report-missing-reason fixture" # lint-pack:allow leaked-identifiers — fixture story key in test
+  grep -q '| QA Tests | PASSED |' "$STORY_DIR/story.md"
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'Test Review' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
+  grep -q '| Test Review | PASSED |' "$STORY_DIR/story.md"
   run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'Code Review' --verdict PASSED --report-missing-reason fixture" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   local tel="$STORY_DIR/review-telemetry.jsonl"
