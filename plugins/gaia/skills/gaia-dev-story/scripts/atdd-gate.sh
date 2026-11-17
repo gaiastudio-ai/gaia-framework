@@ -136,7 +136,9 @@ fi
 # (atdd-{story_key}.md, atdd-{epic_key}.md) remain as a defensive fallback
 # when the helper is absent.
 RESOLVE_TEST_ARTIFACT="$SCRIPT_DIR_RESOLVER/lib/resolve-test-artifact-per-story.sh"
-if [ -f "$RESOLVE_TEST_ARTIFACT" ]; then
+if [ ! -f "$RESOLVE_TEST_ARTIFACT" ]; then
+  log "WARNING: per-story resolver not found at $RESOLVE_TEST_ARTIFACT; falling back to exact-name checks only"
+else
   # Pass the resolved test- and impl-artifacts dirs explicitly; these override
   # the resolver's own PROJECT_ROOT-derived defaults, so the gate and the
   # resolver agree on the layout regardless of which root env var the resolver

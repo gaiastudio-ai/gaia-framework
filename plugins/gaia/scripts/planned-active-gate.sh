@@ -120,15 +120,19 @@ while IFS= read -r key; do
     epic_key="${key%%-*}"
     atdd_found=0
     # Primary: shared resolver (nested canonical + legacy flat per-story)
-    if p="$(TEST_ARTIFACTS="$TEST_ARTIFACTS" IMPLEMENTATION_ARTIFACTS="$IMPL_ROOT" \
+    if [ ! -f "$SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh" ]; then
+      log "WARNING: per-story resolver not found at $SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh; falling back to exact-name checks only"
+    elif p="$(TEST_ARTIFACTS="$TEST_ARTIFACTS" IMPLEMENTATION_ARTIFACTS="$IMPL_ROOT" \
         bash "$SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh" atdd "$key" --existing-only 2>/dev/null)" \
         && [ -n "$p" ] && [ -f "$p" ]; then
       atdd_found=1
+    fi
     # Fallback 1: exact flat per-story
-    elif [ -f "$TEST_ARTIFACTS/atdd-${key}.md" ]; then
+    if [ "$atdd_found" -eq 0 ] && [ -f "$TEST_ARTIFACTS/atdd-${key}.md" ]; then
       atdd_found=1
+    fi
     # Fallback 2: exact epic-level shared coverage
-    elif [ -f "$TEST_ARTIFACTS/atdd-${epic_key}.md" ]; then
+    if [ "$atdd_found" -eq 0 ] && [ -f "$TEST_ARTIFACTS/atdd-${epic_key}.md" ]; then
       atdd_found=1
     fi
     [ "$atdd_found" -eq 0 ] && missing_atdd="${missing_atdd}${missing_atdd:+ }${key}"

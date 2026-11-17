@@ -214,3 +214,70 @@ all_ready() {
   grep -Eiq 'planned-active-gate|planned.*active.*gate|readiness gate' "$SKILL" \
     || { echo "SKILL.md should document the planned->active readiness gate" >&2; false; }
 }
+
+# ---------- resolver missing: gate warns and falls back to exact names ----------
+
+# Build a fixture scripts dir that mirrors planned-active-gate.sh's layout.
+# $1 = "with-resolver" or "without-resolver"
+_make_pag_fixture() {
+  local mode="$1"
+  local fixture_scripts="$TEST_TMP/fixture-scripts-${mode}"
+  local real_scripts="$REPO_ROOT/plugins/gaia/scripts"
+  mkdir -p "$fixture_scripts/lib"
+  cp "$real_scripts/planned-active-gate.sh" "$fixture_scripts/"
+  cp "$real_scripts/resolve-story-file.sh" "$fixture_scripts/"
+  cp "$real_scripts/sm-capacity-check.sh" "$fixture_scripts/"
+  chmod +x "$fixture_scripts/"*.sh
+  for f in "$real_scripts/lib/"*; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in
+      resolve-test-artifact-per-story.sh)
+        [ "$mode" = "with-resolver" ] && cp "$f" "$fixture_scripts/lib/" ;;
+      *) cp "$f" "$fixture_scripts/lib/" ;;
+    esac
+  done
+  printf '%s\n' "$fixture_scripts"
+}
+
+@test "resolver missing + exact flat ATDD present -> gate passes with warning, stdout unchanged" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  mk_atdd E900-S2  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+
+  # Run WITHOUT resolver
+  local fx_no
+  fx_no="$(_make_pag_fixture without-resolver)"
+  run --separate-stderr bash "$fx_no/planned-active-gate.sh" \
+    --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 0 ] \
+    || { echo "gate should pass via fallback, got exit $status" >&2; echo "$output" >&2; echo "$stderr" >&2; false; }
+  [[ "$stderr" == *"resolver not found"* ]] \
+    || { echo "expected 'resolver not found' warning on stderr, got:" >&2; echo "$stderr" >&2; false; }
+  # Warning must NOT leak into stdout
+  [[ "$output" != *"resolver not found"* ]] \
+    || { echo "warning leaked into stdout:" >&2; echo "$output" >&2; false; }
+  local output_no_resolver="$output"
+
+  # Run WITH resolver (same story, same flat ATDD)
+  local fx_yes
+  fx_yes="$(_make_pag_fixture with-resolver)"
+  run --separate-stderr bash "$fx_yes/planned-active-gate.sh" \
+    --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 0 ]
+  # Stdout must be byte-identical between the two runs
+  [ "$output" = "$output_no_resolver" ] \
+    || { echo "stdout differs between resolver-present and resolver-absent runs:" >&2
+         echo "  with-resolver:    [$output]" >&2
+         echo "  without-resolver: [$output_no_resolver]" >&2; false; }
+}
+
+@test "resolver missing + no ATDD file -> gate still refuses (exit 2)" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local fx_no
+  fx_no="$(_make_pag_fixture without-resolver)"
+  run bash "$fx_no/planned-active-gate.sh" \
+    --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 2 ] \
+    || { echo "gate should refuse when resolver missing and no flat ATDD, got exit $status" >&2; echo "$output" >&2; false; }
+}
