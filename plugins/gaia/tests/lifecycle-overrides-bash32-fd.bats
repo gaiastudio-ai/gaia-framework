@@ -6,8 +6,10 @@
 # the `exec {VARNAME}>file` syntax is not supported: the shell treats
 # `{VARNAME}` as a command name and exits 127 at runtime.
 #
-# Tests 1, 3, 5, 9 require a bash 3.x interpreter (macOS /bin/bash or
-# LIFECYCLE_BASH32 override) and skip on hosts that only have bash 5.
+# Tests 1, 3, 5, 9 require a bash 3.2 interpreter (macOS /bin/bash or
+# LIFECYCLE_BASH32 override).  On macOS (Darwin), the test fails when
+# /bin/bash is not 3.2; on other hosts, it skips when no 3.2 interpreter
+# is available.
 # Tests 2, 4, 6, 7, 8, 10 run under the host bash (5.x on Linux CI).
 
 # bats file_tags=scripts-lib
@@ -26,6 +28,10 @@ setup() {
   # Save PATH so teardown can restore it after tests that modify it
   # (make_no_flock_path strips directories, which can break bats' own cleanup).
   _SAVED_PATH="$PATH"
+  # BASH_ENV snippet: sourced by non-interactive bash before the script runs,
+  # printing BASH_VERSION from the same process that executes the lib.
+  _BASH_ENV_PRINT_VER="$TEST_TMP/print-bash-version.sh"
+  printf 'printf "BASH_VERSION=%%s\\n" "$BASH_VERSION" >&2\n' > "$_BASH_ENV_PRINT_VER"
 }
 
 teardown() {
@@ -37,14 +43,24 @@ teardown() {
 # Helpers
 # ---------------------------------------------------------------------------
 
-# need_bash32 — set BASH32 to a bash 3.x interpreter, or skip the test.
+# need_bash32 — set BASH32 to a bash 3.2 interpreter.  On macOS (Darwin),
+# fail the test if /bin/bash is not 3.2; on other hosts, skip the test.
 need_bash32() {
-  local b="${LIFECYCLE_BASH32:-/bin/bash}" major=""
-  [ -x "$b" ] && major="$("$b" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null)" || true
-  if [ "$major" != "3" ]; then
-    skip "needs bash 3.x at $b (stock macOS shell); found major version '${major:-none}'"
+  local b="${LIFECYCLE_BASH32:-/bin/bash}" ver=""
+  [ -x "$b" ] && ver="$("$b" -c 'printf %s "$BASH_VERSION"' 2>/dev/null)" || true
+  case "$ver" in
+    3.2.*)
+      BASH32="$b"
+      return 0
+      ;;
+  esac
+  # On macOS, bash 3.2 is the stock interpreter; a missing or non-3.2
+  # binary is a test environment problem, not a reason to skip.
+  if [ "$(uname -s)" = "Darwin" ]; then
+    printf 'test requires bash 3.2 at %s but found version %s\n' "$b" "${ver:-none}" >&2
+    return 1
   fi
-  BASH32="$b"
+  skip "needs bash 3.2 at $b (stock macOS shell); found version '${ver:-none}'"
 }
 
 # make_flock_shim — place a flock stub (exit 0) on PATH.
@@ -67,7 +83,7 @@ make_no_flock_path() {
   # Symlink every tool the script needs (except flock) into the shim dir,
   # so they remain reachable after we strip dirs that contain flock.
   local tool real
-  for tool in bash yq jq mktemp date grep mkdir rmdir rm dirname sleep cat chmod; do
+  for tool in bash env yq jq mktemp date grep mkdir rmdir rm dirname sleep cat chmod; do
     real="$(command -v "$tool" 2>/dev/null)" || continue
     [ -x "$real" ] && ln -sf "$real" "$shim_dir/$tool"
   done
@@ -90,11 +106,17 @@ make_no_flock_path() {
   need_bash32
   make_flock_shim
 
-  run --separate-stderr "$BASH32" "$LIB" append \
+  # Run the lib under bash 3.2 with BASH_ENV printing BASH_VERSION from the
+  # same process.  BASH_ENV is sourced by non-interactive bash before the
+  # script runs, so the version comes from the process that executes the lib.
+  run --separate-stderr env BASH_ENV="$_BASH_ENV_PRINT_VER" \
+    "$BASH32" "$LIB" append \
     --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
 
   [ "$status" -eq 0 ]
-  case "$stderr" in *"not found"*) echo "unexpected 'not found' on stderr: $stderr" >&2; return 1 ;; esac
+  # Verify the process ran under bash 3.2
+  case "$stderr" in *"BASH_VERSION=3.2."*) ;; *) printf 'expected BASH_VERSION=3.2.* on stderr; got: %s\n' "$stderr" >&2; return 1 ;; esac
+  case "$stderr" in *"not found"*) printf 'unexpected not-found diagnostic on stderr: %s\n' "$stderr" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -124,10 +146,15 @@ make_no_flock_path() {
   need_bash32
   make_no_flock_path
 
-  run --separate-stderr "$BASH32" "$LIB" append \
+  # Run the lib under bash 3.2 with BASH_ENV printing BASH_VERSION from the
+  # same process.
+  run --separate-stderr env BASH_ENV="$_BASH_ENV_PRINT_VER" \
+    "$BASH32" "$LIB" append \
     --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
 
   [ "$status" -eq 0 ]
+  # Verify the process ran under bash 3.2
+  case "$stderr" in *"BASH_VERSION=3.2."*) ;; *) printf 'expected BASH_VERSION=3.2.* on stderr; got: %s\n' "$stderr" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -159,10 +186,10 @@ make_no_flock_path() {
 
   # Write a wrapper that opens fd 8 (simulating design-gate.sh),
   # calls the library, then verifies fd 8 is still usable.
+  # BASH_ENV prints BASH_VERSION from the same process.
   cat > "$TEST_TMP/fd8-caller.sh" <<'WRAPPER'
 #!/usr/bin/env bash
 set -uo pipefail
-[ "${BASH_VERSINFO[0]}" -eq 3 ] || { printf 'FAIL: not bash 3 (got %s)\n' "$BASH_VERSION" >&2; exit 99; }
 exec 8>/dev/null
 source "$1"
 lifecycle_append_bypass --skill /gaia-trace --reason "valid reason for bypass" --sprint-id sprint-99
@@ -170,10 +197,13 @@ lifecycle_append_bypass --skill /gaia-trace --reason "valid reason for bypass" -
 WRAPPER
   chmod +x "$TEST_TMP/fd8-caller.sh"
 
-  run --separate-stderr "$BASH32" "$TEST_TMP/fd8-caller.sh" "$LIB"
+  run --separate-stderr env BASH_ENV="$_BASH_ENV_PRINT_VER" \
+    "$BASH32" "$TEST_TMP/fd8-caller.sh" "$LIB"
 
   [ "$status" -eq 0 ]
-  case "$output" in *FD8_OK*) ;; *) echo "FD8_OK missing from output: $output" >&2; return 1 ;; esac
+  # Verify the process ran under bash 3.2
+  case "$stderr" in *"BASH_VERSION=3.2."*) ;; *) printf 'expected BASH_VERSION=3.2.* on stderr; got: %s\n' "$stderr" >&2; return 1 ;; esac
+  case "$output" in *FD8_OK*) ;; *) printf 'FD8_OK missing from output: %s\n' "$output" >&2; return 1 ;; esac
   [ -f "$LIFECYCLE_OVERRIDES_FILE" ]
   local count
   count="$(yq '.bypasses | length' "$LIFECYCLE_OVERRIDES_FILE")"
@@ -282,10 +312,10 @@ exec "$real_yq" "\$@"
 YQSHIM
   chmod +x "$TEST_TMP/yq-shim/yq"
 
+  # BASH_ENV prints BASH_VERSION from the same process.
   cat > "$TEST_TMP/middle-fail-32.sh" <<WRAPPER
 #!/usr/bin/env bash
 set -euo pipefail
-[ "\${BASH_VERSINFO[0]}" -eq 3 ] || { printf 'FAIL: not bash 3 (got %s)\n' "\$BASH_VERSION" >&2; exit 99; }
 export PATH="$TEST_TMP/yq-shim:$PATH"
 source "$LIB"
 _lifecycle_bootstrap_if_absent() { return 1; }
@@ -296,9 +326,12 @@ WRAPPER
   chmod +x "$TEST_TMP/middle-fail-32.sh"
 
   rm -f "$TEST_TMP/yq-ran"
-  run --separate-stderr "$BASH32" "$TEST_TMP/middle-fail-32.sh"
+  run --separate-stderr env BASH_ENV="$_BASH_ENV_PRINT_VER" \
+    "$BASH32" "$TEST_TMP/middle-fail-32.sh"
 
   [ "$status" -ne 0 ]
+  # Verify the process ran under bash 3.2
+  case "${stderr:-}" in *"BASH_VERSION=3.2."*) ;; *) printf 'expected BASH_VERSION=3.2.* on stderr; got: %s\n' "${stderr:-}" >&2; return 1 ;; esac
   [ ! -f "$TEST_TMP/yq-ran" ]
 }
 
