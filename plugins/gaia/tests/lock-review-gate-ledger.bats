@@ -321,7 +321,7 @@ STORYEOF
     export REVIEW_GATE_LEDGER="'"$ledger"'"
     bash "'"$REVIEW_GATE"'" update \
       --story ETEST-RG8 \
-      --gate "QA Tests" \
+      --gate "test-automate-plan" \
       --verdict PASSED \
       --plan-id plan-after
   '
