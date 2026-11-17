@@ -3156,6 +3156,37 @@ STORY
   [ "$status" -eq 0 ]
 }
 
+# Val INFO-1: legacy-flat resolver warns on stderr; mismatch guard must still fire
+@test "code-review setup.sh detects key mismatch even when resolver emits stderr warnings" {
+  local _K="E900-S912" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local _K2="E900-S913" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/ac4legacyflat"
+  _seed_setup_fixture "$tmproot"
+  # Place story as a flat file inside impl_root (tier 2) so the resolver
+  # emits "WARNING: legacy-flat path" on stderr while returning exit 0.
+  # Frontmatter key is _K2, but we call with _K → mismatch.
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  cat > "$impl/${_K}-slug.md" <<STORY
+---
+template: 'story'
+key: "${_K2}"
+title: "Legacy Flat Mismatch"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not match"* ]]
+}
+
 # AC4b: code-review SKILL.md Phase 1 contains key-mismatch halt prose
 @test "code-review SKILL.md Phase 1 contains key-mismatch halt prose" {
   local skill_md="${PLUGIN_ROOT}/skills/gaia-code-review/SKILL.md"

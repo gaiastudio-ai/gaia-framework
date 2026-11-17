@@ -58,17 +58,21 @@ done <<<"$config_output"
 RESOLVE_STORY="$PLUGIN_SCRIPTS_DIR/resolve-story-file.sh"
 _story_key="${1:-${ARGUMENTS:-}}"
 if [ -n "$_story_key" ] && [ -x "$RESOLVE_STORY" ]; then
+  _resolve_errf="${TMPDIR:-/tmp}/gaia-setup-resolve-$$"
   _resolved=""
-  _resolved="$("$RESOLVE_STORY" "$_story_key" 2>&1)" || {
+  _resolved="$("$RESOLVE_STORY" "$_story_key" 2>"$_resolve_errf")" || {
     _rc=$?
+    _resolve_msg="$(cat "$_resolve_errf" 2>/dev/null || true)"
+    rm -f "$_resolve_errf"
     if [ "$_rc" -eq 1 ]; then
       die "story file not found for key $_story_key"
     elif [ "$_rc" -eq 2 ]; then
       die "multiple story files matched key $_story_key"
     else
-      die "resolve-story-file.sh failed with exit $_rc: $_resolved"
+      die "resolve-story-file.sh failed with exit $_rc: $_resolve_msg"
     fi
   }
+  rm -f "$_resolve_errf"
   # Frontmatter key-mismatch guard: compare the resolved file's key to
   # the argument. Halt before any gate/register write on mismatch.
   if [ -f "$_resolved" ]; then
