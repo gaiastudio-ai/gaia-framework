@@ -470,6 +470,7 @@ core	vcp-ci-01-03-ci-setup-retry-loop.bats
 core	vcp-mem-04-scope-boundary.bats
 core	vcp-rc-02-06-readiness-conflicts.bats
 core	verdict-resolver-parameterized.bats
+core	verdict-resolver-required-false-malformed-json.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
 core	worktree-walk-up-isolation.bats
@@ -701,7 +702,6 @@ scripts-core	vcp-cpt-09-phase3-solutioning.bats
 scripts-core	vcp-cpt-09-phase3-testing.bats
 scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
-scripts-core	verdict-resolver-required-false-malformed-json.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
 scripts-core	worktree-git-push.bats
@@ -755,6 +755,7 @@ scripts-lib	lib-env-allowlist.bats
 scripts-lib	lib-exec-with-timeout.bats
 scripts-lib	lib-transcript-writer.bats
 scripts-lib	lib/resolve-epic-slug.bats
+scripts-lib	lifecycle-overrides-bash32-fd.bats
 scripts-lib	load-taxonomy.bats
 scripts-lib	meeting-dispatch-envelope-assertion.bats
 scripts-lib	meeting-mode-b-dispatch-wiring.bats
