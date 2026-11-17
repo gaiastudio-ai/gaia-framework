@@ -205,13 +205,8 @@ EOF
 
 @test "atdd-gate: gaia-atdd SKILL.md has no stale stories/ segment in ATDD artifact path references" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
-  [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
-  # Path references to the ATDD artifact should use the canonical per-story
-  # layout (epic-{slug}/{key}-{slug}/atdd.md), never the stale stories/ form.
-  # The only allowed mention of stories/ is in legacy-fallback prose (the
-  # resolver's read-compat rung 0b), which does not appear inside path code
-  # lines. Check: zero hits of stories/ in any line containing test-artifacts
-  # and atdd together.
+  [ -f "$skill" ] \
+    || { echo "gaia-atdd/SKILL.md not found" >&2; false; }
   local hits
   hits="$(grep -n 'test-artifacts.*atdd\|atdd.*test-artifacts' "$skill" \
     | grep 'stories/' || true)"
@@ -221,35 +216,34 @@ EOF
 
 @test "atdd-gate: every checkpoint prelude in gaia-atdd SKILL.md uses the resolver for test_file_path" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
-  [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
-  # Each checkpoint prelude (write-checkpoint.sh lines) must use the resolver
-  # invocation for test_file_path, not a hard-coded flat path.
+  [ -f "$skill" ] \
+    || { echo "gaia-atdd/SKILL.md not found" >&2; false; }
   local checkpoint_lines flat_hits
   checkpoint_lines="$(grep 'write-checkpoint.sh.*gaia-atdd' "$skill")"
-  [ -n "$checkpoint_lines" ] || fail "no checkpoint preludes found"
-  # Every checkpoint line must contain the resolver call
+  [ -n "$checkpoint_lines" ] \
+    || { echo "no checkpoint preludes found in gaia-atdd SKILL.md" >&2; false; }
   flat_hits="$(grep -v 'resolve-test-artifact-per-story.sh' <<<"$checkpoint_lines" || true)"
   [ -z "$flat_hits" ] \
     || { echo "checkpoint prelude uses flat path instead of resolver:" >&2; echo "$flat_hits" >&2; false; }
   # Count: should be at least 5 checkpoint preludes (Steps 1-5)
   local count
-  count="$(echo "$checkpoint_lines" | wc -l)"
+  count="$(wc -l <<<"$checkpoint_lines")"
   [ "$count" -ge 5 ] \
     || { echo "expected at least 5 checkpoint preludes, got $count" >&2; false; }
 }
 
 @test "atdd-gate: gaia-atdd SKILL.md Step 5b uses --existing-only for the red-phase invocation" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
-  [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
-  # Step 5b's run-red-phase invocation must use --existing-only (read path),
-  # not --write (which creates directories as a side effect).
+  [ -f "$skill" ] \
+    || { echo "gaia-atdd/SKILL.md not found" >&2; false; }
   local step5b_region
   step5b_region="$(awk '/### Step 5b/{found=1} found{print} found && /^### Step [^5]/{exit}' "$skill")"
-  [ -n "$step5b_region" ] || fail "Step 5b section not found"
+  [ -n "$step5b_region" ] \
+    || { echo "Step 5b section not found in gaia-atdd SKILL.md" >&2; false; }
   grep -qF 'resolve-test-artifact-per-story.sh' <<<"$step5b_region" \
-    || fail "Step 5b does not reference the resolver"
+    || { echo "Step 5b does not reference the resolver" >&2; false; }
   grep -qF -- '--existing-only' <<<"$step5b_region" \
-    || fail "Step 5b resolver call does not use --existing-only"
+    || { echo "Step 5b resolver call does not use --existing-only" >&2; false; }
 }
 
 # ---------------------------------------------------------------------------
@@ -258,50 +252,65 @@ EOF
 
 # Build a fixture plugin tree mirroring atdd-gate.sh's layout.
 # $1 = "with-resolver" or "without-resolver"
+# Sets _FIXTURE_GATE to the path of the built gate script.
 _make_atdd_gate_fixture() {
   local mode="$1"
   local fp="$TEST_TMP/fixture-plugin-${mode}"
   local real_scripts="$BATS_TEST_DIRNAME/../scripts"
   local real_gate="$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts/atdd-gate.sh"
   mkdir -p "$fp/scripts/lib" "$fp/skills/gaia-dev-story/scripts"
-  cp "$real_gate" "$fp/skills/gaia-dev-story/scripts/"
-  cp "$real_scripts/resolve-story-file.sh" "$fp/scripts/"
+  cp "$real_gate" "$fp/skills/gaia-dev-story/scripts/" \
+    || { echo "FIXTURE BUILD FAILED: could not copy atdd-gate.sh" >&2; return 1; }
+  cp "$real_scripts/resolve-story-file.sh" "$fp/scripts/" \
+    || { echo "FIXTURE BUILD FAILED: could not copy resolve-story-file.sh" >&2; return 1; }
   chmod +x "$fp/scripts/resolve-story-file.sh"
   for f in "$real_scripts/lib/"*; do
     [ -f "$f" ] || continue
     case "$(basename "$f")" in
       resolve-test-artifact-per-story.sh)
-        [ "$mode" = "with-resolver" ] && cp "$f" "$fp/scripts/lib/" ;;
+        [ "$mode" = "with-resolver" ] && { cp "$f" "$fp/scripts/lib/" \
+          || { echo "FIXTURE BUILD FAILED: could not copy resolver" >&2; return 1; }; } ;;
       *) cp "$f" "$fp/scripts/lib/" ;;
     esac
   done
-  local gate="$fp/skills/gaia-dev-story/scripts/atdd-gate.sh"
-  chmod +x "$gate"
-  printf '%s\n' "$gate"
+  chmod +x "$fp/skills/gaia-dev-story/scripts/atdd-gate.sh"
+  _FIXTURE_GATE="$fp/skills/gaia-dev-story/scripts/atdd-gate.sh"
 }
 
 @test "atdd-gate: resolver missing + exact flat ATDD present -> exit 0 with warning, stdout unchanged" {
   _write_story "E40-S1" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   : > "docs/test-artifacts/atdd-E40-S1.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
 
-  # Run WITHOUT resolver
-  local gate_no
-  gate_no="$(_make_atdd_gate_fixture without-resolver)"
-  run --separate-stderr env PROJECT_PATH="$TEST_TMP" bash "$gate_no" "E40-S1"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  # Build WITHOUT resolver and verify
+  _make_atdd_gate_fixture without-resolver \
+    || { echo "fixture build failed" >&2; false; }
+  [ -f "$_FIXTURE_GATE" ] \
+    || { echo "fixture gate not found after build" >&2; false; }
+  [ ! -f "$TEST_TMP/fixture-plugin-without-resolver/scripts/lib/resolve-test-artifact-per-story.sh" ] \
+    || { echo "resolver should be absent in without-resolver fixture" >&2; false; }
+
+  run --separate-stderr env PROJECT_PATH="$TEST_TMP" bash "$_FIXTURE_GATE" "E40-S1"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   [ "$status" -eq 0 ] \
     || { echo "gate should pass via fallback, got exit $status" >&2; echo "$output" >&2; echo "$stderr" >&2; false; }
   [[ "$stderr" == *"resolver not found"* ]] \
     || { echo "expected 'resolver not found' warning on stderr, got:" >&2; echo "$stderr" >&2; false; }
-  # Warning must NOT leak into stdout
   [[ "$output" != *"resolver not found"* ]] \
     || { echo "warning leaked into stdout:" >&2; echo "$output" >&2; false; }
   local output_no_resolver="$output"
 
-  # Run WITH resolver (same story, same flat ATDD)
-  local gate_yes
-  gate_yes="$(_make_atdd_gate_fixture with-resolver)"
-  run --separate-stderr env PROJECT_PATH="$TEST_TMP" bash "$gate_yes" "E40-S1"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  # Build WITH resolver and verify
+  _make_atdd_gate_fixture with-resolver \
+    || { echo "fixture build failed" >&2; false; }
+  [ -f "$TEST_TMP/fixture-plugin-with-resolver/scripts/lib/resolve-test-artifact-per-story.sh" ] \
+    || { echo "resolver should be present in with-resolver fixture" >&2; false; }
+
+  run --separate-stderr env PROJECT_PATH="$TEST_TMP" bash "$_FIXTURE_GATE" "E40-S1"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   [ "$status" -eq 0 ]
+  # Warning must be ABSENT from both stdout and stderr in the resolver-present run
+  [[ "$stderr" != *"resolver not found"* ]] \
+    || { echo "resolver-present run should NOT warn, but stderr contains warning:" >&2; echo "$stderr" >&2; false; }
+  [[ "$output" != *"resolver not found"* ]] \
+    || { echo "resolver-present run should NOT warn on stdout:" >&2; echo "$output" >&2; false; }
   # Stdout must be byte-identical between the two runs
   [ "$output" = "$output_no_resolver" ] \
     || { echo "stdout differs between resolver-present and resolver-absent runs:" >&2
@@ -311,9 +320,9 @@ _make_atdd_gate_fixture() {
 
 @test "atdd-gate: resolver missing + no ATDD file -> exit 1 (HALT)" {
   _write_story "E40-S2" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local gate_no
-  gate_no="$(_make_atdd_gate_fixture without-resolver)"
-  run env PROJECT_PATH="$TEST_TMP" bash "$gate_no" "E40-S2"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _make_atdd_gate_fixture without-resolver \
+    || { echo "fixture build failed" >&2; false; }
+  run env PROJECT_PATH="$TEST_TMP" bash "$_FIXTURE_GATE" "E40-S2"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   [ "$status" -eq 1 ] \
     || { echo "gate should HALT when resolver missing and no flat ATDD, got exit $status" >&2; echo "$output" >&2; false; }
 }
