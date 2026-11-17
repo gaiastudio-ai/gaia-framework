@@ -596,6 +596,10 @@ _batch_add_components() {
   else
     # Bullet mode: insert new bullets at the section boundary.
     # No escaping — bullet mode writes raw names. CRLF-aware.
+    # Fenced lines inside the section are buffered so that an
+    # unclosed fence does not cause bullets to be appended at EOF
+    # (inside the fence under CommonMark). For balanced fences the
+    # buffer flushes transparently on the next non-fenced line.
     awk -v crlf="$_doc_crlf" "$_SDA_AWK_LIB"'
       BEGIN {
         eol = (crlf ? "\r\n" : "\n")
@@ -604,7 +608,18 @@ _batch_add_components() {
         }
         delete ARGV[2]
       }
-      { if (check_fence($0)) { print; next } }
+      function _flush_fbuf(    _fi) {
+        for (_fi = 1; _fi <= _fn; _fi++) print _fbuf[_fi]
+        _fn = 0
+      }
+      {
+        if (in_section && !done_section) {
+          if (check_fence($0)) { _fbuf[++_fn] = $0; next }
+          if (_fn > 0) _flush_fbuf()
+        } else {
+          if (check_fence($0)) { print; next }
+        }
+      }
       in_section && is_section_end($0) {
         for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
         in_section=0
@@ -614,7 +629,19 @@ _batch_add_components() {
       }
       !done_section && heading_match($0) { in_section=1; print; next }
       { print }
-      END { if (in_section) for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol }
+      END {
+        if (in_section) {
+          if (_fence_open && _fn > 0) {
+            # Unclosed fence: bullets go before the fence opener.
+            for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
+            _flush_fbuf()
+          } else {
+            # Balanced fence or no fence: flush buffer, then bullets.
+            if (_fn > 0) _flush_fbuf()
+            for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
+          }
+        }
+      }
     ' "$doc" "$components_file" > "$tmpfile"
   fi
   mv -f "$tmpfile" "$doc"

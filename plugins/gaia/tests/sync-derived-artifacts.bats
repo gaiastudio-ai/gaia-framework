@@ -9980,6 +9980,250 @@ UX
 
 
 # =========================================================================
+# Unclosed fence: bullet-mode sync must not write inside the fence
+# =========================================================================
+
+@test "unclosed backtick fence: bullet sync inserts before the fence and is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/rf12-bt"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- btn
+
+```
+fenced code
+still fenced
+
+## 9. Next Section
+UX
+
+  # Capture the fenced region before sync
+  local fence_before
+  fence_before="$(sed -n '/^```/,$p' "$doc_dir/ux-design.md")"
+
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-bt-snap.json"
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  # Fenced region unchanged
+  local fence_after
+  fence_after="$(sed -n '/^```/,$p' "$doc_dir/ux-design.md")"
+  [ "$fence_before" = "$fence_after" ] || \
+    fail "sync 1 modified fenced content"
+
+  # New component appears exactly once, before the fence
+  local cc
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "sync 1: card count $cc, expected 1"
+  local n_card n_fence
+  n_card="$(grep -n '^- card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n_fence="$(grep -n '^```' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$n_card" -lt "$n_fence" ] || fail "card ($n_card) not before fence ($n_fence)"
+
+  # Existing bullet preserved
+  local bc
+  bc="$(grep -c '^- btn' "$doc_dir/ux-design.md")"
+  [ "$bc" -eq 1 ] || fail "btn count $bc, expected 1"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2 — idempotent
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
+
+  # Sync 3 — still idempotent
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bt-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || fail "sync 3 changed the document"
+
+  # Still exactly one card after 3 syncs
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "after 3 syncs: card count $cc, expected 1"
+}
+
+@test "unclosed tilde fence: bullet sync inserts before the fence and is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/rf12-tilde"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- btn
+
+~~~
+tilde fenced content
+
+## 9. Next Section
+UX
+
+  local fence_before
+  fence_before="$(sed -n '/^~~~/,$p' "$doc_dir/ux-design.md")"
+
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-tilde-snap.json"
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  local fence_after
+  fence_after="$(sed -n '/^~~~/,$p' "$doc_dir/ux-design.md")"
+  [ "$fence_before" = "$fence_after" ] || \
+    fail "sync 1 modified fenced content"
+
+  local cc
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "sync 1: card count $cc, expected 1"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
+
+  # Sync 3
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-tilde-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || fail "sync 3 changed the document"
+
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "after 3 syncs: card count $cc, expected 1"
+}
+
+@test "unclosed backtick fence with info string: bullet sync inserts before the fence" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/rf12-info"
+  mkdir -p "$doc_dir"
+  # Use printf to avoid the heredoc delimiter looking like a fence closer
+  printf '%s\n' \
+    '---' 'template: ux-design' '---' '' \
+    '# UX Design' '' \
+    '## 8. Components & Design System' '' \
+    '- btn' '' \
+    '```python' 'def hello():' '    pass' '' \
+    '## 9. Next Section' \
+    > "$doc_dir/ux-design.md"
+
+  local fence_before
+  fence_before="$(sed -n '/^```python/,$p' "$doc_dir/ux-design.md")"
+
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-info-snap.json"
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed: $output"
+
+  local fence_after
+  fence_after="$(sed -n '/^```python/,$p' "$doc_dir/ux-design.md")"
+  [ "$fence_before" = "$fence_after" ] || \
+    fail "sync 1 modified fenced content"
+
+  local cc
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "sync 1: card count $cc, expected 1"
+
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Syncs 2 and 3 — idempotent
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
+
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-info-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 3 failed: $output"
+  local sha3
+  sha3="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha2" = "$sha3" ] || fail "sync 3 changed the document"
+
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md" || true)"
+  [ "$cc" -eq 1 ] || fail "after 3 syncs: card count $cc, expected 1"
+}
+
+@test "balanced fence in bullet section is unaffected by unclosed-fence fix" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Balanced fence: bullets go after the fence, before section-end.
+  local doc_dir="$TEST_TMP/rf12-balanced"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+- btn
+
+```
+balanced code
+```
+
+## 9. Next Section
+UX
+
+  jq -n '{"components":["btn","card"]}' > "$TEST_TMP/rf12-bal-snap.json"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bal-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed: $output"
+
+  # card appears exactly once, after the fence closer, before section-end
+  local cc
+  cc="$(grep -c '^- card' "$doc_dir/ux-design.md")"
+  [ "$cc" -eq 1 ] || fail "card count $cc, expected 1"
+
+  local n_closer n_card n_heading
+  n_closer="$(grep -n '^```$' "$doc_dir/ux-design.md" | tail -1 | cut -d: -f1)"
+  n_card="$(grep -n '^- card' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  n_heading="$(grep -n '^## 9' "$doc_dir/ux-design.md" | head -1 | cut -d: -f1)"
+  [ "$n_closer" -lt "$n_card" ] || fail "card ($n_card) not after fence closer ($n_closer)"
+  [ "$n_card" -lt "$n_heading" ] || fail "card ($n_card) not before heading ($n_heading)"
+
+  # Idempotent
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+  run "$SYNC_SCRIPT" "$TEST_TMP/rf12-bal-snap.json" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || fail "sync 2 changed the document"
+}
+
+
+# =========================================================================
 # Awk implementation parity — identical output across available awk variants
 # =========================================================================
 
