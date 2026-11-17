@@ -118,7 +118,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
   - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
   When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
-- After each reviewer completes, update the Review Gate table via `${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" --verdict {PASSED|FAILED} --sha "$_sha" --report <report-path>` where `_sha` is pre-computed from `STORY_WORKTREE_PATH` with the refusal guard (see Substep 2.3). Use the absolute plugin scripts path; this skill has no `scripts/` subdirectory — the scripts live in the global `plugins/gaia/scripts/` resolved via `${CLAUDE_PLUGIN_ROOT}`.
+- After each reviewer completes, update the Review Gate table via `review-gate.sh update` with `--sha "$_sha"` where `_sha` is computed in the SAME Bash snippet using the guarded `_wt_arg` / validation / refusal pattern (see the code blocks in Substep 2.3). Every gate write — per-gate, telemetry, consolidation rewrite, and dispatch-failed — MUST compute its own `_sha` from `{worktree}` in the same fenced block; reusing a `_sha` variable from an earlier Bash call is forbidden. Use the absolute plugin scripts path (`${CLAUDE_PLUGIN_ROOT}/scripts/`).
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
 - If `review-gate.sh` fails to update a row, log the failure and continue to the next reviewer.
 - If `review-skip-check.sh` returns malformed JSON (missing `skip` or `run` keys), HALT with a parse-error message identifying the failing script — do NOT silently treat all 6 as run (AC-EC3).
@@ -219,13 +219,13 @@ if [ -n "$_wt_arg" ]; then
 else
   _cp_wt="" _cp_key=""
   if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
-    _cp_key="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*story_key:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
-    _cp_wt="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*worktree_path:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+    _cp_key="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.story_key // empty' 2>/dev/null)" || _cp_key=""
+    _cp_wt="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.worktree_path // empty' 2>/dev/null)" || _cp_wt=""
   fi
   if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     STORY_WORKTREE_PATH="$_cp_wt"
   else
-    _wt_path="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
+    _wt_path="$(git -C "${PROJECT_PATH:-.}" worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
     if [ -n "$_wt_path" ]; then
       STORY_WORKTREE_PATH="$_wt_path"
     else
@@ -278,6 +278,36 @@ For each short_name in run:
      flags so the per-gate telemetry line records non-null timing:
 
      ```bash
+     _wt_arg="{worktree}"   # value of --worktree resolved from round-start step 1; empty when not available
+     unset STORY_WORKTREE_PATH
+     if [ -n "$_wt_arg" ]; then
+       [ -d "$_wt_arg" ] || { echo "--worktree path does not exist or is not a directory: $_wt_arg" >&2; exit 1; }
+       git -C "$_wt_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+         || { echo "--worktree path is not a git work tree: $_wt_arg" >&2; exit 1; }
+       _wt_branch="$(git -C "$_wt_arg" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+       case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "--worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+       STORY_WORKTREE_PATH="$_wt_arg"
+     else
+       _cp_wt="" _cp_key=""
+       if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
+         _cp_key="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.story_key // empty' 2>/dev/null)" || _cp_key=""
+         _cp_wt="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.worktree_path // empty' 2>/dev/null)" || _cp_wt=""
+       fi
+       if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+         STORY_WORKTREE_PATH="$_cp_wt"
+       else
+         _wt_path="$(git -C "${PROJECT_PATH:-.}" worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
+         if [ -n "$_wt_path" ]; then
+           STORY_WORKTREE_PATH="$_wt_path"
+         else
+           echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2
+           exit 1
+         fi
+       fi
+     fi
+     _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
+       && [ "${#_sha}" -eq 40 ] \
+       || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
      bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
        --verdict {verdict} --sha "$_sha" --report {report_path} \
        --started-at {gate_start_epoch_ms} \
@@ -296,9 +326,11 @@ For each short_name in run:
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
-     --report-missing-reason "dispatch-failed: <reason>" so the audit
-     trail captures the failure mode. The cap-and-continue rule (AC-EC7)
-     still applies — proceed to the next entry in run.
+     `--report-missing-reason "dispatch-failed: <reason>"` and `--sha "$_sha"`
+     (computed with the same guarded `_wt_arg` / validation / refusal pattern
+     from step 4 — the dispatch-failed write MUST NOT reuse a `_sha` from an
+     earlier Bash call). The cap-and-continue rule still applies — proceed to
+     the next entry in run.
 ```
 
 **The "Per-reviewer LLM judgment blocks" pattern from the legacy SKILL.md is RETIRED.** Inline self-judgment by the orchestrator is forbidden; the per-review skills are the single source of verdicts. If a per-review skill is missing or broken, that is a defect to file — NOT a license for the orchestrator to substitute its own judgment.
@@ -328,7 +360,7 @@ The consolidation steps are:
 
 1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {register_gate_name}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
 2. **Triage non-blocking entries.** Call `register-write.sh triage-nonblocking --story {key} --run-id {run_id}` to deterministically move non-blocking open entries to disposition `triage` with auto-derived owner and priority. Disagreement entries (mixed blocking ratings, no resolution) stay open.
-3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED` via `review-gate.sh update --sha "$_sha" --report <report-path>`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--sha "$_sha"`, `--report` and `--execution-evidence` for the gates that require them (see the reference table above).
+3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above). Every consolidation gate write MUST compute its own `_sha` from `{worktree}` using the same guarded `_wt_arg` / validation / `unset STORY_WORKTREE_PATH` pattern shown in the Substep 2.3 block — never reuse a `_sha` variable from an earlier Bash call.
 
    The per-gate analysis-results and execution-evidence paths live in `.gaia/state/review/<gate>/{story_key}/` (written by each gate's Phase 3A, not alongside the review report):
 

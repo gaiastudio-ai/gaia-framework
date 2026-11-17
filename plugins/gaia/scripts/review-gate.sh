@@ -1264,7 +1264,7 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
-  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_evidence=""
+  local sha_arg="" sha_given=0 carry_from="" carry_to="" carry_row="" carry_evidence=""
   # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
@@ -1325,7 +1325,7 @@ main() {
         ;;
       --sha)
         [ $# -ge 2 ] || die "--sha requires a value"
-        sha_arg="$2"; shift 2
+        sha_arg="$2"; sha_given=1; shift 2
         ;;
       --row)
         [ $# -ge 2 ] || die "--row requires a value"
@@ -1603,7 +1603,12 @@ main() {
       # Resolve the SHA for the Reviewed SHA column. Default to the
       # worktree HEAD when not explicitly provided; "none" outside a git
       # work tree. This preserves backward compatibility — existing callers
-      # that omit --sha get automatic HEAD binding.
+      # that omit --sha get automatic HEAD binding. An explicitly empty
+      # --sha (flag given with blank value) is refused — callers must
+      # either pass a real SHA or omit the flag entirely.
+      if [ "$sha_given" -eq 1 ] && [ -z "$sha_arg" ]; then
+        die "--sha was given with an empty value; pass a commit SHA or omit --sha to auto-bind HEAD"
+      fi
       local resolved_sha="$sha_arg"
       if [ -z "$resolved_sha" ]; then
         local pp="${PROJECT_PATH:-.}"

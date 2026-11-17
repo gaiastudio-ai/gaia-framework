@@ -466,13 +466,13 @@ if [ -n "$_wt_arg" ]; then
 else
   _cp_wt="" _cp_key=""
   if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
-    _cp_key="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*story_key:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
-    _cp_wt="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*worktree_path:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+    _cp_key="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.story_key // empty' 2>/dev/null)" || _cp_key=""
+    _cp_wt="$(printf '%s' "$_cp_raw" | jq -r '.key_variables.worktree_path // empty' 2>/dev/null)" || _cp_wt=""
   fi
   if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     STORY_WORKTREE_PATH="$_cp_wt"
   else
-    _wt_path="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
+    _wt_path="$(git -C "${PROJECT_PATH:-.}" worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
     if [ -n "$_wt_path" ]; then
       STORY_WORKTREE_PATH="$_wt_path"
     else
