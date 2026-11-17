@@ -129,7 +129,7 @@ EOF
   # No flat atdd-E20-S7*.md exists — only the nested file.
   run "$ATDD_GATE" "E20-S7"
   [ "$status" -eq 0 ]
-  echo "$output" | grep -F "epic-E20/E20-S7/atdd.md"
+  grep -F "epic-E20/E20-S7/atdd.md" <<<"$output"
 }
 
 @test "atdd-gate: high risk passes when nested atdd.md under stories/ legacy level is present" {
@@ -203,7 +203,7 @@ EOF
 # AC9 — gaia-atdd SKILL.md path and checkpoint structural assertions
 # ---------------------------------------------------------------------------
 
-@test "AC9: gaia-atdd SKILL.md has no stale stories/ segment in ATDD artifact path references" {
+@test "atdd-gate: gaia-atdd SKILL.md has no stale stories/ segment in ATDD artifact path references" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
   [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
   # Path references to the ATDD artifact should use the canonical per-story
@@ -219,7 +219,7 @@ EOF
     || { echo "stale stories/ segment in ATDD path reference:" >&2; echo "$hits" >&2; false; }
 }
 
-@test "AC9: every checkpoint prelude in gaia-atdd SKILL.md uses the resolver for test_file_path" {
+@test "atdd-gate: every checkpoint prelude in gaia-atdd SKILL.md uses the resolver for test_file_path" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
   [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
   # Each checkpoint prelude (write-checkpoint.sh lines) must use the resolver
@@ -228,7 +228,7 @@ EOF
   checkpoint_lines="$(grep 'write-checkpoint.sh.*gaia-atdd' "$skill")"
   [ -n "$checkpoint_lines" ] || fail "no checkpoint preludes found"
   # Every checkpoint line must contain the resolver call
-  flat_hits="$(echo "$checkpoint_lines" | grep -v 'resolve-test-artifact-per-story.sh' || true)"
+  flat_hits="$(grep -v 'resolve-test-artifact-per-story.sh' <<<"$checkpoint_lines" || true)"
   [ -z "$flat_hits" ] \
     || { echo "checkpoint prelude uses flat path instead of resolver:" >&2; echo "$flat_hits" >&2; false; }
   # Count: should be exactly 5 checkpoint preludes (Steps 1-5)
@@ -238,7 +238,7 @@ EOF
     || { echo "expected at least 5 checkpoint preludes, got $count" >&2; false; }
 }
 
-@test "AC9: gaia-atdd SKILL.md Step 5b uses --existing-only for the red-phase invocation" {
+@test "atdd-gate: gaia-atdd SKILL.md Step 5b uses --existing-only for the red-phase invocation" {
   local skill="$BATS_TEST_DIRNAME/../skills/gaia-atdd/SKILL.md"
   [ -f "$skill" ] || fail "gaia-atdd/SKILL.md not found"
   # Step 5b's run-red-phase invocation must use --existing-only (read path),
@@ -246,9 +246,9 @@ EOF
   local step5b_region
   step5b_region="$(awk '/### Step 5b/{found=1} found{print} found && /^### Step [^5]/{exit}' "$skill")"
   [ -n "$step5b_region" ] || fail "Step 5b section not found"
-  echo "$step5b_region" | grep -qF 'resolve-test-artifact-per-story.sh' \
+  grep -qF 'resolve-test-artifact-per-story.sh' <<<"$step5b_region" \
     || fail "Step 5b does not reference the resolver"
-  echo "$step5b_region" | grep -qF -- '--existing-only' \
+  grep -qF -- '--existing-only' <<<"$step5b_region" \
     || fail "Step 5b resolver call does not use --existing-only"
 }
 

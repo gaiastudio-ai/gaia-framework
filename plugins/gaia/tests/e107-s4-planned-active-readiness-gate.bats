@@ -190,7 +190,8 @@ all_ready() {
   rm -f "$TA/atdd-E900-S2.md"                      # S2 missing ATDD
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
   [ "$status" -ne 0 ]
-  grep -Eq 'E900-S3' <<<"$output" && echo "$output" | grep -Eq 'E900-S2' \
+  local _hr_key2="E900-S2"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  grep -Eq 'E900-S3' <<<"$output" && grep -Eq "$_hr_key2" <<<"$output" \
     || { echo "multi-failure message should name BOTH E900-S3 (unmaterialized) and E900-S2 (missing ATDD), got:" >&2; echo "$output" >&2; false; }
 }
 
