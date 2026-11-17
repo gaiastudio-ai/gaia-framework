@@ -231,7 +231,7 @@ EOF
   flat_hits="$(grep -v 'resolve-test-artifact-per-story.sh' <<<"$checkpoint_lines" || true)"
   [ -z "$flat_hits" ] \
     || { echo "checkpoint prelude uses flat path instead of resolver:" >&2; echo "$flat_hits" >&2; false; }
-  # Count: should be exactly 5 checkpoint preludes (Steps 1-5)
+  # Count: should be at least 5 checkpoint preludes (Steps 1-5)
   local count
   count="$(echo "$checkpoint_lines" | wc -l)"
   [ "$count" -ge 5 ] \
@@ -253,7 +253,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# RF-1 — resolver missing: gate warns on stderr, falls back to exact names
+# Resolver missing: gate warns on stderr, falls back to exact names
 # ---------------------------------------------------------------------------
 
 # Build a fixture plugin tree mirroring atdd-gate.sh's layout.
