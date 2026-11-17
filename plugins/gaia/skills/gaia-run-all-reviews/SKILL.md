@@ -98,6 +98,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-run-all-reviews [story-key] [--force] [--bind-head <sha>]".
 - The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
+- **Story worktree delivery.** The code tree resolved during the round-start sequence (step 1 of the round-start) is passed to every dispatched reviewer as `--worktree {code_tree}` in the skill args string. The orchestrator's own gate writes also use this resolved path to compute `_sha`. `--worktree` must be the LAST option in the args string; its value is the remainder of the string (supports paths with spaces).
 - The story MUST be in `review` status. If not, fail with "story must be in review status before running reviews".
 - `--force` and `--bind-head <sha>` are the ONLY supported flags. `--bind-head` re-runs every PASSED row bound to a commit other than `<sha>`. Any other flag (e.g., `--frce`) MUST be rejected with a usage error and a non-zero exit (AC-EC2).
 - Reviews MUST run in this exact canonical order — never reordered, never parallel:
@@ -215,7 +216,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --g
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
 ```
 
-The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator to the story's worktree). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
+The `--sha` is obtained from the story worktree resolved during the round-start sequence. Set `STORY_WORKTREE_PATH` to the resolved code tree path before computing `_sha`. The same path is passed to each dispatched reviewer via `--worktree {code_tree}` in the skill args string. If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 For test-execution gates (`QA Tests`, `Test Automation`, `Test Review`), `--execution-evidence` is REQUIRED in addition to `--report` — the gate will refuse the verdict otherwise. The dispatched skill is responsible for producing both files; the orchestrator only asserts their existence.
 
@@ -224,7 +225,7 @@ Skill-dispatch contract:
 ```
 For each short_name in run:
   1. Invoke via the Skill tool:
-       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id} --packet {packet_path}"})
+       Skill({skill: "gaia:<short-name-mapped-to-canonical-skill>", args: "{story_key} --run-id {run_id} --packet {packet_path} --worktree {code_tree}"})
      Canonical short-name → skill mapping (one canonical name per skill — the listed name is authoritative; deprecated_aliases live on the skill's own frontmatter):
        code-review     → gaia:gaia-code-review
        qa-tests        → gaia:gaia-review-qa

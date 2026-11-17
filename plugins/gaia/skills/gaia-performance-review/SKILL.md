@@ -31,6 +31,7 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-perf-deepdive [story-key]".
 - The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
+- **Story worktree (optional input).** When `--worktree <path>` is passed (by the orchestrator via `/gaia-run-all-reviews`), set `STORY_WORKTREE_PATH` to its value and use it for `--sha` in the `review-gate.sh update` call. When running standalone without `--worktree`, the gate-write block resolves the worktree deterministically (see the gate-write section below). `--worktree` must be the LAST option in the args string; its value is the remainder of the string (supports paths with spaces).
 - The story MUST be in `review` status. If not, fail with "story must be in review status before performance review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
@@ -328,9 +329,27 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
-**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. The `--sha` is obtained from `STORY_WORKTREE_PATH` (set by the orchestrator to the story's worktree). If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
+**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. When `--worktree <path>` was passed by the orchestrator, `STORY_WORKTREE_PATH` is set to that value. When running standalone (no `--worktree`), resolve the worktree deterministically: (1) the dev-story checkpoint `worktree_path` for this story key, (2) the single `git worktree list --porcelain` entry whose branch is `refs/heads/feat/{story_key}-…`, (3) refuse with a clear message. If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit after resolution, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 ```bash
+if [ -z "${STORY_WORKTREE_PATH:-}" ]; then
+  _cp_wt="" _cp_key=""
+  if _cp_raw="$("${CLAUDE_PLUGIN_ROOT}/scripts/resume-checkpoint.sh" read --skill gaia-dev-story --latest 2>/dev/null)"; then
+    _cp_key="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*story_key:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+    _cp_wt="$(printf '%s' "$_cp_raw" | sed -n 's/^[[:space:]]*worktree_path:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}/\1/p' | head -1)"
+  fi
+  if [ "$_cp_key" = "{story_key}" ] && [ -d "$_cp_wt" ] && git -C "$_cp_wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    STORY_WORKTREE_PATH="$_cp_wt"
+  else
+    _wt_path="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / { wt=substr($0,10) } /branch refs\/heads\/feat\/{story_key}-/ { print wt; exit }')"
+    if [ -n "$_wt_path" ]; then
+      STORY_WORKTREE_PATH="$_wt_path"
+    else
+      echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2
+      exit 1
+    fi
+  fi
+fi
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }

@@ -96,6 +96,40 @@ if [ -n "$_story_key" ] && [ -x "$RESOLVE_STORY" ]; then
   log "story file resolved: $_resolved"
 fi
 
+# ---------- 2b. Worktree validation ----------
+# Parse --worktree from the args. It must be the LAST option: its value is
+# everything after "--worktree " to the end of the string (supports paths
+# with spaces). If given, validate the worktree:
+#   (1) directory exists
+#   (2) is inside a git work tree
+#   (3) current branch starts with feat/{story_key}-
+# If not given, no validation — the skill body or gate-write block resolves
+# the worktree standalone.
+_worktree_path=""
+case "$_raw_args" in
+  *--worktree\ *)
+    _worktree_path="${_raw_args#*--worktree }"
+    ;;
+esac
+if [ -n "$_worktree_path" ]; then
+  if [ ! -d "$_worktree_path" ]; then
+    die "--worktree path does not exist or is not a directory: $_worktree_path"
+  fi
+  if ! git -C "$_worktree_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "--worktree path is not a git work tree: $_worktree_path"
+  fi
+  if [ -n "$_story_key" ]; then
+    _wt_branch="$(git -C "$_worktree_path" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    case "$_wt_branch" in
+      feat/"${_story_key}"-*) ;;  # matches — OK
+      *)
+        die "--worktree branch '${_wt_branch}' does not match expected feat/${_story_key}-*"
+        ;;
+    esac
+  fi
+  log "worktree validated: $_worktree_path"
+fi
+
 # ---------- 3. Load checkpoint state ----------
 if [ -x "$CHECKPOINT" ]; then
   if "$CHECKPOINT" read --workflow "$WORKFLOW_NAME" >/dev/null 2>&1; then

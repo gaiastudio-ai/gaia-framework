@@ -3810,3 +3810,324 @@ SNIP
   captured="$(cat "$tmproot/captured-sha")"
   [ "$captured" = "$expected_sha" ]
 }
+
+# ---------------------------------------------------------------------------
+# Worktree delivery — setup.sh parses --worktree
+# ---------------------------------------------------------------------------
+
+# Helper: seed a fixture git repo on a feat/ branch for a given story key.
+_seed_worktree_fixture() {
+  local dir="$1" key="$2"
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git -C "$dir" config user.email "test@test.local"
+  git -C "$dir" config user.name "Test"
+  printf 'init\n' > "$dir/README.md"
+  git -C "$dir" add README.md
+  git -C "$dir" commit -q -m "init"
+  git -C "$dir" checkout -q -b "feat/${key}-worktree-test"
+  printf 'wt content\n' > "$dir/work.txt"
+  git -C "$dir" add work.txt
+  git -C "$dir" commit -q -m "worktree commit"
+}
+
+# (a) orchestrated: setup.sh with --worktree <valid fixture worktree> → 0
+@test "setup.sh validates --worktree and accepts a valid story worktree" {
+  local _K="E900-S920" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_valid"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Worktree Test"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local wt="$tmproot/worktree"
+  _seed_worktree_fixture "$wt" "$_K"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id r --packet /tmp/p.md --worktree $wt" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+  # Must confirm the worktree was validated (not silently ignored)
+  [[ "$output" == *"worktree validated"* ]] || [[ "$output" == *"story worktree:"* ]]
+}
+
+# (b) setup.sh accepts --worktree with spaces in the path
+@test "setup.sh validates --worktree with spaces in the path" {
+  local _K="E900-S921" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_spaces"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Worktree Spaces Test"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local wt="$tmproot/path with spaces/worktree"
+  _seed_worktree_fixture "$wt" "$_K"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  # --worktree is LAST, its value is the remainder of the string (supports spaces)
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id r --packet /tmp/p.md --worktree $wt" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"worktree validated"* ]] || [[ "$output" == *"story worktree:"* ]]
+}
+
+# (c) --worktree pointing at a missing dir → non-zero
+@test "setup.sh refuses --worktree pointing at a missing directory" {
+  local _K="E900-S922" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_missing"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Worktree Missing Test"
+status: review
+---
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id r --worktree $tmproot/does-not-exist" \
+    bash "$setup_sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not exist"* ]] || [[ "$output" == *"not a directory"* ]]
+}
+
+# (c) --worktree pointing at a non-git dir → non-zero
+@test "setup.sh refuses --worktree pointing at a non-git directory" {
+  local _K="E900-S923" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_nongit"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Worktree NonGit Test"
+status: review
+---
+STORY
+  mkdir -p "$tmproot/plain-dir"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id r --worktree $tmproot/plain-dir" \
+    bash "$setup_sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a git"* ]] || [[ "$output" == *"not a work tree"* ]]
+}
+
+# (c) --worktree on a branch not matching the story key → non-zero
+@test "setup.sh refuses --worktree on a branch not matching the story key" {
+  local _K="E900-S924" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local _OTHER="E900-S999" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_wrongbranch"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Worktree WrongBranch Test"
+status: review
+---
+STORY
+  # Worktree is on a feat/ branch for a DIFFERENT story key
+  local wt="$tmproot/wt-other"
+  _seed_worktree_fixture "$wt" "$_OTHER"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id r --worktree $wt" \
+    bash "$setup_sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"branch"* ]] || [[ "$output" == *"does not match"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Standalone worktree resolution from SKILL.md gate-write block
+# ---------------------------------------------------------------------------
+
+# Helper: extract the first bash code block after "Gate row update" in a SKILL.md.
+_extract_gate_block() {
+  local skill_md="$1" story_key="$2"
+  awk '
+    /[Gg]ate row update/ { found = 1 }
+    found && /^```bash$/ { in_b = 1; next }
+    found && in_b && /^```$/ { exit }
+    found && in_b { print }
+  ' "$skill_md" | sed "s/{story_key}/$story_key/g" \
+    | sed 's/{PASSED|FAILED}/PASSED/g'
+}
+
+# (d) standalone: worktree list entry matches → records that worktree HEAD
+@test "gate-write snippet resolves worktree standalone via worktree list" {
+  local _K="E900-S930" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_standalone"
+  mkdir -p "$tmproot"
+
+  # Create main repo
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+
+  # Add a linked worktree on the story's branch
+  git -C "$tmproot/main" worktree add "$tmproot/wt" -b "feat/${_K}-standalone-test" 2>/dev/null
+  printf 'wt content\n' > "$tmproot/wt/file.txt"
+  git -C "$tmproot/wt" add file.txt
+  git -C "$tmproot/wt" commit -q -m "worktree commit"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
+
+  # Stub resume-checkpoint.sh → no checkpoint (exit 1)
+  mkdir -p "$tmproot/fake-plugin/scripts"
+  cat > "$tmproot/fake-plugin/scripts/resume-checkpoint.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+  chmod +x "$tmproot/fake-plugin/scripts/resume-checkpoint.sh"
+
+  # Stub review-gate.sh → capture --sha
+  local sha_capture="$tmproot/captured-sha"
+  cat > "$tmproot/fake-plugin/scripts/review-gate.sh" <<STUB
+#!/usr/bin/env bash
+while [ \$# -gt 0 ]; do
+  case "\$1" in --sha) shift; printf '%s' "\$1" > "${sha_capture}"; shift ;; *) shift ;; esac
+done
+exit 0
+STUB
+  chmod +x "$tmproot/fake-plugin/scripts/review-gate.sh"
+
+  # Extract the gate-write block from the SKILL.md
+  local gate_code
+  gate_code="$(_extract_gate_block "$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md" "$_K")"
+  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output"; return 1; }
+
+  # Build a runnable script from the extracted block
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf '%s\n' "$gate_code"
+  } > "$tmproot/gate-test.sh"
+  chmod +x "$tmproot/gate-test.sh"
+
+  # Run from the main repo (so git worktree list finds the linked worktree)
+  cd "$tmproot/main"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run bash "$tmproot/gate-test.sh"
+  [ "$status" -eq 0 ]
+  [ -f "$sha_capture" ]
+  local captured
+  captured="$(cat "$sha_capture")"
+  [ "$captured" = "$expected_sha" ]
+}
+
+# (d) standalone: no matching worktree entry → refuses, no gate write
+@test "gate-write snippet refuses standalone when no matching worktree exists" {
+  local _K="E900-S931" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/wt_standalone_none"
+  mkdir -p "$tmproot"
+
+  # Create a git repo with NO worktree matching the story key
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+
+  # Stub resume-checkpoint.sh → no checkpoint
+  mkdir -p "$tmproot/fake-plugin/scripts"
+  cat > "$tmproot/fake-plugin/scripts/resume-checkpoint.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+  chmod +x "$tmproot/fake-plugin/scripts/resume-checkpoint.sh"
+
+  # Stub review-gate.sh → capture --sha (should NOT be called)
+  local sha_capture="$tmproot/captured-sha"
+  cat > "$tmproot/fake-plugin/scripts/review-gate.sh" <<STUB
+#!/usr/bin/env bash
+while [ \$# -gt 0 ]; do
+  case "\$1" in --sha) shift; printf '%s' "\$1" > "${sha_capture}"; shift ;; *) shift ;; esac
+done
+exit 0
+STUB
+  chmod +x "$tmproot/fake-plugin/scripts/review-gate.sh"
+
+  # Extract the gate-write block
+  local gate_code
+  gate_code="$(_extract_gate_block "$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md" "$_K")"
+  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output"; return 1; }
+
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf '%s\n' "$gate_code"
+  } > "$tmproot/gate-test.sh"
+  chmod +x "$tmproot/gate-test.sh"
+
+  cd "$tmproot/main"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run bash "$tmproot/gate-test.sh"
+  [ "$status" -ne 0 ]
+  # Must NOT have called review-gate.sh (no SHA captured)
+  [ ! -f "$sha_capture" ]
+  # Must emit the STANDALONE RESOLUTION refusal (not the generic :? message).
+  # The proper message names the story key and says --worktree or worktree list.
+  [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Prose: dispatch contract and input documentation
+# ---------------------------------------------------------------------------
+
+# (e) run-all-reviews dispatch contract includes --worktree
+@test "run-all-reviews dispatch contract includes --worktree in args template" {
+  local skill_md="${PLUGIN_ROOT}/skills/gaia-run-all-reviews/SKILL.md"
+  # The Skill-dispatch contract args template must include --worktree
+  grep -q 'args:.*--worktree\|--worktree.*{code_tree}\|--worktree.*code.tree' "$skill_md"
+}
+
+# (e) each gate-writing skill documents --worktree
+@test "each gate-writing skill documents --worktree as an accepted argument" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    if ! grep -q '\-\-worktree' "$skill_md"; then
+      echo "FAIL: $skill does not document --worktree"
+      return 1
+    fi
+  done
+}
