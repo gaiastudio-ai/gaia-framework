@@ -1,18 +1,23 @@
 #!/usr/bin/env bats
 # atdd-gate.bats — coverage for skills/gaia-dev-story/scripts/atdd-gate.sh
 #
-# Story: E55-S8 — Auto-reviews YOLO-only + helper scripts + bats coverage
-#
-# The atdd-gate script ships with E55-S5 (already landed). This file is
-# the bats coverage E55-S8 owns. We exercise the full risk matrix:
+# Exercises the full risk matrix for the dev-story Step 2b ATDD gate:
 #   - medium / low / unset risk: pass unconditionally
-#   - high risk + epic-glob ATDD file present: pass
-#   - high risk + story-glob ATDD file present: pass
-#   - high risk + no ATDD file: HALT (exit 1) with expected-glob message
+#   - high risk + exact flat atdd-{key}.md present: pass
+#   - high risk + exact flat atdd-{epic}.md present: pass (epic-level)
+#   - high risk + nested per-story atdd.md present: pass (resolver)
+#   - high risk + suffix-named flat file present: HALT (exact match only)
+#   - high risk + sibling flat file present: HALT (no false-pass)
+#   - high risk + no ATDD file: HALT (exit 1) with expected paths
 #   - invalid story_key shape: usage error (exit 2)
 #   - missing story file: usage error (exit 2)
 
 load 'test_helper.bash'
+
+setup_file() {
+  _litter_snapshot_before
+  printf 'BASH_VERSION=%s\n' "$BASH_VERSION" >&3
+}
 
 setup() {
   common_setup
@@ -67,38 +72,58 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# High risk — present (epic glob)
+# High risk — suffix-named flat files must NOT satisfy the gate (exact match)
 # ---------------------------------------------------------------------------
 
-@test "atdd-gate: high risk passes when atdd-{epic}*.md is present" {
+@test "atdd-gate: high risk rejects suffix-named epic ATDD file" {
   _write_story "E20-S5" "high"
   : > "docs/test-artifacts/atdd-E20-coverage.md"
   run "$ATDD_GATE" "E20-S5"
+  [ "$status" -eq 1 ] \
+    || { echo "suffix-named epic file should not satisfy the gate, got exit $status" >&2; echo "$output" >&2; false; }
+}
+
+@test "atdd-gate: high risk rejects suffix-named story ATDD file" {
+  _write_story "E20-S6" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  : > "docs/test-artifacts/atdd-E20-S6-scenarios.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run "$ATDD_GATE" "E20-S6"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 1 ] \
+    || { echo "suffix-named story file should not satisfy the gate, got exit $status" >&2; echo "$output" >&2; false; }
+}
+
+# ---------------------------------------------------------------------------
+# High risk — exact flat atdd-{key}.md present: pass (backward compat)
+# ---------------------------------------------------------------------------
+
+@test "atdd-gate: high risk passes when exact flat atdd-{key}.md is present" {
+  _write_story "E20-S5" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  : > "docs/test-artifacts/atdd-E20-S5.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run "$ATDD_GATE" "E20-S5"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# High risk — present (story glob)
+# High risk — exact flat atdd-{epic}.md present: pass (epic-level shared)
 # ---------------------------------------------------------------------------
 
-@test "atdd-gate: high risk passes when atdd-{story}*.md is present" {
-  _write_story "E20-S6" "high"
-  : > "docs/test-artifacts/atdd-E20-S6-scenarios.md"
-  run "$ATDD_GATE" "E20-S6"
+@test "atdd-gate: high risk passes when exact flat atdd-{epic}.md is present" {
+  _write_story "E20-S9" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  : > "docs/test-artifacts/atdd-E20.md"
+  run "$ATDD_GATE" "E20-S9"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
   [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# High risk — present at the canonical NESTED per-story home (issue #1108)
-# /gaia-atdd writes test-artifacts/epic-{slug}/{key}-{slug}/atdd.md via the
-# resolver; the gate must accept it, not only the legacy flat globs.
+# High risk — present at the canonical NESTED per-story home
+# The resolver writes test-artifacts/epic-{EPIC}/{KEY}/atdd.md;
+# the gate must accept it, not only the legacy flat paths.
 # ---------------------------------------------------------------------------
 
-@test "atdd-gate: high risk passes when nested per-story atdd.md is present (issue #1108)" {
+@test "atdd-gate: high risk passes when nested per-story atdd.md is present" {
   _write_story "E20-S7" "high"
   # The resolver's nested home for a story with no per-story dir is
-  # test-artifacts/epic-{EPIC}/{KEY}/atdd.md (stories/ level dropped per
-  # AF-2026-06-01-1). Create it where /gaia-atdd would write.
+  # test-artifacts/epic-{EPIC}/{KEY}/atdd.md (stories/ level dropped).
+  # Create it where /gaia-atdd would write.
   mkdir -p "docs/test-artifacts/epic-E20/E20-S7"
   : > "docs/test-artifacts/epic-E20/E20-S7/atdd.md"
   # No flat atdd-E20-S7*.md exists — only the nested file.
@@ -107,7 +132,7 @@ EOF
   echo "$output" | grep -F "epic-E20/E20-S7/atdd.md"
 }
 
-@test "atdd-gate: high risk passes when nested atdd.md under stories/ legacy level is present (issue #1108)" {
+@test "atdd-gate: high risk passes when nested atdd.md under stories/ legacy level is present" {
   _write_story "E20-S8" "high"
   # Legacy nested form with the stories/ middle level (read-compat fallback).
   mkdir -p "docs/test-artifacts/epic-E20/stories/E20-S8"
@@ -117,16 +142,42 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# High risk — sibling false-pass blocked (key-prefix boundary)
+# ---------------------------------------------------------------------------
+
+@test "atdd-gate: sibling flat file does not false-pass for another story" {
+  _write_story "E20-S5" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  # Sibling E20-S50 has a flat ATDD file; E20-S5 has none.  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  : > "docs/test-artifacts/atdd-E20-S50.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run "$ATDD_GATE" "E20-S5"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 1 ] \
+    || { echo "sibling file should not satisfy the gate, got exit $status" >&2; echo "$output" >&2; false; }
+}
+
+@test "atdd-gate: key-prefix boundary prevents sibling from satisfying another story" {
+  _write_story "E20-S5" "high"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  # Both a sibling's flat file and an epic-suffixed file present — neither exact.
+  : > "docs/test-artifacts/atdd-E20-S50.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  : > "docs/test-artifacts/atdd-E20-coverage.md"
+  run "$ATDD_GATE" "E20-S5"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 1 ] \
+    || { echo "key-prefix boundary violated, got exit $status" >&2; echo "$output" >&2; false; }
+}
+
+# ---------------------------------------------------------------------------
 # High risk — missing -> HALT
 # ---------------------------------------------------------------------------
 
-@test "atdd-gate: high risk with no ATDD file HALTs (exit 1) and names globs" {
+@test "atdd-gate: high risk with no ATDD file HALTs (exit 1) and names expected paths" {
   _write_story "E30-S1" "high"
   run "$ATDD_GATE" "E30-S1"
   [ "$status" -eq 1 ]
   [[ "$output" == *"HALT"* ]]
   [[ "$output" == *"atdd-E30"* ]]
   [[ "$output" == *"atdd-E30-S1"* ]]
+  # HALT text must not contain residual glob syntax
+  [[ "$output" != *'*'* ]] \
+    || { echo "HALT message should not contain glob wildcards, got:" >&2; echo "$output" >&2; false; }
 }
 
 # ---------------------------------------------------------------------------

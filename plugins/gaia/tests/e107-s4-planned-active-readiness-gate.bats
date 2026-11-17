@@ -1,18 +1,21 @@
 #!/usr/bin/env bats
-# e107-s4-planned-active-readiness-gate.bats — E107-S4
+# e107-s4-planned-active-readiness-gate.bats
 #
-# planned-active-gate.sh is the HARD GATE on the E107-S1 planned→active edge.
+# planned-active-gate.sh is the HARD GATE on the planned->active sprint edge.
 # It refuses activation unless EVERY sprint story has a materialized file AND is
-# ready-for-dev, every ATDD-required (high-risk) story has an ATDD artifact, and
-# the elaborated batch passes E106-S3's agent-native capacity check
-# (sm-capacity-check.sh, parsed via --json .flagged per Val W1 — NOT exit code).
-# The refusal message names EXACTLY which stories fail which check.
+# ready-for-dev, every high-risk story has an ATDD artifact, and the elaborated
+# batch passes the agent-native capacity check (sm-capacity-check.sh, parsed
+# via --json .flagged — NOT exit code). The refusal message names EXACTLY which
+# stories fail which check.
 #
 # ALL tests build a temp impl-root + test-artifacts; they NEVER touch the live tree.
-#
-# Maps to AC1-AC5, AC-INT1. Refs: ADR-128, E107-S1/S3, E106-S3, FR-560, NFR-92.
 
 load 'test_helper.bash'
+
+setup_file() {
+  _litter_snapshot_before
+  printf 'BASH_VERSION=%s\n' "$BASH_VERSION" >&3
+}
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -46,6 +49,14 @@ EOF
 
 mk_atdd() { printf '# atdd %s\n' "$1" > "$TA/atdd-$1.md"; }
 
+# create a nested per-story ATDD at the resolver's canonical path
+mk_atdd_nested() { # $1=key
+  local key="$1"
+  local d="$TA/epic-E900-fixture/${key}-slug"
+  mkdir -p "$d"
+  printf '# atdd %s (nested)\n' "$key" > "$d/atdd.md"
+}
+
 # the three sprint stories all materialized + ready-for-dev (E900-S2 is high-risk)
 all_ready() {
   mk_story E900-S1 ready-for-dev low
@@ -54,7 +65,7 @@ all_ready() {
   mk_atdd E900-S2   # the high-risk story has its ATDD
 }
 
-# ---------- AC1 / AC2 / TS1: all-ready (materialized + ready + ATDD) passes ----------
+# ---------- all-ready (materialized + ready + ATDD) passes ----------
 
 @test "gate PASSES when all stories are materialized, ready-for-dev, and ATDD'd" {
   all_ready
@@ -63,9 +74,9 @@ all_ready() {
     || { echo "all-ready sprint should pass the gate, got $status: $output" >&2; false; }
 }
 
-# ---------- AC1 / TS2: an unmaterialized story blocks ----------
+# ---------- an unmaterialized story blocks ----------
 
-@test "TS2/: an unmaterialized story REFUSES activation and is named" {
+@test "an unmaterialized story REFUSES activation and is named" {
   all_ready
   rm -rf "$IMPL/epic-E900-fixture/E900-S3-slug"   # remove S3's file
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -76,7 +87,7 @@ all_ready() {
   grep -Eiq 'unmaterialized|no file|missing file' <<<"$output"
 }
 
-# ---------- AC1 / TS2: a not-ready story blocks ----------
+# ---------- a not-ready story blocks ----------
 
 @test "a not-ready (in-progress) story REFUSES activation and is named" {
   all_ready
@@ -88,9 +99,9 @@ all_ready() {
   grep -Eiq 'not.ready|not ready-for-dev|in-progress' <<<"$output"
 }
 
-# ---------- AC2 / TS3: a high-risk story missing ATDD blocks ----------
+# ---------- a high-risk story missing ATDD blocks ----------
 
-@test "TS3/: a high-risk story missing its ATDD artifact REFUSES activation and is named" {
+@test "a high-risk story missing its ATDD artifact REFUSES activation and is named" {
   all_ready
   rm -f "$TA/atdd-E900-S2.md"   # remove the high-risk story's ATDD
   run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
@@ -109,7 +120,58 @@ all_ready() {
     || { echo "low-risk stories should not require ATDD, got $status: $output" >&2; false; }
 }
 
-# ---------- AC3 / TS4: agent-native capacity overflow blocks ----------
+# ---------- nested ATDD discovered via resolver ----------
+
+@test "nested per-story ATDD at resolver canonical path satisfies the gate" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"   # remove the flat ATDD  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  mk_atdd_nested E900-S2         # create nested ATDD at resolver path  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 0 ] \
+    || { echo "nested per-story ATDD should satisfy the gate, got $status: $output" >&2; false; }
+}
+
+# ---------- epic-level ATDD accepted as shared coverage ----------
+
+@test "epic-level atdd-{epic}.md accepted when no per-story ATDD exists" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"       # remove per-story ATDD  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  printf '# epic ATDD\n' > "$TA/atdd-E900.md"   # epic-level exact file
+  run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 0 ] \
+    || { echo "epic-level ATDD should satisfy the gate, got $status: $output" >&2; false; }
+}
+
+# ---------- sibling false-pass blocked ----------
+
+@test "sibling flat ATDD file does not false-pass for a story with no ATDD" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"       # remove the high-risk story's ATDD  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  # low-risk story with a flat ATDD (should not satisfy the high-risk story)
+  printf '# atdd fixture\n' > "$TA/atdd-E900-S1.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 2 ] \
+    || { echo "sibling flat file should not satisfy the high-risk story, got exit $status" >&2; echo "$output" >&2; false; }
+  local _hr_key="E900-S2"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  grep -Eq "$_hr_key" <<<"$output" \
+    || { echo "refusal should name the high-risk story, got:" >&2; echo "$output" >&2; false; }
+}
+
+# ---------- key-prefix boundary guard ----------
+
+@test "key-prefix boundary: sibling prefix-collision file does not satisfy the high-risk story" {
+  all_ready
+  rm -f "$TA/atdd-E900-S2.md"       # remove the high-risk story's ATDD  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  printf '# atdd fixture\n' > "$TA/atdd-E900-S20.md"   # prefix collision  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  run bash "$GATE" --sprint-yaml "$SPRINT_YAML" --impl-root "$IMPL" --test-artifacts "$TA"
+  [ "$status" -eq 2 ] \
+    || { echo "prefix-collision file should not satisfy the high-risk story, got exit $status" >&2; echo "$output" >&2; false; }
+  local _hr_key="E900-S2"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  grep -Eq "$_hr_key" <<<"$output" \
+    || { echo "refusal should name the high-risk story in missing_atdd, got:" >&2; echo "$output" >&2; false; }
+}
+
+# ---------- agent-native capacity overflow blocks ----------
 
 @test "an agent-native capacity overflow REFUSES activation (sm-capacity-check via .flagged)" {
   all_ready
@@ -120,7 +182,7 @@ all_ready() {
   grep -Eiq 'capacity|coherence|overflow' <<<"$output"
 }
 
-# ---------- AC4: multi-failure message names each failing story ----------
+# ---------- multi-failure message names each failing story ----------
 
 @test "a multi-failure gate names each failing story per check" {
   all_ready
@@ -145,7 +207,7 @@ all_ready() {
   grep -Eiq 'planned|active|readiness|gate' <<<"$output"
 }
 
-# ---------- AC-INT1 / TS5: SKILL.md documents the gate-before-activate hook ----------
+# ---------- SKILL.md documents the gate-before-activate hook ----------
 
 @test "sprint-plan SKILL.md documents the planned->active gate before the activate transition" {
   SKILL="$REPO_ROOT/plugins/gaia/skills/gaia-sprint-plan/SKILL.md"

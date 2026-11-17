@@ -296,7 +296,7 @@ users with stale plugins do not break mid-upgrade. It will be removed in v1.132.
 ### Step 2b -- ATDD Gate (high-risk stories only)
 
 - Run `${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/atdd-gate.sh {story_key}`.
-- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file matching `atdd-{epic_key}*.md` OR `atdd-{story_key}*.md` under `.gaia/artifacts/test-artifacts/`. For `medium`, `low`, or unset risk it exits 0 unconditionally.
+- The script reads the story's `risk` frontmatter field (canonical) — `risk_level` is a longhand alias for the same semantic field. If `risk: high`, the script requires at least one ATDD scenarios file: first via `resolve-test-artifact-per-story.sh atdd {story_key} --existing-only` (nested canonical or legacy flat per-story), then exact flat `atdd-{story_key}.md`, then exact epic-level `atdd-{epic_key}.md`. No prefix globs — exact names only. For `medium`, `low`, or unset risk it exits 0 unconditionally.
 - On non-zero exit (high-risk story, no ATDD file): HALT with the script's stderr message naming the expected paths under `.gaia/artifacts/test-artifacts/`. Direct the user to `/gaia-atdd {story_key}` to generate the scenarios file before re-running `/gaia-dev-story`.
 - On exit 0: proceed to Step 3.
 - **Sequencing trade-off:** Step 2b sits AFTER Step 2 (status is already `in-progress`) but BEFORE Step 3 (no feature branch yet). Halting at 2b leaves the story status updated but no branch created — the user reverts status manually (or re-runs /gaia-dev-story after producing the ATDD file) to recover.
