@@ -53,10 +53,19 @@ done <<<"$config_output"
 
 # ---------- 2. Story resolution fail-fast ----------
 # Resolve the story key from $1 (bang-line positional) or $ARGUMENTS
-# (dev-story defensive env var). When no key is supplied, resolution is
-# deferred to the skill body — setup exits 0 for backward compatibility.
+# (dev-story defensive env var). Both may carry trailing flags
+# (e.g. "--run-id round-x --packet /tmp/p.md") that belong to the skill
+# body, not to setup. Extract only the first whitespace-separated token
+# and accept it as a key only when it matches the canonical story-key
+# shape. When no key is found, resolution is deferred to the skill body.
 RESOLVE_STORY="$PLUGIN_SCRIPTS_DIR/resolve-story-file.sh"
-_story_key="${1:-${ARGUMENTS:-}}"
+_raw_args="${1:-${ARGUMENTS:-}}"
+_first_token="${_raw_args%% *}"
+_story_key=""
+# Accept as a story key only if it looks like one (E<n>-S<n>).
+case "$_first_token" in
+  E[0-9]*-S[0-9]*) _story_key="$_first_token" ;;
+esac
 if [ -n "$_story_key" ] && [ -x "$RESOLVE_STORY" ]; then
   _resolve_errf="${TMPDIR:-/tmp}/gaia-setup-resolve-$$"
   _resolved=""

@@ -3448,3 +3448,88 @@ STORY
     return 1
   fi
 }
+
+# ---------------------------------------------------------------------------
+# Multi-token ARGUMENTS / extra positional args — setup.sh key extraction
+# ---------------------------------------------------------------------------
+
+# (a) ARGUMENTS with extra flags + matching nested fixture → exit 0
+@test "code-review setup.sh handles multi-token ARGUMENTS with matching story" {
+  local _K="E900-S914" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/multiarg_a"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Multi-Arg Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id round-x --packet /tmp/p.md" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+}
+
+# (b) positional $1 = key plus extra positional args → exit 0
+@test "code-review setup.sh handles extra positional args after story key" {
+  local _K="E900-S915" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/multiarg_b"
+  _seed_setup_fixture "$tmproot"
+  local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
+  mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
+  cat > "$impl/epic-E900-fixture/${_K}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${_K}"
+title: "Extra Args Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+STORY
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    bash "$setup_sh" "$_K" "--run-id" "round-x" "--packet" "/tmp/p.md"
+  [ "$status" -eq 0 ]
+}
+
+# (c) ARGUMENTS whose first token is not a story key → no key → exit 0
+@test "code-review setup.sh treats ARGUMENTS with no key-shaped first token as no key" {
+  local tmproot="${TEST_TMP}/multiarg_c"
+  _seed_setup_fixture "$tmproot"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="--run-id round-x --packet /tmp/p.md" \
+    bash "$setup_sh"
+  [ "$status" -eq 0 ]
+}
+
+# (d) multi-token ARGUMENTS whose first key-shaped token has no story → non-zero
+@test "code-review setup.sh fails when ARGUMENTS key token has no matching story" {
+  local _K="E900-S916" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/multiarg_d"
+  _seed_setup_fixture "$tmproot"
+  local setup_sh="${PLUGIN_ROOT}/skills/gaia-code-review/scripts/setup.sh"
+  run env CLAUDE_SKILL_DIR="$tmproot/skill" \
+    PROJECT_PATH="$tmproot" PROJECT_ROOT="$tmproot" \
+    ARGUMENTS="$_K --run-id round-x" \
+    bash "$setup_sh"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not found"* ]]
+}
