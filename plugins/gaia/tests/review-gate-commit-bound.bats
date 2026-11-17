@@ -4365,7 +4365,7 @@ _run_extracted_gate() {
 }
 
 # ---------------------------------------------------------------------------
-# RF-15(2): review-gate.sh refuses explicitly empty --sha
+# Explicitly empty --sha is refused by review-gate.sh update
 # ---------------------------------------------------------------------------
 
 @test "review-gate.sh update refuses --sha with explicitly empty value" {
@@ -4419,7 +4419,7 @@ STORY
 }
 
 # ---------------------------------------------------------------------------
-# RF-14: standalone checkpoint-based resolution (JSON parsing)
+# Standalone worktree resolution via checkpoint and find-worktree
 # ---------------------------------------------------------------------------
 
 @test "gate-write snippet resolves worktree from checkpoint via find-worktree" {
@@ -4477,7 +4477,7 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
-# RF-15(1): gate-write snippet from wrong CWD uses story worktree SHA
+# Gate-write snippet from wrong CWD records the story worktree SHA
 # ---------------------------------------------------------------------------
 
 @test "gate-write snippet from wrong CWD records story worktree SHA not CWD HEAD" {
@@ -4508,7 +4508,7 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
-# RF-15(1): run-all-reviews every update block has its own _wt_arg guard
+# Every run-all-reviews gate-write block computes its own _wt_arg guard
 # ---------------------------------------------------------------------------
 
 @test "run-all-reviews every review-gate.sh update block has its own _wt_arg guard" {
@@ -4537,7 +4537,7 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
-# RF-14 closure: standalone via find-worktree from non-git CWD, PROJECT_PATH unset
+# Standalone resolution via find-worktree from non-git CWD, PROJECT_PATH unset
 # ---------------------------------------------------------------------------
 
 # Helper: set up a fake plugin root that delegates to the REAL plugin tree
