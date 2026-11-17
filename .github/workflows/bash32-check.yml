@@ -1,0 +1,41 @@
+name: bash32-check
+on:
+  pull_request:
+    branches: [staging]
+permissions:
+  contents: read
+jobs:
+  bash32-check:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+      - name: Install bats
+        run: brew install bats-core jq
+      - name: Run suites under /bin/bash 3.2 via PATH shim
+        run: |
+          set -euo pipefail
+          shim="$RUNNER_TEMP/bash32-shim"
+          mkdir -p "$shim"
+          ln -s /bin/bash "$shim/bash"
+          export PATH="$shim:/usr/bin:/bin:/usr/sbin:/sbin:$(echo "$PATH" | tr ':' '\n' | grep -v gnubin | grep -v coreutils | tr '\n' ':')"
+          echo "head_sha=$(git rev-parse HEAD)"
+          echo "resolved bash: $(command -v bash)"
+          v="$(bash -c 'echo "$BASH_VERSION"')"
+          echo "BASH_VERSION via PATH=$v"
+          case "$v" in 3.2.*) ;; *) echo "::error::bash on PATH is $v, expected 3.2"; exit 1 ;; esac
+          if /usr/bin/sed --version >/dev/null 2>&1; then echo "::error::GNU sed on PATH"; exit 1; fi
+          rc=0
+          for f in plugins/gaia/tests/atdd-gate.bats plugins/gaia/tests/e107-s4-planned-active-readiness-gate.bats tests/skills/gaia-dev-story-step2b-atdd.bats; do
+            echo "::group::$f"
+            out="$RUNNER_TEMP/$(basename "$f").tap"
+            bats --tap "$f" | tee "$out" || rc=1
+            echo "::endgroup::"
+            plan="$(grep -E '^1\.\.[0-9]+' "$out" | head -1)"
+            okc="$(grep -cE '^ok ' "$out" || true)"
+            nok="$(grep -cE '^not ok ' "$out" || true)"
+            skp="$(grep -cE '^ok .*# skip' "$out" || true)"
+            echo "SUMMARY $f plan=$plan ok=$okc not_ok=$nok skip=$skp"
+            [ "$nok" = 0 ] && [ "$skp" = 0 ] && [ "$plan" = "1..$okc" ] || rc=1
+          done
+          exit "$rc"
