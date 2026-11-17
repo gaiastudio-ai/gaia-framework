@@ -233,7 +233,11 @@ case "$_resolved_state" in
   *)
     case "$_ds_surface" in
       artifact)
-        printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface cannot be probed from a bash script. The skill must pass --integration <state> from its own availability check.\n' >&2
+        if [ "$_resolved_source" = "fail-closed" ]; then
+          printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface cannot be probed from a bash script. The skill must pass --integration <state> from its own availability check.\n' >&2
+        else
+          printf 'design-stale-transition.sh: design-first ordering cannot be kept — the Artifact surface is not available in this session (as attested by the skill). Ensure the Artifact surface is available.\n' >&2
+        fi
         ;;
       *)
         printf 'design-stale-transition.sh: design-first ordering cannot be kept — the design integration is not available in this session. Enable the Claude Design integration, or use a Claude Code session that exposes the design tool surface.\n' >&2

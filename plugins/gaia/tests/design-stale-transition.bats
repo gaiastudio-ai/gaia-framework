@@ -1237,7 +1237,7 @@ SHIMEOF
     || fail "designsync-surface unauthorized remediation should mention /design-login"
 }
 
-@test "missing remediation for artifact surface names the Artifact surface" {
+@test "attested missing on artifact surface says unavailable, not cannot-be-probed" {
   [ -f "$DRIVER_SCRIPT" ] || fail "driver script not found"
 
   seed_config true
@@ -1247,7 +1247,7 @@ SHIMEOF
   yq -i '.schema_version = "2.0"' "$rec"
   yq -i '.design_system_project.surface = "artifact"' "$rec"
 
-  local stderr_file="$TEST_TMP/stderr-missing-artifact.txt"
+  local stderr_file="$TEST_TMP/stderr-missing-artifact-attested.txt"
   local rc=0
   env PROJECT_ROOT="$TEST_TMP" \
     bash "$DRIVER_SCRIPT" \
@@ -1256,11 +1256,33 @@ SHIMEOF
 
   [ "$rc" -ne 0 ] || fail "missing should halt (non-zero) but got 0"
 
+  # Must say the Artifact surface is unavailable
   grep -qi 'Artifact surface' "$stderr_file" \
     || fail "artifact-surface missing remediation should name the Artifact surface"
-  if grep -qiF 'DesignSync' "$stderr_file"; then
-    fail "artifact-surface missing remediation should not mention DesignSync"
+  grep -qi 'not available\|unavailable' "$stderr_file" \
+    || fail "attested-missing artifact halt should say the surface is unavailable"
+
+  # Must NOT say "cannot be probed" or "must pass --integration" — the skill DID pass it
+  if grep -qi 'cannot be probed' "$stderr_file"; then
+    fail "attested-missing artifact halt should not say 'cannot be probed'"
   fi
+  if grep -qF -- '--integration' "$stderr_file"; then
+    fail "attested-missing artifact halt should not mention --integration"
+  fi
+
+  # Must NOT mention DesignSync or /design-login
+  if grep -qiF 'DesignSync' "$stderr_file"; then
+    fail "attested-missing artifact halt should not mention DesignSync"
+  fi
+  if grep -qF '/design-login' "$stderr_file"; then
+    fail "attested-missing artifact halt should not mention /design-login"
+  fi
+
+  # integration_source must be attested
+  local audit_source
+  audit_source="$(yq '.audit[-1].integration_source' "$rec")"
+  [ "$audit_source" = "attested" ] \
+    || fail "integration_source should be attested but got $audit_source"
 }
 
 @test "artifact fail-closed fallback exits non-zero with Artifact remediation and no illegal-value error" {
@@ -1284,9 +1306,11 @@ SHIMEOF
 
   [ "$rc" -ne 0 ] || fail "artifact fail-closed fallback should exit non-zero but got 0"
 
-  # Must produce Artifact-surface remediation, not DesignSync
-  grep -qi 'Artifact surface' "$stderr_file" \
-    || fail "artifact fail-closed remediation should name the Artifact surface"
+  # Must produce the fail-closed-specific "cannot be probed" text
+  grep -qi 'cannot be probed' "$stderr_file" \
+    || fail "artifact fail-closed remediation should say 'cannot be probed'"
+  grep -qF -- '--integration' "$stderr_file" \
+    || fail "artifact fail-closed remediation should mention --integration"
 
   # Must NOT produce the illegal --integration-source error from design-record.sh
   if grep -qF 'illegal --integration-source' "$stderr_file"; then
