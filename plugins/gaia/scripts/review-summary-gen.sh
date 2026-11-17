@@ -550,7 +550,7 @@ _render_summary() {
           # The `|| true` absorbs grep's exit 1 when no line matches
           # (pipefail would otherwise kill the script).
           _pass_hit="$(find "$__impl_artifacts" -maxdepth 1 -type f -name "${_base_no_ext}-pass*.md" -print 2>/dev/null \
-            | { /usr/bin/grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
+            | { grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
             | sed 's/.*-pass\([0-9][0-9]*\)\.md$/\1 &/' | sort -t' ' -k1 -n -r | head -1 | cut -d' ' -f2-)"
           if [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ]; then
             found=1
@@ -562,7 +562,7 @@ _render_summary() {
           local _pass_hit
           # Per-story reviews/ subdir: epic-*/{key}-*/reviews/<type>-{key}-passN.md
           _pass_hit="$(find "$__impl_artifacts" -type f -path "*/${key}-*/reviews/${_base_no_ext}-pass*.md" -print 2>/dev/null \
-            | { /usr/bin/grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
+            | { grep -E "/${_base_no_ext}-pass[0-9]+\.md\$" || true; } \
             | sed 's/.*-pass\([0-9][0-9]*\)\.md$/\1 &/' | sort -t' ' -k1 -n -r | head -1 | cut -d' ' -f2-)"
           if [ -n "$_pass_hit" ] && [ -f "$_pass_hit" ]; then
             found=1

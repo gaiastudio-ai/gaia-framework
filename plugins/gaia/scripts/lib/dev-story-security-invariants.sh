@@ -120,7 +120,7 @@ assert_no_secrets_staged() {
 # ---------------------------------------------------------------------------
 # $1 = the PR target branch the caller is about to use. Must equal
 # ci_cd.promotion_chain[0].branch from $PROJECT_CONFIG (default
-# config/project-config.yaml).
+# .gaia/config/project-config.yaml, or legacy config/project-config.yaml).
 assert_pr_target_from_chain() {
   local pr_target="${1:-}"
   if [[ -z "$pr_target" ]]; then
@@ -128,26 +128,42 @@ assert_pr_target_from_chain() {
     return 1
   fi
 
-  # Discovery ladder mirrors promotion-chain-guard.sh's discover_config:
-  #   1. $PROJECT_CONFIG                                     (explicit env override)
-  #   2. $CLAUDE_PROJECT_ROOT/config/project-config.yaml     (if file exists)
-  #   3. $PWD/config/project-config.yaml                     (if file exists)
-  #   4. Upward walk from $PWD looking for config/project-config.yaml,
-  #      capped at 8 levels and stopping at the filesystem root.
-  # Without this ladder, /gaia-dev-story Step 13 merges fail the security
-  # invariant when CWD is a sub-tree (e.g., gaia-framework/) of a project whose
-  # config/ lives at an ancestor.
+  # Discovery ladder (mirrors promotion-chain-guard.sh discover_config):
+  #   1. $PROJECT_CONFIG                                           (explicit override)
+  #   2. $CLAUDE_PROJECT_ROOT/.gaia/config/project-config.yaml     (canonical)
+  #   3. $CLAUDE_PROJECT_ROOT/config/project-config.yaml           (legacy)
+  #   4. Upward walk from $PWD checking .gaia/config/ then config/
+  #      at each level, capped at 8 levels, stopping at /.
+  # When CLAUDE_PROJECT_ROOT is set but neither candidate exists under it,
+  # fall through to the walk-up (not a hard error). An explicitly set
+  # $PROJECT_CONFIG that does not exist IS a hard error — the later gate
+  # catches it.
   local cfg=""
+
+  # 1. Explicit $PROJECT_CONFIG (set-but-missing is caught by the gate below).
   if [[ -n "${PROJECT_CONFIG:-}" ]]; then
     cfg="$PROJECT_CONFIG"
-  elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" ]] \
-       && [[ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]]; then
-    cfg="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
-  else
+  fi
+
+  # 2. CLAUDE_PROJECT_ROOT — canonical .gaia/config/ first, then legacy config/.
+  if [[ -z "$cfg" ]] && [[ -n "${CLAUDE_PROJECT_ROOT:-}" ]]; then
+    if [[ -f "${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml" ]]; then
+      cfg="${CLAUDE_PROJECT_ROOT}/.gaia/config/project-config.yaml"
+    elif [[ -f "${CLAUDE_PROJECT_ROOT}/config/project-config.yaml" ]]; then
+      cfg="${CLAUDE_PROJECT_ROOT}/config/project-config.yaml"
+    fi
+  fi
+
+  # 3. Walk up from $PWD — .gaia/config/ before config/ at each level.
+  if [[ -z "$cfg" ]]; then
     local dir
     dir="$(pwd -P 2>/dev/null || pwd)"
     local depth=0
     while [[ -n "$dir" && "$depth" -lt 8 ]]; do
+      if [[ -f "${dir}/.gaia/config/project-config.yaml" ]]; then
+        cfg="${dir}/.gaia/config/project-config.yaml"
+        break
+      fi
       if [[ -f "${dir}/config/project-config.yaml" ]]; then
         cfg="${dir}/config/project-config.yaml"
         break
