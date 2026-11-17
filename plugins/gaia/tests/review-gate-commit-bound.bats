@@ -3436,12 +3436,13 @@ _extract_gate_update_calls() {
     | grep -E '\-\-gate|\-\-verdict' || true
 }
 
-@test "every canonical gate-row write passes --sha in all 7 skills" {
+@test "every canonical gate-row write passes --sha in all 8 skills" {
   local -a gate_skills=(
     "gaia-code-review"
     "gaia-performance-review"
     "gaia-qa-tests"
     "gaia-review-security"
+    "gaia-security-review"
     "gaia-test-review"
     "gaia-review-perf"
     "gaia-run-all-reviews"
@@ -4235,6 +4236,7 @@ _run_extracted_gate() {
     "gaia-performance-review"
     "gaia-qa-tests"
     "gaia-review-security"
+    "gaia-security-review"
     "gaia-test-review"
     "gaia-review-perf"
     "gaia-run-all-reviews"
@@ -4277,6 +4279,7 @@ _run_extracted_gate() {
     "gaia-performance-review"
     "gaia-qa-tests"
     "gaia-review-security"
+    "gaia-security-review"
     "gaia-test-review"
     "gaia-review-perf"
     "gaia-run-all-reviews"
@@ -4288,4 +4291,68 @@ _run_extracted_gate() {
       return 1
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# Deprecated security-review alias: extracted snippet tests
+# ---------------------------------------------------------------------------
+
+@test "gate-write snippet with valid worktree records correct SHA (security-review alias)" {
+  local _K="E900-S941" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_a_sra"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/wt"
+  _seed_worktree_fixture "$wt" "$_K"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-security-review" "$_K" "$wt" "$tmproot" "$tmproot/main"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+}
+
+@test "gate-write snippet ignores stale STORY_WORKTREE_PATH and uses worktree list (security-review alias)" {
+  local _K="E900-S942" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_d_sra"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+
+  git -C "$tmproot/main" worktree add "$tmproot/real-wt" -b "feat/${_K}-standalone" 2>/dev/null
+  printf 'real\n' > "$tmproot/real-wt/file.txt"
+  git -C "$tmproot/real-wt" add file.txt
+  git -C "$tmproot/real-wt" commit -q -m "real wt commit"
+  local expected_sha
+  expected_sha="$(git -C "$tmproot/real-wt" rev-parse HEAD)"
+
+  mkdir -p "$tmproot/stale-repo"
+  _init_git "$tmproot/stale-repo"
+  local stale_sha
+  stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
+
+  _setup_gate_stubs "$tmproot"
+  export STORY_WORKTREE_PATH="$tmproot/stale-repo"
+  _run_extracted_gate "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
+  unset STORY_WORKTREE_PATH
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+  local captured
+  captured="$(cat "$tmproot/captured-sha")"
+  [ "$captured" = "$expected_sha" ]
+  [ "$captured" != "$stale_sha" ]
+}
+
+@test "gate-write snippet with empty worktree and no match refuses (security-review alias)" {
+  local _K="E900-S943" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/gwb_e_sra"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-security-review" "$_K" "" "$tmproot" "$tmproot/main"
+  [ "$status" -ne 0 ]
+  [ ! -f "$tmproot/captured-sha" ]
+  [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
 }
