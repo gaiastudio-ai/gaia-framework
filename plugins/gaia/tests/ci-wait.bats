@@ -2119,11 +2119,11 @@ SHIMEOF
 }
 
 # ===========================================================================
-# Review-fix-cycle tests: RF-1 (counter reset), RF-3 (jq error handling),
-# RF-2 (bash 3.2 compatibility).
+# Cross-check failure counting, jq error handling, and bash 3.2
+# compatibility.
 # ===========================================================================
 
-# --- RF-1(a): cross-check failures must accumulate toward the limit ---
+# --- cross-check failures count toward the consecutive-failure limit ---
 @test "repeated cross-check failures reach the consecutive failure limit" {
   # Required checks always return all-terminal pass; the cross-check
   # all-checks call always fails.  The failure counter must reach
@@ -2144,7 +2144,7 @@ SHIMEOF
   [[ "$stderr" == *"CI polling failed 5 consecutive times"* ]]
 }
 
-# --- RF-1(b): genuine cross-check success resets the counter ---
+# --- a successful cross-check resets the failure counter ---
 @test "cross-check success resets failure counter between error bursts" {
   # Pattern: 3 cross-check failures, then success (should reset counter),
   # then 3 more failures, then success → eventually passes.
@@ -2171,7 +2171,7 @@ SHIMEOF
   [[ "$output" == *"passed"* ]]
 }
 
-# --- RF-3: jq error on cross-check rollup retries instead of aborting ---
+# --- a jq error in the cross-check is retried instead of aborting ---
 @test "malformed rollup shape in cross-check retries instead of aborting" {
   # The pr-view rollup returns statusCheckRollup as a boolean (not an
   # array), which causes the rollup jq filter to error.  Under the fix
@@ -2192,7 +2192,7 @@ SHIMEOF
   [[ "$output" == *"passed"* ]]
 }
 
-# --- RF-2: bash 3.2 compatibility via PATH shim ---
+# --- the script runs under the macOS /bin/bash 3.2 interpreter via a PATH shim ---
 @test "cross-check scenario runs under bash 3.2 interpreter when available" {
   # On Linux /bin/bash is typically 5.x — skip with explicit message.
   # On macOS /bin/bash is 3.2.57 — the test must run (not skip).
