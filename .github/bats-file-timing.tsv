@@ -524,7 +524,7 @@ lint-pack.bats	21
 load-stack-persona-units.bats	1
 load-stack-persona.bats	1
 load-taxonomy.bats	1
-lock-helper.bats	151
+lock-helper.bats	202
 lock-review-gate-ledger.bats	2
 lock-sprint-state.bats	30
 lock-story-status.bats	18

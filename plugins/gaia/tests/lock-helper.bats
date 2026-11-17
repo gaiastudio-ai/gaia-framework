@@ -4506,7 +4506,8 @@ SHIMEOF
     unset GAIA_PARALLEL_EXECUTION
     bash -c '
       source "'"$HELPER"'"
-      acquire_lock "'"$lock_file"'" 1 9 2>&1 >/dev/null
+      # Deadline >1 s: whole-second accounting can skip all attempts at 1 s.
+      acquire_lock "'"$lock_file"'" 3 9 2>&1 >/dev/null
     '
   )" || true
 
@@ -4542,7 +4543,8 @@ SHIMEOF
     export PATH="$shim_dir:$SAFE_PATH"
     bash -c '
       source "'"$HELPER"'"
-      acquire_lock "'"$lock_file"'" 1 9 2>&1 >/dev/null
+      # Deadline >1 s: whole-second accounting can skip all attempts at 1 s.
+      acquire_lock "'"$lock_file"'" 3 9 2>&1 >/dev/null
     '
   )" || true
 
