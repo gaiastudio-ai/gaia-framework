@@ -449,19 +449,19 @@ STAKE
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to approved --actor ci
   # Stale it and go back to review (bumps iteration)
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
-  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci --force-iteration "design was updated for gate test"
   # Re-approve for new iteration and go to approved
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to approved --actor ci
   # Now stale -> review (bumps iteration again) -> approved WITHOUT new approval
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
-  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci --force-iteration "design was updated for gate test"
   # Approve for new iteration and transition to approved:
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to approved --actor ci
   # Stale one more time, review (bumps iter), but DON'T approve:
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
-  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci --force-iteration "design was updated for gate test"
   # State is now "review" with prior-iteration approvals. NOT approved state.
   # For the gate to see "approved but prior-iteration", we'd need to be in
   # approved state. Same issue as above — the writer blocks it. So test this
@@ -475,7 +475,7 @@ STAKE
   # at a higher iteration than the approval, it fails. Let's just verify
   # a review-state record with prior-iter approvals fails the gate:
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to stale --actor ci
-  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor ci --force-iteration "design was updated for gate test"
   # State: review, iteration: 5, approvals at iteration 4
 
   run run_gate

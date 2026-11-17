@@ -776,7 +776,7 @@ teardown() { common_teardown; }
   [ "$override_ds" = "stale" ]
 
   # Now re-approve: stale -> review -> approve -> approved
-  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor test
+  env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to review --actor test --force-iteration "design was updated for propagation test"
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" add-review --verdict approved --reviewer stakeholder-A --actor ci
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" approve --stakeholder stakeholder-A --recorded-by ci
   env PROJECT_ROOT="$TEST_TMP" "$DREC_SCRIPT" transition --to approved --actor ci
