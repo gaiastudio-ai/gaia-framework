@@ -5458,6 +5458,11 @@ _mtx_seed_derive() {
   # A mutex left by a dead owner must survive when a different reaper
   # tries to reap the same lock: the new reaper's ln to the mutex
   # path fails (EEXIST) and it backs off without touching the file.
+  # A passthrough mktemp shim records the real temp the reaper created
+  # so the test can verify the ln-failure cleanup removed it (not just
+  # that no glob matches).
+  #
+  # Supports _TEST_HELPER_OVERRIDE for mutation checks.
   local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
   local lock_file="$LOCK_DIR/mtx-foreign.lock"
   local mutex="${lock_file}.reap-mtx"
@@ -5474,22 +5479,53 @@ _mtx_seed_derive() {
   # Pre-create a foreign-owned mutex.
   printf '99998 foreign-nonce\n' > "$mutex"
 
+  local recorded_path_file="$TEST_TMP/mtx-foreign-recorded"
   (
     export PATH="$SAFE_PATH"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export GAIA_LOCK_REAP_SECONDS=1
     source "$h"
-    acquire_lock "$lock_file" 2 9 2>/dev/null || true
+    # Passthrough shim: call the real mktemp and record the path so
+    # the outer test can verify cleanup of the exact file.
+    mktemp() {
+      case "$1" in
+        *reap-mtx-tmp*)
+          local _f
+          _f="$(command mktemp "$@")" || return $?
+          printf '%s\n' "$_f" > "$recorded_path_file"
+          printf '%s' "$_f"
+          ;;
+        *) command mktemp "$@" ;;
+      esac
+    }
+    acquire_lock "$lock_file" 3 9 2>/dev/null || true
   )
 
-  # (c) The foreign mutex must survive.
+  # (c) The foreign mutex must survive with its original content.
   [ -f "$mutex" ] || {
     echo "foreign mutex was removed by another reaper" >&2; false; }
   local token=""
   read -r token < "$mutex" 2>/dev/null || token=""
   [ "$token" = "99998 foreign-nonce" ] || {
     echo "foreign mutex content changed: [$token]" >&2; false; }
-  rm -f "$lock_file" "$mutex"
+  # The reaper must have reached the link step (shim fired).
+  local recorded=""
+  read -r recorded < "$recorded_path_file" 2>/dev/null || recorded=""
+  [ -n "$recorded" ] || {
+    echo "mktemp shim never fired (reaper did not reach the link step)" >&2
+    false
+  }
+  # The temp the reaper created must be gone (ln-failure cleanup).
+  if [ -e "$recorded" ] || [ -L "$recorded" ]; then
+    echo "reaper temp not cleaned up after ln failure: $recorded" >&2
+    false
+  fi
+  # No .reap-mtx-tmp.* residue in the lock dir.
+  local leftover
+  leftover="$(find "$LOCK_DIR" -name '.reap-mtx-tmp.*' 2>/dev/null)"
+  [ -z "$leftover" ] || {
+    echo "temp leftover in lock dir: $leftover" >&2; false; }
+  rm -f "$lock_file" "$mutex" "$recorded_path_file"
 }
 
 @test "reaper mutex creation failure leaves no leftover and does not reap" {
@@ -5544,16 +5580,15 @@ _mtx_seed_derive() {
 }
 
 @test "reaper mutex write failure after exclusive creation leaves no leftover" {
-  # When the exclusively created mutex temp exists but writing the
-  # token fails, the reaper must clean up: no mutex, no leftover temp
-  # in the lock dir, stale lock not reaped, and emit the specific
-  # write-failure diagnostic. The shim returns a path whose parent
-  # does not exist, so the shell redirect fails for any user including
-  # root (no CAP_DAC_OVERRIDE bypass). The shim records the injected
-  # path so the leftover check verifies the ACTUAL path, not just a
-  # glob. rm -f on the nonexistent path is a silent no-op.
+  # The shim lets the real mktemp create a temp file in the lock
+  # directory, records its path, then replaces it with a symlink to
+  # /dev/full. printf > /dev/full returns ENOSPC for any user
+  # including root (kernel-enforced, no CAP_DAC_OVERRIDE bypass).
+  # The helper's cleanup rm -f removes the symlink. The test asserts
+  # the REAL recorded path is gone, no .reap-mtx-tmp.* residue, no
+  # mutex, stale lock not reaped, and the specific diagnostic present.
   #
-  # Supports _TEST_HELPER_OVERRIDE for red-phase verification.
+  # Supports _TEST_HELPER_OVERRIDE for red-phase / mutation checks.
   local h="${_TEST_HELPER_OVERRIDE:-$HELPER}"
   local lock_file="$LOCK_DIR/mtx-wfail.lock"
 
@@ -5567,26 +5602,29 @@ _mtx_seed_derive() {
     || { echo "cannot backdate" >&2; false; }
 
   local err_file="$TEST_TMP/mtx-wfail-err"
-  local injected_path_file="$TEST_TMP/mtx-wfail-injected"
+  local recorded_path_file="$TEST_TMP/mtx-wfail-recorded"
   (
     export PATH="$SAFE_PATH"
     export GAIA_LOCK_FORCE_FALLBACK=1
     export GAIA_LOCK_REAP_SECONDS=1
     source "$h"
-    # Shim: for the reap-mutex pattern, return a path under a
-    # nonexistent subdirectory. printf > fails (ENOENT) for any user.
-    # Record the injected path so the outer test can check it.
+    # Shim: let the real mktemp create a file, record the path, then
+    # replace it with a symlink to /dev/full so the subsequent token
+    # write fails (ENOSPC, root-proof). The symlink is what rm -f
+    # must clean up.
     mktemp() {
       case "$1" in
         *reap-mtx-tmp*)
-          local _injected="${1%/*}/no-such-dir/.reap-mtx-tmp.XXXXXX"
-          printf '%s' "$_injected" > "$injected_path_file"
-          printf '%s' "$_injected"
+          local _f
+          _f="$(command mktemp "$@")" || return $?
+          printf '%s\n' "$_f" > "$recorded_path_file"
+          rm -f "$_f" && ln -s /dev/full "$_f"
+          printf '%s' "$_f"
           ;;
         *) command mktemp "$@" ;;
       esac
     }
-    acquire_lock "$lock_file" 2 9 2>"$err_file" || true
+    acquire_lock "$lock_file" 3 9 2>"$err_file" || true
   )
 
   [ -f "$lock_file" ] || {
@@ -5598,11 +5636,14 @@ _mtx_seed_derive() {
   # No mutex must exist.
   [ ! -f "${lock_file}.reap-mtx" ] || {
     echo "mutex left behind" >&2; false; }
-  # The injected temp path must not exist (cleaned up or never created).
-  local injected=""
-  read -r injected < "$injected_path_file" 2>/dev/null || injected=""
-  if [ -n "$injected" ] && [ -e "$injected" ]; then
-    echo "injected temp path still exists: $injected" >&2; false
+  # The recorded temp path must be gone (cleaned up by the helper).
+  local recorded=""
+  read -r recorded < "$recorded_path_file" 2>/dev/null || recorded=""
+  [ -n "$recorded" ] || {
+    echo "mktemp shim never fired (recorded path empty)" >&2; false; }
+  if [ -e "$recorded" ] || [ -L "$recorded" ]; then
+    echo "temp not cleaned up: $recorded ($(ls -la "$recorded" 2>&1))" >&2
+    false
   fi
   # No .reap-mtx-tmp.* residue anywhere in the lock dir.
   local leftover
@@ -5615,5 +5656,5 @@ _mtx_seed_derive() {
     cat "$err_file" >&2
     false
   }
-  rm -f "$lock_file" "${lock_file}.reap-mtx" "$err_file" "$injected_path_file"
+  rm -f "$lock_file" "${lock_file}.reap-mtx" "$err_file" "$recorded_path_file"
 }
