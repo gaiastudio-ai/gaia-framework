@@ -555,6 +555,21 @@ teardown() {
   [ "$status" -eq 0 ]
 
   grep -q 'discarded non-JUnit file' "$stderr_file"
+
+  # The valid JUnit artifact must be present in the output directory.
+  local junit_xml_count
+  junit_xml_count="$(find "$OUT_DIR" -name '*.xml' -type f | wc -l | tr -d ' ')"
+  [ "$junit_xml_count" -ge 1 ] || {
+    printf 'expected at least 1 valid JUnit XML in output, got 0\n' >&2
+    return 1
+  }
+
+  # The discarded non-JUnit content must NOT be present — verify no file
+  # under the output directory contains the HTML marker from the stub.
+  if grep -rql '<html>' "$OUT_DIR" 2>/dev/null; then
+    printf 'expected 0 non-JUnit HTML files in output, but found match\n' >&2
+    return 1
+  fi
 }
 
 @test "ci-junit-fetch: artifact count exceeding bound truncates with warning" {
@@ -566,8 +581,8 @@ teardown() {
 
   local download_count
   download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
-  [ "$download_count" -le 50 ] || {
-    printf 'expected at most 50 downloads, got %s\n' "$download_count" >&2
+  [ "$download_count" -eq 50 ] || {
+    printf 'expected exactly 50 downloads, got %s\n' "$download_count" >&2
     return 1
   }
 
@@ -583,8 +598,8 @@ teardown() {
 
   local download_count
   download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
-  [ "$download_count" -le 3 ] || {
-    printf 'expected at most 3 downloads, got %s\n' "$download_count" >&2
+  [ "$download_count" -eq 3 ] || {
+    printf 'expected exactly 3 downloads, got %s\n' "$download_count" >&2
     return 1
   }
 
@@ -733,6 +748,73 @@ CFGEOF
   [ "$regex_err_count" -eq 0 ]
 }
 
+@test "ci-junit-fetch: jq regex error falls back to default junit match" {
+  # When the configured pattern produces a jq regex error, the script warns
+  # and retries with the default "junit" match.  Trigger this via a jq
+  # wrapper that fails with "Regex failure" on non-default regex arguments.
+  _setup_stub_logged ok
+
+  local jq_wrapper_dir="$TEST_TMP/jq-wrap-bin"
+  mkdir -p "$jq_wrapper_dir"
+
+  local real_jq
+  real_jq="$(command -v jq)"
+
+  cat > "$jq_wrapper_dir/jq" <<JQWRAP
+#!/usr/bin/env bash
+# Delegate to the real jq, but simulate a regex failure when the --arg re
+# value is not exactly "junit" (i.e. a combined/custom pattern).
+for _a; do
+  case "\$_a" in
+    junit|junit\\|*) ;;  # default-only or combined — let combined fail
+    *)
+      # Check if this invocation passes --arg re with a combined pattern
+      _has_re=false _re_val=""
+      _prev=""
+      for _b; do
+        if [ "\$_prev" = "re" ] && [ "\$_pprev" = "--arg" ]; then
+          _has_re=true; _re_val="\$_b"; break
+        fi
+        _pprev="\$_prev"; _prev="\$_b"
+      done
+      if \$_has_re && [ "\$_re_val" != "junit" ]; then
+        printf 'jq: error (compile): Regex failure\\n' >&2
+        exit 5
+      fi
+      ;;
+  esac
+  break  # only inspect first arg shape, then fall through
+done
+exec "$real_jq" "\$@"
+JQWRAP
+  chmod +x "$jq_wrapper_dir/jq"
+
+  # Use a config with a custom pattern so the script builds a combined regex.
+  local regex_cfg="$WORKDIR/regex-fb-cfg"
+  _make_config "$regex_cfg/.gaia/config" "github-actions" "custom-*-report"
+
+  local stderr_file="$TEST_TMP/regex-fb-stderr.log"
+  PROJECT_ROOT_OVERRIDE="$regex_cfg" CLAUDE_PROJECT_ROOT_OVERRIDE="$regex_cfg" \
+    run bash -c "
+      export PATH=\"${jq_wrapper_dir}:${STUB_BIN_DIR}:\$PATH\"
+      export PROJECT_ROOT=\"${regex_cfg}\"
+      export CLAUDE_PROJECT_ROOT=\"${regex_cfg}\"
+      bash \"${SCRIPT}\" --repo \"${REPO}\" --out \"${OUT_DIR}\" 2>\"${stderr_file}\"
+    "
+  [ "$status" -eq 0 ]
+
+  # The warning about the regex error must appear on stderr.
+  grep -q 'regex error for configured pattern' "$stderr_file"
+
+  # Despite the regex error, the default junit match must still download.
+  local xml_count
+  xml_count="$(find "$OUT_DIR" -name '*.xml' -type f | wc -l | tr -d ' ')"
+  [ "$xml_count" -ge 1 ] || {
+    printf 'expected at least 1 JUnit XML after fallback, got 0\n' >&2
+    return 1
+  }
+}
+
 @test "ci-junit-fetch: download bound counts attempts not just successes" {
   _setup_stub_logged fail-downloads
 
@@ -743,8 +825,8 @@ CFGEOF
 
   local download_count
   download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
-  [ "$download_count" -le 4 ] || {
-    printf 'expected at most 4 download attempts, got %s\n' "$download_count" >&2
+  [ "$download_count" -eq 4 ] || {
+    printf 'expected exactly 4 download attempts, got %s\n' "$download_count" >&2
     return 1
   }
 }
