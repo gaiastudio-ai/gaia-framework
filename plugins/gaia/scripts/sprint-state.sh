@@ -1321,12 +1321,12 @@ check_review_gate_all_passed() {
 
 # Emit one state_transition lifecycle event. Shells out to lifecycle-event.sh
 # as a separate process per Technical Notes. If the script is missing or
-# exits non-zero, we surface the failure (AC-EC4).
+# exits non-zero, we surface the failure.
 emit_lifecycle_event() {
   local story_key="$1" from="$2" to="$3"
   local lifecycle_sh="${SPRINT_STATE_SCRIPT_DIR}/lifecycle-event.sh"
   if [ ! -x "$lifecycle_sh" ]; then
-    die "lifecycle-event.sh not found or not executable at $lifecycle_sh (required by AC3)"
+    die "lifecycle-event.sh not found or not executable at $lifecycle_sh"
   fi
   local data
   data=$(printf '{"from":"%s","to":"%s"}' "$from" "$to")
@@ -2085,7 +2085,7 @@ do_inject_locked() {
   locate_story_file "$story_key"
 
   # Validate four required frontmatter fields. Collect every missing field
-  # for a single error message (AC4).
+  # for a single error message.
   local missing=""
   local fm_sprint_id fm_status fm_points fm_risk fm_title
   fm_sprint_id=$(read_story_frontmatter_field "$STORY_FILE" sprint_id 2>/dev/null || true)
@@ -2218,7 +2218,7 @@ reconcile_locate_story_file() {
       printf '%s' "$m"
       return 0
     fi
-    # Per-candidate structured warning naming the skipped file (Val WARNING #1).
+    # Per-candidate structured warning naming the skipped file.
     printf "RECONCILE: %s candidate %s skipped — no \`template: 'story'\` frontmatter\n" \
       "$key" "$m" >&2
   done
@@ -2344,7 +2344,7 @@ do_reconcile_locked() {
     return
   }
 
-  # No stories → fast path (AC-EC1).
+  # No stories → fast path.
   if [ -z "$pairs" ]; then
     return
   fi
@@ -2411,35 +2411,43 @@ cmd_reconcile() {
 
   mkdir -p "$(dirname "$SPRINT_STATUS_LOCK")" 2>/dev/null || true
 
-  # Counters persisted across the subshell via a side-channel file.
-  # The subshell writes counters on successful run; the outer shell reads
-  # them back tolerantly (a missing or partial file yields zero counters
-  # rather than a `set -e` abort). The `|| true` on `read` is load-bearing:
-  # printf without a trailing newline makes `read` return non-zero at EOF,
-  # which under `set -e` would kill the whole reconcile on Linux/bash 5.
+  # Counters returned from the subshell via a stdout sentinel line.
+  # The subshell emits '_RECON_COUNTERS_ <checked> <divergences> <errors>'
+  # on successful run; the outer shell extracts it via sed and replays
+  # the remaining output (per-story RECONCILE lines) verbatim.
+  local _recon_output
   set +e
-  (
-    if ! acquire_lock "$SPRINT_STATUS_LOCK" 5 9; then
-      exit 1
+  _recon_output=$(
+    _acq_rc=0
+    acquire_lock "$SPRINT_STATUS_LOCK" 5 9 || _acq_rc=$?
+    if [ "$_acq_rc" -ne 0 ]; then
+      printf 'reconcile: lock acquisition failed: %s (rc=%s)\n' "$SPRINT_STATUS_LOCK" "$_acq_rc" >&2
+      exit "$_acq_rc"
     fi
     trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
     trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 130' INT
     trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps; exit 143' TERM
     do_reconcile_locked "$dry_run"
-    printf '%s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS" \
-      > "${SPRINT_STATUS_LOCK}.result"
+    printf '_RECON_COUNTERS_ %s %s %s\n' "$RECONCILE_CHECKED" "$RECONCILE_DIVERGENCES" "$RECONCILE_ERRORS"
   )
   local sub_rc=$?
   set -e
-  if [ "$sub_rc" -ne 0 ] && [ ! -f "${SPRINT_STATUS_LOCK}.result" ]; then
+  if [ "$sub_rc" -ne 0 ]; then
+    # Replay any per-story RECONCILE lines already emitted before the failure
+    # so the caller can see which stories were processed before the interruption.
+    if [ -n "$_recon_output" ]; then
+      printf '%s\n' "$_recon_output" | sed '/^_RECON_COUNTERS_ /d'
+    fi
     die "reconcile failed inside the locked critical section (rc=$sub_rc)"
   fi
-  if [ -f "${SPRINT_STATUS_LOCK}.result" ]; then
-    # shellcheck disable=SC2034
-    read -r RECONCILE_CHECKED RECONCILE_DIVERGENCES RECONCILE_ERRORS \
-      < "${SPRINT_STATUS_LOCK}.result" || true
-    rm -f "${SPRINT_STATUS_LOCK}.result"
+  local _counters
+  _counters=$(printf '%s\n' "$_recon_output" | sed -n 's/^_RECON_COUNTERS_ //p')
+  if [ -z "$_counters" ]; then
+    die "reconcile: internal error — counter sentinel missing from subshell output"
   fi
+  # shellcheck disable=SC2034
+  read -r RECONCILE_CHECKED RECONCILE_DIVERGENCES RECONCILE_ERRORS <<< "$_counters"
+  printf '%s\n' "$_recon_output" | sed '/^_RECON_COUNTERS_ /d'
 
   # Summary line.
   local verb="CORRECTED"
@@ -2601,7 +2609,7 @@ _lint_emit_if_inversion() {
 
   dep_idx="$(lint_lookup_order "$order_map" "$dep_key")"
   if [ -z "$dep_idx" ]; then
-    # External dependency — not in sprint (AC-EC3)
+    # External dependency — not in sprint
     confidence="heuristic"
     printf '%s|%s|%s|%s|%s|External dependency — %s not in current sprint\n' \
       "$story_key" "$dep_key" "$source" "$confidence" "$match_text" "$dep_key"
@@ -2774,7 +2782,7 @@ cmd_lint_dependencies() {
   fi
 
   # Validate basic yaml structure: must contain sprint_id or stories section.
-  # A file with neither is treated as malformed (AC-EC8).
+  # A file with neither is treated as malformed.
   if ! grep -qE '^(sprint_id:|stories:|items:)' "$SPRINT_STATUS_YAML" 2>/dev/null; then
     die "malformed sprint-status.yaml: no sprint_id or stories section found in $SPRINT_STATUS_YAML"
   fi
@@ -2866,7 +2874,7 @@ cmd_lint_dependencies() {
 #
 # Usage:
 #   sprint-state.sh record-escalation-override \
-#     --item-ids "AI-42,AI-77" --user alice --reason "Acknowledged by lead"
+#     --item-ids "item-42,item-77" --user alice --reason "Acknowledged by lead"
 
 # Sort and deduplicate a comma-or-space-separated id list. Echoes a single
 # comma-joined sorted-unique line.
@@ -4440,7 +4448,7 @@ cmd_transition_sprint() {
     if [ -f "$_dispatch_sentinel" ]; then
       _found=1
     else
-      # E87 envelope sentinel: any val-envelope-<hash>.json whose
+      # Envelope sentinel: any val-envelope-<hash>.json whose
       # artifact_path matches the sprint id satisfies the gate.
       for _env in $_envelope_glob; do
         [ -f "$_env" ] || continue

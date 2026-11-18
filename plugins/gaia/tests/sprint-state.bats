@@ -9,6 +9,8 @@
 
 load 'test_helper.bash'
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   common_setup
   SCRIPT="$SCRIPTS_DIR/sprint-state.sh"
@@ -18,7 +20,15 @@ setup() {
   JSONL="$MEMORY_PATH/lifecycle-events.jsonl"
   mkdir -p "$ART"
 }
-teardown() { common_teardown; }
+teardown() {
+  # Kill any orphaned lock-holder sleep from the lock-failure test.
+  if [ -n "${_LOCK_HOLDER_PID:-}" ]; then
+    kill "$_LOCK_HOLDER_PID" 2>/dev/null || true
+    wait "$_LOCK_HOLDER_PID" 2>/dev/null || true
+    _LOCK_HOLDER_PID=""
+  fi
+  common_teardown
+}
 
 seed_story() {
   local key="$1" status="$2" verdict="${3:-PASSED}"
@@ -174,7 +184,7 @@ EOF
   [[ "$output" == *"no story file found"* ]]
 }
 
-# --- glob collision tests (E28-S76) ------------------------------------------
+# --- glob collision tests ----------------------------------------------------
 
 # Helper: create review sibling files (no template: 'story' frontmatter)
 seed_review_siblings() {
@@ -216,7 +226,7 @@ SIBLING
   [[ "$output" == *"no story file found"* ]]
 }
 
-# --- Canonical status enum guard (E38-S8, AC1/AC2/AC3/AC5) -------------------
+# --- Canonical status enum guard ----------------------------------------------
 
 # Helper: enumerate every canonical status name the script accepts. Mirrors
 # the CANONICAL_STATES array in sprint-state.sh — keep in sync.
@@ -322,8 +332,8 @@ CANONICAL_STATES_LIST=(backlog validating ready-for-dev in-progress blocked revi
   [ "$status" -eq 0 ] || { echo "AC3F failed: $output"; false; }
 }
 
-@test "sprint-state.sh: sprint-27 regression — // all write 'done', never 'PASSED'" {
-  # Mirrors the sprint-27 close-out finding (F2): three stories had their
+@test "sprint-state.sh: status enum regression — all write 'done', never 'PASSED'" {
+  # Regression guard: three stories had their
   # sprint-status.yaml entries written as status: "PASSED" instead of "done"
   # and required manual sed cleanup. This test stamps that exact scenario:
   # three stories sitting in 'review' with all reviews PASSED, transitioned
@@ -332,26 +342,26 @@ CANONICAL_STATES_LIST=(backlog validating ready-for-dev in-progress blocked revi
   cat > "$ART/sprint-status.yaml" <<EOF
 sprint_id: "sprint-27"
 stories:
-  - key: "E42-S5"
+  - key: "X42-S5"
     title: "Fake S5"
     status: "review"
-  - key: "E42-S6"
+  - key: "X42-S6"
     title: "Fake S6"
     status: "review"
-  - key: "E42-S7"
+  - key: "X42-S7"
     title: "Fake S7"
     status: "review"
 EOF
-  seed_story E42-S5 review PASSED
-  seed_story E42-S6 review PASSED
-  seed_story E42-S7 review PASSED
+  seed_story X42-S5 review PASSED
+  seed_story X42-S6 review PASSED
+  seed_story X42-S7 review PASSED
 
-  run "$SCRIPT" transition --story E42-S5 --to done
-  [ "$status" -eq 0 ] || { echo "E42-S5 transition failed: $output"; false; }
-  run "$SCRIPT" transition --story E42-S6 --to done
-  [ "$status" -eq 0 ] || { echo "E42-S6 transition failed: $output"; false; }
-  run "$SCRIPT" transition --story E42-S7 --to done
-  [ "$status" -eq 0 ] || { echo "E42-S7 transition failed: $output"; false; }
+  run "$SCRIPT" transition --story X42-S5 --to done
+  [ "$status" -eq 0 ] || { echo "X42-S5 transition failed: $output"; false; }
+  run "$SCRIPT" transition --story X42-S6 --to done
+  [ "$status" -eq 0 ] || { echo "X42-S6 transition failed: $output"; false; }
+  run "$SCRIPT" transition --story X42-S7 --to done
+  [ "$status" -eq 0 ] || { echo "X42-S7 transition failed: $output"; false; }
 
   # No 'PASSED' may appear as a status value anywhere in the yaml.
   ! grep -qE '^[[:space:]]+status:[[:space:]]*"PASSED"' "$ART/sprint-status.yaml" \
@@ -366,7 +376,7 @@ EOF
 # These tests extract the two new helpers and the prerequisites from the
 # canonical script and execute them in isolation. Avoids sourcing the whole
 # script (which would trigger main "$@" at file end). The function names
-# referenced here also satisfy the NFR-052 textual coverage gate in
+# referenced here also satisfy the textual coverage gate in
 # run-with-coverage.sh.
 
 # Build a minimal harness: write a small bash script that defines die()
@@ -434,12 +444,12 @@ OUTER
   [[ "$output" == *"test write"* ]]    || { echo "missing context label: $output";  false; }
 }
 
-# --- Wrapper-sync invariant (E38-S8, AC4 / ADR-055 §10.29.3) -----------------
+# --- Wrapper-sync invariant ---------------------------------------------------
 
-@test "sprint-state.sh: AC4 wrapper copy is byte-identical to canonical script" {
+@test "sprint-state.sh: wrapper copy is byte-identical to canonical script" {
   # The dev-story skill ships a wrapper copy at
   # plugins/gaia/skills/gaia-dev-story/scripts/sprint-state.sh that MUST stay
-  # byte-identical to plugins/gaia/scripts/sprint-state.sh per ADR-055 §10.29.3.
+  # byte-identical to plugins/gaia/scripts/sprint-state.sh (copy drift guard).
   # This test pins the invariant — if the diff is non-empty, the sync step in
   # the dev workflow was missed.
   local CANON="$SCRIPTS_DIR/sprint-state.sh"
@@ -477,4 +487,264 @@ EOF
   run "$SCRIPT" get --story C4
   [ "$status" -ne 0 ]
   [[ "$output" == *"ambiguous"* ]] || [[ "$output" == *"multiple"* ]]
+}
+
+# --- Reconcile: concurrent-safe counters without shared result file ----------
+
+# Helper: write sprint-status.yaml with N stories all at "in-progress".
+# Used by both _seed_reconcile_fixture (initial) and _reset_reconcile_fixture
+# (re-diverge between iterations) to keep the YAML shape in one place.
+_write_reconcile_yaml() {
+  local n="${1:-3}"
+  printf 'sprint_id: "sprint-test"\nstories:\n' > "$ART/sprint-status.yaml"
+  local i
+  for i in $(seq 1 "$n"); do
+    printf '  - key: "REC%s"\n    title: "Recon Story %s"\n    status: "in-progress"\n' \
+      "$i" "$i" >> "$ART/sprint-status.yaml"
+  done
+}
+
+# Helper: seed a reconcile fixture with N divergent stories.
+# Sprint-status.yaml says "in-progress" but each story file says "review",
+# guaranteeing every story is divergent and will be corrected by reconcile.
+_seed_reconcile_fixture() {
+  local n="${1:-3}"
+  _write_reconcile_yaml "$n"
+  local i
+  for i in $(seq 1 "$n"); do
+    seed_story "REC${i}" review PASSED
+  done
+}
+
+# Helper: reset fixture so all N stories are divergent again.
+_reset_reconcile_fixture() {
+  _write_reconcile_yaml "${1:-3}"
+}
+
+@test "sprint-state.sh: reconcile returns counters without writing or reading a shared result file" {
+  _seed_reconcile_fixture 3
+  local lock_path="$ART/sprint-status.yaml.lock"
+
+  # Symlink trap: if the old code writes to ${lock_path}.result, the data
+  # follows the symlink and creates the trap file.
+  ln -sf "$BATS_TEST_TMPDIR/_result_trap" "${lock_path}.result"
+
+  run "$SCRIPT" reconcile --sprint-id sprint-test
+  [ "$status" -eq 0 ] || { echo "reconcile exit=$status output=$output"; false; }
+
+  # Assert the full RECONCILE SUMMARY line with correct counters.
+  [[ "$output" == *"RECONCILE SUMMARY: 3 stories checked, 3 divergences CORRECTED"* ]] \
+    || { echo "expected full summary line; got: $output"; false; }
+
+  # The trap file must NOT exist — the new code never touches .result.
+  [ ! -f "$BATS_TEST_TMPDIR/_result_trap" ] \
+    || { echo "FAIL: .result file was written (trap file exists)"; false; }
+
+  # Symlink still in place (not unlinked by rm -f).
+  [ -L "${lock_path}.result" ] \
+    || { echo "symlink at ${lock_path}.result was removed"; false; }
+
+  rm -f "${lock_path}.result" "$BATS_TEST_TMPDIR/_result_trap"
+}
+
+@test "sprint-state.sh: concurrent reconcile calls each report their own counters" {
+  local num_stories=4
+  _seed_reconcile_fixture "$num_stories"
+  local lock_path="$ART/sprint-status.yaml.lock"
+
+  local i
+  for i in $(seq 1 20); do
+    _reset_reconcile_fixture "$num_stories"
+
+    # Per-iteration symlink trap.
+    ln -sf "$BATS_TEST_TMPDIR/_result_trap_$i" "${lock_path}.result"
+
+    # Per-iteration debug log for anti-stub proof.
+    local dbg_a="$BATS_TEST_TMPDIR/dbg_a_$i"
+    local dbg_b="$BATS_TEST_TMPDIR/dbg_b_$i"
+
+    # Barrier: both reconciles wait for the barrier file, then proceed.
+    local barrier="$BATS_TEST_TMPDIR/barrier_$i"
+    rm -f "$barrier"
+
+    local out_a="$BATS_TEST_TMPDIR/out_a_$i"
+    local out_b="$BATS_TEST_TMPDIR/out_b_$i"
+    local err_a="$BATS_TEST_TMPDIR/err_a_$i"
+    local err_b="$BATS_TEST_TMPDIR/err_b_$i"
+    local rc_a_file="$BATS_TEST_TMPDIR/rc_a_$i"
+    local rc_b_file="$BATS_TEST_TMPDIR/rc_b_$i"
+
+    (
+      while [ ! -f "$barrier" ]; do :; done
+      ACQUIRE_LOCK_DEBUG=1 ACQUIRE_LOCK_DEBUG_LOG="$dbg_a" \
+        "$SCRIPT" reconcile --sprint-id sprint-test > "$out_a" 2>"$err_a"
+      printf '%s' "$?" > "$rc_a_file"
+    ) 3>&- &
+    local pid_a=$!
+
+    (
+      while [ ! -f "$barrier" ]; do :; done
+      ACQUIRE_LOCK_DEBUG=1 ACQUIRE_LOCK_DEBUG_LOG="$dbg_b" \
+        "$SCRIPT" reconcile --sprint-id sprint-test > "$out_b" 2>"$err_b"
+      printf '%s' "$?" > "$rc_b_file"
+    ) 3>&- &
+    local pid_b=$!
+
+    # Release both reconciles.
+    touch "$barrier"
+
+    wait "$pid_a" || true
+    wait "$pid_b" || true
+
+    local rc_a rc_b
+    rc_a="$(cat "$rc_a_file" 2>/dev/null || echo 1)"
+    rc_b="$(cat "$rc_b_file" 2>/dev/null || echo 1)"
+
+    [ "$rc_a" -eq 0 ] || { echo "iter $i: reconcile A failed (rc=$rc_a): $(cat "$out_a"); stderr: $(cat "$err_a" 2>/dev/null)"; false; }
+    [ "$rc_b" -eq 0 ] || { echo "iter $i: reconcile B failed (rc=$rc_b): $(cat "$out_b"); stderr: $(cat "$err_b" 2>/dev/null)"; false; }
+
+    # Both must print RECONCILE SUMMARY.
+    grep -q "RECONCILE SUMMARY" "$out_a" \
+      || { echo "iter $i: A missing SUMMARY: $(cat "$out_a")"; false; }
+    grep -q "RECONCILE SUMMARY" "$out_b" \
+      || { echo "iter $i: B missing SUMMARY: $(cat "$out_b")"; false; }
+
+    # Sum of divergence counts must equal num_stories.
+    # Extract the divergence count from each summary line.
+    local div_a div_b
+    div_a="$(grep 'RECONCILE SUMMARY' "$out_a" | sed -n 's/.*RECONCILE SUMMARY: [0-9]* stories checked, \([0-9]*\) divergences.*/\1/p')"
+    div_b="$(grep 'RECONCILE SUMMARY' "$out_b" | sed -n 's/.*RECONCILE SUMMARY: [0-9]* stories checked, \([0-9]*\) divergences.*/\1/p')"
+    # Handle the "no drift" case (0 divergences).
+    if grep -q 'no drift' "$out_a"; then div_a=0; fi
+    if grep -q 'no drift' "$out_b"; then div_b=0; fi
+    # Fail loudly if extraction yielded a non-integer or empty value.
+    [[ "$div_a" =~ ^[0-9]+$ ]] \
+      || { echo "iter $i: div_a not an integer: '$div_a' (out_a=$(cat "$out_a"))"; false; }
+    [[ "$div_b" =~ ^[0-9]+$ ]] \
+      || { echo "iter $i: div_b not an integer: '$div_b' (out_b=$(cat "$out_b"))"; false; }
+    local sum=$((div_a + div_b))
+    [ "$sum" -eq "$num_stories" ] \
+      || { echo "iter $i: divergences sum=$sum (a=$div_a b=$div_b) expected $num_stories"; false; }
+
+    # Symlink trap: .result file must NOT have been written.
+    [ ! -f "$BATS_TEST_TMPDIR/_result_trap_$i" ] \
+      || { echo "iter $i: FAIL: .result trap file was written"; false; }
+
+    # Symlink still in place.
+    [ -L "${lock_path}.result" ] \
+      || { echo "iter $i: symlink at ${lock_path}.result removed"; false; }
+
+    # Anti-stub: both debug logs must be non-empty (proves each reconcile
+    # exercised a real lock primitive, not a stub).
+    [ -s "$dbg_a" ] \
+      || { echo "iter $i: debug log A empty — stub suspected; stderr: $(cat "$err_a" 2>/dev/null)"; false; }
+    [ -s "$dbg_b" ] \
+      || { echo "iter $i: debug log B empty — stub suspected; stderr: $(cat "$err_b" 2>/dev/null)"; false; }
+
+    # Verify no *_STUB env vars are set.
+    [ -z "${ACQUIRE_LOCK_STUB:-}" ]     || { echo "iter $i: ACQUIRE_LOCK_STUB set"; false; }
+    [ -z "${RELEASE_LOCK_STUB:-}" ]     || { echo "iter $i: RELEASE_LOCK_STUB set"; false; }
+
+    rm -f "${lock_path}.result" "$BATS_TEST_TMPDIR/_result_trap_$i"
+  done
+}
+
+@test "sprint-state.sh: reconcile lock failure reports lock path and reason and exits non-zero" {
+  _seed_reconcile_fixture 2
+  local lock_path="$ART/sprint-status.yaml.lock"
+
+  # Pre-seed a stale .result file with fabricated counters (old-code masking).
+  printf '99 99 99\n' > "${lock_path}.result"
+
+  # Hold the lock: start a background sleep with fd 3 closed so bats
+  # does not inherit a leaked descriptor. Record the PID for teardown.
+  sleep 60 3>&- &
+  local holder_pid=$!
+  _LOCK_HOLDER_PID="$holder_pid"
+  local epoch
+  epoch="$(date +%s)"
+  mkdir -p "$(dirname "$lock_path")"
+  printf '%s %s\n' "$holder_pid" "$epoch" > "$lock_path"
+
+  # Also hold the flock if flock is available, so the flock path also fails.
+  # Append mode (>>) preserves the pid/epoch line so the fallback path's
+  # stale-reap check also sees a live holder and times out correctly.
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>>"$lock_path"
+    flock -n 9 || true
+  fi
+
+  run --separate-stderr "$SCRIPT" reconcile --sprint-id sprint-test
+
+  # Cleanup: kill the holder, release flock fd.
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+  _LOCK_HOLDER_PID=""
+  exec 9>&- 2>/dev/null || true
+  rm -f "$lock_path" "${lock_path}.result"
+
+  # Must exit non-zero.
+  [ "$status" -ne 0 ] \
+    || { echo "expected non-zero exit, got 0; output=$output stderr=$stderr"; false; }
+
+  # stderr must name the lock path and timeout/failure reason.
+  [[ "$stderr" == *"$lock_path"* ]] \
+    || { echo "stderr missing lock path: $stderr"; false; }
+  { [[ "$stderr" == *"lock_timeout"* ]] || [[ "$stderr" == *"acquisition failed"* ]]; } \
+    || { echo "stderr missing reason (lock_timeout or acquisition failed): $stderr"; false; }
+
+  # stdout must NOT contain RECONCILE SUMMARY (no masking from stale .result).
+  [[ "$output" != *"RECONCILE SUMMARY"* ]] \
+    || { echo "FAIL: RECONCILE SUMMARY appeared despite lock failure: $output"; false; }
+}
+
+# --- Copy drift guard -------------------------------------------------------
+
+@test "sprint-state.sh: copy drift guard mutation probe catches single-byte divergence" {
+  local CANON="$SCRIPTS_DIR/sprint-state.sh"
+  local WRAPPER
+  WRAPPER="$(cd "$SCRIPTS_DIR/../skills/gaia-dev-story/scripts" && pwd)/sprint-state.sh"
+  [ -r "$CANON" ]
+  [ -r "$WRAPPER" ]
+
+  # Mutate: append one byte to a temp copy.
+  local mutated="$BATS_TEST_TMPDIR/sprint-state-mutated.sh"
+  cp "$CANON" "$mutated"
+  printf 'x' >> "$mutated"
+
+  # diff must detect the divergence.
+  run diff -q "$mutated" "$WRAPPER"
+  [ "$status" -ne 0 ] \
+    || { echo "diff did not detect the mutation"; false; }
+}
+
+# --- Internal traceability identifier scan -----------------------------------
+
+@test "sprint-state.sh: changed plugin files contain no internal traceability identifiers" {
+  # Scan both sprint-state.sh copies and this test file for leaked internal IDs.
+  # The regex is built from parts so it cannot self-match.
+  local _e='E' _s='S' _dash='-'
+  local _fr='FR' _nfr='NFR' _adr='ADR' _tc='TC' _af='AF' _ai='AI' _sr='SR'
+  local id_pattern="${_fr}${_dash}[0-9]+|${_nfr}${_dash}[0-9]+|${_adr}${_dash}[0-9]+|${_tc}${_dash}[0-9]+|${_af}${_dash}[0-9]{4}|${_ai}${_dash}[0-9]+|${_sr}${_dash}[0-9]+"
+  local story_key_pattern="${_e}[0-9]+${_dash}${_s}[0-9]+"
+  local bare_epic_pattern="(^|[^A-Za-z0-9_])${_e}[0-9]+([^0-9A-Za-z_\[]|$)"
+
+  local combined_pattern="${id_pattern}|${story_key_pattern}|${bare_epic_pattern}"
+
+  local files=(
+    "$BATS_TEST_DIRNAME/../scripts/sprint-state.sh"
+    "$BATS_TEST_DIRNAME/../skills/gaia-dev-story/scripts/sprint-state.sh"
+    "$BATS_TEST_DIRNAME/sprint-state.bats"
+  )
+  local f matches
+  for f in "${files[@]}"; do
+    [ -r "$f" ] || { echo "file not readable: $f"; false; }
+    local grep_rc=0
+    matches="$(grep -nEo "$combined_pattern" "$f")" || grep_rc=$?
+    if [ "$grep_rc" -ge 2 ]; then
+      echo "grep error (rc=$grep_rc) scanning $(basename "$f")"; false
+    fi
+    [ -z "$matches" ] \
+      || { echo "ID leak in $(basename "$f"):"; echo "$matches"; false; }
+  done
 }
