@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.228.0] — 2026-11-18
+
+### Added
+
+- (independence-check) The direct-overlap rule in independence-check.sh now de-duplicates paths before comparing them, so a file shared by stories inside one active sprint no longer blocks a concurrent sprint whose touch set does not include it, while genuine overlaps still fail with a single diagnostic naming both owners (#2493)
+- (ci-wait) ci-wait.sh no longer reports passed while the latest run of any required check is still pending; it keeps polling until every required check's newest run has finished (#2474)
+- (design-review) The design delta sync now skips fenced code blocks when it scans for sections and tables, and finds the target table without mistaking pipe-bearing bullets for table rows (#2466)
+- (lifecycle-overrides) lifecycle-overrides.sh now opens its lock file descriptor in a way that works under bash 3.2, so recording a lifecycle bypass succeeds on macOS with or without flock (#2469)
+- (design-record) Design records now accept an Artifact surface for the design-system project, gain a rebind verb with dry-run and execute modes, and require an explicit reason before a stale design returns to review (#2450)
+- (triage-findings) extract-findings.sh now emits high and critical bug rows and documentation rows from story Findings tables, so the triage skill sees them (#2451)
+
+### Fixed
+
+- The ATDD readiness checks now find a story's ATDD file through the per-story resolver and exact file names only, so a sibling or longer story key can no longer satisfy the gate (#2473)
+- (security-invariants) The PR-target check now finds the project config under .gaia/config, including from a worktree subdirectory, while still supporting the legacy config path (#2467)
+- (review-gate) The review verdict resolver now fails closed when execution evidence is malformed or missing, treating only a true boolean as skipped and rejecting invalid entries with a diagnostic (#2449)
+
 ## [1.227.0] — 2026-11-14
 
 ### Added
