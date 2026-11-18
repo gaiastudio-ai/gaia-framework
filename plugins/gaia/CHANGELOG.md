@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https:/keepachangelog.com/en/1.1.0).
 
+## [1.228.0] — 2026-11-18
+
+### Added
+
+- (independence-check) independence-check.sh rule (c): de-duplicate p (#2493)
+- (ci-wait) ci-wait.sh must not report passed while any check is in p (#2474)
+- (design-review) wire Delta sync scans past code fences and finds ta (#2466)
+- (lifecycle-overrides) lifecycle-overrides.sh exec fd assignment mus (#2469)
+- (design-record) wire Design record ds_surface field, rebind verb, n (#2450)
+- (triage-findings) extract-findings.sh must emit high/critical bug r (#2451)
+
+### Fixed
+
+- atdd checks use the per-story resolver and exact file names only (#2473)
+- (security-invariants) discover project config under .gaia/config (#2467)
+- (review-gate) fail closed on malformed or missing execution evidence (#2449)
+
 ## [1.227.0] — 2026-11-14
 
 ### Added
