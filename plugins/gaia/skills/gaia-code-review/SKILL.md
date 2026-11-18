@@ -390,10 +390,20 @@ else
   case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
   STORY_WORKTREE_PATH="$_wt_path"
 fi
+# Derive the project root by walking up from the worktree.
+_project_root="$STORY_WORKTREE_PATH"
+while [ "$_project_root" != "/" ]; do
+  [ -d "$_project_root/.gaia/config" ] && break
+  _project_root="$(dirname "$_project_root")"
+done
+[ -d "$_project_root/.gaia/config" ] \
+  || { echo "no .gaia/config found above the story worktree — refusing to record the gate" >&2; exit 1; }
+PROJECT_ROOT="$_project_root" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
+  || { echo "story file for {story_key} not found under project root $_project_root — wrong project?" >&2; exit 1; }
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Code Review" \
+PROJECT_ROOT="$_project_root" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Code Review" \
   --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
 ```
 

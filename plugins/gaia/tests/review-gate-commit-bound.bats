@@ -3781,6 +3781,7 @@ STORY
   _init_git "$tmproot/main"
   local wt="$tmproot/repo"
   _seed_worktree_fixture "$wt" "$_K"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   local expected_sha
   expected_sha="$(git -C "$wt" rev-parse HEAD)"
 
@@ -3980,6 +3981,23 @@ _extract_gate_block() {
 
 # Helper: set up the stub plugin root with fake resume-checkpoint.sh and
 # a review-gate.sh that records every argument it receives.
+# Helper: seed .gaia/config and a minimal story file at the project root level
+# so the gate block's project-root walk-up and story-file verification succeed.
+_seed_project_root_for_stub() {
+  local root="$1" key="$2"
+  mkdir -p "$root/.gaia/config" "$root/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${key}-slug"
+  cat > "$root/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: stub-fixture
+YAML
+  cat > "$root/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${key}-slug/story.md" <<STORY
+---
+key: "${key}"
+status: review
+---
+STORY
+}
+
 _setup_gate_stubs() {
   local tmproot="$1"
   mkdir -p "$tmproot/fake-plugin/scripts"
@@ -3997,6 +4015,8 @@ done
 exit 0
 STUB
   chmod +x "$tmproot/fake-plugin/scripts/review-gate.sh"
+  # Symlink resolve-story-file.sh so the gate block's story verification works
+  ln -sf "$PLUGIN_ROOT/scripts/resolve-story-file.sh" "$tmproot/fake-plugin/scripts/resolve-story-file.sh"
 }
 
 # Helper: build and run the extracted gate-write snippet.
@@ -4030,6 +4050,7 @@ _run_extracted_gate() {
   _init_git "$tmproot/main"
   local wt="$tmproot/wt"
   _seed_worktree_fixture "$wt" "$_K"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   local expected_sha
   expected_sha="$(git -C "$wt" rev-parse HEAD)"
   _setup_gate_stubs "$tmproot"
@@ -4047,6 +4068,7 @@ _run_extracted_gate() {
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
   local wt="$tmproot/wt"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   _seed_worktree_fixture "$wt" "$_K"
   local expected_sha
   expected_sha="$(git -C "$wt" rev-parse HEAD)"
@@ -4065,6 +4087,7 @@ _run_extracted_gate() {
   local tmproot="${TEST_TMP}/gwb_b"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   local wt="$tmproot/path with spaces/wt"
   _seed_worktree_fixture "$wt" "$_K"
   local expected_sha
@@ -4143,6 +4166,7 @@ _run_extracted_gate() {
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
   _setup_real_plugin_stubs "$tmproot"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   # Export the STALE STORY_WORKTREE_PATH — the block must ignore it
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
   PROJECT_PATH="$tmproot/main" \
@@ -4175,6 +4199,7 @@ _run_extracted_gate() {
   local stale_sha
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
 
+  _seed_project_root_for_stub "$tmproot" "$_K"
   _setup_real_plugin_stubs "$tmproot"
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
   PROJECT_PATH="$tmproot/main" \
@@ -4287,6 +4312,7 @@ _run_extracted_gate() {
   local _K="E900-S941" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/gwb_a_sra"
   mkdir -p "$tmproot/main"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   _init_git "$tmproot/main"
   local wt="$tmproot/wt"
   _seed_worktree_fixture "$wt" "$_K"
@@ -4318,6 +4344,7 @@ _run_extracted_gate() {
   _init_git "$tmproot/stale-repo"
   local stale_sha
   stale_sha="$(git -C "$tmproot/stale-repo" rev-parse HEAD)"
+  _seed_project_root_for_stub "$tmproot" "$_K"
 
   _setup_real_plugin_stubs "$tmproot"
   export STORY_WORKTREE_PATH="$tmproot/stale-repo"
@@ -4434,6 +4461,7 @@ STORY
 JSON
 
   _setup_real_plugin_stubs "$tmproot"
+  _seed_project_root_for_stub "$tmproot" "$_K"
   PROJECT_PATH="$tmproot/main" PROJECT_ROOT="$tmproot/main" \
     _run_extracted_gate_real "gaia-code-review" "$_K" "" "$tmproot" "$tmproot/main"
   [ "$status" -eq 0 ]
@@ -4458,6 +4486,7 @@ JSON
   local expected_sha
   expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
 
+  _seed_project_root_for_stub "$tmproot" "$_K"
   _setup_real_plugin_stubs "$tmproot"
   mkdir -p "$tmproot/nongit"
   PROJECT_PATH="$tmproot/main" \
@@ -4476,6 +4505,7 @@ JSON
 @test "gate-write snippet from wrong CWD records story worktree SHA not CWD HEAD" {
   local _K="E900-S954" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/gwb_wrongcwd"
+  _seed_project_root_for_stub "$tmproot" "$_K"
 
   # Story worktree
   local wt="$tmproot/wt"
@@ -4597,6 +4627,7 @@ _run_extracted_gate_real() {
   expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
 
   _setup_real_plugin_stubs "$tmproot"
+  _seed_project_root_for_stub "$tmproot" "$_K"
 
   # Create a config fixture so find-worktree's config-path fallback resolves
   # the code repo when PROJECT_PATH is unset.
@@ -4699,4 +4730,211 @@ YAML
   [ "$status" -ne 0 ]
   [ ! -f "$tmproot/captured-sha" ]
   [[ "$output" == *"cannot resolve story worktree"* ]] || [[ "$output" == *"pass --worktree"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Project-root derivation: gate writes resolve PROJECT_ROOT from the worktree
+# ---------------------------------------------------------------------------
+
+# Helper: seed a full fixture project with a story file, config, and a linked
+# story worktree. The project root is at $1, the story key is $2.
+# Returns (via stdout): the linked worktree path.
+_seed_project_fixture() {
+  local root="$1" key="$2"
+  mkdir -p "$root/.gaia/config" "$root/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${key}-slug"
+  cat > "$root/.gaia/config/project-config.yaml" <<YAML
+project:
+  name: fixture
+YAML
+  cat > "$root/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${key}-slug/story.md" <<STORY
+---
+template: 'story'
+key: "${key}"
+title: "Fixture Story"
+status: review
+---
+## Review Gate
+
+| Review | Status | Report | Reviewed SHA |
+|--------|--------|--------|--------------|
+| Code Review | UNVERIFIED | — | absent |
+| QA Tests | UNVERIFIED | — | absent |
+| Security Review | UNVERIFIED | — | absent |
+| Test Automation | UNVERIFIED | — | absent |
+| Test Review | UNVERIFIED | — | absent |
+| Performance Review | UNVERIFIED | — | absent |
+
+> Story moves to \`done\` only when ALL reviews show PASSED.
+STORY
+  # Create a code repo inside the project root
+  mkdir -p "$root/code-repo"
+  git init -q "$root/code-repo"
+  git -C "$root/code-repo" config user.email "test@test.local"
+  git -C "$root/code-repo" config user.name "Test"
+  printf 'init\n' > "$root/code-repo/f.txt"
+  git -C "$root/code-repo" add .
+  git -C "$root/code-repo" commit -q -m "init"
+  # Linked worktree under .gaia-worktrees (the documented layout)
+  local wt="$root/.gaia-worktrees/${key}"
+  git -C "$root/code-repo" worktree add "$wt" -b "feat/${key}-fixture" >/dev/null 2>&1
+  printf 'wt\n' > "$wt/work.txt"
+  git -C "$wt" add work.txt
+  git -C "$wt" commit -q -m "worktree commit"
+  printf '%s\n' "$wt"
+}
+
+# Helper: run extracted gate block with the REAL review-gate.sh (no stub).
+_run_extracted_gate_live() {
+  local skill_name="$1" story_key="$2" wt_val="$3" cwd="$4"
+  local skill_md="$PLUGIN_ROOT/skills/$skill_name/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$story_key" "$wt_val")"
+  [ -n "$gate_code" ] || { echo "gate block extraction produced empty output for $skill_name"; return 1; }
+  local tmpscript
+  tmpscript="${TEST_TMP}/gate-live-${skill_name}-$$.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'cd "%s" || exit 99\n' "$cwd"
+    printf '[ -n "${PROJECT_PATH:-}" ] && export PROJECT_PATH || true\n'
+    printf 'export REVIEW_GATE_PROOF_OF_EXECUTION=off\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$tmpscript"
+  chmod +x "$tmpscript"
+  CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+    run bash "$tmpscript"
+}
+
+# (i) cwd=project root, PROJECT_PATH unset, {worktree}=worktree -> row written
+@test "gate write with real review-gate.sh: cwd=project root, PROJECT_PATH unset, explicit worktree" {
+  local _K="E900-S980" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_i"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$tmproot/project"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep 'Code Review' "$story" | grep -q "$expected_sha"
+}
+
+# (ii) cwd=project root, PROJECT_PATH=worktree (documented dev-story path)
+@test "gate write with real review-gate.sh: cwd=project root, PROJECT_PATH=worktree" {
+  local _K="E900-S981" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_ii"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  export PROJECT_PATH="$wt"
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$tmproot/project"
+  unset PROJECT_PATH
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep 'Code Review' "$story" | grep -q "$expected_sha"
+}
+
+# (iii) cwd=worktree
+@test "gate write with real review-gate.sh: cwd=worktree" {
+  local _K="E900-S982" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_iii"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$wt"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep 'Code Review' "$story" | grep -q "$expected_sha"
+}
+
+# (iv) worktree under WRONG project -> refused
+@test "gate write with real review-gate.sh: worktree under wrong project is refused" {
+  local _K="E900-S983" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_iv"
+  # Create a wrong project with .gaia/config but no story for _K
+  mkdir -p "$tmproot/wrong-project/.gaia/config" "$tmproot/wrong-project/code-repo"
+  cat > "$tmproot/wrong-project/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: wrong
+YAML
+  git init -q "$tmproot/wrong-project/code-repo"
+  git -C "$tmproot/wrong-project/code-repo" config user.email "t@t"
+  git -C "$tmproot/wrong-project/code-repo" config user.name T
+  printf 'x\n' > "$tmproot/wrong-project/code-repo/f"
+  git -C "$tmproot/wrong-project/code-repo" add .
+  git -C "$tmproot/wrong-project/code-repo" commit -q -m init
+  local wrong_wt="$tmproot/wrong-project/.gaia-worktrees/${_K}"
+  git -C "$tmproot/wrong-project/code-repo" worktree add "$wrong_wt" -b "feat/${_K}-wrong" 2>/dev/null
+  printf 'wt\n' > "$wrong_wt/w.txt"
+  git -C "$wrong_wt" add .
+  git -C "$wrong_wt" commit -q -m wt
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wrong_wt" "$tmproot/wrong-project"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"wrong project"* ]] || [[ "$output" == *"not found"* ]]
+}
+
+# (v) no .gaia/config above worktree -> refused
+@test "gate write with real review-gate.sh: no .gaia/config above worktree is refused" {
+  local _K="E900-S985" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_v"
+  _seed_worktree_fixture "$tmproot/bare-wt" "$_K"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$tmproot/bare-wt" "$tmproot"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".gaia/config"* ]] || [[ "$output" == *"no .gaia"* ]] || [[ "$output" == *"refusing"* ]]
+}
+
+# (ii) with run-all-reviews block
+@test "gate write with real review-gate.sh: run-all-reviews block cwd=project root, PROJECT_PATH=worktree" {
+  local _K="E900-S986" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_rar"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  export PROJECT_PATH="$wt"
+  _run_extracted_gate_live "gaia-run-all-reviews" "$_K" "$wt" "$tmproot/project"
+  unset PROJECT_PATH
+  [ "$status" -eq 0 ]
+}
+
+# Every canonical gate block passes PROJECT_ROOT on each review-gate.sh call
+@test "every canonical gate block passes PROJECT_ROOT on each review-gate.sh call" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-security-review"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    # Extract ALL bash blocks that call review-gate.sh update
+    local blocks
+    blocks="$(awk '
+      /^[[:space:]]*```bash$/ { in_b = 1; buf = ""; next }
+      /^[[:space:]]*```$/ { if (in_b && buf ~ /review-gate\.sh.*update/) print buf; in_b = 0; next }
+      in_b { buf = buf "\n" $0 }
+    ' "$skill_md")"
+    [ -n "$blocks" ] || continue
+    # Each review-gate.sh update line must have PROJECT_ROOT= prefix
+    local gate_lines
+    gate_lines="$(printf '%s' "$blocks" | grep 'review-gate\.sh.*update')"
+    while IFS= read -r line; do
+      [ -n "$line" ] || continue
+      if ! grep -q 'PROJECT_ROOT=' <<< "$line"; then
+        echo "FAIL: $skill: review-gate.sh update missing PROJECT_ROOT= prefix: $(echo "$line" | head -c 120)"
+        return 1
+      fi
+    done <<< "$gate_lines"
+  done
 }
