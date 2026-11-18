@@ -557,6 +557,46 @@ YAML
   [ "$status" -eq 2 ]
 }
 
+# ---- checkout with .git file (separate-git-dir / submodule layout) ----
+
+@test "separate-git-dir checkout uses own folder name as path prefix" {
+  # A --separate-git-dir checkout stores .git as a file (gitdir pointer).
+  # The common-dir parent is the external git dir, NOT the checkout, so
+  # the path prefix must fall back to the toplevel basename.
+  local ext_git="$TEST_DIR/ext-git-dir"
+  local sep_dir="$TEST_DIR/sep-checkout"
+  mkdir -p "$ext_git" "$sep_dir"
+  (
+    cd "$sep_dir"
+    git init -q --separate-git-dir "$ext_git"
+    git config user.email "test@test.local"
+    git config user.name "Test"
+    git checkout -q -b staging
+    mkdir -p plugins/gaia/scripts
+    echo '# sprint-state' > plugins/gaia/scripts/sprint-state.sh
+    echo '# resolve' > plugins/gaia/scripts/resolve-config.sh
+    git add -A
+    git commit -q -m "initial"
+    git update-ref refs/remotes/origin/staging HEAD
+    git update-ref refs/remotes/origin/HEAD HEAD
+  )
+
+  # Create sprint fixtures with touch paths prefixed by the checkout name.
+  _create_sprint "sprint-900" "active" "E900-S1:E900:sep-checkout/plugins/gaia/scripts/sprint-state.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _create_sprint "sprint-901" "active" "E901-S1:E901:sep-checkout/plugins/gaia/scripts/resolve-config.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local sf="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+
+  # Modify only the in-set file.
+  echo '# modified' >> "$sep_dir/plugins/gaia/scripts/sprint-state.sh"
+
+  run bash -c "cd '$sep_dir' && PROJECT_ROOT='$TEST_DIR' bash '$DRIFT_SCRIPT' --story '$sf'"
+
+  # With a correct prefix ("sep-checkout"), the modified file is in-set
+  # and no drift is reported.  A wrong prefix (e.g. the external git
+  # dir's parent) would flag every file.
+  [ "$status" -eq 0 ]
+}
+
 # ---- AC9: warm cache performance (added by user ruling) ----
 
 _perf_now() {

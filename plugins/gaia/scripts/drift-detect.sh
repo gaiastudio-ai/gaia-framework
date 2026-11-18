@@ -288,30 +288,45 @@ main() {
   fi
 
   # Determine checkout directory name for path mapping.
-  # In a linked worktree the git toplevel is the worktree directory (e.g.
-  # the story key), not the main checkout.  Resolve the main checkout via
-  # --git-common-dir so path prefixes match predicted_touch_set entries.
+  # Default: use the toplevel basename — correct for normal checkouts,
+  # submodules, and --separate-git-dir layouts.  Override for linked
+  # worktrees only, where the toplevel is the worktree directory (e.g.
+  # the story key) and the main checkout name must come from the shared
+  # common-dir.
   local git_toplevel checkout_dir
   git_toplevel="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     printf '%s: cannot determine git top-level\n' "$SCRIPT_NAME" >&2
     exit 2
   }
-  local _dd_common_dir
-  _dd_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || _dd_common_dir=""
-  if [ -n "$_dd_common_dir" ]; then
-    # Resolve relative paths (main worktree returns ".git").
-    case "$_dd_common_dir" in
-      /*) ;;
-      *)  _dd_common_dir="${git_toplevel}/${_dd_common_dir}" ;;
-    esac
-    # Normalize in a subshell; strip the .git dir to get the main root.
-    _dd_common_dir="$( (cd "$_dd_common_dir" && pwd -P) 2>/dev/null )" || _dd_common_dir=""
+  checkout_dir="${git_toplevel##*/}"
+
+  # Detect linked worktree: git-dir ≠ common-dir when inside one.
+  local _dd_git_dir _dd_common_dir
+  _dd_git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null)" \
+    || _dd_git_dir="$(git rev-parse --git-dir 2>/dev/null)" \
+    || _dd_git_dir=""
+  _dd_common_dir="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    || _dd_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" \
+    || _dd_common_dir=""
+
+  # Resolve to absolute physical paths for a reliable comparison.
+  if [ -n "$_dd_git_dir" ]; then
+    case "$_dd_git_dir" in /*) ;; *) _dd_git_dir="${PWD}/${_dd_git_dir}" ;; esac
+    _dd_git_dir="$( (cd "$_dd_git_dir" && pwd -P) 2>/dev/null )" || _dd_git_dir=""
   fi
   if [ -n "$_dd_common_dir" ]; then
-    checkout_dir="$(dirname "$_dd_common_dir")"
-    checkout_dir="${checkout_dir##*/}"
-  else
-    checkout_dir="${git_toplevel##*/}"
+    case "$_dd_common_dir" in /*) ;; *) _dd_common_dir="${PWD}/${_dd_common_dir}" ;; esac
+    _dd_common_dir="$( (cd "$_dd_common_dir" && pwd -P) 2>/dev/null )" || _dd_common_dir=""
+  fi
+
+  # In a linked worktree the git-dir is <common>/.git/worktrees/<name>,
+  # so git-dir ≠ common-dir.  Derive the checkout name from the main
+  # worktree root (the common-dir's parent).
+  if [ -n "$_dd_git_dir" ] && [ -n "$_dd_common_dir" ] \
+     && [ "$_dd_git_dir" != "$_dd_common_dir" ]; then
+    local _dd_main_root
+    _dd_main_root="$(dirname "$_dd_common_dir")"
+    checkout_dir="${_dd_main_root##*/}"
   fi
 
   # Compute merge-base.
