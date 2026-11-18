@@ -14,13 +14,24 @@
 #   1. build    — runs `build` if available; PASSED if exit 0, otherwise FAILED.
 #   2. tests    — resolves a project-level test command and runs it. The
 #                 deterministic precedence is:
-#                   (a) project-config.yaml `test_cmd:` (explicit user choice)
-#                   (b) package.json `scripts.test` (via `npm test` if present)
-#                   (c) bats discovery — `bats tests/*.bats` if `bats` and
+#                   (a) bridge tier-1 runner — when the Test Execution Bridge
+#                       is enabled in project-config.yaml and a
+#                       test-environment manifest carries a tier-1 runner.
+#                       The manifest is resolved canonical-first:
+#                       .gaia/config/test-environment.yaml, then the legacy
+#                       .gaia/artifacts/test-artifacts/test-environment.yaml,
+#                       then bare test-environment.yaml in the current
+#                       directory (kept for old fixture layouts).
+#                   (b) project-config.yaml `test_cmd:` (explicit user choice)
+#                   (c) package.json `scripts.test` (via `npm test` if present)
+#                   (d) bats discovery — `bats tests/*.bats` if `bats` and
 #                       any `tests/*.bats` exist
-#                 If none resolve, the row is SKIPPED with reason
-#                 "no test runner detected" — never FAILED. The system POSIX
-#                 `/bin/test` binary is explicitly never used.
+#                 If none resolve, the row is SKIPPED — never FAILED. When the
+#                 bridge is enabled but no manifest was found and no lower tier
+#                 resolved either, the SKIPPED reason is "bridge enabled but
+#                 no test-environment manifest found"; otherwise it is "no
+#                 test runner detected". The system POSIX `/bin/test` binary
+#                 is explicitly never used.
 #   3. lint     — runs `lint`  if available; PASSED if exit 0, otherwise FAILED.
 #   4. secrets  — scans the staged diff and staged file basenames for env-like
 #                 files / credentials / canonical secret patterns. Delegates
@@ -186,8 +197,9 @@ _resolve_test_cmd() {
     bridge_enabled="$(yq eval '.test_execution_bridge.bridge_enabled // false' "$_cfg_bridge" 2>/dev/null || echo false)"
     if [ "$bridge_enabled" = "true" ]; then
       # Find the manifest. Canonical-first: .gaia/config/, then
-      # the legacy .gaia/artifacts/test-artifacts/, then bare project-root
-      # (kept to tolerate old fixture layouts).
+      # the legacy .gaia/artifacts/test-artifacts/, then bare
+      # test-environment.yaml in the current directory (kept to tolerate
+      # old fixture layouts).
       local _manifest=""
       if [ -f "${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml" ]; then
         _manifest="${PROJECT_ROOT:+${PROJECT_ROOT%/}/}.gaia/config/test-environment.yaml"
