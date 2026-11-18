@@ -3635,7 +3635,7 @@ STORY
 
 @test "setup.sh does not execute shell metacharacters in ARGUMENTS" {
   local _K="E900-S917" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/rf6_inject"
+  local tmproot="${TEST_TMP}/sha_injection"
   _seed_setup_fixture "$tmproot"
   local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
@@ -3682,7 +3682,7 @@ STORY
 
 @test "setup.sh warns and continues when the story file has no key: line" {
   local _K="E900-S918" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/rf2_nokey"
+  local tmproot="${TEST_TMP}/missing_key"
   _seed_setup_fixture "$tmproot"
   local impl="$tmproot/.gaia/artifacts/implementation-artifacts"
   mkdir -p "$impl/epic-E900-fixture/${_K}-slug"
@@ -3752,7 +3752,7 @@ STORY
 
 @test "gate write refuses when worktree arg points at a missing dir (extracted block)" {
   local _K="E900-S970" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/rf3func_a"
+  local tmproot="${TEST_TMP}/func_case_a"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
   _setup_gate_stubs "$tmproot"
@@ -3764,7 +3764,7 @@ STORY
 
 @test "gate write refuses when worktree arg points at a non-git dir (extracted block)" {
   local _K="E900-S971" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/rf3func_b"
+  local tmproot="${TEST_TMP}/func_case_b"
   mkdir -p "$tmproot/main" "$tmproot/not-a-repo"
   _init_git "$tmproot/main"
   _setup_gate_stubs "$tmproot"
@@ -3776,7 +3776,7 @@ STORY
 
 @test "gate write passes exact worktree HEAD SHA (extracted block)" {
   local _K="E900-S972" # lint-pack:allow leaked-identifiers — synthetic fixture story key
-  local tmproot="${TEST_TMP}/rf3func_c"
+  local tmproot="${TEST_TMP}/func_case_c"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
   local wt="$tmproot/repo"
