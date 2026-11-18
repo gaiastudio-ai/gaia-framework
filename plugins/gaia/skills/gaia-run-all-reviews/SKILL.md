@@ -226,20 +226,24 @@ else
   case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
   STORY_WORKTREE_PATH="$_wt_path"
 fi
-# Derive the project root by walking up from the worktree.
-_project_root="$STORY_WORKTREE_PATH"
-while [ "$_project_root" != "/" ]; do
-  [ -d "$_project_root/.gaia/config" ] && break
-  _project_root="$(dirname "$_project_root")"
+# Derive the project root by walking up from the worktree (canonicalised).
+_wt_abs="$(cd "$STORY_WORKTREE_PATH" 2>/dev/null && pwd -P)" \
+  || { echo "cannot resolve worktree path to an absolute directory: $STORY_WORKTREE_PATH" >&2; exit 1; }
+PROJECT_ROOT="$_wt_abs"
+_walk_n=0
+while [ "$PROJECT_ROOT" != "/" ] && [ "$_walk_n" -lt 64 ]; do
+  [ -d "$PROJECT_ROOT/.gaia/config" ] && break
+  PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+  _walk_n=$((_walk_n + 1))
 done
-[ -d "$_project_root/.gaia/config" ] \
+[ -d "$PROJECT_ROOT/.gaia/config" ] \
   || { echo "no .gaia/config found above the story worktree — refusing to record the gate" >&2; exit 1; }
-PROJECT_ROOT="$_project_root" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
-  || { echo "story file for {story_key} not found under project root $_project_root — wrong project?" >&2; exit 1; }
+PROJECT_ROOT="$PROJECT_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
+  || { echo "story file for {story_key} not found under project root $PROJECT_ROOT — wrong project?" >&2; exit 1; }
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-PROJECT_ROOT="$_project_root" bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
+PROJECT_ROOT="$PROJECT_ROOT" bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
   --verdict {PASSED|FAILED} --sha "$_sha" \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
@@ -299,19 +303,23 @@ For each short_name in run:
        case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
        STORY_WORKTREE_PATH="$_wt_path"
      fi
-     _project_root="$STORY_WORKTREE_PATH"
-     while [ "$_project_root" != "/" ]; do
-       [ -d "$_project_root/.gaia/config" ] && break
-       _project_root="$(dirname "$_project_root")"
+     _wt_abs="$(cd "$STORY_WORKTREE_PATH" 2>/dev/null && pwd -P)" \
+       || { echo "cannot resolve worktree path to an absolute directory: $STORY_WORKTREE_PATH" >&2; exit 1; }
+     PROJECT_ROOT="$_wt_abs"
+     _walk_n=0
+     while [ "$PROJECT_ROOT" != "/" ] && [ "$_walk_n" -lt 64 ]; do
+       [ -d "$PROJECT_ROOT/.gaia/config" ] && break
+       PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+       _walk_n=$((_walk_n + 1))
      done
-     [ -d "$_project_root/.gaia/config" ] \
+     [ -d "$PROJECT_ROOT/.gaia/config" ] \
        || { echo "no .gaia/config found above the story worktree — refusing to record the gate" >&2; exit 1; }
-     PROJECT_ROOT="$_project_root" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
-       || { echo "story file for {story_key} not found under project root $_project_root — wrong project?" >&2; exit 1; }
+     PROJECT_ROOT="$PROJECT_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
+       || { echo "story file for {story_key} not found under project root $PROJECT_ROOT — wrong project?" >&2; exit 1; }
      _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
        && [ "${#_sha}" -eq 40 ] \
        || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-     PROJECT_ROOT="$_project_root" bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
+     PROJECT_ROOT="$PROJECT_ROOT" bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
        --verdict {verdict} --sha "$_sha" --report {report_path} \
        --started-at {gate_start_epoch_ms} \
        --token-estimate {token_estimate_from_throughput_telemetry} \
@@ -332,8 +340,9 @@ For each short_name in run:
      `--report-missing-reason "dispatch-failed: <reason>"` and `--sha "$_sha"`
      (computed with the same guarded `_wt_arg` / validation / refusal pattern
      from step 4 — the dispatch-failed write MUST NOT reuse a `_sha` from an
-     earlier Bash call). The cap-and-continue rule still applies — proceed to
-     the next entry in run.
+     earlier Bash call), prefixed with `PROJECT_ROOT="$PROJECT_ROOT"` (derived
+     from the canonicalised walk-up, same as step 4). The cap-and-continue
+     rule still applies — proceed to the next entry in run.
 ```
 
 **The "Per-reviewer LLM judgment blocks" pattern from the legacy SKILL.md is RETIRED.** Inline self-judgment by the orchestrator is forbidden; the per-review skills are the single source of verdicts. If a per-review skill is missing or broken, that is a defect to file — NOT a license for the orchestrator to substitute its own judgment.
@@ -363,7 +372,7 @@ The consolidation steps are:
 
 1. **Gate status.** For each selected gate, call `register-write.sh gate-status --story {key} --run-id {run_id} --gate {register_gate_name}`. Result `RAN` means the gate completed this round. `UNVERIFIED` means the gate did not record a run (absent or errored). An `UNVERIFIED` gate is NEVER read as "zero blockers".
 2. **Triage non-blocking entries.** Call `register-write.sh triage-nonblocking --story {key} --run-id {run_id}` to deterministically move non-blocking open entries to disposition `triage` with auto-derived owner and priority. Disagreement entries (mixed blocking ratings, no resolution) stay open.
-3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above). Every consolidation gate write MUST compute its own `_sha` from `{worktree}` using the same guarded `_wt_arg` / validation / `unset STORY_WORKTREE_PATH` pattern shown in the Substep 2.3 block — never reuse a `_sha` variable from an earlier Bash call.
+3. **Re-resolve each gate.** For each selected gate whose `gate-status` returned `RAN`, re-resolve with `verdict-resolver.sh --register {register_path}`, adding `--analysis-results` and `--execution-evidence` when the gate produces those files. A gate whose `gate-status` returned `UNVERIFIED` is NOT re-resolved; its Review Gate row is written as `UNVERIFIED`. Rewrite each gate's row via `review-gate.sh update` with the re-resolved verdict, passing `--report` and `--execution-evidence` for the gates that require them (see the reference table above). Every consolidation gate write MUST compute its own `_sha` from `{worktree}` using the same guarded `_wt_arg` / validation / `unset STORY_WORKTREE_PATH` pattern shown in the Substep 2.3 block — never reuse a `_sha` variable from an earlier Bash call — and prefix the `review-gate.sh update` call with `PROJECT_ROOT="$PROJECT_ROOT"` (derived from the canonicalised walk-up).
 
    The per-gate analysis-results and execution-evidence paths live in `.gaia/state/review/<gate>/{story_key}/` (written by each gate's Phase 3A, not alongside the review report):
 

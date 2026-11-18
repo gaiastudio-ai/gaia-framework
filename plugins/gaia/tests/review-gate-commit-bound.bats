@@ -4938,3 +4938,75 @@ YAML
     done <<< "$gate_lines"
   done
 }
+
+# ---------------------------------------------------------------------------
+# Walk-up canonicalisation: relative paths and iteration cap
+# ---------------------------------------------------------------------------
+
+@test "gate write with relative worktree path resolves and writes the row" {
+  local _K="E900-S990" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_rel"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  # Compute the relative path from the project root to the worktree
+  local rel_wt
+  rel_wt="$(python3 -c "import os; print(os.path.relpath('$wt', '$tmproot/project'))")"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$rel_wt" "$tmproot/project"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep 'Code Review' "$story" | grep -q "$expected_sha"
+}
+
+@test "gate write with relative worktree from cwd with another .gaia/config uses the worktree's project" {
+  local _K="E900-S991" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/proot_relother"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/real-project" "$_K")"
+  local expected_sha
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
+  mkdir -p "$tmproot/other-project/.gaia/config"
+  cat > "$tmproot/other-project/.gaia/config/project-config.yaml" <<'YAML'
+project:
+  name: other
+YAML
+  local rel_wt
+  rel_wt="$(python3 -c "import os; print(os.path.relpath('$wt', '$tmproot/other-project'))")"
+  unset PROJECT_PATH
+  # CWD has its own .gaia/config — the canonicalised walk-up must still
+  # find real-project (not stop at CWD).
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$rel_wt" "$tmproot/other-project"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/real-project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep 'Code Review' "$story" | grep -q "$expected_sha"
+}
+
+@test "every canonical gate block canonicalises the worktree path before walking up" {
+  local -a gate_skills=(
+    "gaia-code-review"
+    "gaia-performance-review"
+    "gaia-qa-tests"
+    "gaia-review-security"
+    "gaia-security-review"
+    "gaia-test-review"
+    "gaia-review-perf"
+    "gaia-run-all-reviews"
+  )
+  for skill in "${gate_skills[@]}"; do
+    local skill_md="${PLUGIN_ROOT}/skills/${skill}/SKILL.md"
+    local blocks
+    blocks="$(awk '
+      /^[[:space:]]*```bash$/ { in_b = 1; buf = ""; next }
+      /^[[:space:]]*```$/ { if (in_b && buf ~ /review-gate\.sh.*update/) print buf; in_b = 0; next }
+      in_b { buf = buf "\n" $0 }
+    ' "$skill_md")"
+    [ -n "$blocks" ] || continue
+    # Each block that walks up must canonicalise first (cd + pwd -P)
+    if ! grep -q 'pwd -P' <<< "$blocks"; then
+      echo "FAIL: $skill gate block missing pwd -P canonicalisation"
+      return 1
+    fi
+  done
+}

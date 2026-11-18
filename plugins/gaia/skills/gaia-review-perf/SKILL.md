@@ -176,20 +176,24 @@ Invoke the Juno performance subagent to perform deep performance analysis on all
     case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
     STORY_WORKTREE_PATH="$_wt_path"
   fi
-  # Derive the project root by walking up from the worktree.
-  _project_root="$STORY_WORKTREE_PATH"
-  while [ "$_project_root" != "/" ]; do
-    [ -d "$_project_root/.gaia/config" ] && break
-    _project_root="$(dirname "$_project_root")"
+  # Derive the project root by walking up from the worktree (canonicalised).
+  _wt_abs="$(cd "$STORY_WORKTREE_PATH" 2>/dev/null && pwd -P)" \
+    || { echo "cannot resolve worktree path to an absolute directory: $STORY_WORKTREE_PATH" >&2; exit 1; }
+  PROJECT_ROOT="$_wt_abs"
+  _walk_n=0
+  while [ "$PROJECT_ROOT" != "/" ] && [ "$_walk_n" -lt 64 ]; do
+    [ -d "$PROJECT_ROOT/.gaia/config" ] && break
+    PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+    _walk_n=$((_walk_n + 1))
   done
-  [ -d "$_project_root/.gaia/config" ] \
+  [ -d "$PROJECT_ROOT/.gaia/config" ] \
     || { echo "no .gaia/config found above the story worktree — refusing to record the gate" >&2; exit 1; }
-  PROJECT_ROOT="$_project_root" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
-    || { echo "story file for {story_key} not found under project root $_project_root — wrong project?" >&2; exit 1; }
+  PROJECT_ROOT="$PROJECT_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
+    || { echo "story file for {story_key} not found under project root $PROJECT_ROOT — wrong project?" >&2; exit 1; }
   _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
     && [ "${#_sha}" -eq 40 ] \
     || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-  PROJECT_ROOT="$_project_root" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Performance Review" --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
+  PROJECT_ROOT="$PROJECT_ROOT" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Performance Review" --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
   ```
 - Confirm the update succeeded (exit code 0).
 - Report the final status to the user.
