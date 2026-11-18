@@ -51,12 +51,18 @@ if [ "$1" = "push" ]; then
   [ -f "$COUNTER_FILE" ] && count="$(cat "$COUNTER_FILE")"
   count=$((count + 1))
   printf '%d\n' "$count" > "$COUNTER_FILE"
+  # Per-call message override: GAIA_PUSH_FAIL_MSG_<N> takes priority
+  # over the shared GAIA_PUSH_FAIL_MSG.  Backward-compatible — when no
+  # per-call vars are set, falls back to the shared value.
+  _msg_var="GAIA_PUSH_FAIL_MSG_${count}"
+  _per_call="${!_msg_var:-}"
+  _msg="${_per_call:-${GAIA_PUSH_FAIL_MSG:-fatal: push failed}}"
   if [ "${GAIA_PUSH_FAIL_FOREVER:-0}" = "1" ]; then
-    printf '%s\n' "${GAIA_PUSH_FAIL_MSG:-fatal: push failed}" >&2
+    printf '%s\n' "$_msg" >&2
     exit 1
   fi
   if [ -n "${GAIA_PUSH_FAIL_FIRST_N:-}" ] && [ "$count" -le "$GAIA_PUSH_FAIL_FIRST_N" ]; then
-    printf '%s\n' "${GAIA_PUSH_FAIL_MSG:-fatal: push failed}" >&2
+    printf '%s\n' "$_msg" >&2
     exit 1
   fi
   printf 'pushed\n'
@@ -280,4 +286,72 @@ STUB
   run "$GIT_PUSH"
   [ "$status" -ne 0 ]
   [ "$(cat "$TEST_TMP/push-count")" = "1" ]
+}
+
+# ===========================================================================
+# Retry re-classification — permanent error surfacing on a later attempt
+# must stop retries immediately (same message/exit as a first-attempt
+# permanent failure).
+# ===========================================================================
+
+@test "git-push: auth error on transient-rejection retry stops immediately" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FOREVER=1
+  # Call 1 (initial attempt): bare transient rejection.
+  export GAIA_PUSH_FAIL_MSG_1="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  # Call 2 (first retry): auth error — must stop immediately.
+  export GAIA_PUSH_FAIL_MSG_2="fatal: Authentication failed for 'https://github.com/user/repo.git'"
+  export GIT_PUSH_MAX_RETRIES=3
+  export GIT_PUSH_BACKOFF_BASE=2
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  # Exactly 2 push calls: initial + 1 retry that hit auth.
+  [ "$(cat "$TEST_TMP/push-count")" = "2" ]
+  # Only 1 sleep entry — backoff before the retry that returned auth.
+  [ -f "$TEST_TMP/sleep.log" ]
+  [ "$(wc -l < "$TEST_TMP/sleep.log")" -eq 1 ]
+}
+
+@test "git-push: hook declined on transient-rejection retry stops immediately" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FOREVER=1
+  # Call 1 (initial attempt): bare transient rejection.
+  export GAIA_PUSH_FAIL_MSG_1="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  # Call 2 (first retry): permanent rejection — must stop immediately.
+  export GAIA_PUSH_FAIL_MSG_2="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (hook declined)"
+  export GIT_PUSH_MAX_RETRIES=3
+  export GIT_PUSH_BACKOFF_BASE=2
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  # Exactly 2 push calls: initial + 1 retry that hit hook declined.
+  [ "$(cat "$TEST_TMP/push-count")" = "2" ]
+  # Only 1 sleep entry.
+  [ -f "$TEST_TMP/sleep.log" ]
+  [ "$(wc -l < "$TEST_TMP/sleep.log")" -eq 1 ]
+}
+
+# ===========================================================================
+# Leading-zero normalization — values like 08 or 09 must be treated as
+# decimal (not octal) in arithmetic; the script normalizes to base 10
+# after validation.
+# ===========================================================================
+
+@test "git-push: leading-zero backoff base 08 is treated as decimal 8" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FIRST_N=2
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  export GIT_PUSH_BACKOFF_BASE=08
+  export GIT_PUSH_MAX_RETRIES=2
+  run "$GIT_PUSH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "3" ]
+  # Backoff: 8*2^0=8, 8*2^1=16
+  [ "$(sed -n '1p' "$TEST_TMP/sleep.log")" = "8" ]
+  [ "$(sed -n '2p' "$TEST_TMP/sleep.log")" = "16" ]
 }

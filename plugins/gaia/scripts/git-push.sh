@@ -24,12 +24,14 @@
 #   GIT_PUSH_MAX_RETRIES — optional. Maximum number of retry attempts for
 #                           transient remote rejections (bare "(failed)").
 #                           Must be a non-negative integer; invalid values
-#                           cause an immediate exit.  Default 3.
+#                           cause an immediate exit.  Leading zeros are
+#                           normalised to base 10 (e.g. 08 -> 8).  Default 3.
 #   GIT_PUSH_BACKOFF_BASE — optional. Base seconds for exponential backoff
 #                            on transient remote rejections.  Delay per retry
 #                            is BASE * 2^(attempt-1) (e.g. 2 -> 2/4/8).
 #                            Must be a non-negative integer; invalid values
-#                            cause an immediate exit.  Default 2.
+#                            cause an immediate exit.  Leading zeros are
+#                            normalised to base 10 (e.g. 08 -> 8).  Default 2.
 #
 # Behavior:
 #   1. Refuse to push if HEAD is on a protected branch (main / staging).
@@ -46,6 +48,9 @@
 #          c. Transient rejection — [remote rejected] ... (failed) with NO
 #             permanent reasons -> retry up to GIT_PUSH_MAX_RETRIES times
 #             with bounded exponential backoff (BASE * 2^(n-1) seconds).
+#             Each retry's output is re-classified in the same order
+#             (auth -> permanent -> transient -> catch-all); a permanent
+#             error on any attempt fails immediately.
 #          d. Network indicators ("Could not resolve host", "Operation timed
 #             out", "Connection refused", "Network is unreachable",
 #             "TLS handshake") -> sleep $GAIA_GIT_PUSH_BACKOFF then retry
@@ -79,6 +84,11 @@ _validate_uint() {
 }
 _validate_uint "GIT_PUSH_MAX_RETRIES" "$MAX_RETRIES"
 _validate_uint "GIT_PUSH_BACKOFF_BASE" "$BACKOFF_BASE"
+
+# Normalise to base 10 — prevents leading zeros from being interpreted
+# as octal in arithmetic (e.g. 08 -> 8, 010 -> 10 not 8).
+MAX_RETRIES=$((10#$MAX_RETRIES))
+BACKOFF_BASE=$((10#$BACKOFF_BASE))
 
 # Resolve the security-invariants library if present.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -190,6 +200,20 @@ if _err_matches "$TRANSIENT_REJECT_PATTERN"; then
     if _attempt_push; then
       log "pushed $BRANCH -> $REMOTE (after retry)"
       exit 0
+    fi
+
+    # Re-classify — a permanent error on any attempt fails immediately.
+    if _err_matches "$AUTH_PATTERN"; then
+      log "push failed (auth / permission) — no retry"
+      exit 1
+    fi
+    if _err_matches "$PERM_REJECT_PATTERN"; then
+      log "push failed (permanent rejection) — no retry"
+      exit 1
+    fi
+    if ! _err_matches "$TRANSIENT_REJECT_PATTERN"; then
+      log "push failed (unclassified error) — no retry"
+      exit 1
     fi
   done
 
