@@ -263,6 +263,29 @@ _failed_check_names() {
   printf '%s' "$1" | jq -r '.[] | select(.bucket == "fail" or .bucket == "cancel") | "\(.name) (\(.bucket))"' 2>/dev/null
 }
 
+# _die_timeout LABEL — exit 1 when bound_exec reports a timeout (exit 142).
+# Logs the label, prints a resume hint, and exits.
+_die_timeout() {
+  log "timeout: $1 exceeded remaining bound"
+  log "Resume with /gaia-resume after checks complete."
+  exit 1
+}
+
+# _transient_retry DIE_REASON LOG_PREFIX — handle a transient polling error.
+# Increments the consecutive-failure counter, dies if the budget is exhausted,
+# otherwise logs, resets two-poll stability, and sleeps.  The caller MUST
+# follow this call with `continue` (a function cannot issue it).
+_transient_retry() {
+  CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+  if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
+    die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. $1"
+  fi
+  log "$2 (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})"
+  PREV_TERMINAL_NAMES=""
+  STABILITY_COUNT=0
+  sleep "$POLL_INTERVAL"
+}
+
 # _find_config_file — locate the project config file using the same discovery
 # order as resolve-config.sh: GAIA_SHARED_CONFIG, PROJECT_ROOT,
 # CLAUDE_PROJECT_ROOT, PWD, then walk-up from PWD (stops at $HOME, skipped
@@ -395,9 +418,7 @@ while true; do
     [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
     local_stdout=$(bound_exec "$_cw_remaining" -- gh pr checks "$PR_NUMBER" --required --json name,state,bucket 2>"$_TMP_STDERR_REQ") || local_ec=$?
     if [ "$local_ec" -eq 142 ]; then
-      log "timeout: gh call exceeded remaining bound"
-      log "Resume with /gaia-resume after checks complete."
-      exit 1
+      _die_timeout "gh call"
     fi
     local_stderr=$(cat "$_TMP_STDERR_REQ")
 
@@ -419,30 +440,12 @@ while true; do
         use_all_checks=1
       else
         # Transient error
-        CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
-        if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
-          die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. Last error: $local_stderr"
-        fi
-        log "polling error (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})"
-        # Reset two-poll stability on retry-path errors
-        PREV_TERMINAL_NAMES=""
-        STABILITY_COUNT=0
-        sleep "$POLL_INTERVAL"
-        continue
+        _transient_retry "Last error: $local_stderr" "polling error"; continue
       fi
     else
       # Validate the JSON
       if ! _validate_json "$local_stdout"; then
-        CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
-        if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
-          die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. Invalid JSON output."
-        fi
-        log "polling error: invalid JSON (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})"
-        # Reset two-poll stability on retry-path errors
-        PREV_TERMINAL_NAMES=""
-        STABILITY_COUNT=0
-        sleep "$POLL_INTERVAL"
-        continue
+        _transient_retry "Invalid JSON output." "polling error: invalid JSON"; continue
       fi
 
       # Empty required array → treat as "no required checks" (enter all-checks path)
@@ -464,9 +467,7 @@ while true; do
     [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
     all_stdout=$(bound_exec "$_cw_remaining" -- gh pr checks "$PR_NUMBER" --json name,state,bucket 2>"$_TMP_STDERR_ALL") || all_ec=$?
     if [ "$all_ec" -eq 142 ]; then
-      log "timeout: gh call exceeded remaining bound"
-      log "Resume with /gaia-resume after checks complete."
-      exit 1
+      _die_timeout "gh call"
     fi
     all_stderr=$(cat "$_TMP_STDERR_ALL")
 
@@ -491,29 +492,11 @@ while true; do
         sleep "$POLL_INTERVAL"
         continue
       fi
-      CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
-      if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
-        die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. Last error: $all_stderr"
-      fi
-      log "polling error (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})"
-      # Reset two-poll stability on retry-path errors
-      PREV_TERMINAL_NAMES=""
-      STABILITY_COUNT=0
-      sleep "$POLL_INTERVAL"
-      continue
+      _transient_retry "Last error: $all_stderr" "polling error"; continue
     fi
 
     if ! _validate_json "$all_stdout"; then
-      CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
-      if [ "$CONSECUTIVE_FAILURES" -ge "$MAX_CONSECUTIVE_FAILURES" ]; then
-        die "CI polling failed ${MAX_CONSECUTIVE_FAILURES} consecutive times. Invalid JSON output."
-      fi
-      log "polling error: invalid JSON (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})"
-      # Reset two-poll stability on retry-path errors
-      PREV_TERMINAL_NAMES=""
-      STABILITY_COUNT=0
-      sleep "$POLL_INTERVAL"
-      continue
+      _transient_retry "Invalid JSON output." "polling error: invalid JSON"; continue
     fi
 
     # Empty array from all-checks also means grace window
@@ -539,11 +522,18 @@ while true; do
     checks_json="$all_stdout"
   fi
 
-  # Reset consecutive failures only after a successful parse
-  CONSECUTIVE_FAILURES=0
+  # When use_all_checks=1, no cross-check runs on this iteration so
+  # the consecutive-failure counter resets now.  When use_all_checks=0,
+  # the cross-check runs next; the reset is deferred until after that
+  # operation succeeds — repeated cross-check failures must accumulate
+  # toward the limit instead of silently resetting each loop.
+  if [ "$use_all_checks" -eq 1 ]; then
+    CONSECUTIVE_FAILURES=0
+  fi
 
   # Also handle empty --required response
   if [ -z "$checks_json" ]; then
+    CONSECUTIVE_FAILURES=0
     sleep "$POLL_INTERVAL"
     continue
   fi
@@ -572,6 +562,7 @@ while true; do
   # Pending checks → keep polling
   if [ "$pending_count" -gt 0 ]; then
     log "CI checks in progress (${pending_count} pending, elapsed: ${SECONDS}s)..."
+    CONSECUTIVE_FAILURES=0
     # Reset two-poll stability on non-terminal poll
     PREV_TERMINAL_NAMES=""
     STABILITY_COUNT=0
@@ -585,11 +576,153 @@ while true; do
   if [ "$done_count" -lt "$total_count" ]; then
     other_count=$((total_count - done_count))
     log "CI checks in progress (${other_count} in non-terminal bucket, elapsed: ${SECONDS}s)..."
+    CONSECUTIVE_FAILURES=0
     PREV_TERMINAL_NAMES=""
     STABILITY_COUNT=0
     sleep "$POLL_INTERVAL"
     continue
   fi
+
+  # --- Cross-check: verify required names against all-checks and rollup ---
+  if [ "$use_all_checks" -eq 0 ]; then
+    req_names=$(printf '%s' "$checks_json" | jq -r '.[].name' 2>/dev/null | sort -u)
+
+    # Query all-checks with extended fields for latest-run resolution
+    _cw_remaining=$((TIMEOUT_SECONDS - SECONDS))
+    [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
+    xc_all_ec=0
+    xc_all_stdout=$(bound_exec "$_cw_remaining" -- \
+      gh pr checks "$PR_NUMBER" --json name,state,bucket,startedAt,workflow \
+      2>"$_TMP_STDERR_ALL") || xc_all_ec=$?
+
+    if [ "$xc_all_ec" -eq 142 ]; then
+      _die_timeout "cross-check gh call"
+    fi
+
+    if [ "$xc_all_ec" -ne 0 ]; then
+      _transient_retry "Cross-check error." "cross-check error"; continue
+    fi
+
+    if ! _validate_json "$xc_all_stdout"; then
+      _transient_retry "Invalid cross-check JSON." "cross-check error: invalid JSON"; continue
+    fi
+
+    # Group by (workflow, name), pick latest by startedAt, check required names
+    xc_all_result=$(printf '%s' "$xc_all_stdout" | jq -r --arg names "$req_names" '
+      ($names | split("\n") | map(select(. != ""))) as $rn |
+      [.[] | {
+        wf: (.workflow // ""),
+        n: .name,
+        b: .bucket,
+        sk: (
+          if has("startedAt") | not then "0000"
+          elif (.startedAt == null or .startedAt == "" or .startedAt == "0" or .startedAt == 0) then "9999"
+          else .startedAt
+          end
+        )
+      }] |
+      group_by([.wf, .n]) |
+      map(sort_by(.sk) | last) |
+      map(select(.n as $x | $rn | index($x))) |
+      if map(select(.b == "fail" or .b == "cancel")) | length > 0 then
+        "fail:" + (map(select(.b == "fail" or .b == "cancel")) | map(.n + " (" + .b + ")") | join(", "))
+      elif map(select(.b != "pass" and .b != "skipping" and .b != "fail" and .b != "cancel")) | length > 0 then
+        "pending"
+      else
+        "pass"
+      end
+    ' 2>/dev/null) || {
+      _transient_retry "Cross-check jq error." "cross-check error: jq parse failure"
+      continue
+    }
+
+    case "$xc_all_result" in
+      pass)
+        : # All required names terminal pass/skipping in latest runs
+        ;;
+      pending)
+        log "cross-check: required check still in progress in all-checks (elapsed: ${SECONDS}s)..."
+        CONSECUTIVE_FAILURES=0
+        PREV_TERMINAL_NAMES=""
+        STABILITY_COUNT=0
+        sleep "$POLL_INTERVAL"
+        continue
+        ;;
+      fail:*)
+        xc_fail_detail="${xc_all_result#fail:}"
+        log "CI check(s) failed or cancelled in cross-check:"
+        log "  $xc_fail_detail"
+        die "Fix the issue, push again, and resume with /gaia-resume."
+        ;;
+      *)
+        # Empty/unexpected output from jq — transient error
+        _transient_retry "Cross-check parse error." "cross-check error: unexpected result"; continue
+        ;;
+    esac
+
+    # Query statusCheckRollup for pending required names
+    _cw_remaining=$((TIMEOUT_SECONDS - SECONDS))
+    [ "$_cw_remaining" -lt 1 ] && _cw_remaining=1
+    xc_view_ec=0
+    xc_view_stdout=$(bound_exec "$_cw_remaining" -- \
+      gh pr view "$PR_NUMBER" --json mergeStateStatus,statusCheckRollup \
+      2>"$_TMP_STDERR_ALL") || xc_view_ec=$?
+
+    if [ "$xc_view_ec" -eq 142 ]; then
+      _die_timeout "cross-check pr view"
+    fi
+
+    if [ "$xc_view_ec" -ne 0 ]; then
+      _transient_retry "Cross-check pr view error." "cross-check error: pr view"; continue
+    fi
+
+    # Validate pr view JSON — expects object (not array)
+    if ! printf '%s' "$xc_view_stdout" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      _transient_retry "Invalid cross-check pr view JSON." "cross-check error: invalid pr view JSON"; continue
+    fi
+
+    # Check rollup for pending required names
+    # CheckRun nodes: name + status (pending: QUEUED/IN_PROGRESS/WAITING/PENDING/REQUESTED)
+    # StatusContext nodes: context + state (pending: PENDING/EXPECTED)
+    xc_rollup_pending=$(printf '%s' "$xc_view_stdout" | jq --arg names "$req_names" '
+      ($names | split("\n") | map(select(. != ""))) as $rn |
+      [(.statusCheckRollup // [])[] |
+        ((.name // .context) // "") as $cn |
+        select($cn != "") |
+        select($rn | index($cn)) |
+        if has("status") then
+          select(.status == "QUEUED" or .status == "IN_PROGRESS" or .status == "WAITING" or .status == "PENDING" or .status == "REQUESTED")
+        elif has("state") then
+          select(.state == "PENDING" or .state == "EXPECTED")
+        else
+          empty
+        end
+      ] | length
+    ' 2>/dev/null) || {
+      _transient_retry "Cross-check rollup jq error." "cross-check error: rollup jq failure"
+      continue
+    }
+
+    case "$xc_rollup_pending" in
+      ''|*[!0-9]*)
+        # Non-numeric output — transient error, not a silent pass-through
+        _transient_retry "Cross-check rollup produced non-numeric output." "cross-check error: unexpected rollup output"
+        continue
+        ;;
+    esac
+
+    if [ "$xc_rollup_pending" -gt 0 ]; then
+      log "cross-check: required check still pending in rollup (elapsed: ${SECONDS}s)..."
+      CONSECUTIVE_FAILURES=0
+      PREV_TERMINAL_NAMES=""
+      STABILITY_COUNT=0
+      sleep "$POLL_INTERVAL"
+      continue
+    fi
+  fi
+
+  # Cross-check passed (or was not needed): reset failure counter.
+  CONSECUTIVE_FAILURES=0
 
   # --- All checks terminal — apply two-poll stability rule ---
   current_names=$(_extract_names_sorted "$checks_json")
