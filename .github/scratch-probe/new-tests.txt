@@ -1,0 +1,13 @@
+sync with equals-sign document path does not empty the file
+sync with leading-space component name is idempotent
+sync with trailing-space component name is idempotent
+sync with separator-shaped component name --- is idempotent
+sync creates temp file in document directory not TMPDIR
+sync preserves file permissions after write
+sync resolves symlink before writing
+sync resolves symlink in subdirectory with CWD decoy
+sync cleans up sibling temp file on failure
+sync inserts CRLF row when table rows are CRLF but header is LF
+sync inserts CRLF bullet when bullets are CRLF but header is LF
+sync inserts LF row when table rows are LF
+no internal identifiers in sync script or test file

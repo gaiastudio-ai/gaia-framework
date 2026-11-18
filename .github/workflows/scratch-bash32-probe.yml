@@ -1,0 +1,20 @@
+name: scratch-bash32-probe
+# Throwaway evidence job on the macOS runner (/bin/bash 3.2). Never merged.
+on:
+  pull_request:
+jobs:
+  probe:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Tools
+        run: |
+          brew list jq >/dev/null 2>&1 || brew install jq
+          brew list bats-core >/dev/null 2>&1 || brew install bats-core; brew list yq >/dev/null 2>&1 || brew install yq
+          jq --version; bats --version
+      - name: Probe
+        run: /bin/bash .github/scratch-probe/probe.sh 09c225d635a056b2aa00b988a43ab124514a40ae cfd127514ee9040038f14f043c59f43760d5b8ab aa54d901bb24918d1f27080fd455537db1a9fb0d
