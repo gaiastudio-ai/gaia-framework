@@ -601,8 +601,8 @@ YAML
   run "$DOD_CHECK"
   printf '%s' "$output" | grep -qF 'item: tests, status: PASSED'
   printf '%s' "$output" | grep -qE 'canonical-bridge-runner|canonical runner executed'
-  ! printf '%s' "$output" | grep -qF 'legacy-bridge-runner'
-  ! printf '%s' "$output" | grep -qF 'legacy runner executed'
+  ! printf '%s' "$output" | grep -qF 'legacy-bridge-runner' || false
+  ! printf '%s' "$output" | grep -qF 'legacy runner executed' || false
 }
 
 @test "dod-check: bridge enabled, no manifest, lower tier resolves and runs" {
