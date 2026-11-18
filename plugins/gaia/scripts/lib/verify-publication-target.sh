@@ -72,13 +72,15 @@ verify_publication_target() {
   local reference="${2:-}"
   shift 2 2>/dev/null || true
 
-  local metadata_file="" design_record="" expected_owner=""
+  local metadata_file="" design_record="" expected_owner="" project_role="" expected_type=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --metadata-file)   metadata_file="$2";   shift 2 ;;
       --design-record)   design_record="$2";   shift 2 ;;
       --expected-owner)  expected_owner="$2";   shift 2 ;;
+      --project-role)    project_role="$2";     shift 2 ;;
+      --expected-type)   expected_type="$2";    shift 2 ;;
       *) _vpt_die "unknown option: $1"; return 1 ;;
     esac
   done
@@ -115,7 +117,7 @@ verify_publication_target() {
       _verify_designsync "$reference" "$metadata_file" "$expected_owner" "$ds_ref" "$pd_ref"
       ;;
     artifact)
-      _verify_artifact "$reference" "$metadata_file" "$expected_owner" "$ds_ref" "$pd_ref"
+      _verify_artifact "$reference" "$metadata_file" "$expected_owner" "$ds_ref" "$pd_ref" "$project_role" "$expected_type"
       ;;
     *)
       _vpt_die "unknown surface: $surface (must be designsync or artifact)"
@@ -219,7 +221,21 @@ _verify_designsync() {
 
 _verify_artifact() {
   local reference="$1" metadata_file="$2" expected_owner="$3"
-  local ds_ref="$4" pd_ref="$5"
+  local ds_ref="$4" pd_ref="$5" project_role="${6:-}" expected_type="${7:-}"
+
+  # Default project_role and expected_type for backward compatibility
+  if [ -z "$project_role" ]; then
+    project_role="product_design_project"
+  fi
+  if [ -z "$expected_type" ]; then
+    expected_type="Design"
+  fi
+
+  # Validate project_role
+  case "$project_role" in
+    design_system_project|product_design_project) ;;
+    *) _vpt_die "unknown --project-role value: $project_role (must be design_system_project or product_design_project)"; return 1 ;;
+  esac
 
   # --expected-owner is not supported on the artifact surface: real Artifact
   # reads report "owned by you" in the page header, not a named owner.
@@ -354,9 +370,9 @@ _verify_artifact() {
     return 1
   fi
 
-  # Type must be exactly "Design" (case-sensitive)
-  if [ "$per_file_type" != "Design" ]; then
-    _vpt_die "Artifact type must be exactly 'Design', got '$per_file_type'"
+  # Type must match expected_type exactly (case-sensitive)
+  if [ "$per_file_type" != "$expected_type" ]; then
+    _vpt_die "Artifact type must be exactly '$expected_type', got '$per_file_type'"
     return 1
   fi
 
@@ -374,20 +390,35 @@ _verify_artifact() {
     return 1
   fi
 
-  # Fail closed: the design record MUST have a PD reference for artifact surface
-  if [ -z "$pd_ref" ]; then
-    _vpt_die "product_design_project.reference is not set in design record"
-    return 1
-  fi
-
-  # Cross-wire detection: artifact surface should match PD reference, not DS
-  if [ "$reference" != "$pd_ref" ]; then
-    if [ -n "$ds_ref" ] && [ "$reference" = "$ds_ref" ]; then
-      _vpt_die "cross-wire: artifact surface using design_system reference ($reference)"
+  # Cross-wire detection and reference matching — inverted per role
+  if [ "$project_role" = "design_system_project" ]; then
+    # DS role: reference should match ds_ref, not pd_ref
+    if [ -z "$ds_ref" ]; then
+      _vpt_die "design_system_project.reference is not set in design record"
       return 1
     fi
-    _vpt_die "reference mismatch: artifact reference ($reference) does not match product_design_project.reference ($pd_ref)"
-    return 1
+    if [ "$reference" != "$ds_ref" ]; then
+      if [ -n "$pd_ref" ] && [ "$reference" = "$pd_ref" ]; then
+        _vpt_die "cross-wire: artifact surface using product_design reference ($reference)"
+        return 1
+      fi
+      _vpt_die "reference mismatch: artifact reference ($reference) does not match design_system_project.reference ($ds_ref)"
+      return 1
+    fi
+  else
+    # PD role (default): reference should match pd_ref, not ds_ref
+    if [ -z "$pd_ref" ]; then
+      _vpt_die "product_design_project.reference is not set in design record"
+      return 1
+    fi
+    if [ "$reference" != "$pd_ref" ]; then
+      if [ -n "$ds_ref" ] && [ "$reference" = "$ds_ref" ]; then
+        _vpt_die "cross-wire: artifact surface using design_system reference ($reference)"
+        return 1
+      fi
+      _vpt_die "reference mismatch: artifact reference ($reference) does not match product_design_project.reference ($pd_ref)"
+      return 1
+    fi
   fi
 
   return 0

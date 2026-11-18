@@ -74,6 +74,7 @@ core	af-2026-06-03-2-tc-osv-trace.bats
 core	af-2026-06-03-3-adversarial-schema.bats
 core	analysis-results-schema.bats
 core	assert-gitignored-git-check-ignore.bats
+core	atdd-gate.bats
 core	audit-v2-migration.bats
 core	backup-integrity.bats
 core	bash-dev-wiring.bats
@@ -179,6 +180,7 @@ core	e105-s4-single-source-review-paths.bats
 core	e106-s1-throughput-telemetry.bats
 core	e107-s1-planned-sprint-state.bats
 core	e107-s3-for-sprint-materializer.bats
+core	e107-s4-planned-active-readiness-gate.bats
 core	e114-docs.bats
 core	e28-s187-revert-tools-field.bats
 core	e28-s272-env-var-reference.bats
@@ -470,6 +472,7 @@ core	vcp-ci-01-03-ci-setup-retry-loop.bats
 core	vcp-mem-04-scope-boundary.bats
 core	vcp-rc-02-06-readiness-conflicts.bats
 core	verdict-resolver-parameterized.bats
+core	verdict-resolver-required-false-malformed-json.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
 core	worktree-walk-up-isolation.bats
@@ -562,7 +565,6 @@ scripts-core	e106-s3-agent-native-capacity-check.bats
 scripts-core	e106-s4-detect-sweep-shape.bats
 scripts-core	e106-s4-sprint-review-floor-skip-completion-pass.bats
 scripts-core	e107-s2-sprint-plan-backlog-selection.bats
-scripts-core	e107-s4-planned-active-readiness-gate.bats
 scripts-core	e28-s141-schema-coverage.bats
 scripts-core	e28-s182-gaia-migrate-sigint-trap.bats
 scripts-core	e28-s211-workerspawn-memory-load.bats
@@ -701,7 +703,6 @@ scripts-core	vcp-cpt-09-phase3-solutioning.bats
 scripts-core	vcp-cpt-09-phase3-testing.bats
 scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
-scripts-core	verdict-resolver-required-false-malformed-json.bats
 scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
 scripts-core	worktree-git-push.bats
@@ -755,6 +756,7 @@ scripts-lib	lib-env-allowlist.bats
 scripts-lib	lib-exec-with-timeout.bats
 scripts-lib	lib-transcript-writer.bats
 scripts-lib	lib/resolve-epic-slug.bats
+scripts-lib	lifecycle-overrides-bash32-fd.bats
 scripts-lib	load-taxonomy.bats
 scripts-lib	meeting-dispatch-envelope-assertion.bats
 scripts-lib	meeting-mode-b-dispatch-wiring.bats
@@ -849,7 +851,6 @@ skills	af-2026-05-27-4-rubric-gaps.bats
 skills	af-2026-05-27-4-templates-and-init-dx.bats
 skills	af-2026-06-01-4-issue-1047-frontend-commands-map.bats
 skills	af-2026-06-03-3-adversarial-sidecar.bats
-skills	atdd-gate.bats
 skills	brain-user-docs.bats
 skills	check-deps.bats
 skills	ci-wait.bats

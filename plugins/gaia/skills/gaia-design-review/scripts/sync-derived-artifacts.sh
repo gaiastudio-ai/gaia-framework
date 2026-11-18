@@ -64,13 +64,6 @@ _sha256_bytes() {
   fi
 }
 
-# _is_section_end LINE — true when the line is a level-1 or level-2
-# heading (which closes the component section).  Level-3 and deeper
-# headings (###, ####, ...) are subsection content and do NOT end it.
-_is_section_end() {
-  [[ "$1" == '# '* ]] || { [[ "$1" == '## '* ]] && ! [[ "$1" == '### '* ]]; }
-}
-
 # ---- shared awk function library --------------------------------------------
 # Every awk program in this script prepends $_SDA_AWK_LIB so that
 # heading_match, is_section_end, is_sep, is_table_row,
@@ -198,6 +191,115 @@ function _needs_prefix(nm,   fc, sc) {
   }
   return 0
 }
+# check_fence LINE — fence-state tracker for backtick and tilde fences.
+# Returns 1 when inside a fenced code block (or on the fence line itself).
+# A fence opener is 3+ identical chars (backtick or tilde), optional info
+# string (backtick info strings may not contain a backtick); a closer is
+# the same char, at least as long, then only optional whitespace.
+# Strips trailing CR before matching. POSIX awk only.
+# Globals (awk file-scope): _fence_open, _fence_char, _fence_len.
+function check_fence(line,   raw, ch, i, flen, rest, j) {
+  raw = line
+  if (length(raw) > 0 && substr(raw, length(raw), 1) == "\r")
+    raw = substr(raw, 1, length(raw) - 1)
+  if (_fence_open) {
+    # Inside a fence — check for a closer: same char, >= _fence_len,
+    # then only whitespace.
+    i = 0
+    while (i < length(raw) && substr(raw, i + 1, 1) == _fence_char) i++
+    if (i >= _fence_len) {
+      rest = substr(raw, i + 1)
+      gsub(/[[:space:]]/, "", rest)
+      if (rest == "") _fence_open = 0
+    }
+    return 1
+  }
+  # Not inside a fence — check for an opener.
+  ch = substr(raw, 1, 1)
+  if (ch != "`" && ch != "~") return 0
+  i = 0
+  while (i < length(raw) && substr(raw, i + 1, 1) == ch) i++
+  if (i < 3) return 0
+  flen = i
+  # Validate info string: backtick info strings may not contain a backtick.
+  if (ch == "`") {
+    rest = substr(raw, flen + 1)
+    for (j = 1; j <= length(rest); j++) {
+      if (substr(rest, j, 1) == "`") return 0
+    }
+  }
+  _fence_open = 1
+  _fence_char = ch
+  _fence_len = flen
+  return 1
+}
+# tbl_locator_feed LINE — shared table-locator state machine.
+# Consumes one line at a time and maintains candidate-header /
+# separator pairing state. Returns:
+#   -1  line is inside (or on) a fence — caller should skip/print it
+#    0  ordinary line, no locator event
+#    1  line held as candidate header (contains |)
+#    2  separator found — table located; _tbl_sep_piped is set
+# When a fence opens or a section-end heading is seen, any pending
+# candidate is cleared (a header before a fence or section boundary
+# can never pair with a separator after it). A section-end heading
+# that contains | is never held as a candidate.
+# After a return of 0 or 1 when a candidate was pending, the old
+# candidate was just text; the caller can read it from
+# _tbl_prev_cand (set before clearing). On return 1 a new
+# candidate replaced the old one; on return 0 the current line
+# had no |. Callers that rewrite the document must print
+# _tbl_prev_cand whenever _tbl_had_cand is set, for every
+# return value (including 1 and -1), not only 0.
+# Globals: _tbl_have_cand, _tbl_cand_line, _tbl_sep_piped,
+#          _tbl_prev_cand, _tbl_had_cand (true when the call found
+#          and cleared a candidate that was not a header).
+function tbl_locator_feed(line) {
+  _tbl_had_cand = 0
+  _tbl_prev_cand = ""
+  if (check_fence(line)) {
+    # Fence opened or continuing — discard any held candidate
+    if (_tbl_have_cand) {
+      _tbl_prev_cand = _tbl_cand_line
+      _tbl_had_cand = 1
+    }
+    _tbl_have_cand = 0
+    _tbl_cand_line = ""
+    return -1
+  }
+  # A section-end heading ends any locator search. Clear any held
+  # candidate and return 0 so the section-end rules in the caller
+  # fire. Never hold a section-end heading as a candidate, even
+  # when it contains |.
+  if (is_section_end(line)) {
+    if (_tbl_have_cand) {
+      _tbl_prev_cand = _tbl_cand_line
+      _tbl_had_cand = 1
+    }
+    _tbl_have_cand = 0
+    _tbl_cand_line = ""
+    return 0
+  }
+  if (_tbl_have_cand) {
+    _tbl_have_cand = 0
+    if (is_sep(line)) {
+      _tbl_sep_piped = (line ~ /^[[:space:]]*\|/)
+      _tbl_prev_cand = _tbl_cand_line
+      return 2
+    }
+    # Candidate was not a header — save it and signal the caller
+    _tbl_prev_cand = _tbl_cand_line
+    _tbl_had_cand = 1
+    _tbl_cand_line = ""
+    # Fall through: re-evaluate the current line as a potential candidate
+  }
+  if (index(line, "|") > 0) {
+    _tbl_have_cand = 1
+    _tbl_cand_line = line
+    return 1
+  }
+  return 0
+}
 '
 
 # _extract_doc_components DOC — parse component names from the components
@@ -208,12 +310,51 @@ function _needs_prefix(nm,   fc, sc) {
 _extract_doc_components() {
   local doc="$1"
 
+  # Pre-pass: detect whether the section contains a table so the reader
+  # can suppress pipe-bearing bullets that sit above it. This is an
+  # intentional second linear scan — _count_table_cols is a lightweight
+  # awk one-liner that exits at the first separator, and duplicating
+  # the has-table flag into the reader awk would add state coupling.
+  local _has_tbl
+  _has_tbl="$(_count_table_cols "$doc")"
+  local _ht=0
+  [ "$_has_tbl" -gt 0 ] && _ht=1
+
   # Single awk pass: find the components section, locate the first
   # table (header immediately followed by separator), extract first
   # cell from data rows, unescape, and print. A | line not followed
   # by a separator is ordinary text and never stops the search.
   # Bullet-mode extraction runs when no table is found.
-  awk "$_SDA_AWK_LIB"'
+  awk -v has_table="$_ht" "$_SDA_AWK_LIB"'
+
+    # Use the shared locator while searching for the table (it tracks
+    # fences internally). Outside the locator scope, track fences with
+    # check_fence directly. Never call both on the same line.
+    # Bullet lines are checked first: a "- " line is never a
+    # candidate header, even when it contains a pipe.
+    {
+      if (in_section && !first_table_done && !saw_sep) {
+        if ($0 ~ /^-[[:space:]]/) {
+          if (check_fence($0)) next
+          if (has_table && index($0, "|") > 0) next
+          name = substr($0, 3)
+          gsub(/\r$/, "", name)
+          print name
+          next
+        }
+        ev = tbl_locator_feed($0)
+        if (ev == -1) next
+        if (ev == 2) { saw_sep = 1; sep_piped = _tbl_sep_piped; next }
+        if (ev == 1) next
+        # ev == 0: ordinary line (or section-end) — fall through
+      } else {
+        if (check_fence($0)) {
+          # A fence in Phase 2 ends the table (match the writer).
+          if (saw_sep && !first_table_done) first_table_done = 1
+          next
+        }
+      }
+    }
 
     !done_section && heading_match($0) {
       if (!in_section) { in_section = 1; next }
@@ -221,30 +362,6 @@ _extract_doc_components() {
     }
     in_section && is_section_end($0) { in_section = 0; done_section = 1; next }
     in_section && !first_table_done {
-      # When holding a candidate header, the current line decides
-      # whether a table was found.
-      if (have_candidate) {
-        have_candidate = 0
-        if (is_sep($0)) {
-          saw_sep = 1
-          sep_piped = ($0 ~ /^[[:space:]]*\|/)
-          next
-        }
-        # Not a separator — candidate was just text; fall through
-        # to re-evaluate the current line as a possible candidate.
-      }
-      # Bullet (only when no table has been found)
-      if (!saw_sep && $0 ~ /^-[[:space:]]/) {
-        name = substr($0, 3)
-        gsub(/\r$/, "", name)
-        print name
-        next
-      }
-      # Candidate header: a | line not yet in table mode
-      if (!saw_sep && index($0, "|") > 0) {
-        have_candidate = 1
-        next
-      }
       # Data rows after separator
       if (saw_sep && is_table_row($0, sep_piped)) {
         name = extract_first_cell($0, !sep_piped)
@@ -260,71 +377,40 @@ _extract_doc_components() {
 # within the matched section. Returns 0 if no table found.
 _count_table_cols() {
   local doc="$1"
-  local in_section=false
-  local _coltbl_have_candidate=false
-
-  shopt -s nocasematch
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
-       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
-      if [ "$in_section" = false ]; then
-        in_section=true
-        continue
-      fi
-      break
-    fi
-    if [ "$in_section" = true ]; then
-      # Section ends at level-1 or level-2 headings
-      if _is_section_end "$line"; then break; fi
-
-      # Table locator: header (| line) immediately followed by separator.
-      # A | line not followed by a separator is ordinary text.
-      if [ "$_coltbl_have_candidate" = true ]; then
-        _coltbl_have_candidate=false
-        local clean="${line%$'\r'}"
-        if [[ "$clean" == *'|'* ]] && [[ "$clean" == *'-'* ]]; then
-          local stripped="${clean//[-:|[:space:]]/}"
-          if [ -z "$stripped" ]; then
-            local _has_leading_pipe=false
-            [[ "$clean" =~ ^[[:space:]]*\| ]] && _has_leading_pipe=true
-            if [ "$_has_leading_pipe" = false ] && [[ "$clean" != *'---'* ]]; then
-              # Pipe-less form needs three dashes — not a separator.
-              # Fall through to re-evaluate this line.
-              :
-            else
-              # Valid separator — count columns from it
-              local pipe_count _pipes_only
-              _pipes_only="${line//[^|]/}"
-              pipe_count="${#_pipes_only}"
-              local has_leading=false has_trailing=false
-              [[ "$clean" =~ ^[[:space:]]*\| ]] && has_leading=true
-              [[ "$clean" =~ \|[[:space:]]*$ ]] && has_trailing=true
-              local cols
-              if [ "$has_leading" = true ] && [ "$has_trailing" = true ]; then
-                cols=$((pipe_count - 1))
-              elif [ "$has_leading" = true ] || [ "$has_trailing" = true ]; then
-                cols=$pipe_count
-              else
-                cols=$((pipe_count + 1))
-              fi
-              shopt -u nocasematch
-              printf '%d\n' "$cols"
-              return 0
-            fi
-          fi
-        fi
-        # Not a separator — fall through to re-evaluate
-      fi
-      # Candidate header: any line containing |
-      if [[ "${line%$'\r'}" == *'|'* ]]; then
-        _coltbl_have_candidate=true
-        continue
-      fi
-    fi
-  done < "$doc"
-  shopt -u nocasematch
-  printf '0\n'
+  awk "$_SDA_AWK_LIB"'
+    {
+      if (in_s && !found) {
+        ev = tbl_locator_feed($0)
+        if (ev == -1) next
+        if (ev == 2) {
+          # Count columns from the separator line
+          line = $0
+          gsub(/\r$/, "", line)
+          pc = 0
+          for (k = 1; k <= length(line); k++)
+            if (substr(line, k, 1) == "|") pc++
+          lp = (line ~ /^[[:space:]]*\|/)
+          tp = (line ~ /\|[[:space:]]*$/)
+          if (lp && tp) cols = pc - 1
+          else if (lp || tp) cols = pc
+          else cols = pc + 1
+          print cols
+          found = 1
+          exit
+        }
+        if (ev == 1) next
+        # ev == 0: ordinary line (or section-end) — fall through
+      } else {
+        if (check_fence($0)) next
+      }
+    }
+    !found && heading_match($0) {
+      if (!in_s) { in_s = 1; next }
+      else { exit }
+    }
+    in_s && is_section_end($0) { exit }
+    END { if (!found) print 0 }
+  ' "$doc"
 }
 
 # _batch_add_components DOC COMPONENTS_FILE — insert all component
@@ -363,17 +449,19 @@ _batch_add_components() {
     # has_leading_pipe / has_trailing_pipe are passed to awk.
     local _sep_line _sep_clean _has_lp=0 _has_tp=0
     _sep_line="$(awk "$_SDA_AWK_LIB"'
+      {
+        if (in_s && !found) {
+          ev = tbl_locator_feed($0)
+          if (ev == -1) next
+          if (ev == 2) { print $0; found = 1; exit }
+          if (ev == 1) next
+          # ev == 0: ordinary line (or section-end) — fall through
+        } else {
+          if (check_fence($0)) next
+        }
+      }
       !found && heading_match($0) { in_s = 1; next }
       in_s && is_section_end($0) { exit }
-      # Table locator: header (| line) immediately followed by separator.
-      in_s && !found {
-        if (have_cand) {
-          have_cand = 0
-          if (is_sep($0)) { print $0; found = 1; exit }
-          # Not a separator — fall through to re-evaluate
-        }
-        if (index($0, "|") > 0) { have_cand = 1; next }
-      }
     ' "$doc")"
     _sep_clean="${_sep_line%$'\r'}"
     [[ "$_sep_clean" =~ ^[[:space:]]*\| ]] && _has_lp=1
@@ -420,6 +508,47 @@ _batch_add_components() {
         flushed = 1
       }
 
+      # Fence + locator rule. In Phase 1 (before the separator), the
+      # shared locator tracks fences and candidate headers together.
+      # In Phase 2 (after the separator) and outside the section, only
+      # fence tracking is needed. A fence in Phase 2 ends the table
+      # (flush rows and components first).
+      {
+        if (in_section && !first_table_done && !saw_sep) {
+          ev = tbl_locator_feed($0)
+          if (ev == -1) {
+            # Fence line — print any stale candidate the locator cleared
+            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+            print; next
+          }
+          if (ev == 2) {
+            # Table found: print the candidate header, buffer separator
+            printf "%s\n", _tbl_prev_cand
+            pending[++npend] = $0
+            saw_sep = 1
+            next
+          }
+          if (ev == 1) {
+            # A new candidate displaced a prior one — print the displaced
+            # line so it is not lost from the rewritten document.
+            if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+            next
+          }
+          # ev == 0: ordinary line (or section-end) — if a candidate
+          # was cleared, print it; then fall through to remaining rules
+          if (_tbl_had_cand) printf "%s\n", _tbl_prev_cand
+        } else {
+          if (check_fence($0)) {
+            if (saw_sep && !first_table_done) {
+              flush_pending()
+              flush_comps()
+              first_table_done = 1
+            }
+            print; next
+          }
+        }
+      }
+
       # Rule order is load-bearing: this section-end rule MUST precede
       # the buffer rule below.  Both end with next.  If section-end came
       # after the buffer rule, a heading line would be captured into the
@@ -436,46 +565,22 @@ _batch_add_components() {
       !done_section && heading_match($0) { in_section = 1; print; next }
 
       # Buffer rule — must come AFTER section-end (see note above).
-      # Table locator: a header (| line) immediately followed by a
-      # separator. A | line not followed by a separator is ordinary
-      # text. After finding the table, buffer data rows and insert
-      # new components after the last row.
+      # After the separator, buffer data rows until a non-row line
+      # ends the table, then flush rows and new components.
       in_section && !first_table_done {
-        # Phase 1: looking for a table (no separator found yet)
-        if (!saw_sep) {
-          # Holding a candidate header — check if this line is the separator
-          if (have_candidate) {
-            have_candidate = 0
-            if (is_sep($0)) {
-              # Table found: flush the candidate header, then the separator
-              printf "%s\n", candidate_line
-              pending[++npend] = $0
-              saw_sep = 1
-              next
-            }
-            # Not a separator — candidate was just text, print it
-            printf "%s\n", candidate_line
-            # Fall through to re-evaluate the current line
-          }
-          # A | line is a candidate header
-          if (index($0, "|") > 0) {
-            have_candidate = 1
-            candidate_line = $0
-            next
-          }
-          # Non-| line: just text
-          print
-          next
-        }
-        # Phase 2: inside the table (separator was found)
-        if (is_table_row($0, has_lp)) {
+        if (saw_sep && is_table_row($0, has_lp)) {
           pending[++npend] = $0
           next
         }
-        # Non-row line ends the table
-        flush_pending()
-        flush_comps()
-        first_table_done = 1
+        if (saw_sep) {
+          # Non-row line ends the table
+          flush_pending()
+          flush_comps()
+          first_table_done = 1
+          print
+          next
+        }
+        # Pre-separator non-| line: just text (locator already ran)
         print
         next
       }
@@ -483,7 +588,7 @@ _batch_add_components() {
       { print }
 
       END {
-        if (have_candidate) printf "%s\n", candidate_line
+        if (_tbl_have_cand) printf "%s\n", _tbl_cand_line
         flush_pending()
         if (in_section) flush_comps()
       }
@@ -491,6 +596,10 @@ _batch_add_components() {
   else
     # Bullet mode: insert new bullets at the section boundary.
     # No escaping — bullet mode writes raw names. CRLF-aware.
+    # Fenced lines inside the section are buffered so that an
+    # unclosed fence does not cause bullets to be appended at EOF
+    # (inside the fence under CommonMark). For balanced fences the
+    # buffer flushes transparently on the next non-fenced line.
     awk -v crlf="$_doc_crlf" "$_SDA_AWK_LIB"'
       BEGIN {
         eol = (crlf ? "\r\n" : "\n")
@@ -498,6 +607,18 @@ _batch_add_components() {
           comps[++n] = comp
         }
         delete ARGV[2]
+      }
+      function _flush_fbuf(    _fi) {
+        for (_fi = 1; _fi <= _fn; _fi++) print _fbuf[_fi]
+        _fn = 0
+      }
+      {
+        if (in_section && !done_section) {
+          if (check_fence($0)) { _fbuf[++_fn] = $0; next }
+          if (_fn > 0) _flush_fbuf()
+        } else {
+          if (check_fence($0)) { print; next }
+        }
       }
       in_section && is_section_end($0) {
         for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
@@ -508,7 +629,19 @@ _batch_add_components() {
       }
       !done_section && heading_match($0) { in_section=1; print; next }
       { print }
-      END { if (in_section) for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol }
+      END {
+        if (in_section) {
+          if (_fence_open && _fn > 0) {
+            # Unclosed fence: bullets go before the fence opener.
+            for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
+            _flush_fbuf()
+          } else {
+            # Balanced fence or no fence: flush buffer, then bullets.
+            if (_fn > 0) _flush_fbuf()
+            for (i = 1; i <= n; i++) printf "- %s%s", comps[i], eol
+          }
+        }
+      }
     ' "$doc" "$components_file" > "$tmpfile"
   fi
   mv -f "$tmpfile" "$doc"
@@ -517,17 +650,12 @@ _batch_add_components() {
 # _has_component_heading DOC — return 0 if the doc has a recognized heading
 _has_component_heading() {
   local doc="$1"
-  shopt -s nocasematch
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]+(and|\&)[[:space:]]+[Dd]esign[[:space:]]+[Ss]ystem ]] ||
-       [[ "$line" =~ ^##[[:space:]]+[Cc]omponent[[:space:]]+[Ii]nventory ]] ||
-       [[ "$line" =~ ^##[[:space:]]+([0-9]+\.[[:space:]]+)?[Cc]omponents[[:space:]]*$ ]]; then
-      shopt -u nocasematch
-      return 0
-    fi
-  done < "$doc"
-  shopt -u nocasematch
-  return 1
+  local _found
+  _found="$(awk "$_SDA_AWK_LIB"'
+    { if (check_fence($0)) next }
+    heading_match($0) { print "1"; exit }
+  ' "$doc")"
+  [ "$_found" = "1" ]
 }
 
 # _resolve_baseline — resolve the --last-published path
