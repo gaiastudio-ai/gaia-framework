@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # git-push.bats — coverage for plugins/gaia/scripts/git-push.sh
 #
-# Story: E55-S8 — Auto-reviews YOLO-only + helper scripts + bats coverage
+# Originally scaffolded for auto-reviews helper scripts — bats coverage
 #
 # Coverage matrix:
 #   - happy path: push succeeds first try, exit 0
@@ -142,4 +142,142 @@ SHIM
   run "$GIT_PUSH"
   [ "$status" -ne 0 ]
   [ "$(cat "$TEST_TMP/push-count")" = "2" ]
+}
+
+# ===========================================================================
+# Sleep stub for backoff-sequence verification (used by new tests only;
+# existing network-retry tests use GAIA_GIT_PUSH_BACKOFF=0 and real sleep).
+# ===========================================================================
+_install_sleep_stub() {
+  cat > "$STUB_BIN/sleep" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >> "${TEST_TMP}/sleep.log"
+STUB
+  chmod +x "$STUB_BIN/sleep"
+}
+
+# ===========================================================================
+# Transient remote-rejection retry — new behaviour (RED tests)
+# ===========================================================================
+
+@test "git-push: transient remote rejection retries with backoff then succeeds" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FIRST_N=1
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  run "$GIT_PUSH"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "2" ]
+}
+
+@test "git-push: transient rejection backoff sequence is 2s 4s 8s" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FIRST_N=3
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  export GIT_PUSH_MAX_RETRIES=3
+  export GIT_PUSH_BACKOFF_BASE=2
+  run "$GIT_PUSH"
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_TMP/sleep.log" ]
+  [ "$(sed -n '1p' "$TEST_TMP/sleep.log")" = "2" ]
+  [ "$(sed -n '2p' "$TEST_TMP/sleep.log")" = "4" ]
+  [ "$(sed -n '3p' "$TEST_TMP/sleep.log")" = "8" ]
+}
+
+@test "git-push: exhausted retries on transient rejection exits non-zero with count" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  _install_sleep_stub
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (failed)"
+  export GIT_PUSH_MAX_RETRIES=3
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "4" ]
+  [[ "$output" == *"3 retries"* ]]
+}
+
+@test "git-push: invalid GIT_PUSH_MAX_RETRIES dies with validation error" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GIT_PUSH_MAX_RETRIES=abc
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"GIT_PUSH_MAX_RETRIES"* ]]
+}
+
+@test "git-push: invalid GIT_PUSH_BACKOFF_BASE dies with validation error" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GIT_PUSH_BACKOFF_BASE=foo
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"GIT_PUSH_BACKOFF_BASE"* ]]
+}
+
+# ===========================================================================
+# Mixed permanent + transient rejection — GREEN-from-start guard.
+# Current code already fast-fails all rejections. This guard ensures the new
+# classifier does not accidentally retry when permanent rejection text is
+# also present in stderr.
+# ===========================================================================
+
+@test "git-push: mixed permanent and transient rejection does not retry" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG=$'! [remote rejected] refs/heads/a -> refs/heads/a (failed)\n! [remote rejected] refs/heads/b -> refs/heads/b (hook declined)'
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "1" ]
+}
+
+# ===========================================================================
+# Green-from-start guards — preserved fast-fail behaviour for permanent
+# errors.  These pass against the current code (no new behaviour required)
+# and lock down the existing classification so the new retry logic cannot
+# regress them.
+# ===========================================================================
+
+@test "git-push: Authentication failed exits immediately without retry" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG="fatal: Authentication failed for 'https://github.com/user/repo.git'"
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "1" ]
+}
+
+@test "git-push: remote Permission to denied exits immediately without retry" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG="remote: Permission to user/repo.git denied to bot"
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "1" ]
+}
+
+@test "git-push: hook declined rejection exits immediately without retry" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/feat/some-thing -> refs/heads/feat/some-thing (hook declined)"
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "1" ]
+}
+
+@test "git-push: protected branch rejection exits immediately without retry" {
+  "$REAL_GIT" checkout -q -b feat/some-thing
+  _install_git_shim
+  export GAIA_PUSH_FAIL_FOREVER=1
+  export GAIA_PUSH_FAIL_MSG="! [remote rejected] refs/heads/main -> refs/heads/main (protected branch hook declined)"
+  run "$GIT_PUSH"
+  [ "$status" -ne 0 ]
+  [ "$(cat "$TEST_TMP/push-count")" = "1" ]
 }
