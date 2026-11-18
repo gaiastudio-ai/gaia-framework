@@ -949,40 +949,71 @@ EOF
 }
 
 @test "without code-tree, tier commands run in the caller cwd" {
-  # Backward-compatible — no --code-tree means current cwd.
-  # This is a green-on-entry regression guard.
-  write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
+  # Backward-compatible — no --code-tree means the tier command's working
+  # directory is wherever the caller invokes the runner from.
+  local probe_dir="$TEST_TMP/cwd-probe-dir"
+  mkdir -p "$probe_dir"
+  local probe_file="$TEST_TMP/cwd-probe-out.txt"
 
-  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
-    "$QA_TEST_RUNNER" \
-      --story-key "$STORY_KEY" \
-      --workdir "$WORKDIR" \
-      --config "$TEST_TMP/project-config.yaml"
+  # Config whose tier command writes pwd to a probe file.
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "pwd > ${probe_file}"
+    timeout_seconds: 30
+EOF
+
+  # Run from probe_dir so that is the expected cwd.
+  run --separate-stderr bash -c "
+    cd $(printf '%q' "$probe_dir") && \
+    GAIA_EXECUTION_CONTEXT=local \
+    $(printf '%q' "$QA_TEST_RUNNER") \
+      --story-key $(printf '%q' "$STORY_KEY") \
+      --workdir $(printf '%q' "$WORKDIR") \
+      --config $(printf '%q' "$TEST_TMP/project-config.yaml")
+  "
   [ "$status" -eq 0 ]
-  [ -f "$WORKDIR/execution-evidence.json" ]
-  jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+  [ -f "$probe_file" ]
+  # The tier command must have run in the caller's directory.
+  local observed
+  observed="$(cat "$probe_file" | tr -d '[:space:]')"
+  [ "$observed" = "$probe_dir" ]
 }
 
 # --- tier output log preserved -----------------------------------------------
 
 @test "tier output log is kept after the run" {
-  # The tier output log must survive at a known path after the run.
-  write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
+  # The tier output log must survive at the SHA-pinned path after the run,
+  # and must contain the tier command's output.
+  local tree_dir="$TEST_TMP/log-tree"
+  _make_git_repo "$tree_dir"
+  local sha
+  sha="$(git -C "$tree_dir" rev-parse HEAD)"
+
+  local marker="TIER_LOG_MARKER_$$"
+  write_custom_command_config "$TEST_TMP/project-config.yaml" "printf '${marker}\\n'"
 
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
       --story-key "$STORY_KEY" \
       --workdir "$WORKDIR" \
-      --config "$TEST_TMP/project-config.yaml"
+      --config "$TEST_TMP/project-config.yaml" \
+      --code-tree "$tree_dir"
   [ "$status" -eq 0 ]
 
-  # A tier output log matching qa-tier-output-*.log must exist in WORKDIR.
-  local log_found=false
-  local f
-  for f in "$WORKDIR"/qa-tier-output-*.log; do
-    if [ -f "$f" ]; then log_found=true; break; fi
-  done
-  [ "$log_found" = "true" ]
+  # The log must exist at the exact SHA-pinned name.
+  local expected_log="$WORKDIR/qa-tier-output-${sha}.log"
+  [ -f "$expected_log" ]
+  # The log must contain the tier command's marker output.
+  grep -qF "$marker" "$expected_log"
 }
 
 # --- whole-stream tally over summary-tail ------------------------------------
@@ -1066,6 +1097,8 @@ SCRIPT
   jq -e '.diagnostics | length > 0' "$WORKDIR/execution-evidence.json" >/dev/null
   jq -e '.diagnostics[] | select(test("tally/exit-code discrepancy"))' \
     "$WORKDIR/execution-evidence.json" >/dev/null
+  # The contradiction must also bump the recorded failure count.
+  jq -e '.suites[0].fail_count >= 1' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
 @test "reverse discrepancy: failures tallied but exit code 0 is flagged" {
@@ -1091,6 +1124,8 @@ SCRIPT
   jq -e '.diagnostics | length > 0' "$WORKDIR/execution-evidence.json" >/dev/null
   jq -e '.diagnostics[] | select(test("tally/exit-code discrepancy"))' \
     "$WORKDIR/execution-evidence.json" >/dev/null
+  # The contradiction must also correct the recorded exit code.
+  jq -e '.suites[0].exit_code != 0' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
 @test "timed-out suite is not flagged as a tally discrepancy" {
@@ -1351,11 +1386,17 @@ EOF
 }
 
 @test "bridge path preserves tier output log" {
-  # A bridge-enabled run must write qa-tier-output-<sha>.log.
+  # A bridge-enabled run must write qa-tier-output-<sha>.log with bridge output.
+  local tree_dir="$TEST_TMP/bridge-log-tree"
+  _make_git_repo "$tree_dir"
+  local sha
+  sha="$(git -C "$tree_dir" rev-parse HEAD)"
+
+  local bridge_marker="BRIDGE_LOG_MARKER_$$"
   local bridge_script="${TEST_TMP}/stub-bridge.sh"
-  cat > "$bridge_script" <<'STUB'
+  cat > "$bridge_script" <<STUB
 #!/usr/bin/env bash
-printf 'bridge output line 1\n'
+printf '${bridge_marker}\n'
 cat <<JSON
 {"suites":[{"name":"bridge","exit_code":0,"pass_count":1,"fail_count":0,"duration_seconds":0.01}]}
 JSON
@@ -1369,16 +1410,15 @@ STUB
     "$QA_TEST_RUNNER" \
       --story-key "$STORY_KEY" \
       --workdir "$WORKDIR" \
-      --config "$TEST_TMP/project-config.yaml"
+      --config "$TEST_TMP/project-config.yaml" \
+      --code-tree "$tree_dir"
   [ "$status" -eq 0 ]
 
-  # A tier output log must exist in WORKDIR.
-  local log_found=false
-  local f
-  for f in "$WORKDIR"/qa-tier-output-*.log; do
-    if [ -f "$f" ]; then log_found=true; break; fi
-  done
-  [ "$log_found" = "true" ]
+  # The log must exist at the exact SHA-pinned name.
+  local expected_log="$WORKDIR/qa-tier-output-${sha}.log"
+  [ -f "$expected_log" ]
+  # The log must contain the bridge's marker output.
+  grep -qF "$bridge_marker" "$expected_log"
 }
 
 # --- check-evidence refuses skipped evidence ----------------------------------
