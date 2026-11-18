@@ -43,8 +43,46 @@ _SYNC_ESCAPE="$(cd "$_SYNC_DIR" && cd ../../../scripts/lib && pwd)/escape-bounda
 # File-scope temp directory — every temp file lives inside it. Cleaned
 # up on any exit so no individual file can leak.
 _sync_tmpdir=""
-_cleanup_tmpdir() { [ -n "${_sync_tmpdir:-}" ] && rm -rf "$_sync_tmpdir"; true; }
+_sync_sibling_tmp=""
+_cleanup_tmpdir() {
+  [ -n "${_sync_sibling_tmp:-}" ] && rm -f "$_sync_sibling_tmp"
+  [ -n "${_sync_tmpdir:-}" ] && rm -rf "$_sync_tmpdir"
+  true
+}
 trap _cleanup_tmpdir EXIT INT TERM
+
+# _ensure_awk_path VAR_VALUE — if the path is relative, prefix with ./ so awk
+# treats it as a file operand rather than a name=value assignment.  Absolute
+# paths pass through unchanged.  Prints the (possibly prefixed) path.
+_ensure_awk_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *)  printf '%s\n' "./$1" ;;
+  esac
+}
+
+# _resolve_symlink FILE — resolve symlinks portably (no readlink -f on macOS).
+# Returns the resolved absolute path. Depth-limited to 40 levels (matches
+# the kernel MAXSYMLINKS constant) to prevent infinite loops on circular links.
+_resolve_symlink() {
+  local f="$1" _depth=0
+  while [ -L "$f" ]; do
+    _depth=$((_depth + 1))
+    if [ "$_depth" -gt 40 ]; then
+      printf 'sync-derived-artifacts.sh: symlink depth exceeded 40 for %s\n' "$1" >&2
+      return 1
+    fi
+    local t
+    t="$(readlink "$f")"
+    case "$t" in
+      /*) f="$t" ;;
+      *)  f="$(dirname "$f")/$t" ;;
+    esac
+  done
+  local dir
+  dir="$(cd "$(dirname "$f")" && pwd -P)"
+  printf '%s/%s\n' "$dir" "$(basename "$f")"
+}
 
 # _sha256_file FILE — portable sha256 of a file
 _sha256_file() {
@@ -417,18 +455,21 @@ _count_table_cols() {
 # lines from COMPONENTS_FILE (one per line) into the components section
 # of the doc in a single awk pass. Supports both table and bullet formats.
 _batch_add_components() {
-  local doc="$1" components_file="$2"
-  local tmpfile
-  tmpfile="$_sync_tmpdir/awk-out"
+  local doc components_file
+  doc="$(_ensure_awk_path "$1")"
+  components_file="$(_ensure_awk_path "$2")"
+  # Create sibling temp file in the resolved target's directory so mv is
+  # same-filesystem (atomic rename). Resolve symlinks portably.
+  local resolved_doc resolved_dir tmpfile
+  resolved_doc="$(_resolve_symlink "$doc")"
+  resolved_dir="$(dirname "$resolved_doc")"
+  tmpfile="$(mktemp "${resolved_dir}/.sync-XXXXXX")"
+  _sync_sibling_tmp="$tmpfile"
 
-  # Detect document line-ending convention from the first line.
-  # Pass as a 0/1 flag to awk (awk -v cannot carry embedded newlines).
+  # Preserve the original file's permissions on the temp file.
+  chmod "$(stat -c '%a' "$resolved_doc" 2>/dev/null || stat -f '%Lp' "$resolved_doc")" "$tmpfile"
+
   local _doc_crlf=0
-  local _first_line
-  _first_line="$(head -1 "$doc")"
-  if [[ "$_first_line" == *$'\r' ]]; then
-    _doc_crlf=1
-  fi
 
   # Determine the insert format: table or bullet
   local col_count
@@ -437,7 +478,8 @@ _batch_add_components() {
   if [ "$col_count" -gt 0 ]; then
     # Escape component names in bash for table mode:
     # \ -> \\, then | -> \|. Never done in awk gsub (portability).
-    local escaped_file="$_sync_tmpdir/escaped-additions"
+    local escaped_file
+    escaped_file="$(_ensure_awk_path "$_sync_tmpdir/escaped-additions")"
     local _v
     while IFS= read -r _v; do
       _v="${_v//\\/\\\\}"
@@ -464,6 +506,10 @@ _batch_add_components() {
       in_s && is_section_end($0) { exit }
     ' "$doc")"
     _sep_clean="${_sep_line%$'\r'}"
+    # Detect CRLF from the table separator line (section-scoped).
+    if [ "$_sep_clean" != "$_sep_line" ]; then
+      _doc_crlf=1
+    fi
     [[ "$_sep_clean" =~ ^[[:space:]]*\| ]] && _has_lp=1
     [[ "$_sep_clean" =~ \|[[:space:]]*$ ]] && _has_tp=1
 
@@ -600,6 +646,24 @@ _batch_add_components() {
     # unclosed fence does not cause bullets to be appended at EOF
     # (inside the fence under CommonMark). For balanced fences the
     # buffer flushes transparently on the next non-fenced line.
+
+    # Detect CRLF from the section's first non-fenced bullet (one pass,
+    # section-scoped). check_fence must run on every line to track state.
+    # Fallback when no bullet exists: the section heading line ending,
+    # then the document's first line.
+    _doc_crlf="$(awk "$_SDA_AWK_LIB"'
+      NR == 1 { first_cr = match($0, /\r$/) ? 1 : 0 }
+      { if (check_fence($0)) next }
+      !done && heading_match($0) {
+        in_s = 1; head_cr = match($0, /\r$/) ? 1 : 0; next
+      }
+      in_s && is_section_end($0) { exit }
+      in_s && /^[-*+] / {
+        printf "%s", (match($0, /\r$/) ? 1 : 0); found = 1; exit
+      }
+      END { if (!found) printf "%s", (in_s ? head_cr : first_cr) }
+    ' "$doc")"
+
     awk -v crlf="$_doc_crlf" "$_SDA_AWK_LIB"'
       BEGIN {
         eol = (crlf ? "\r\n" : "\n")
@@ -644,7 +708,8 @@ _batch_add_components() {
       }
     ' "$doc" "$components_file" > "$tmpfile"
   fi
-  mv -f "$tmpfile" "$doc"
+  mv -f "$tmpfile" "$resolved_doc"
+  _sync_sibling_tmp=""
 }
 
 # _has_component_heading DOC — return 0 if the doc has a recognized heading
@@ -761,6 +826,9 @@ _main() {
 
   [ -f "$snapshot_file" ] || _die "snapshot file not found: $snapshot_file"
   [ -f "$ux_doc" ]        || _die "ux-design doc not found: $ux_doc"
+
+  # Normalise the document path so awk treats it as a file operand.
+  ux_doc="$(_ensure_awk_path "$ux_doc")"
 
   command -v jq >/dev/null 2>&1 || _die "jq is required but not found on PATH"
 
@@ -945,9 +1013,13 @@ _main() {
       exit 1
     fi
 
-    # Deduplicate snapshot component names, keeping first-seen order
+    # Trim leading/trailing whitespace from snapshot names, then deduplicate
+    # (keeping first-seen order). Trimming first ensures that " A" and "A"
+    # collapse to a single entry rather than inserting two identical rows.
+    local trimmed_components
+    trimmed_components="$(printf '%s\n' "$snapshot_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     local deduped_components
-    deduped_components="$(printf '%s\n' "$snapshot_components" | awk '!seen[$0]++')"
+    deduped_components="$(printf '%s\n' "$trimmed_components" | awk '!seen[$0]++')"
     snapshot_components="$deduped_components"
 
     doc_components="$(_extract_doc_components "$ux_doc")"
@@ -959,8 +1031,9 @@ _main() {
     additions_file="$_sync_tmpdir/additions"
 
     local _doc_comp_file="$_sync_tmpdir/doc-components"
-    printf '%s\n' "$doc_components" > "$_doc_comp_file"
+    printf '%s\n' "$doc_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$_doc_comp_file"
 
+    # snapshot_components is already trimmed
     local _snap_comp_file="$_sync_tmpdir/snap-components"
     printf '%s\n' "$snapshot_components" > "$_snap_comp_file"
 
@@ -1033,7 +1106,7 @@ _main() {
         : > "$_snap_file"
       fi
       local _doc_absent_file="$_sync_tmpdir/doc-for-absent"
-      printf '%s\n' "$doc_components" > "$_doc_absent_file"
+      printf '%s\n' "$doc_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$_doc_absent_file"
       awk '
         FILENAME == ARGV[1] { snap[$0] = 1; next }
         $0 != "" && !($0 in snap) { print }
