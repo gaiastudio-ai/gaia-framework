@@ -1,7 +1,5 @@
 #!/usr/bin/env bats
-# qa-test-runner.bats — E67-S4 bats coverage for qa-test-runner.sh.
-# Refs: AC3 (tier placement), AC4 (evidence capture), AC5 (failure verdict),
-#       AC6 (timeout), AC7 (graceful skip), AC10 (POSIX/bash 3.2).
+# qa-test-runner.bats — bats coverage for qa-test-runner.sh.
 
 load 'test_helper.bash'
 
@@ -94,23 +92,23 @@ date: "2026-05-05"
 EOF
 }
 
-# --- AC10: script exists and is executable -----------------------------
+# --- script exists and is executable ------------------------------------
 
-@test "AC10: qa-test-runner.sh exists and is executable" {
+@test "qa-test-runner.sh exists and is executable" {
   [ -f "$QA_TEST_RUNNER" ]
   [ -x "$QA_TEST_RUNNER" ]
 }
 
-@test "AC10: --help prints usage and exits 0" {
+@test "--help prints usage and exits 0" {
   run --separate-stderr "$QA_TEST_RUNNER" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"--story-key"* ]]
   [[ "$output" == *"--workdir"* ]]
 }
 
-# --- AC3: tier resolution from GAIA_EXECUTION_CONTEXT -------------------
+# --- tier resolution from GAIA_EXECUTION_CONTEXT -------------------------
 
-@test "AC3: local context runs tier_1 only when tier_1.placement=local" {
+@test "local context runs tier_1 only when tier_1.placement=local" {
   write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
@@ -124,7 +122,7 @@ EOF
   jq -e '.context == "local"' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-@test "AC3: ci_pre_merge context runs tier_2 only when tier_2.placement=ci-pre-merge" {
+@test "ci_pre_merge context runs tier_2 only when tier_2.placement=ci-pre-merge" {
   write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=ci_pre_merge \
     "$QA_TEST_RUNNER" \
@@ -137,7 +135,7 @@ EOF
   jq -e '.context == "ci_pre_merge"' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-@test "AC3: ci_pre_merge context runs both tier_1 and tier_2 if both placements match" {
+@test "ci_pre_merge context runs both tier_1 and tier_2 if both placements match" {
   # When tier_1.placement and tier_2.placement both equal ci-pre-merge.
   write_config "$TEST_TMP/project-config.yaml" ci-pre-merge ci-pre-merge ci-post-merge
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=ci_pre_merge \
@@ -149,7 +147,7 @@ EOF
   jq -e '.suites | length == 2' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-@test "AC3: default context is local when GAIA_EXECUTION_CONTEXT is unset" {
+@test "default context is local when GAIA_EXECUTION_CONTEXT is unset" {
   write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
   run --separate-stderr env -u GAIA_EXECUTION_CONTEXT \
     "$QA_TEST_RUNNER" \
@@ -160,9 +158,9 @@ EOF
   jq -e '.context == "local"' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-# --- AC4: execution evidence capture -----------------------------------
+# --- execution evidence capture ------------------------------------------
 
-@test "AC4: execution-evidence.json contains required fields" {
+@test "execution-evidence.json contains required fields" {
   write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
@@ -180,9 +178,9 @@ EOF
   jq -e '.suites[0] | has("pass_count") and has("fail_count")' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-# --- AC5: required test failure -- runner exits non-zero ----------------
+# --- required test failure — runner exits non-zero -----------------------
 
-@test "AC5: tier_1 command failure produces evidence with exit_code != 0" {
+@test "tier_1 command failure produces evidence with exit_code != 0" {
   write_failing_command_config "$TEST_TMP/project-config.yaml"
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
@@ -196,9 +194,9 @@ EOF
   jq -e '.suites[0].timeout == false' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-# --- AC6: timeout handling --------------------------------------------
+# --- timeout handling ----------------------------------------------------
 
-@test "AC6: tier_1 command exceeding timeout_seconds is killed and recorded" {
+@test "tier_1 command exceeding timeout_seconds is killed and recorded" {
   write_timeout_command_config "$TEST_TMP/project-config.yaml"
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
@@ -210,9 +208,9 @@ EOF
   jq -e '.suites[0].duration_seconds | . < 5' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-# --- AC7: graceful skip when test_execution absent ---------------------
+# --- graceful skip when test_execution absent ----------------------------
 
-@test "AC7: missing test_execution section -- skipped with INFO diagnostic" {
+@test "missing test_execution section -- skipped with INFO diagnostic" {
   write_minimal_config_no_test_exec "$TEST_TMP/project-config.yaml"
   run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
     "$QA_TEST_RUNNER" \
@@ -227,14 +225,14 @@ EOF
     [[ "$stderr" == *"INFO"* ]]
 }
 
-# --- AC10: required-flag handling --------------------------------------
+# --- required-flag handling -----------------------------------------------
 
-@test "AC10: missing --story-key fails fast" {
+@test "missing --story-key fails fast" {
   run --separate-stderr "$QA_TEST_RUNNER" --workdir "$WORKDIR"
   [ "$status" -ne 0 ]
 }
 
-@test "AC10: missing --workdir fails fast" {
+@test "missing --workdir fails fast" {
   run --separate-stderr "$QA_TEST_RUNNER" --story-key "$STORY_KEY"
   [ "$status" -ne 0 ]
 }
@@ -283,7 +281,7 @@ test_execution:
 EOF
 }
 
-@test "story-scoped: local review with --story-file runs only story-relevant tests, not full suite (AC1)" {
+@test "story-scoped: local review with --story-file runs only story-relevant tests, not full suite" {
   # Create a project layout with source files and adjacent test files.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/widget.sh"
@@ -323,7 +321,7 @@ BATS
   jq -e '.suites[0].timeout == false' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-@test "story-scoped: full-suite timeout does not false-BLOCK when story tests pass (AC2)" {
+@test "story-scoped: full-suite timeout does not false-BLOCK when story tests pass" {
   # This is the regression guard: a project whose full suite exceeds the
   # timeout (300s) but the story's own tests pass in milliseconds.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
@@ -354,7 +352,7 @@ BATS
   jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-@test "story-scoped: CI context runs full-suite tier command unchanged (AC3)" {
+@test "story-scoped: CI context runs full-suite tier command unchanged" {
   # Even with --story-file, a CI context must run the full-suite command.
   mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/thing.sh"
@@ -384,7 +382,7 @@ BATS
   [ "$cmd" = "true" ]
 }
 
-@test "story-scoped: no File List section falls back to full suite with warning (AC1)" {
+@test "story-scoped: no File List section falls back to full suite with warning" {
   # Story file without a File List section.
   local story_file="$TEST_TMP/story-no-fl.md"
   {
@@ -416,7 +414,7 @@ BATS
     [[ "$stderr" == *"File List"* ]]
 }
 
-@test "story-scoped: File List with no matching tests falls back to full suite (AC1)" {
+@test "story-scoped: File List with no matching tests falls back to full suite" {
   # Source files exist but no adjacent test files.
   mkdir -p "$TEST_TMP/lib"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/lib/orphan.sh"
@@ -894,4 +892,376 @@ BATS
     | sed -n 's/.*story-scoped test execution: //p' | tail -1)"
   [ -n "$announced" ]
   [ "$announced" = "$cmd" ]
+}
+
+# --- code-tree option -------------------------------------------------------
+
+@test "code-tree pointing at a non-existent path dies with a clear message" {
+  write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --story-key "$STORY_KEY" \
+    --workdir "$WORKDIR" \
+    --config "$TEST_TMP/project-config.yaml" \
+    --code-tree "$TEST_TMP/no-such-dir"
+  [ "$status" -ne 0 ]
+  local combined
+  combined="${output}${stderr}"
+  [[ "$combined" == *"no-such-dir"* ]]
+  [[ "$combined" == *"not a directory"* ]] || [[ "$combined" == *"does not exist"* ]]
+}
+
+# Helper: config whose tier_1 command emits pwd and lists a marker file.
+write_cwd_probe_config() {
+  cat > "$1" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "pwd && ls marker.txt"
+    timeout_seconds: 30
+EOF
+}
+
+@test "code-tree option runs tier commands inside the given tree" {
+  # --code-tree <path> sets cwd for tier commands.
+  local tree="$TEST_TMP/code-tree-target"
+  mkdir -p "$tree"
+  touch "$tree/marker.txt"
+
+  write_cwd_probe_config "$TEST_TMP/project-config.yaml"
+
+  # Run from a DIFFERENT directory (TEST_TMP), but specify --code-tree.
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --code-tree "$tree"
+  [ "$status" -eq 0 ]
+  [ -f "$WORKDIR/execution-evidence.json" ]
+  jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "without code-tree, tier commands run in the caller cwd" {
+  # Backward-compatible — no --code-tree means current cwd.
+  # This is a green-on-entry regression guard.
+  write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+  [ -f "$WORKDIR/execution-evidence.json" ]
+  jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+# --- tier output log preserved (plan test 3) --------------------------------
+
+@test "tier output log is kept after the run" {
+  # The tier output log must survive at a known path after the run.
+  write_config "$TEST_TMP/project-config.yaml" local ci-pre-merge ci-post-merge
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  # A tier output log matching qa-tier-output-*.log must exist in WORKDIR.
+  local log_found=false
+  local f
+  for f in "$WORKDIR"/qa-tier-output-*.log; do
+    if [ -f "$f" ]; then log_found=true; break; fi
+  done
+  [ "$log_found" = "true" ]
+}
+
+# --- whole-stream tally over summary-tail ------------------------------------
+
+@test "whole-stream bats tally is authoritative over summary tail" {
+  # When both a whole-stream tally and a summary-tail parse are present,
+  # the whole-stream tally (10 ok, 2 not ok) must win over the misleading
+  # summary tail ("5 passed, 0 failed").
+  cat > "${TEST_TMP}/mixed-tap.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+i=1
+while [ "$i" -le 10 ]; do
+  printf 'ok %d passing test\n' "$i"
+  i=$((i + 1))
+done
+j=11
+while [ "$j" -le 12 ]; do
+  printf 'not ok %d failing test\n' "$j"
+  j=$((j + 1))
+done
+printf '5 passed, 0 failed in 1.00s\n'
+exit 1
+SCRIPT
+  chmod +x "${TEST_TMP}/mixed-tap.sh"
+  write_custom_command_config "$TEST_TMP/project-config.yaml" "${TEST_TMP}/mixed-tap.sh"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  # The whole-stream tally (10/2) must be recorded, not the summary (5/0).
+  jq -e '.suites[0].pass_count == 10' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.suites[0].fail_count == 2' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+# --- tally/exit-code contradiction ------------------------------------------
+
+# Helper: config pointing tier_1 at a custom local command.
+write_custom_command_config() {
+  local config_path="$1" cmd="$2"
+  cat > "$config_path" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "${cmd}"
+    timeout_seconds: 30
+EOF
+}
+
+@test "tally and exit code disagreement is a failure with a discrepancy note" {
+  # 0 failures in tally but exit code 1 must be treated as failure, and
+  # the evidence diagnostics must contain "tally/exit-code discrepancy".
+  cat > "${TEST_TMP}/ok-exit1.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'ok 1 test A\n'
+printf 'ok 2 test B\n'
+printf 'ok 3 test C\n'
+exit 1
+SCRIPT
+  chmod +x "${TEST_TMP}/ok-exit1.sh"
+  write_custom_command_config "$TEST_TMP/project-config.yaml" "${TEST_TMP}/ok-exit1.sh"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  # The diagnostics array must mention the discrepancy.
+  jq -e '.diagnostics | length > 0' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.diagnostics[] | select(test("tally/exit-code discrepancy"))' \
+    "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "reverse discrepancy: failures tallied but exit code 0 is flagged" {
+  # Reverse: not-ok lines present but exit code 0 must also be flagged.
+  cat > "${TEST_TMP}/fail-exit0.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'ok 1 test A\n'
+printf 'not ok 2 test B\n'
+printf 'not ok 3 test C\n'
+exit 0
+SCRIPT
+  chmod +x "${TEST_TMP}/fail-exit0.sh"
+  write_custom_command_config "$TEST_TMP/project-config.yaml" "${TEST_TMP}/fail-exit0.sh"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  # The diagnostics array must mention the discrepancy.
+  jq -e '.diagnostics | length > 0' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.diagnostics[] | select(test("tally/exit-code discrepancy"))' \
+    "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+@test "timed-out suite is not flagged as a tally discrepancy" {
+  # Boundary: a timed-out suite exits non-zero with 0 failures in the
+  # tally, but that is not a contradiction — it is a timeout, not a tally
+  # error. This is a green-on-entry regression guard.
+  write_timeout_command_config "$TEST_TMP/project-config.yaml"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  jq -e '.suites[0].timeout == true' "$WORKDIR/execution-evidence.json" >/dev/null
+  # Diagnostics must be empty — no tally discrepancy for a timeout.
+  jq -e '.diagnostics | length == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+}
+
+# --- check-evidence mode ----------------------------------------------------
+
+# Helper: create a temp git repo with one empty commit.
+_make_git_repo() {
+  local repo_dir="$1"
+  mkdir -p "$repo_dir"
+  git -C "$repo_dir" init -q
+  git -C "$repo_dir" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "seed"
+}
+
+# Helper: set up a git repo and evidence directory for check-evidence tests.
+# Sets shell vars: _CE_REPO, _CE_DIR, _CE_SHA.
+# Optional flags (after the tag arg):
+#   --log    plant a qa-tier-output-<sha>.log
+#   --json   plant an execution-evidence.json
+_make_evidence_fixture() {
+  local tag="$1"; shift
+  _CE_REPO="$TEST_TMP/repo-${tag}"
+  _CE_DIR="$TEST_TMP/evidence-dir-${tag}"
+  _make_git_repo "$_CE_REPO"
+  _CE_SHA="$(git -C "$_CE_REPO" rev-parse HEAD)"
+  mkdir -p "$_CE_DIR"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --log)  touch "$_CE_DIR/qa-tier-output-${_CE_SHA}.log" ;;
+      --json) printf '{"tier":"tier_1"}\n' > "$_CE_DIR/execution-evidence.json" ;;
+    esac
+    shift
+  done
+}
+
+@test "check-evidence refuses when tier log is missing for current HEAD" {
+  _make_evidence_fixture no-log --json
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"qa-tier-output-${_CE_SHA}.log"* ]]
+}
+
+@test "check-evidence refuses when only an older SHA log exists" {
+  # Plant evidence for the first commit, then advance HEAD.
+  _make_evidence_fixture old-sha --log --json
+  local old_sha="$_CE_SHA"
+
+  git -C "$_CE_REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "advance"
+  local new_sha
+  new_sha="$(git -C "$_CE_REPO" rev-parse HEAD)"
+  [ "$old_sha" != "$new_sha" ]
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"qa-tier-output-${new_sha}.log"* ]]
+}
+
+@test "check-evidence refuses when evidence JSON is missing" {
+  _make_evidence_fixture no-json --log
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"execution-evidence.json"* ]]
+}
+
+@test "check-evidence accepts when both files exist for current HEAD" {
+  _make_evidence_fixture happy --log --json
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -eq 0 ]
+}
+
+@test "check-evidence refuses when code tree is not a git repo" {
+  local plain_dir="$TEST_TMP/not-a-git-repo"
+  mkdir -p "$plain_dir"
+  local edir="$TEST_TMP/evidence-dir-nogit"
+  mkdir -p "$edir"
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$edir" --code-tree "$plain_dir"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"not a git repository"* ]]
+}
+
+@test "check-evidence refuses when workdir does not exist" {
+  _make_git_repo "$TEST_TMP/repo-noworkdir"
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$TEST_TMP/does-not-exist" --code-tree "$TEST_TMP/repo-noworkdir"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"does-not-exist"* ]]
+}
+
+# --- awk portability (mawk interval quantifier regression) ----------------
+
+@test "File List heading regex uses no awk interval quantifier" {
+  # Part (a): when mawk is available, run the runner with a story whose
+  # File List heading must be recognized. mawk does not support {N,} or
+  # {N,M}, so an awk regex using those silently fails to match and the
+  # runner falls back to the full suite even when narrowing should apply.
+  # On hosts without mawk, this branch is simply not exercised.
+  if command -v mawk >/dev/null 2>&1; then
+    mkdir -p "$TEST_TMP/src" "$TEST_TMP/tests" "$TEST_TMP/all-tests"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_TMP/src/mawktest.sh"
+    cat > "$TEST_TMP/tests/mawktest.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+    printf '%s\n' '@test "mawktest works" { true; }' >> "$TEST_TMP/tests/mawktest.bats"
+
+    local story_file="$TEST_TMP/story-mawktest.md"
+    write_story_with_file_list "$story_file" "src/mawktest.sh"
+
+    write_slow_full_suite_config "$TEST_TMP/project-config.yaml"
+
+    # Shim awk -> mawk so the runner's awk calls go through mawk.
+    local shim_dir="$TEST_TMP/mawk-shim"
+    mkdir -p "$shim_dir"
+    ln -sf "$(command -v mawk)" "$shim_dir/awk"
+
+    # Prepend the shim dir so the runner finds mawk as "awk".
+    run --separate-stderr env \
+      GAIA_EXECUTION_CONTEXT=local \
+      PATH="${shim_dir}:${PATH}" \
+      "$QA_TEST_RUNNER" \
+        --story-key "$STORY_KEY" \
+        --workdir "$WORKDIR" \
+        --config "$TEST_TMP/project-config.yaml" \
+        --story-file "$story_file"
+    [ "$status" -eq 0 ]
+
+    # The command must reference the scoped test, not the full-suite glob.
+    local cmd
+    cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+    [[ "$cmd" == *"mawktest.bats"* ]]
+    [[ "$cmd" != *"all-tests"* ]]
+    # Stderr must NOT contain a "no File List" / fallback message.
+    [[ "$stderr" != *"no story-scoped tests"* ]]
+    [[ "$stderr" != *"falling back"* ]]
+  fi
+
+  # Part (b): host-independent — the awk programs in qa-test-runner.sh must
+  # not use {N,} or {N,M} interval quantifiers. These are ERE extensions
+  # that mawk does not support. If the script contains any, this assertion
+  # fails on every host (including gawk-only CI runners).
+  local interval_hits
+  interval_hits="$(grep -cE '\{[0-9]+,([0-9]*)?\}' "$QA_TEST_RUNNER" || true)"
+  [ "$interval_hits" -eq 0 ]
 }

@@ -5,17 +5,22 @@
 # execution-evidence.json into the per-story workdir.
 #
 # Public API:
-#   qa-test-runner.sh --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>] [--story-file <path>]
+#   qa-test-runner.sh --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>] [--story-file <path>] [--code-tree <path>]
+#   qa-test-runner.sh --check-evidence --workdir <dir> [--code-tree <path>]
 #   qa-test-runner.sh --help
 #
 # Output:
 #   <workdir>/execution-evidence.json validating against
 #   plugins/gaia/schemas/execution-evidence.schema.json.
+#   <workdir>/qa-tier-output-<sha>.log — concatenated tier output, preserved.
+#     <sha> is the full HEAD of the code tree (--code-tree or cwd).
 #
 # Exit codes:
 #   0  evidence written (regardless of suite pass/fail — verdict resolution
 #      is done by verdict-resolver.sh consuming the evidence)
 #   1  caller error (missing required flag, unparseable config)
+#   --check-evidence: 0 both files exist for current HEAD,
+#                     1 file(s) missing or code tree not a git repo
 #
 # POSIX discipline: bash 3.2 (macOS), set -euo pipefail, LC_ALL=C, no
 # associative arrays. jq is optional (used only for the bridge JSON parse
@@ -37,13 +42,20 @@ usage() {
 $SCRIPT_NAME — project-config-driven test execution for /gaia-review-qa.
 
 Usage:
-  $SCRIPT_NAME --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>]
+  $SCRIPT_NAME --story-key <key> --workdir <dir> --config <yaml> [--context <ctx>] [--code-tree <path>]
+  $SCRIPT_NAME --check-evidence --workdir <dir> [--code-tree <path>]
   $SCRIPT_NAME --help
 
-Required:
+Required (run mode):
   --story-key <key>   Story key (e.g., E1-S1) — used for the audit trail.
   --workdir <dir>     Output directory (writes execution-evidence.json here).
   --config <yaml>     Path to project-config.yaml (or a merged equivalent).
+
+Required (check mode):
+  --check-evidence    Read-only evidence check — exits 0 only when both the
+                      tier output log and execution-evidence.json exist for
+                      the code tree's current full HEAD SHA.
+  --workdir <dir>     The directory to check for evidence files.
 
 Optional:
   --context <ctx>     Override GAIA_EXECUTION_CONTEXT
@@ -52,6 +64,8 @@ Optional:
                       local context, the runner parses the File List section,
                       discovers adjacent test files, and runs only those tests
                       instead of the full-suite tier command.
+  --code-tree <path>  Working directory for tier commands (the story worktree).
+                      When absent, tier commands run in the caller's cwd.
 
 Behavior:
   - Parses test_execution.tier_{1,2,3}.placement and matches against the
@@ -62,6 +76,8 @@ Behavior:
     the configured run_tests_path (Test Execution Bridge).
   - When test_execution is absent, writes a skipped=true evidence document
     and returns exit 0 with an INFO diagnostic.
+  - When --check-evidence is passed, no tiers are run; the script only
+    checks for existing evidence files and exits 0 or 1.
 EOF
 }
 
@@ -72,6 +88,8 @@ WORKDIR=""
 CONFIG=""
 CONTEXT_OVERRIDE=""
 STORY_FILE=""
+CODE_TREE=""
+CHECK_EVIDENCE=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -91,10 +109,46 @@ while [ $# -gt 0 ]; do
     --story-file)
       [ $# -ge 2 ] || die "--story-file requires a path"
       STORY_FILE="$2"; shift 2 ;;
+    --code-tree)
+      [ $# -ge 2 ] || die "--code-tree requires a path"
+      CODE_TREE="$2"; shift 2 ;;
+    --check-evidence)
+      CHECK_EVIDENCE=true; shift ;;
     *) die "unknown flag: $1" ;;
   esac
 done
 
+# --code-tree must be a directory when given.
+if [ -n "$CODE_TREE" ] && [ ! -d "$CODE_TREE" ]; then
+  die "--code-tree path does not exist or is not a directory: $CODE_TREE"
+fi
+
+# ---------- check-evidence mode (read-only, runs no tiers) ----------
+# Placed before mkdir so it never writes. Other flags are ignored.
+check_evidence_mode() {
+  [ -n "$WORKDIR" ] || die "missing --workdir"
+  [ -d "$WORKDIR" ] || { err "workdir does not exist: $WORKDIR"; return 1; }
+
+  local tree="${CODE_TREE:-.}"
+  local inside
+  inside="$(git -C "$tree" rev-parse --is-inside-work-tree 2>/dev/null || true)"
+  [ "$inside" = "true" ] || { err "not a git repository: $tree"; return 1; }
+
+  local sha missing=0
+  sha="$(git -C "$tree" rev-parse HEAD)"
+  [ -f "${WORKDIR}/qa-tier-output-${sha}.log" ] \
+    || { err "missing tier output log: ${WORKDIR}/qa-tier-output-${sha}.log"; missing=1; }
+  [ -f "${WORKDIR}/execution-evidence.json" ] \
+    || { err "missing evidence file: ${WORKDIR}/execution-evidence.json"; missing=1; }
+  return "$missing"
+}
+
+if [ "$CHECK_EVIDENCE" = "true" ]; then
+  check_evidence_mode
+  exit $?
+fi
+
+# ---------- run-mode validation ----------
 [ -n "$STORY_KEY" ] || die "missing --story-key"
 [ -n "$WORKDIR" ] || die "missing --workdir"
 [ -n "$CONFIG" ] || die "missing --config"
@@ -219,8 +273,8 @@ extract_story_file_list() {
   [ -r "$story" ] || return 1
   awk '
     BEGIN { in_section = 0 }
-    /^#{2,}[[:space:]]+[Ff]ile [Ll]ist/ { in_section = 1; next }
-    in_section && /^#{1,}[[:space:]]/    { in_section = 0 }
+    /^##+[[:space:]]+[Ff]ile [Ll]ist/ { in_section = 1; next }
+    in_section && /^#+[[:space:]]/       { in_section = 0 }
     in_section { print }
   ' "$story" \
     | grep -E '^[[:space:]]*[-*][[:space:]]+' \
@@ -498,7 +552,11 @@ run_bridge() {
   out_file="$(mktemp 2>/dev/null || mktemp -t qabridge)"
   start_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/dev/null || date +%s)"
   set +e
-  "$run_tests_path" --story-key "$STORY_KEY" --context "$CONTEXT" >"$out_file" 2>&1
+  if [ -n "$CODE_TREE" ]; then
+    (cd "$CODE_TREE" && "$run_tests_path" --story-key "$STORY_KEY" --context "$CONTEXT") >"$out_file" 2>&1
+  else
+    "$run_tests_path" --story-key "$STORY_KEY" --context "$CONTEXT" >"$out_file" 2>&1
+  fi
   local rc=$?
   set -e
   end_ns="$(perl -MTime::HiRes -e 'printf "%.6f", Time::HiRes::time()' 2>/dev/null || date +%s)"
@@ -753,6 +811,26 @@ EOF
   fi
 fi
 
+# Resolve the code tree HEAD for the tier output log filename.
+_head_sha="$(git -C "${CODE_TREE:-.}" rev-parse HEAD 2>/dev/null || echo unknown)"
+TIER_LOG="${WORKDIR}/qa-tier-output-${_head_sha}.log"
+# A re-run overwrites any prior log for this SHA.
+rm -f "$TIER_LOG"
+# Diagnostic messages accumulated across tiers (comma-separated JSON strings).
+_DIAGNOSTICS=""
+
+# Log a discrepancy to stderr and append the JSON-escaped message to
+# _DIAGNOSTICS. Called from the tally/exit-code contradiction detector.
+_record_diagnostic() {
+  local msg="$1"
+  err "$msg"
+  if [ -n "$_DIAGNOSTICS" ]; then
+    _DIAGNOSTICS="${_DIAGNOSTICS},$(json_str "$msg")"
+  else
+    _DIAGNOSTICS="$(json_str "$msg")"
+  fi
+}
+
 # Direct execution path — run each active tier with its own timeout.
 SUITES_JSON_PARTS=()
 for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
@@ -796,48 +874,51 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
       info "$tier runs a different test runner; it keeps its own command: ${cmd}"
     fi
   fi
-  run_with_timeout "$cmd" "$to"
-  # Best-effort case-count parse from runner stdout/stderr before deleting
-  # the output buffer (prior behavior recorded 1-per-suite counts even when
-  # the real suite was 83 cases — producing misleading evidence in code
-  # reviews). Common shapes:
+  # When --code-tree is set, run the tier command inside that directory.
+  # The recorded "command" stays as $cmd for evidence readability; the cd
+  # prefix is transparent plumbing.
+  if [ -n "$CODE_TREE" ]; then
+    # Shell-quote the path so spaces/specials in CODE_TREE are safe inside
+    # the sh -c string that run_with_timeout passes to the timeout wrapper.
+    _effective_cmd="cd $(printf '%q' "$CODE_TREE") && $cmd"
+  else
+    _effective_cmd="$cmd"
+  fi
+  run_with_timeout "$_effective_cmd" "$to"
+  # Best-effort case-count parse from runner stdout/stderr. Common shapes:
+  #   bats:          "ok 12 ..." / "not ok 3 ..." (per-line, whole stream)
   #   pytest:        "83 passed, 0 failed in 1.20s"
   #   jest/vitest:   "Tests: 1 failed, 12 passed, 13 total"
-  #   bats:          "ok 12 ..." / "not ok 3 ..." (per-line)
   #   go test:       "PASS / FAIL" lines (suite-level — fall through to 1)
-  # Failures to parse fall back to the legacy 1-per-suite shape.
+  # Whole-stream per-result tally is authoritative when present; summary-line
+  # parse is second; legacy 1-per-suite fallback is last.
   pass_count=0
   fail_count=0
-  _case_parse_out=""
+  _bats_pass=0
+  _bats_fail=0
   if [ -f "$RT_OUTPUT_FILE" ]; then
-    # Summary-line parse only — a summary runner prints its totals once, at
-    # the end, so reading a bounded tail is both correct and cheap here. The
-    # per-result tally below deliberately does NOT use this slice.
-    _case_parse_out=$(tail -200 "$RT_OUTPUT_FILE" 2>/dev/null || true)
-  fi
-  # Summary-line runners: "<N> passed" / "<N> failed" — last match wins.
-  _pytest_pass=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) passed.*/\2/p' | tail -1)
-  _pytest_fail=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) failed.*/\2/p' | tail -1)
-  if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
-    pass_count=${_pytest_pass:-0}
-    fail_count=${_pytest_fail:-0}
-  else
     # Per-result tally — counted over the WHOLE captured stream, never a tail
     # slice. A large suite prints thousands of result lines and then a
     # trailing report; a fixed tail window would count the report instead of
     # the results and record counts that contradict the recorded exit code.
-    # `grep -c` reads the file directly so a very large output never has to be
-    # materialized into a shell variable, and exits 1 on zero matches (hence
-    # the `|| true` guard under `set -e`).
-    _bats_pass=0
-    _bats_fail=0
+    _bats_pass=$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
+    _bats_fail=$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
+  fi
+  if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
+    # Whole-stream tally wins.
+    pass_count=${_bats_pass:-0}
+    fail_count=${_bats_fail:-0}
+  else
+    # Summary-line runners: "<N> passed" / "<N> failed" — last match wins.
+    _case_parse_out=""
     if [ -f "$RT_OUTPUT_FILE" ]; then
-      _bats_pass=$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
-      _bats_fail=$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)
+      _case_parse_out=$(tail -200 "$RT_OUTPUT_FILE" 2>/dev/null || true)
     fi
-    if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
-      pass_count=${_bats_pass:-0}
-      fail_count=${_bats_fail:-0}
+    _pytest_pass=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) passed.*/\2/p' | tail -1)
+    _pytest_fail=$(printf '%s' "$_case_parse_out" | sed -nE 's/.*(^|[^[:digit:]])([[:digit:]]+) failed.*/\2/p' | tail -1)
+    if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
+      pass_count=${_pytest_pass:-0}
+      fail_count=${_pytest_fail:-0}
     else
       # Final fallback — suite-level 1-per-suite (legacy shape).
       if [ "$RT_EXIT" -ne 0 ] && [ "$RT_TIMEOUT" = "false" ]; then
@@ -847,6 +928,18 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
       fi
     fi
   fi
+  # Tally/exit-code contradiction detection (not for timed-out suites).
+  if [ "$RT_TIMEOUT" = "false" ]; then
+    if [ "$fail_count" -eq 0 ] && [ "$RT_EXIT" -ne 0 ]; then
+      _record_diagnostic "tally/exit-code discrepancy: 0 failures but exit code $RT_EXIT"
+      fail_count=1
+    elif [ "$fail_count" -gt 0 ] && [ "$RT_EXIT" -eq 0 ]; then
+      _record_diagnostic "tally/exit-code discrepancy: $fail_count failures but exit code 0"
+      RT_EXIT=1
+    fi
+  fi
+  # Append tier output to the persistent log, then remove the temp file.
+  cat "$RT_OUTPUT_FILE" >> "$TIER_LOG" 2>/dev/null || true
   rm -f "$RT_OUTPUT_FILE" || true
   suite_json="$(printf '{"name":%s,"command":%s,"exit_code":%s,"duration_seconds":%s,"pass_count":%s,"fail_count":%s,"timeout":%s,"required":%s}' \
     "$(json_str "$tier")" \
@@ -887,7 +980,7 @@ cat > "$EVIDENCE" <<EOF
   "skipped": false,
   "bridge_used": false,
   "suites": $suites_json,
-  "diagnostics": []
+  "diagnostics": [${_DIAGNOSTICS}]
 }
 EOF
 
