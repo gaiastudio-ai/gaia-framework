@@ -524,7 +524,7 @@ SNAP_FIXTURE
   local fix="$TEST_TMP/bare-tasks.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S90"
+key: "X900-S90"
 ---
 
 ## Tasks
@@ -546,7 +546,7 @@ EOF
   local fix="$TEST_TMP/t-prefix.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S91"
+key: "X900-S91"
 ---
 
 ## Tasks / Subtasks
@@ -565,7 +565,7 @@ EOF
   local fix="$TEST_TMP/t-bold.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S92"
+key: "X900-S92"
 ---
 
 ## Tasks / Subtasks
@@ -585,7 +585,7 @@ EOF
   local fix="$TEST_TMP/t-guard-20.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S93"
+key: "X900-S93"
 ---
 
 ## Tasks / Subtasks
@@ -609,7 +609,7 @@ EOF
   local fix="$TEST_TMP/t-guard-11.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S94"
+key: "X900-S94"
 ---
 
 ## Tasks / Subtasks
@@ -633,7 +633,7 @@ EOF
   local fix="$TEST_TMP/t-nondot.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S106"
+key: "X900-S106"
 ---
 
 ## Tasks / Subtasks
@@ -659,7 +659,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-plain.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S95"
+key: "X900-S95"
 ---
 
 ## Acceptance Criteria
@@ -679,7 +679,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-bold.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S96"
+key: "X900-S96"
 ---
 
 ## Acceptance Criteria
@@ -697,7 +697,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-boundary.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S97"
+key: "X900-S97"
 ---
 
 ## Acceptance Criteria
@@ -717,7 +717,7 @@ EOF
   local fix="$TEST_TMP/ac-ec10-only.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S105"
+key: "X900-S105"
 ---
 
 ## Acceptance Criteria
@@ -740,7 +740,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-only.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S98"
+key: "X900-S98"
 ---
 
 ## Acceptance Criteria
@@ -763,7 +763,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-mismatch.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S99"
+key: "X900-S99"
 ---
 
 ## Acceptance Criteria
@@ -786,7 +786,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-mid.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S107"
+key: "X900-S107"
 ---
 
 ## Acceptance Criteria
@@ -808,7 +808,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-ticked.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S100"
+key: "X900-S100"
 ---
 
 ## Acceptance Criteria
@@ -868,7 +868,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-task-only.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S101"
+key: "X900-S101"
 ---
 
 ## Tasks / Subtasks
@@ -894,7 +894,7 @@ EOF
   local fix="$TEST_TMP/ac-ec-bare-tasks.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S104"
+key: "X900-S104"
 ---
 
 ## Tasks
@@ -924,7 +924,7 @@ EOF
   local fix="$TEST_TMP/no-heading.md"
   cat > "$fix" << 'EOF'
 ---
-key: "E900-S103"
+key: "X900-S103"
 ---
 
 ## Some Other Heading
