@@ -3364,12 +3364,13 @@ STORY
 }
 
 # AC8: all nine review skills use resolve-story-file.sh (no inline flat-glob)
-@test "all nine review skills use resolve-story-file.sh with no inline flat-glob for story resolution" {
+@test "all ten review skills use resolve-story-file.sh, no inline flat-glob, and halt on key mismatch" {
   local skills=(
     "gaia-code-review"
     "gaia-performance-review"
     "gaia-qa-tests"
     "gaia-review-security"
+    "gaia-security-review"
     "gaia-test-review"
     "gaia-review-perf"
     "gaia-test-automate"
@@ -3391,12 +3392,16 @@ STORY
       echo "FAIL: $skill Critical Rules/Step 1 does not reference resolve-story-file.sh"
       return 1
     fi
-    # Must NOT contain inline flat-glob for story resolution (the
-    # pattern {story_key}-*.md used as a resolution mechanism).
-    # Exclude lines that describe the resolver's own tiers or are inside
-    # code blocks quoting the resolver's legacy fallback.
+    # Must NOT contain inline flat-glob for story resolution
     if grep -v 'resolve-story-file\|fallback\|legacy' <<< "$section" | grep -q '{story_key}-\*\.md'; then
       echo "FAIL: $skill Critical Rules/Step 1 still has inline {story_key}-*.md glob for resolution"
+      return 1
+    fi
+    # Must instruct halt on frontmatter key mismatch (key differs → halt
+    # before any write). gaia-test-automate and gaia-review-mobile may
+    # use different wording; accept any mention of key + differ/mismatch + halt.
+    if ! grep -qiE 'key.*differ.*halt|halt.*key.*differ|key.*mismatch.*halt|halt.*mismatch|differ.*halt.*before' <<< "$section"; then
+      echo "FAIL: $skill Critical Rules/Step 1 missing key-mismatch halt instruction"
       return 1
     fi
   done
@@ -3742,69 +3747,45 @@ STORY
   done
 }
 
-# Helper: build a gate-write snippet from a SKILL.md's code block
-# and run it with a stub review-gate.sh that records the --sha it receives.
-_run_gate_snippet() {
-  local worktree_path="$1" tmproot="$2"
-  local stub_gate="$tmproot/stub-review-gate.sh"
-  local sha_capture="$tmproot/captured-sha"
-  # Stub review-gate.sh: just capture the --sha value
-  cat > "$stub_gate" <<'STUB'
-#!/usr/bin/env bash
-while [ $# -gt 0 ]; do
-  case "$1" in --sha) shift; printf '%s' "$1" > "$SHA_CAPTURE"; shift ;; *) shift ;; esac
-done
-exit 0
-STUB
-  chmod +x "$stub_gate"
-  # Run the pre-validation + gate call pattern from the SKILL.md blocks.
-  # This replicates what the LLM executes from the prose instructions.
-  local script="$tmproot/gate-snippet.sh"
-  cat > "$script" <<SNIP
-#!/usr/bin/env bash
-set -euo pipefail
-export STORY_WORKTREE_PATH="${worktree_path}"
-export SHA_CAPTURE="${sha_capture}"
-_sha="\$(git -C "\${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set}" rev-parse --verify HEAD^{commit})" \\
-  && [ "\${#_sha}" -eq 40 ] \\
-  || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-"${stub_gate}" update --story "test" --gate "Code Review" --verdict PASSED --sha "\$_sha" --report "/dev/null"
-SNIP
-  chmod +x "$script"
-  run bash "$script"
-}
+# The gate-write guard tests now exercise the REAL published block via the
+# extract-from-SKILL.md harness, so they break when the published guard breaks.
 
-@test "gate write refuses when STORY_WORKTREE_PATH is unset" {
+@test "gate write refuses when worktree arg points at a missing dir (extracted block)" {
+  local _K="E900-S970" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/rf3func_a"
-  mkdir -p "$tmproot"
-  _run_gate_snippet "" "$tmproot"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$tmproot/does-not-exist" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"STORY_WORKTREE_PATH"* ]] || [[ "$output" == *"cannot resolve"* ]]
+  [[ "$output" == *"does not exist"* ]] || [[ "$output" == *"not a directory"* ]]
   [ ! -f "$tmproot/captured-sha" ]
 }
 
-@test "gate write refuses when STORY_WORKTREE_PATH points at a non-git dir" {
+@test "gate write refuses when worktree arg points at a non-git dir (extracted block)" {
+  local _K="E900-S971" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/rf3func_b"
-  mkdir -p "$tmproot/not-a-repo"
-  _run_gate_snippet "$tmproot/not-a-repo" "$tmproot"
+  mkdir -p "$tmproot/main" "$tmproot/not-a-repo"
+  _init_git "$tmproot/main"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$tmproot/not-a-repo" "$tmproot" "$tmproot/main"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"cannot resolve"* ]]
+  [[ "$output" == *"not a git"* ]] || [[ "$output" == *"not a work tree"* ]]
   [ ! -f "$tmproot/captured-sha" ]
 }
 
-@test "gate write passes exact HEAD SHA when STORY_WORKTREE_PATH is a git repo" {
+@test "gate write passes exact worktree HEAD SHA (extracted block)" {
+  local _K="E900-S972" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/rf3func_c"
-  mkdir -p "$tmproot/repo"
-  git -C "$tmproot/repo" init -q
-  git -C "$tmproot/repo" config user.email "test@test.local"
-  git -C "$tmproot/repo" config user.name "Test"
-  printf 'init\n' > "$tmproot/repo/README.md"
-  git -C "$tmproot/repo" add README.md
-  git -C "$tmproot/repo" commit -q -m "init"
+  mkdir -p "$tmproot/main"
+  _init_git "$tmproot/main"
+  local wt="$tmproot/repo"
+  _seed_worktree_fixture "$wt" "$_K"
   local expected_sha
-  expected_sha="$(git -C "$tmproot/repo" rev-parse HEAD)"
+  expected_sha="$(git -C "$wt" rev-parse HEAD)"
 
-  _run_gate_snippet "$tmproot/repo" "$tmproot"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$wt" "$tmproot" "$tmproot/main"
   [ "$status" -eq 0 ]
   [ -f "$tmproot/captured-sha" ]
   local captured
@@ -4422,24 +4403,34 @@ STORY
 # Standalone worktree resolution via checkpoint and find-worktree
 # ---------------------------------------------------------------------------
 
-@test "gate-write snippet resolves worktree from checkpoint via find-worktree" {
+@test "gate-write snippet resolves worktree from checkpoint via find-worktree (checkpoint wins over worktree-list)" {
   local _K="E900-S952" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local tmproot="${TEST_TMP}/gwb_cp"
   mkdir -p "$tmproot/main"
   _init_git "$tmproot/main"
-  # Create the worktree on the story branch inside the main repo
-  git -C "$tmproot/main" worktree add "$tmproot/wt" -b "feat/${_K}-cp-test" 2>/dev/null
-  printf 'wt\n' > "$tmproot/wt/file.txt"
-  git -C "$tmproot/wt" add file.txt
-  git -C "$tmproot/wt" commit -q -m "wt commit"
-  local expected_sha
-  expected_sha="$(git -C "$tmproot/wt" rev-parse HEAD)"
 
-  # Create a checkpoint fixture so find-worktree's checkpoint path finds it
+  # Worktree A: alphabetically FIRST path so worktree-list finds it first.
+  # This is the WRONG one — the checkpoint does NOT point here.
+  git -C "$tmproot/main" worktree add "$tmproot/aaa-wt-listed" -b "feat/${_K}-from-list" 2>/dev/null
+  printf 'listed-content\n' > "$tmproot/aaa-wt-listed/file.txt"
+  git -C "$tmproot/aaa-wt-listed" add file.txt
+  git -C "$tmproot/aaa-wt-listed" commit -q -m "listed wt commit"
+  local listed_sha
+  listed_sha="$(git -C "$tmproot/aaa-wt-listed" rev-parse HEAD)"
+
+  # Worktree B: alphabetically LAST path. The checkpoint points HERE.
+  git -C "$tmproot/main" worktree add "$tmproot/zzz-wt-checkpoint" -b "feat/${_K}-from-checkpoint" 2>/dev/null
+  printf 'checkpoint-content\n' > "$tmproot/zzz-wt-checkpoint/file.txt"
+  git -C "$tmproot/zzz-wt-checkpoint" add file.txt
+  git -C "$tmproot/zzz-wt-checkpoint" commit -q -m "checkpoint wt commit"
+  local checkpoint_sha
+  checkpoint_sha="$(git -C "$tmproot/zzz-wt-checkpoint" rev-parse HEAD)"
+
+  # Checkpoint fixture points at zzz-wt-checkpoint
   local cp_root="$tmproot/main/.gaia/memory/checkpoints/gaia-dev-story"
   mkdir -p "$cp_root"
   cat > "$cp_root/latest-step-review.json" <<JSON
-{"key_variables":{"story_key":"${_K}","worktree_path":"${tmproot}/wt"},"step":"review"}
+{"key_variables":{"story_key":"${_K}","worktree_path":"${tmproot}/zzz-wt-checkpoint"},"step":"review"}
 JSON
 
   _setup_real_plugin_stubs "$tmproot"
@@ -4449,7 +4440,9 @@ JSON
   [ -f "$tmproot/captured-sha" ]
   local captured
   captured="$(cat "$tmproot/captured-sha")"
-  [ "$captured" = "$expected_sha" ]
+  # Must be the CHECKPOINT worktree's SHA, not the worktree-list one
+  [ "$captured" = "$checkpoint_sha" ]
+  [ "$captured" != "$listed_sha" ]
 }
 
 @test "gate-write snippet resolves worktree from non-git cwd via find-worktree" {
