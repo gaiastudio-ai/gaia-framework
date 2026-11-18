@@ -5010,3 +5010,128 @@ YAML
     fi
   done
 }
+
+# ---------------------------------------------------------------------------
+# Walk-up loop regression and depth-cap boundary
+# ---------------------------------------------------------------------------
+
+# (1) Relative worktree with no .gaia/config anywhere above: must refuse
+#     promptly (not hang). The old block (before canonicalisation) would loop
+#     forever on dirname of a relative path; this test proves the fix.
+@test "relative worktree with no project root above refuses promptly under timeout" {
+  local _K="E900-S994" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/walkhang"
+  # Create the worktree as a standalone git repo (no .gaia/config above it)
+  _seed_worktree_fixture "$tmproot/bare/wt" "$_K"
+  _setup_gate_stubs "$tmproot"
+  # Compute a RELATIVE path from tmproot to the worktree
+  local rel_wt
+  rel_wt="$(python3 -c "import os; print(os.path.relpath('$tmproot/bare/wt', '$tmproot'))")"
+  # Build and run the extracted block under timeout
+  local skill_md="$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$_K" "$rel_wt")"
+  [ -n "$gate_code" ] || { echo "extraction empty"; return 1; }
+  gate_code="$(printf '%s' "$gate_code" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")"
+  local script="$tmproot/walk-hang.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'cd "%s" || exit 99\n' "$tmproot"
+    printf '[ -n "${PROJECT_PATH:-}" ] && export PROJECT_PATH || true\n'
+    printf 'export REVIEW_GATE_PROOF_OF_EXECUTION=off\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$script"
+  chmod +x "$script"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run timeout 10 bash "$script"
+  # Must NOT have timed out (124) and must be non-zero (refused)
+  [ "$status" -ne 124 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".gaia/config"* ]] || [[ "$output" == *"refusing"* ]]
+  [ ! -f "$tmproot/captured-sha" ]
+}
+
+# Same test with run-all-reviews block
+@test "relative worktree with no project root above refuses promptly (run-all-reviews)" {
+  local _K="E900-S995" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/walkhang_rar"
+  _seed_worktree_fixture "$tmproot/bare/wt" "$_K"
+  _setup_gate_stubs "$tmproot"
+  local rel_wt
+  rel_wt="$(python3 -c "import os; print(os.path.relpath('$tmproot/bare/wt', '$tmproot'))")"
+  local skill_md="$PLUGIN_ROOT/skills/gaia-run-all-reviews/SKILL.md"
+  local gate_code
+  gate_code="$(_extract_gate_block "$skill_md" "$_K" "$rel_wt")"
+  [ -n "$gate_code" ] || { echo "extraction empty"; return 1; }
+  gate_code="$(printf '%s' "$gate_code" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g" | sed "s|bash scripts/review-gate\.sh|bash ${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")"
+  gate_code="$(printf '%s' "$gate_code" | sed 's/{gate_name}/Code Review/g' | sed 's/<absolute-path-to-per-review-report>/"\/tmp\/f.md"/g' | sed 's/\[--execution-evidence.*\]//g')"
+  local script="$tmproot/walk-hang-rar.sh"
+  {
+    printf '#!/usr/bin/env bash\nset -euo pipefail\n'
+    printf 'cd "%s" || exit 99\n' "$tmproot"
+    printf '[ -n "${PROJECT_PATH:-}" ] && export PROJECT_PATH || true\n'
+    printf 'export REVIEW_GATE_PROOF_OF_EXECUTION=off\n'
+    printf 'REPORT_PATH="/tmp/fake-report.md"\n'
+    printf 'EXECUTION_EVIDENCE_PATH="/tmp/fake-evidence.json"\n'
+    printf '%s\n' "$gate_code"
+  } > "$script"
+  chmod +x "$script"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run timeout 10 bash "$script"
+  [ "$status" -ne 124 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".gaia/config"* ]] || [[ "$output" == *"refusing"* ]]
+  [ ! -f "$tmproot/captured-sha" ]
+}
+
+# (2a) Depth boundary: .gaia/config exactly 63 levels above the worktree
+#      (the deepest the cap reaches). Must find it and write the row.
+@test "walk-up finds .gaia/config at exactly the depth cap boundary" {
+  local _K="E900-S996" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/walkdepth_ok"
+  # Build a 63-level deep path under tmproot: tmproot/d/d/d/.../wt
+  local deep="$tmproot"
+  local i
+  for i in $(seq 1 63); do
+    deep="$deep/d"
+  done
+  _seed_worktree_fixture "$deep/wt" "$_K"
+  # Put .gaia/config at tmproot (63 dirname calls from deep/wt)
+  _seed_project_root_for_stub "$tmproot" "$_K"
+  _setup_gate_stubs "$tmproot"
+  _run_extracted_gate "gaia-code-review" "$_K" "$deep/wt" "$tmproot" "$tmproot"
+  [ "$status" -eq 0 ]
+  [ -f "$tmproot/captured-sha" ]
+}
+
+# (2b) One level beyond the cap: 64 levels above. Must refuse promptly.
+@test "walk-up refuses when .gaia/config is one level beyond the depth cap" {
+  local _K="E900-S997" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/walkdepth_over"
+  # Build a 64-level deep path: tmproot/d/d/d/.../wt
+  local deep="$tmproot"
+  local i
+  for i in $(seq 1 64); do
+    deep="$deep/d"
+  done
+  _seed_worktree_fixture "$deep/wt" "$_K"
+  # Put .gaia/config at tmproot (64 dirname calls from deep/wt — beyond cap)
+  _seed_project_root_for_stub "$tmproot" "$_K"
+  _setup_gate_stubs "$tmproot"
+  CLAUDE_PLUGIN_ROOT="$tmproot/fake-plugin" \
+    run timeout 10 bash -c "
+      set -euo pipefail
+      cd '$tmproot' || exit 99
+      export PROJECT_PATH='$tmproot'
+      export REVIEW_GATE_PROOF_OF_EXECUTION=off
+      REPORT_PATH='/tmp/fake.md'
+      EXECUTION_EVIDENCE_PATH='/tmp/fake.json'
+      $(printf '%s' "$(_extract_gate_block "$PLUGIN_ROOT/skills/gaia-code-review/SKILL.md" "$_K" "$deep/wt")" | sed "s|\${CLAUDE_PLUGIN_ROOT}/scripts/review-gate\.sh|${tmproot}/fake-plugin/scripts-override/review-gate.sh|g")
+    "
+  [ "$status" -ne 124 ]
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".gaia/config"* ]] || [[ "$output" == *"refusing"* ]]
+  [ ! -f "$tmproot/captured-sha" ]
+}
