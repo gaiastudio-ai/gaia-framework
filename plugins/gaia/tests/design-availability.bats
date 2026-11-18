@@ -954,3 +954,91 @@ _assert_availability_identity() {
     fail "add-feature attestation opening should not contain bare list_projects (must be surface-neutral)"
   fi
 }
+
+# =========================================================================
+# Surface-conditional tool routing in create-ux and design-review
+# =========================================================================
+
+@test "artifact path uses Artifact list call and list_projects is confined to designsync branch" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  # The section must contain a sentence that pairs artifact with the Artifact list call
+  grep -q 'artifact.*Artifact.*list' <<<"$section_cux" \
+    || fail "create-ux should pair artifact surface with the Artifact list call"
+  grep -q 'artifact.*Artifact.*list' <<<"$section_dr" \
+    || fail "design-review should pair artifact surface with the Artifact list call"
+
+  # The section must contain a sentence that pairs designsync with list_projects
+  grep -q 'designsync.*list_projects' <<<"$section_cux" \
+    || fail "create-ux should pair designsync surface with list_projects"
+  grep -q 'designsync.*list_projects' <<<"$section_dr" \
+    || fail "design-review should pair designsync surface with list_projects"
+
+  # list_projects must NOT appear outside the designsync-conditional context
+  # (the opening line before the bullets must not mention list_projects unconditionally)
+  local first_line_cux first_line_dr
+  first_line_cux="$(echo "$section_cux" | head -1)"
+  first_line_dr="$(echo "$section_dr" | head -1)"
+
+  # The first line should reference the surface read, not a bare list_projects call
+  if echo "$first_line_cux" | grep -qF 'list_projects' && ! echo "$first_line_cux" | grep -q 'designsync.*list_projects'; then
+    fail "create-ux opening line has unconditional list_projects (should be in designsync branch)"
+  fi
+  if echo "$first_line_dr" | grep -qF 'list_projects' && ! echo "$first_line_dr" | grep -q 'designsync.*list_projects'; then
+    fail "design-review opening line has unconditional list_projects (should be in designsync branch)"
+  fi
+}
+
+@test "availability section reads design_system_project.surface to route the call" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  # Must reference the surface field that governs the tool choice
+  grep -qF 'design_system_project.surface' <<<"$section_cux" \
+    || fail "create-ux availability section should read design_system_project.surface"
+  grep -qF 'design_system_project.surface' <<<"$section_dr" \
+    || fail "design-review availability section should read design_system_project.surface"
+}
+
+@test "missing bullet covers timeout, error and no-result for the Artifact call with halt" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  # The missing bullet must mention timeout
+  grep -q 'timeout' <<<"$section_cux" \
+    || fail "create-ux missing definition should mention timeout"
+  grep -q 'timeout' <<<"$section_dr" \
+    || fail "design-review missing definition should mention timeout"
+
+  # The missing halt for artifact must exist and name the halt
+  grep -q 'missing.*halt' <<<"$section_cux" \
+    || fail "create-ux must halt on missing"
+  grep -q 'missing.*halt' <<<"$section_dr" \
+    || fail "design-review must halt on missing"
+
+  # The artifact missing halt must contain the named diagnostic (proving
+  # it applies to the Artifact call, not just the generic bullet)
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_cux" \
+    || fail "create-ux artifact missing halt must exist (proves timeout/error maps to halt)"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
+    || fail "design-review artifact missing halt must exist (proves timeout/error maps to halt)"
+}
