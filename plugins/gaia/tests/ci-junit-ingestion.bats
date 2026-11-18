@@ -48,6 +48,7 @@ XMLEOF
 #       multi-run | reattempt | mixed-case | no-auth
 _write_gh_stub() {
   local stub_path="$1" mode="$2" head_sha="$3" junit_dir="$4"
+  local log_dir="${5:-}"
   cat > "$stub_path" <<'STUBEOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -57,8 +58,14 @@ STUBEOF
   printf 'STUB_MODE="%s"\n' "$mode" >> "$stub_path"
   printf 'STUB_SHA="%s"\n' "$head_sha" >> "$stub_path"
   printf 'STUB_JUNIT_DIR="%s"\n' "$junit_dir" >> "$stub_path"
+  printf 'STUB_LOG_DIR="%s"\n' "$log_dir" >> "$stub_path"
 
   cat >> "$stub_path" <<'STUBEOF'
+
+# Log all calls if log dir is set
+if [ -n "$STUB_LOG_DIR" ]; then
+  printf '%s\n' "$*" >> "$STUB_LOG_DIR/gh-calls.log"
+fi
 
 # auth status
 if [ "$1" = "auth" ] && [ "${2:-}" = "status" ]; then
@@ -90,6 +97,29 @@ if [ "$1" = "api" ]; then
     no-artifacts) printf '[]' ;;
     no-junit)     printf '[{"name":"coverage-report"}]' ;;
     mixed-case)   printf '[{"name":"JUnit-Results"}]' ;;
+    custom-pattern) printf '[{"name":"junit-report"},{"name":"shard-1-timing"}]' ;;
+    glob-pattern)   printf '[{"name":"v2.shard-report"},{"name":"v2Xshard-report"}]' ;;
+    non-junit-content) printf '[{"name":"junit-report"},{"name":"junit-error-report"}]' ;;
+    many-artifacts)
+      printf '['
+      _ctr=1
+      while [ "$_ctr" -le 55 ]; do
+        [ "$_ctr" -gt 1 ] && printf ','
+        printf '{"name":"junit-shard-%d"}' "$_ctr"
+        _ctr=$((_ctr + 1))
+      done
+      printf ']'
+      ;;
+    small-many-artifacts)
+      printf '['
+      _ctr=1
+      while [ "$_ctr" -le 10 ]; do
+        [ "$_ctr" -gt 1 ] && printf ','
+        printf '{"name":"junit-part-%d"}' "$_ctr"
+        _ctr=$((_ctr + 1))
+      done
+      printf ']'
+      ;;
     *)            printf '[{"name":"junit-report"}]' ;;
   esac
   exit 0
@@ -98,17 +128,29 @@ fi
 # run download
 if [ "$1" = "run" ] && [ "$2" = "download" ]; then
   local_dir=""
+  local_name=""
   shift 3  # past 'run download <id>'
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --dir)  local_dir="$2"; shift 2 ;;
-      --name) shift 2 ;;
+      --name) local_name="$2"; shift 2 ;;
       *)      shift ;;
     esac
   done
   if [ -n "$local_dir" ]; then
     mkdir -p "$local_dir"
-    cp "$STUB_JUNIT_DIR/results.xml" "$local_dir/results.xml"
+    if [ "$STUB_MODE" = "non-junit-content" ] && [ -n "$local_name" ]; then
+      case "$local_name" in
+        *error*)
+          printf '<html><body>Error page</body></html>\n' > "$local_dir/results.xml"
+          ;;
+        *)
+          cp "$STUB_JUNIT_DIR/results.xml" "$local_dir/results.xml"
+          ;;
+      esac
+    else
+      cp "$STUB_JUNIT_DIR/results.xml" "$local_dir/results.xml"
+    fi
   fi
   exit 0
 fi
@@ -121,8 +163,9 @@ STUBEOF
 }
 
 # _make_config — create a minimal project-config.yaml with ci_platform.
+# Args: config_dir [provider] [junit_artifact_pattern]
 _make_config() {
-  local config_dir="$1" provider="${2:-github-actions}"
+  local config_dir="$1" provider="${2:-github-actions}" pattern="${3:-}"
   mkdir -p "$config_dir"
   cat > "$config_dir/project-config.yaml" <<CFGEOF
 project:
@@ -130,6 +173,23 @@ project:
 ci_platform:
   provider: $provider
 CFGEOF
+  if [ -n "$pattern" ]; then
+    cat >> "$config_dir/project-config.yaml" <<CFGEOF
+ci_cd:
+  junit_artifact_pattern: "$pattern"
+CFGEOF
+  fi
+}
+
+# _ensure_junit_data — create the shared JUnit fixture directory once.
+# Returns the path.  Idempotent within a test.
+_ensure_junit_data() {
+  local junit_dir="$TEST_TMP/junit-data"
+  if [ ! -f "$junit_dir/results.xml" ]; then
+    mkdir -p "$junit_dir"
+    _make_junit_xml "$junit_dir/results.xml"
+  fi
+  printf '%s' "$junit_dir"
 }
 
 # _setup_stub — set up a gh stub in a temp bin directory.
@@ -137,13 +197,48 @@ CFGEOF
 # Sets: STUB_BIN_DIR
 _setup_stub() {
   local mode="${1:-ok}"
-  local junit_dir="$TEST_TMP/junit-data"
-  mkdir -p "$junit_dir"
-  _make_junit_xml "$junit_dir/results.xml"
+  local junit_dir
+  junit_dir="$(_ensure_junit_data)"
 
   STUB_BIN_DIR="$TEST_TMP/bin-$mode"
   mkdir -p "$STUB_BIN_DIR"
   _write_gh_stub "$STUB_BIN_DIR/gh" "$mode" "$HEAD_SHA" "$junit_dir"
+}
+
+# _setup_stub_logged — set up a gh stub with call logging.
+# Args: mode
+# Sets: STUB_BIN_DIR, STUB_LOG_DIR
+_setup_stub_logged() {
+  local mode="${1:-ok}"
+  local junit_dir
+  junit_dir="$(_ensure_junit_data)"
+
+  STUB_LOG_DIR="$TEST_TMP/stub-logs"
+  mkdir -p "$STUB_LOG_DIR"
+
+  STUB_BIN_DIR="$TEST_TMP/bin-$mode"
+  mkdir -p "$STUB_BIN_DIR"
+  _write_gh_stub "$STUB_BIN_DIR/gh" "$mode" "$HEAD_SHA" "$junit_dir" "$STUB_LOG_DIR"
+}
+
+# _run_fetch_with_stderr — run ci-junit-fetch.sh capturing stderr to a file.
+# Args: stderr_file [extra_env_assignments...]
+# Uses: STUB_BIN_DIR, CONFIG_ROOT (or override via env), REPO, OUT_DIR, SCRIPT.
+# The function sets up the standard env and runs the script through bash -c so
+# both stdout and stderr routing are reliable under bats `run`.
+_run_fetch_with_stderr() {
+  local stderr_file="$1"; shift
+  local extra_env=""
+  while [ "$#" -gt 0 ]; do
+    extra_env="${extra_env} $1"; shift
+  done
+  run bash -c "
+    export PATH=\"${STUB_BIN_DIR}:\$PATH\"
+    export PROJECT_ROOT=\"${PROJECT_ROOT_OVERRIDE:-${CONFIG_ROOT}}\"
+    export CLAUDE_PROJECT_ROOT=\"${CLAUDE_PROJECT_ROOT_OVERRIDE:-${CONFIG_ROOT}}\"
+    ${extra_env}
+    bash \"${SCRIPT}\" --repo \"${REPO}\" --out \"${OUT_DIR}\" 2>\"${stderr_file}\"
+  "
 }
 
 # ── Setup / teardown ─────────────────────────────────────────────────
@@ -356,4 +451,221 @@ teardown() {
     bash "$SCRIPT" --repo "$REPO" --out "$out2"
 
   diff <(jq -S . "$out1/run-records.json") <(jq -S . "$out2/run-records.json")
+}
+
+# ── Repo flag, configurable pattern, content validation, bounds ──────
+
+@test "ci-junit-fetch: gh run list passes repo flag derived from origin remote" {
+  _setup_stub_logged ok
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$CONFIG_ROOT" CLAUDE_PROJECT_ROOT="$CONFIG_ROOT" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 0 ]
+
+  # gh run list must include --repo with the origin remote's owner/repo
+  grep 'run list.*--repo testorg/testrepo' "$STUB_LOG_DIR/gh-calls.log"
+}
+
+@test "ci-junit-fetch: gh run download passes repo flag derived from origin remote" {
+  _setup_stub_logged ok
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$CONFIG_ROOT" CLAUDE_PROJECT_ROOT="$CONFIG_ROOT" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 0 ]
+
+  # gh run download must include --repo with the origin remote's owner/repo
+  grep 'run download.*--repo testorg/testrepo' "$STUB_LOG_DIR/gh-calls.log"
+  # gh api must use the origin's owner/repo in the endpoint path
+  grep 'api repos/testorg/testrepo/' "$STUB_LOG_DIR/gh-calls.log"
+}
+
+@test "ci-junit-fetch: custom artifact pattern matches configured name" {
+  local custom_cfg="$WORKDIR/custom-cfg"
+  _make_config "$custom_cfg/.gaia/config" "github-actions" "shard-*-timing"
+  _setup_stub_logged custom-pattern
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$custom_cfg" CLAUDE_PROJECT_ROOT="$custom_cfg" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 0 ]
+
+  # shard-1-timing must be downloaded (matches custom pattern)
+  grep 'run download.*--name shard-1-timing' "$STUB_LOG_DIR/gh-calls.log"
+
+  # junit-report must also be downloaded (additive: default + custom)
+  grep 'run download.*--name junit-report' "$STUB_LOG_DIR/gh-calls.log"
+}
+
+@test "ci-junit-fetch: glob dot in artifact pattern matches literal dot only" {
+  local glob_cfg="$WORKDIR/glob-cfg"
+  _make_config "$glob_cfg/.gaia/config" "github-actions" "v2.shard"
+  _setup_stub_logged glob-pattern
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$glob_cfg" CLAUDE_PROJECT_ROOT="$glob_cfg" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 0 ]
+
+  # v2.shard-report must be downloaded (literal dot matches custom pattern)
+  grep 'run download.*--name v2\.shard-report' "$STUB_LOG_DIR/gh-calls.log"
+
+  # v2Xshard-report must NOT be downloaded (dot is literal, not regex any-char)
+  local match_count
+  match_count="$(grep -c 'run download.*--name v2Xshard-report' "$STUB_LOG_DIR/gh-calls.log" || true)"
+  [ "$match_count" -eq 0 ]
+}
+
+@test "ci-junit-fetch: absent artifact pattern defaults to junit match" {
+  # No junit_artifact_pattern in config — CONFIG_ROOT has no ci_cd block.
+  # This is green by design: backward-compatible default.
+  _setup_stub ok
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$CONFIG_ROOT" CLAUDE_PROJECT_ROOT="$CONFIG_ROOT" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 0 ]
+
+  # Default junit pattern matches the standard artifact
+  local xml_count
+  xml_count="$(find "$OUT_DIR" -name '*.xml' | wc -l | tr -d ' ')"
+  [ "$xml_count" -ge 1 ]
+}
+
+@test "ci-junit-fetch: non-junit file discarded with stderr warning" {
+  _setup_stub_logged non-junit-content
+
+  local stderr_file="$TEST_TMP/discard-stderr.log"
+  _run_fetch_with_stderr "$stderr_file"
+  [ "$status" -eq 0 ]
+
+  grep -q 'discarded non-JUnit file' "$stderr_file"
+}
+
+@test "ci-junit-fetch: artifact count exceeding bound truncates with warning" {
+  _setup_stub_logged many-artifacts
+
+  local stderr_file="$TEST_TMP/bound-stderr.log"
+  _run_fetch_with_stderr "$stderr_file"
+  [ "$status" -eq 0 ]
+
+  local download_count
+  download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
+  [ "$download_count" -le 50 ] || {
+    printf 'expected at most 50 downloads, got %s\n' "$download_count" >&2
+    return 1
+  }
+
+  grep -q 'artifact bound reached' "$stderr_file"
+}
+
+@test "ci-junit-fetch: custom max artifacts env var bounds download count" {
+  _setup_stub_logged small-many-artifacts
+
+  local stderr_file="$TEST_TMP/custom-bound-stderr.log"
+  _run_fetch_with_stderr "$stderr_file" "export CJF_MAX_ARTIFACTS=3"
+  [ "$status" -eq 0 ]
+
+  local download_count
+  download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
+  [ "$download_count" -le 3 ] || {
+    printf 'expected at most 3 downloads, got %s\n' "$download_count" >&2
+    return 1
+  }
+
+  grep -q 'artifact bound reached' "$stderr_file"
+}
+
+@test "ci-junit-fetch: exact bound produces all downloads with no truncation warning" {
+  _setup_stub_logged small-many-artifacts
+
+  local stderr_file="$TEST_TMP/exact-bound-stderr.log"
+  _run_fetch_with_stderr "$stderr_file" "export CJF_MAX_ARTIFACTS=10"
+  [ "$status" -eq 0 ]
+
+  local download_count
+  download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
+  [ "$download_count" -eq 10 ] || {
+    printf 'expected 10 downloads, got %s\n' "$download_count" >&2
+    return 1
+  }
+
+  local warn_count
+  warn_count="$(grep -c 'artifact bound reached' "$stderr_file" || true)"
+  [ "$warn_count" -eq 0 ]
+}
+
+# ── Path helper fallback ───────────────────────────────────────────
+
+# _make_fake_script_tree — create a copy of ci-junit-fetch.sh with a minimal
+# resolve-config.sh stub (returns github-actions provider) and a controllable
+# lib/gaia-paths.sh.  Args: dest_dir, paths_lib_mode (missing|broken|ok).
+_make_fake_script_tree() {
+  local dest="$1" mode="$2"
+  mkdir -p "$dest/lib"
+  cp "$SCRIPT" "$dest/ci-junit-fetch.sh"
+
+  # Minimal resolve-config.sh stub — only supports --field ci_platform.provider
+  cat > "$dest/resolve-config.sh" <<'RCEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "--field" ] && [ "${2:-}" = "ci_platform.provider" ]; then
+  printf 'github-actions\n'
+  exit 0
+fi
+exit 1
+RCEOF
+  chmod +x "$dest/resolve-config.sh"
+
+  case "$mode" in
+    missing) ;; # no lib/gaia-paths.sh at all
+    broken)
+      printf '#!/usr/bin/env bash\nreturn 1 2>/dev/null || exit 1\n' \
+        > "$dest/lib/gaia-paths.sh"
+      ;;
+    ok)
+      cp "$SCRIPTS_DIR/lib/gaia-paths.sh" "$dest/lib/gaia-paths.sh"
+      ;;
+  esac
+}
+
+@test "ci-junit-fetch: missing gaia-paths.sh warns and falls back to default pattern" {
+  _setup_stub ok
+
+  local fake_scripts="$TEST_TMP/fake-scripts"
+  _make_fake_script_tree "$fake_scripts" missing
+
+  local stderr_file="$TEST_TMP/paths-warn-stderr.log"
+  run bash -c "
+    export PATH=\"${STUB_BIN_DIR}:\$PATH\"
+    export PROJECT_ROOT=\"${CONFIG_ROOT}\"
+    export CLAUDE_PROJECT_ROOT=\"${CONFIG_ROOT}\"
+    bash \"${fake_scripts}/ci-junit-fetch.sh\" --repo \"${REPO}\" --out \"${OUT_DIR}\" 2>\"${stderr_file}\"
+  "
+  # Script still succeeds — falls back to default junit pattern
+  [ "$status" -eq 0 ]
+
+  # Warning about missing gaia-paths.sh must appear on stderr
+  grep -q 'gaia-paths.sh not found' "$stderr_file"
+}
+
+@test "ci-junit-fetch: broken gaia-paths.sh warns and falls back to default pattern" {
+  _setup_stub ok
+
+  local fake_scripts="$TEST_TMP/fake-scripts-broken"
+  _make_fake_script_tree "$fake_scripts" broken
+
+  local stderr_file="$TEST_TMP/paths-broken-stderr.log"
+  run bash -c "
+    export PATH=\"${STUB_BIN_DIR}:\$PATH\"
+    export PROJECT_ROOT=\"${CONFIG_ROOT}\"
+    export CLAUDE_PROJECT_ROOT=\"${CONFIG_ROOT}\"
+    bash \"${fake_scripts}/ci-junit-fetch.sh\" --repo \"${REPO}\" --out \"${OUT_DIR}\" 2>\"${stderr_file}\"
+  "
+  # Script still succeeds — falls back to default junit pattern
+  [ "$status" -eq 0 ]
+
+  # Warning about gaia-paths.sh failure must appear on stderr
+  grep -q 'gaia-paths.sh failed to source' "$stderr_file"
 }
