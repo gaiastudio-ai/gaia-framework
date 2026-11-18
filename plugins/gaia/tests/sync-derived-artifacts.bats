@@ -11901,19 +11901,21 @@ UX
   # "Button" after trimming. No absence report should mention Button.
   local doc_dir="$TEST_TMP/absence-trim"
   mkdir -p "$doc_dir"
-  cat > "$doc_dir/ux-design.md" <<'UX'
----
-template: ux-design
----
-
-# UX Design
-
-## Component Inventory
-
--   Button
-
-## Design Record Reference
-UX
+  # Write the fixture with printf to preserve the trailing space on the
+  # bullet line (heredocs can strip trailing whitespace in some editors).
+  {
+    printf '%s\n' '---'
+    printf '%s\n' 'template: ux-design'
+    printf '%s\n' '---'
+    printf '\n'
+    printf '%s\n' '# UX Design'
+    printf '\n'
+    printf '%s\n' '## Component Inventory'
+    printf '\n'
+    printf '%s\n' '-   Button '
+    printf '\n'
+    printf '%s\n' '## Design Record Reference'
+  } > "$doc_dir/ux-design.md"
 
   local snapshot="$TEST_TMP/absence-trim-snap.json"
   jq -n '{"components":["Button"]}' > "$snapshot"
@@ -11927,6 +11929,68 @@ UX
   case "$output" in
     *[Bb]utton*absent*) fail "false absence report for Button: $output" ;;
     *absent*[Bb]utton*) fail "false absence report for Button: $output" ;;
+  esac
+}
+
+
+# =========================================================================
+# Padded doc bullet idempotence — trimming on the document side
+# =========================================================================
+
+@test "sync with padded doc bullet is idempotent and reports no absence" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Bullet-mode document with "-   Button  " (leading AND trailing spaces
+  # around the name). Snapshot contains the trimmed form "Button". The
+  # doc-side trim must normalise "  Button  " to "Button" for the add
+  # comparison, so no duplicate row is inserted and no absence is reported.
+  local doc_dir="$TEST_TMP/padded-doc-bullet"
+  mkdir -p "$doc_dir"
+
+  # Use printf to guarantee the trailing spaces survive (heredocs can
+  # lose trailing whitespace in some editors/shells).
+  {
+    printf '%s\n' '---'
+    printf '%s\n' 'template: ux-design'
+    printf '%s\n' '---'
+    printf '\n'
+    printf '%s\n' '# UX Design'
+    printf '\n'
+    printf '%s\n' '## Component Inventory'
+    printf '\n'
+    printf '%s\n' '-   Button  '
+    printf '\n'
+    printf '%s\n' '## Design Record Reference'
+  } > "$doc_dir/ux-design.md"
+
+  local snapshot="$TEST_TMP/padded-doc-bullet-snap.json"
+  jq -n '{"components":["Button"]}' > "$snapshot"
+
+  # First sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Second sync — must be byte-identical (no duplicate added)
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  [ "$sha1" = "$sha2" ] || \
+    fail "second sync changed doc (padded doc bullet): sha $sha1 -> $sha2"
+
+  # Exactly one line should mention Button
+  local btn_count
+  btn_count="$(grep -c 'Button' "$doc_dir/ux-design.md" || true)"
+  [ "$btn_count" -eq 1 ] || \
+    fail "expected 1 Button line, got $btn_count"
+
+  # No absence report
+  case "$output" in
+    *[Bb]utton*absent*) fail "false absence report: $output" ;;
+    *absent*[Bb]utton*) fail "false absence report: $output" ;;
   esac
 }
 
