@@ -540,8 +540,8 @@ YAML
   _stub_yq "true" "canonical-bridge-runner"
 
   run "$DOD_CHECK"
-  printf '%s' "$output" | grep -qF 'item: tests, status: PASSED'
-  printf '%s' "$output" | grep -qE 'canonical-bridge-runner|canonical runner executed'
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'canonical-bridge-runner|canonical runner executed' <<<"$output"
 }
 
 @test "dod-check: bridge tier-1 falls back to legacy artifact path" {
@@ -560,8 +560,8 @@ YAML
   _stub_yq "true" "legacy-bridge-runner"
 
   run "$DOD_CHECK"
-  printf '%s' "$output" | grep -qF 'item: tests, status: PASSED'
-  printf '%s' "$output" | grep -qE 'legacy-bridge-runner|legacy runner executed'
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'legacy-bridge-runner|legacy runner executed' <<<"$output"
 }
 
 @test "dod-check: bridge enabled but no manifest reports unconfigured" {
@@ -572,8 +572,8 @@ YAML
   _stub_yq "true" ""
 
   run "$DOD_CHECK"
-  printf '%s' "$output" | grep -qF 'item: tests, status: SKIPPED'
-  printf '%s' "$output" | grep -qF 'bridge enabled but no test-environment manifest found'
+  grep -qF 'item: tests, status: SKIPPED' <<<"$output"
+  grep -qF 'bridge enabled but no test-environment manifest found' <<<"$output"
 }
 
 @test "dod-check: bridge tier-1 uses canonical path when both paths exist" {
@@ -599,10 +599,10 @@ YAML
   _stub_yq_by_file "canonical-bridge-runner" "legacy-bridge-runner"
 
   run "$DOD_CHECK"
-  printf '%s' "$output" | grep -qF 'item: tests, status: PASSED'
-  printf '%s' "$output" | grep -qE 'canonical-bridge-runner|canonical runner executed'
-  ! printf '%s' "$output" | grep -qF 'legacy-bridge-runner' || false
-  ! printf '%s' "$output" | grep -qF 'legacy runner executed' || false
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'canonical-bridge-runner|canonical runner executed' <<<"$output"
+  ! grep -qF 'legacy-bridge-runner' <<<"$output" || false
+  ! grep -qF 'legacy runner executed' <<<"$output" || false
 }
 
 @test "dod-check: bridge enabled, no manifest, lower tier resolves and runs" {
@@ -625,6 +625,6 @@ test_cmd: fallback-test-runner
 YAML
 
   run "$DOD_CHECK"
-  printf '%s' "$output" | grep -qF 'item: tests, status: PASSED'
-  printf '%s' "$output" | grep -qE 'fallback-test-runner|fallback-test-runner executed'
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'fallback-test-runner|fallback-test-runner executed' <<<"$output"
 }
