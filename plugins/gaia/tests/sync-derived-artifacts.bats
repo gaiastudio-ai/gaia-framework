@@ -11793,6 +11793,145 @@ UX
 
 
 # =========================================================================
+# CRLF empty-section fallback — first bullet in an all-CRLF document
+# =========================================================================
+
+@test "sync inserts CRLF bullet into empty section of all-CRLF document" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # An all-CRLF document with an empty components section. No existing
+  # bullets to probe, so the line-ending detection must fall back to the
+  # section heading or the document's first line.
+  local doc_dir="$TEST_TMP/crlf-empty-section"
+  mkdir -p "$doc_dir"
+
+  local cr
+  cr="$(printf '\r')"
+
+  {
+    printf '%s%s\n' '---' "$cr"
+    printf '%s%s\n' 'template: ux-design' "$cr"
+    printf '%s%s\n' '---' "$cr"
+    printf '%s\n' "$cr"
+    printf '%s%s\n' '# UX Design' "$cr"
+    printf '%s\n' "$cr"
+    printf '%s%s\n' '## Component Inventory' "$cr"
+    printf '%s\n' "$cr"
+    printf '%s%s\n' '## Design Record Reference' "$cr"
+  } > "$doc_dir/ux-design.md"
+
+  local snapshot="$TEST_TMP/crlf-empty-section-snap.json"
+  jq -n '{"components":["NewFirst"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted bullet must end with CRLF
+  local inserted_hex
+  inserted_hex="$(sed -n '/NewFirst/p' "$doc_dir/ux-design.md" | od -A n -t x1 | tr -d ' \n')"
+  [ -n "$inserted_hex" ] || fail "NewFirst not found"
+
+  case "$inserted_hex" in
+    *0d0a) ;;
+    *) fail "first bullet in empty CRLF section is not CRLF: hex=$inserted_hex" ;;
+  esac
+}
+
+
+# =========================================================================
+# Trim-then-deduplicate — padded duplicates in snapshot
+# =========================================================================
+
+@test "sync with padded duplicate snapshot names inserts exactly one row" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Snapshot: ["X", " A", "A"] — after trimming, " A" and "A" collapse to
+  # one. The doc has "X" already, so only one "A" row should be added.
+  local doc_dir="$TEST_TMP/trim-dedup"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| X | custom |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/trim-dedup-snap.json"
+  jq -n '{"components":["X"," A","A"]}' > "$snapshot"
+
+  # First sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+
+  # Exactly one "A" row (table cell: "| A |")
+  local a_count
+  a_count="$(grep -c '| A |' "$doc_dir/ux-design.md" || true)"
+  [ "$a_count" -eq 1 ] || \
+    fail "expected 1 A row, got $a_count"
+
+  # Second sync must be idempotent
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$sha1" = "$sha2" ] || \
+    fail "second sync changed doc (trim-dedup): sha $sha1 -> $sha2"
+}
+
+
+# =========================================================================
+# Absence report trimming — padded doc bullets vs trimmed snapshot names
+# =========================================================================
+
+@test "absence report does not flag trimmed-matching component" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Doc bullet "  Button " (leading+trailing space) should match snapshot
+  # "Button" after trimming. No absence report should mention Button.
+  local doc_dir="$TEST_TMP/absence-trim"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+-   Button
+
+## Design Record Reference
+UX
+
+  local snapshot="$TEST_TMP/absence-trim-snap.json"
+  jq -n '{"components":["Button"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # No absence report line should mention Button as absent.
+  # The report format puts the component name before "absent", so check
+  # both orderings.
+  case "$output" in
+    *[Bb]utton*absent*) fail "false absence report for Button: $output" ;;
+    *absent*[Bb]utton*) fail "false absence report for Button: $output" ;;
+  esac
+}
+
+
+# =========================================================================
 # Identifier sweep — no internal bookkeeping IDs in published plugin files
 # =========================================================================
 

@@ -649,14 +649,19 @@ _batch_add_components() {
 
     # Detect CRLF from the section's first non-fenced bullet (one pass,
     # section-scoped). check_fence must run on every line to track state.
+    # Fallback when no bullet exists: the section heading line ending,
+    # then the document's first line.
     _doc_crlf="$(awk "$_SDA_AWK_LIB"'
+      NR == 1 { first_cr = match($0, /\r$/) ? 1 : 0 }
       { if (check_fence($0)) next }
-      !done && heading_match($0) { in_s = 1; next }
+      !done && heading_match($0) {
+        in_s = 1; head_cr = match($0, /\r$/) ? 1 : 0; next
+      }
       in_s && is_section_end($0) { exit }
       in_s && /^[-*+] / {
         printf "%s", (match($0, /\r$/) ? 1 : 0); found = 1; exit
       }
-      END { if (!found) printf "0" }
+      END { if (!found) printf "%s", (in_s ? head_cr : first_cr) }
     ' "$doc")"
 
     awk -v crlf="$_doc_crlf" "$_SDA_AWK_LIB"'
@@ -1008,9 +1013,13 @@ _main() {
       exit 1
     fi
 
-    # Deduplicate snapshot component names, keeping first-seen order
+    # Trim leading/trailing whitespace from snapshot names, then deduplicate
+    # (keeping first-seen order). Trimming first ensures that " A" and "A"
+    # collapse to a single entry rather than inserting two identical rows.
+    local trimmed_components
+    trimmed_components="$(printf '%s\n' "$snapshot_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     local deduped_components
-    deduped_components="$(printf '%s\n' "$snapshot_components" | awk '!seen[$0]++')"
+    deduped_components="$(printf '%s\n' "$trimmed_components" | awk '!seen[$0]++')"
     snapshot_components="$deduped_components"
 
     doc_components="$(_extract_doc_components "$ux_doc")"
@@ -1024,8 +1033,9 @@ _main() {
     local _doc_comp_file="$_sync_tmpdir/doc-components"
     printf '%s\n' "$doc_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$_doc_comp_file"
 
+    # snapshot_components is already trimmed
     local _snap_comp_file="$_sync_tmpdir/snap-components"
-    printf '%s\n' "$snapshot_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$_snap_comp_file"
+    printf '%s\n' "$snapshot_components" > "$_snap_comp_file"
 
     awk '
       FILENAME == ARGV[1] { doc[$0] = 1; next }
@@ -1096,7 +1106,7 @@ _main() {
         : > "$_snap_file"
       fi
       local _doc_absent_file="$_sync_tmpdir/doc-for-absent"
-      printf '%s\n' "$doc_components" > "$_doc_absent_file"
+      printf '%s\n' "$doc_components" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > "$_doc_absent_file"
       awk '
         FILENAME == ARGV[1] { snap[$0] = 1; next }
         $0 != "" && !($0 in snap) { print }
