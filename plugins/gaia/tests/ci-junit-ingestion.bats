@@ -120,6 +120,17 @@ if [ "$1" = "api" ]; then
       done
       printf ']'
       ;;
+    backslash-artifacts) printf '[{"name":"junit-report"},{"name":"bk\\\\slash-results"}]' ;;
+    fail-downloads)
+      printf '['
+      _ctr=1
+      while [ "$_ctr" -le 10 ]; do
+        [ "$_ctr" -gt 1 ] && printf ','
+        printf '{"name":"junit-part-%d"}' "$_ctr"
+        _ctr=$((_ctr + 1))
+      done
+      printf ']'
+      ;;
     *)            printf '[{"name":"junit-report"}]' ;;
   esac
   exit 0
@@ -151,6 +162,9 @@ if [ "$1" = "run" ] && [ "$2" = "download" ]; then
     else
       cp "$STUB_JUNIT_DIR/results.xml" "$local_dir/results.xml"
     fi
+  fi
+  if [ "$STUB_MODE" = "fail-downloads" ]; then
+    exit 1
   fi
   exit 0
 fi
@@ -668,4 +682,69 @@ RCEOF
 
   # Warning about gaia-paths.sh failure must appear on stderr
   grep -q 'gaia-paths.sh failed to source' "$stderr_file"
+}
+
+# ── Code-review fixes ──────────────────────────────────────────────
+
+@test "ci-junit-fetch: no origin remote exits 2 as unavailable" {
+  _setup_stub ok
+
+  # Remove origin so owner/repo derivation cannot succeed
+  git -C "$REPO" remote remove origin
+
+  run env PATH="$STUB_BIN_DIR:$PATH" \
+    PROJECT_ROOT="$CONFIG_ROOT" CLAUDE_PROJECT_ROOT="$CONFIG_ROOT" \
+    bash "$SCRIPT" --repo "$REPO" --out "$OUT_DIR"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not determine owner/repo"* ]]
+}
+
+@test "ci-junit-fetch: backslash in glob pattern properly escapes for regex" {
+  _setup_stub_logged backslash-artifacts
+
+  local bk_cfg="$WORKDIR/bk-cfg"
+  mkdir -p "$bk_cfg/.gaia/config"
+  cat > "$bk_cfg/.gaia/config/project-config.yaml" <<'CFGEOF'
+project:
+  name: test-project
+ci_platform:
+  provider: github-actions
+ci_cd:
+  junit_artifact_pattern: 'bk\slash*'
+CFGEOF
+
+  local stderr_file="$TEST_TMP/bk-stderr.log"
+  PROJECT_ROOT_OVERRIDE="$bk_cfg" CLAUDE_PROJECT_ROOT_OVERRIDE="$bk_cfg" \
+    _run_fetch_with_stderr "$stderr_file"
+  [ "$status" -eq 0 ]
+
+  # Backslash artifact must be downloaded (escaped backslash matches literal)
+  grep -F 'bk\slash-results' "$STUB_LOG_DIR/gh-calls.log" || {
+    printf 'expected download of bk\\slash-results artifact\n' >&2
+    return 1
+  }
+
+  # Default junit artifact must also be downloaded (additive)
+  grep 'run download.*--name junit-report' "$STUB_LOG_DIR/gh-calls.log"
+
+  # No jq Regex failure must leak to stderr
+  local regex_err_count
+  regex_err_count="$(grep -ci 'regex failure' "$stderr_file" || true)"
+  [ "$regex_err_count" -eq 0 ]
+}
+
+@test "ci-junit-fetch: download bound counts attempts not just successes" {
+  _setup_stub_logged fail-downloads
+
+  local stderr_file="$TEST_TMP/fail-dl-stderr.log"
+  _run_fetch_with_stderr "$stderr_file" "export CJF_MAX_ARTIFACTS=4"
+  # Exit status may be 2 (no junit found when every download fails) — not
+  # the subject of this test.  We test only the download-attempt count.
+
+  local download_count
+  download_count="$(grep -c 'run download' "$STUB_LOG_DIR/gh-calls.log")"
+  [ "$download_count" -le 4 ] || {
+    printf 'expected at most 4 download attempts, got %s\n' "$download_count" >&2
+    return 1
+  }
 }

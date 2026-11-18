@@ -44,7 +44,7 @@ _cjf_glob_to_regex() {
     case "$c" in
       '*') regex="${regex}.*" ;;
       '?') regex="${regex}." ;;
-      '.'|'+'|'^'|'$'|'{'|'}'|'('|')'|'|'|'['|']'|'\\')
+      '.'|'+'|'^'|'$'|'{'|'}'|'('|')'|'|'|'['|']'|\\)
         regex="${regex}\\${c}" ;;
       *) regex="${regex}${c}" ;;
     esac
@@ -201,7 +201,7 @@ _cjf_fetch_github_actions() {
   owner_repo="$(git -C "$repo" remote get-url origin 2>/dev/null \
     | sed -E 's|.*github\.com[:/]||; s|\.git$||')" || true
   if [ -z "$owner_repo" ]; then
-    _cjf_die 1 "could not determine owner/repo from origin remote in $repo"
+    _cjf_unavailable "could not determine owner/repo from origin remote"
   fi
 
   # List runs for this commit
@@ -313,10 +313,18 @@ _cjf_fetch_github_actions() {
     # Find artifacts whose name matches the default or configured pattern
     # (case-insensitive substring match).  The regex is passed via --arg
     # so no value is spliced into the jq program.
-    local junit_artifacts
+    local junit_artifacts jq_err="${private_tmp}/jq-err"
     junit_artifacts="$(printf '%s' "$artifacts_json" | \
       jq -r --arg re "$name_regex" \
-        '[.[] | select(.name | ascii_downcase | test($re))] | .[] | .name')" || true
+        '[.[] | select(.name | ascii_downcase | test($re))] | .[] | .name' 2>"$jq_err")" || {
+      if [ -s "$jq_err" ]; then
+        _cjf_log "warning: regex error for configured pattern '${artifact_pattern}'; falling back to default junit match"
+      fi
+      junit_artifacts="$(printf '%s' "$artifacts_json" | \
+        jq -r --arg re "junit" \
+          '[.[] | select(.name | ascii_downcase | test($re))] | .[] | .name' 2>/dev/null)" || true
+    }
+    rm -f "$jq_err"
 
     if [ -z "$junit_artifacts" ]; then
       i=$((i + 1))
@@ -335,6 +343,8 @@ _cjf_fetch_github_actions() {
         fi
         break
       fi
+
+      artifacts_downloaded=$((artifacts_downloaded + 1))
 
       local dl_dir="$private_tmp/run-${run_id}/${artifact_name}"
       mkdir -p "$dl_dir"
@@ -357,8 +367,6 @@ _cjf_fetch_github_actions() {
           _cjf_log "discarded non-JUnit file: $(basename "$xml_file")"
         fi
       done < <(find "$dl_dir" -name '*.xml' -type f 2>/dev/null)
-
-      artifacts_downloaded=$((artifacts_downloaded + 1))
     done <<< "$junit_artifacts"
 
     # Add run record
