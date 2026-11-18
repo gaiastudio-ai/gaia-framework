@@ -397,9 +397,11 @@ Flags:
   --gate <name>      Gate name (required for update; optional for status).
   --verdict <V>      Verdict value (required for update).
   --repo <path>      Story repository (the story worktree) used to validate
-                     --sha and to check whether it descends from the SHA
-                     previously recorded for the gate (update only).
-                     Defaults to $PROJECT_PATH, then ".".
+                     --sha, to bind HEAD when --sha is omitted, and to check
+                     whether the SHA descends from the one previously
+                     recorded for the gate (update only). Must be a git work
+                     tree; anything else is refused. Defaults to
+                     $PROJECT_PATH, then ".".
   --sha <sha>        Commit SHA to bind the verdict to (update only).
                      Defaults to the worktree HEAD; 'none' outside a git
                      work tree.
@@ -1618,9 +1620,18 @@ main() {
       if [ "$sha_given" -eq 1 ] && [ -z "$sha_arg" ]; then
         die "--sha was given with an empty value; pass a commit SHA or omit --sha to auto-bind HEAD"
       fi
+      # An explicit --repo names the story repository; it must be a git
+      # work tree. An invalid --repo is refused before anything is written.
+      if [ -n "$repo_arg" ]; then
+        case "$repo_arg" in
+          -*) die "--repo starts with '-' — refusing" ;;
+        esac
+        git -C "$repo_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+          || die "--repo '$repo_arg' is not a git work tree — refusing to record the gate"
+      fi
       local resolved_sha="$sha_arg"
       if [ -z "$resolved_sha" ]; then
-        local pp="${PROJECT_PATH:-.}"
+        local pp="${repo_arg:-${PROJECT_PATH:-.}}"
         if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
           resolved_sha="$(git -C "$pp" rev-parse HEAD 2>/dev/null)" || resolved_sha="none"
         else

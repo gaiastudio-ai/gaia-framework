@@ -27,7 +27,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/core/tasks/
 ## Inputs
 
 - `$ARGUMENTS`: optional target (file, directory, or document path). If omitted, ask the user inline: "Which code or document should I review for security?"
-- **Story worktree (optional input).** When `--worktree <path>` is passed (by the orchestrator via `/gaia-run-all-reviews`), set `STORY_WORKTREE_PATH` to its value and use it for `--sha` in the `review-gate.sh update` call. When running standalone without `--worktree`, the gate-write block resolves the worktree deterministically (see the gate-write section below). `--worktree` must be the LAST option in the args string; its value is the remainder of the string (supports paths with spaces).
+- **Story worktree (optional input).** When `--worktree <path>` is passed (by the orchestrator via `/gaia-run-all-reviews`), set `STORY_WORKTREE_PATH` to its value and use it for `--sha` and `--repo` in the `review-gate.sh update` call. When running standalone without `--worktree`, the gate-write block resolves the worktree deterministically (see the gate-write section below). `--worktree` must be the LAST option in the args string; its value is the remainder of the string (supports paths with spaces).
 
 ## YOLO Behavior
 

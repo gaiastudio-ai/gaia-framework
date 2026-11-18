@@ -3371,13 +3371,28 @@ STORY
 @test "review-gate.sh refuses an empty --repo value" {
   local _K="E900-S911" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   _init_git "$PROJECT_PATH"
-  _seed_story_4col "$PROJECT_PATH" "$_K" "absent" >/dev/null
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "absent")"
   run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
-    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --story "$_K" --gate "Code Review" --verdict FAILED \
     --sha "$(git -C "$PROJECT_PATH" rev-parse HEAD)" --repo "" \
     --report-missing-reason "test fixture"
   [ "$status" -ne 0 ]
   [[ "$output" == *"--repo was given with an empty value"* ]]
+  grep -q '^| Code Review | PASSED | cr.md | absent |$' "$story"
+}
+
+# --repo given as the last argument with no value is refused
+@test "review-gate.sh refuses --repo with no value" {
+  local _K="E900-S912" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  local story
+  story="$(_seed_story_4col "$PROJECT_PATH" "$_K" "absent")"
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict FAILED --repo
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--repo requires a value"* ]]
+  grep -q '^| Code Review | PASSED | cr.md | absent |$' "$story"
 }
 
 # AC8: all ten review skills use resolve-story-file.sh (no inline flat-glob)
@@ -4865,7 +4880,9 @@ _set_prior_code_review_sha() {
   local tmproot="${TEST_TMP}/anc_descendant"
   local wt
   wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
-  ! git -C "$tmproot/project" rev-parse --is-inside-work-tree >/dev/null 2>&1
+  if git -C "$tmproot/project" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "fixture project root must not be a git work tree"; return 1
+  fi
   local prior head
   prior="$(git -C "$wt" rev-parse HEAD~1)"
   head="$(git -C "$wt" rev-parse HEAD)"
@@ -4878,7 +4895,7 @@ _set_prior_code_review_sha() {
   unset GIT_TRACE
   [ "$status" -eq 0 ]
   [[ "$output" != *"not a descendant"* ]]
-  [[ "$output" != *"NOTICE"* ]]
+  [[ "$output" != *"cannot check whether new SHA"* ]]
   grep -q "merge-base --is-ancestor $prior $head" "$trace"
   grep 'Code Review' "$story" | grep -q "$head"
 }
@@ -4895,7 +4912,9 @@ _set_prior_code_review_sha() {
   local prior head
   prior="$(git -C "$repo" rev-parse HEAD)"
   head="$(git -C "$wt" rev-parse HEAD)"
-  ! git -C "$wt" merge-base --is-ancestor "$prior" "$head"
+  if git -C "$wt" merge-base --is-ancestor "$prior" "$head"; then
+    echo "fixture prior SHA must not be an ancestor of HEAD"; return 1
+  fi
   local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
   _set_prior_code_review_sha "$story" "$prior"
   unset PROJECT_PATH
@@ -4921,6 +4940,130 @@ _set_prior_code_review_sha() {
   [[ "$output" != *"not a descendant"* ]]
   [[ "$output" == *"NOTICE"*"prior SHA $prior is not present in $wt"* ]]
   grep 'Code Review' "$story" | grep -q "$head"
+}
+
+# Helper: run the real review-gate.sh update from the NON-git project root
+# with PROJECT_PATH unset, the way a skill gate block does.
+_gate_update_from_root() {
+  local root="$1"; shift
+  ( cd "$root" && unset PROJECT_PATH && PROJECT_ROOT="$root" \
+      REVIEW_GATE_PROOF_OF_EXECUTION=off \
+      bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update "$@" )
+}
+
+# --repo decides where --sha is validated: a short SHA is expanded in the
+# story repository even though the caller's directory is not a git repo.
+@test "--repo validates and expands --sha in the story repository from a non-git root" {
+  local _K="E900-S993" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/repo_expand"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local head short
+  head="$(git -C "$wt" rev-parse HEAD)"
+  short="${head:0:10}"
+  run _gate_update_from_root "$tmproot/project" --story "$_K" --gate "Code Review" \
+    --verdict FAILED --sha "$short" --repo "$wt" --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep '^| Code Review ' "$story" | grep -q "| ${head} |"
+}
+
+# A well-formed --sha that is not a commit in the --repo repository is refused.
+@test "--repo refuses a --sha that does not exist in the story repository" {
+  local _K="E900-S994" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/repo_badsha"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  run _gate_update_from_root "$tmproot/project" --story "$_K" --gate "Code Review" \
+    --verdict FAILED --sha "0123456789abcdef0123456789abcdef01234567" --repo "$wt" \
+    --report-missing-reason "test fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"does not resolve to a valid commit"* ]]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep -q '^| Code Review | UNVERIFIED | — | absent |$' "$story"
+}
+
+# An explicit --repo that is missing or not a git work tree is refused, and
+# nothing is written.
+@test "--repo that does not exist or is not a git work tree is refused" {
+  local _K="E900-S995" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/repo_invalid"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local head
+  head="$(git -C "$wt" rev-parse HEAD)"
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  run _gate_update_from_root "$tmproot/project" --story "$_K" --gate "Code Review" \
+    --verdict FAILED --sha "$head" --repo "$tmproot/no-such-dir" --report-missing-reason "test fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not a git work tree"* ]]
+  mkdir -p "$tmproot/plain-dir"
+  run _gate_update_from_root "$tmproot/project" --story "$_K" --gate "Code Review" \
+    --verdict FAILED --sha "$head" --repo "$tmproot/plain-dir" --report-missing-reason "test fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"is not a git work tree"* ]]
+  grep -q '^| Code Review | UNVERIFIED | — | absent |$' "$story"
+}
+
+# Without --sha, HEAD is bound from --repo, not from the caller's directory.
+@test "--repo without --sha binds the story repository HEAD from a non-git root" {
+  local _K="E900-S996" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/repo_implicit"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local head
+  head="$(git -C "$wt" rev-parse HEAD)"
+  run _gate_update_from_root "$tmproot/project" --story "$_K" --gate "Code Review" \
+    --verdict FAILED --repo "$wt" --report-missing-reason "test fixture"
+  [ "$status" -eq 0 ]
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  grep '^| Code Review ' "$story" | grep -q "| ${head} |"
+}
+
+# Inventory of every gate-row write published in any SKILL.md. Each
+# canonical gate-row write must pass the caller-resolved SHA and the story
+# repository. A writer that is not in either list fails the test, so a new
+# gate-writing skill cannot silently skip --repo.
+@test "inventory: every canonical gate-row write in any SKILL.md passes --sha and --repo" {
+  local in_scope=" gaia-code-review gaia-performance-review gaia-qa-tests gaia-review-security gaia-security-review gaia-test-review gaia-review-perf gaia-run-all-reviews "
+  # Known writers outside the review-skill gate contract, tracked separately:
+  # story validation writes a row with no caller SHA.
+  local outside=" gaia-validate-story "
+  local f skill calls c found=" "
+  for f in "$PLUGIN_ROOT"/skills/*/SKILL.md; do
+    skill="$(basename "$(dirname "$f")")"
+    calls="$(_extract_code_blocks "$f" \
+      | sed -e ':a' -e '/\\$/{N;s/\\\n//;ba}' \
+      | grep -E 'review-gate\.sh"?[[:space:]]+update([[:space:]]|$)' \
+      | grep -v -- '--plan-id' \
+      | grep -v 'Mobile Review' || true)"
+    [ -n "$calls" ] || continue
+    found="${found}${skill} "
+    case "$outside" in *" $skill "*) continue ;; esac
+    case "$in_scope" in
+      *" $skill "*) ;;
+      *) echo "uninventoried gate-row writer: $skill"; return 1 ;;
+    esac
+    while IFS= read -r c; do
+      if [[ "$c" != *'--sha "$_sha"'* || "$c" != *'--repo "$STORY_WORKTREE_PATH"'* ]]; then
+        echo "FAIL: $skill gate write lacks --sha/--repo: $c"; return 1
+      fi
+    done <<< "$calls"
+  done
+  for skill in $in_scope; do
+    case "$found" in
+      *" $skill "*) ;;
+      *) echo "FAIL: expected gate-row writer $skill has no gate write block"; return 1 ;;
+    esac
+  done
+  # The orchestrator's prose gate writes (per-gate, dispatch-failed and the
+  # consolidation rewrite) must also name --repo wherever they name --sha.
+  local rar="$PLUGIN_ROOT/skills/gaia-run-all-reviews/SKILL.md"
+  local bad
+  bad="$(awk '/^[[:space:]]*```/{ in_block=!in_block; next } !in_block' "$rar" \
+    | grep -F -- '--sha "$_sha"' | grep -vF -- '--repo "$STORY_WORKTREE_PATH"' || true)"
+  [ -z "$bad" ] || { echo "FAIL: run-all-reviews prose names --sha without --repo: $bad"; return 1; }
+  grep -F "Rewrite each gate's row via" "$rar" | grep -qF -- '--repo "$STORY_WORKTREE_PATH"'
 }
 
 # (i) cwd=project root, PROJECT_PATH unset, {worktree}=worktree -> row written
