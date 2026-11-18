@@ -3305,8 +3305,8 @@ STORY
   [[ "$output" != *"not a descendant"* ]]
 }
 
-# AC7c: unknown prior SHA — silent, row written
-@test "review-gate.sh silently writes row when prior SHA is unknown to repo" {
+# AC7c: unknown prior SHA — distinct notice, row written
+@test "review-gate.sh prints an ancestry notice and writes row when prior SHA is unknown to repo" {
   local _K="E900-S909" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   _init_git "$PROJECT_PATH"
   local real_sha
@@ -3324,11 +3324,13 @@ STORY
     --report-missing-reason "test fixture"
   [ "$status" -eq 0 ]
   [[ "$output" != *"not a descendant"* ]]
+  [[ "$output" == *"NOTICE"*"cannot check whether new SHA"* ]]
+  [[ "$output" == *"prior SHA $fake_sha is not present"* ]]
   grep "Code Review" "$story" | grep -q "$real_sha"
 }
 
-# AC7d: non-git directory — silent, row written
-@test "review-gate.sh silently writes row outside a git work tree" {
+# AC7d: non-git directory — distinct notice, row written
+@test "review-gate.sh prints an ancestry notice and writes row outside a git work tree" {
   local _K="E900-S910" # lint-pack:allow leaked-identifiers — synthetic fixture story key
   local non_git="${TEST_TMP}/non-git-ac7d"
   mkdir -p "$non_git/docs/implementation-artifacts"
@@ -3361,6 +3363,21 @@ STORY
     --report-missing-reason "test fixture"
   [ "$status" -eq 0 ]
   [[ "$output" != *"not a descendant"* ]]
+  [[ "$output" == *"NOTICE"*"is not a git work tree"* ]]
+  grep "Code Review" "$story" | grep -q "1234567890abcdef1234567890abcdef12345678"
+}
+
+# AC7e: an empty --repo value is refused
+@test "review-gate.sh refuses an empty --repo value" {
+  local _K="E900-S911" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _init_git "$PROJECT_PATH"
+  _seed_story_4col "$PROJECT_PATH" "$_K" "absent" >/dev/null
+  run bash "${PLUGIN_ROOT}/scripts/review-gate.sh" update \
+    --story "$_K" --gate "Code Review" --verdict PASSED \
+    --sha "$(git -C "$PROJECT_PATH" rev-parse HEAD)" --repo "" \
+    --report-missing-reason "test fixture"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--repo was given with an empty value"* ]]
 }
 
 # AC8: all ten review skills use resolve-story-file.sh (no inline flat-glob)
@@ -4830,6 +4847,80 @@ _run_extracted_gate_live() {
   chmod +x "$tmpscript"
   CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
     run bash "$tmpscript"
+}
+
+# Helper: set the prior Code Review row SHA in a project-fixture story.
+_set_prior_code_review_sha() {
+  local story="$1" prior="$2"
+  sed -i.bak "s/^| Code Review | UNVERIFIED | — | absent |$/| Code Review | PASSED | cr.md | ${prior} |/" "$story"
+  rm -f "${story}.bak"
+  grep -q "^| Code Review | PASSED | cr.md | ${prior} |$" "$story"
+}
+
+# Ancestry check in normal skill use: the published code-review gate block,
+# run from the NON-git project root with PROJECT_PATH unset, must evaluate
+# ancestry in the story worktree.
+@test "skill gate block from non-git project root evaluates ancestry in the story worktree (descendant, no warning)" {
+  local _K="E900-S990" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/anc_descendant"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  ! git -C "$tmproot/project" rev-parse --is-inside-work-tree >/dev/null 2>&1
+  local prior head
+  prior="$(git -C "$wt" rev-parse HEAD~1)"
+  head="$(git -C "$wt" rev-parse HEAD)"
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  _set_prior_code_review_sha "$story" "$prior"
+  unset PROJECT_PATH
+  local trace="${TEST_TMP}/anc_descendant.trace"
+  export GIT_TRACE="$trace"
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$tmproot/project"
+  unset GIT_TRACE
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not a descendant"* ]]
+  [[ "$output" != *"NOTICE"* ]]
+  grep -q "merge-base --is-ancestor $prior $head" "$trace"
+  grep 'Code Review' "$story" | grep -q "$head"
+}
+
+@test "skill gate block from non-git project root warns on a non-descendant SHA naming both SHAs" {
+  local _K="E900-S991" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/anc_nondescendant"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local repo="$tmproot/project/code-repo"
+  git -C "$repo" checkout -q -b diverged HEAD
+  printf 'other\n' > "$repo/other.txt"
+  git -C "$repo" add other.txt && git -C "$repo" commit -q -m "diverged"
+  local prior head
+  prior="$(git -C "$repo" rev-parse HEAD)"
+  head="$(git -C "$wt" rev-parse HEAD)"
+  ! git -C "$wt" merge-base --is-ancestor "$prior" "$head"
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  _set_prior_code_review_sha "$story" "$prior"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$tmproot/project"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"*"new SHA $head is not a descendant of prior SHA $prior"* ]]
+  grep 'Code Review' "$story" | grep -q "$head"
+}
+
+@test "skill gate block from non-git project root prints a distinct notice when the prior SHA is unavailable" {
+  local _K="E900-S992" # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local tmproot="${TEST_TMP}/anc_unavailable"
+  local wt
+  wt="$(_seed_project_fixture "$tmproot/project" "$_K")"
+  local prior="0123456789abcdef0123456789abcdef01234567"
+  local head
+  head="$(git -C "$wt" rev-parse HEAD)"
+  local story="$tmproot/project/.gaia/artifacts/implementation-artifacts/epic-E900-fixture/${_K}-slug/story.md"
+  _set_prior_code_review_sha "$story" "$prior"
+  unset PROJECT_PATH
+  _run_extracted_gate_live "gaia-code-review" "$_K" "$wt" "$tmproot/project"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"not a descendant"* ]]
+  [[ "$output" == *"NOTICE"*"prior SHA $prior is not present in $wt"* ]]
+  grep 'Code Review' "$story" | grep -q "$head"
 }
 
 # (i) cwd=project root, PROJECT_PATH unset, {worktree}=worktree -> row written

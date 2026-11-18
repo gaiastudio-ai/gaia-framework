@@ -118,7 +118,7 @@ This loads the story file, walks all six reviewers in canonical order, writes on
   - `/gaia-review-test` failure findings on missing automation coverage for a P0 AC.
   When triggered, `/gaia-test-automate` runs in its own context with the two-phase persona wiring (Phase 1 Sable, Phase 2 stack-developer per `agent-overlay.sh`).
 - **Never short-circuit on failure.** If a reviewer returns FAILED, record the verdict and continue to the next reviewer. The entire purpose is to surface ALL issues in one pass.
-- After each reviewer completes, update the Review Gate table via `review-gate.sh update` with `--sha "$_sha"` where `_sha` is computed in the SAME Bash snippet using the guarded `_wt_arg` / validation / refusal pattern (see the code blocks in Substep 2.3). Every gate write — per-gate, telemetry, consolidation rewrite, and dispatch-failed — MUST compute its own `_sha` from `{worktree}` in the same fenced block; reusing a `_sha` variable from an earlier Bash call is forbidden. Use the absolute plugin scripts path (`${CLAUDE_PLUGIN_ROOT}/scripts/`).
+- After each reviewer completes, update the Review Gate table via `review-gate.sh update` with `--sha "$_sha" --repo "$STORY_WORKTREE_PATH"` where `_sha` is computed in the SAME Bash snippet using the guarded `_wt_arg` / validation / refusal pattern (see the code blocks in Substep 2.3). Every gate write — per-gate, telemetry, consolidation rewrite, and dispatch-failed — MUST compute its own `_sha` from `{worktree}` in the same fenced block; reusing a `_sha` variable from an earlier Bash call is forbidden. Use the absolute plugin scripts path (`${CLAUDE_PLUGIN_ROOT}/scripts/`).
 - If a reviewer crashes (unexpected non-zero exit / malformed verdict), record FAILED for that reviewer and continue (AC-EC7).
 - If `review-gate.sh` fails to update a row, log the failure and continue to the next reviewer.
 - If `review-skip-check.sh` returns malformed JSON (missing `skip` or `run` keys), HALT with a parse-error message identifying the failing script — do NOT silently treat all 6 as run (AC-EC3).
@@ -244,7 +244,7 @@ _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the st
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
 PROJECT_ROOT="$PROJECT_ROOT" bash ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
-  --verdict {PASSED|FAILED} --sha "$_sha" \
+  --verdict {PASSED|FAILED} --sha "$_sha" --repo "$STORY_WORKTREE_PATH" \
   --report <absolute-path-to-per-review-report> \
   [--execution-evidence <absolute-path-to-execution-evidence.json>]
 ```
@@ -320,7 +320,7 @@ For each short_name in run:
        && [ "${#_sha}" -eq 40 ] \
        || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
      PROJECT_ROOT="$PROJECT_ROOT" bash scripts/review-gate.sh update --story {story_key} --gate "{gate_name}" \
-       --verdict {verdict} --sha "$_sha" --report {report_path} \
+       --verdict {verdict} --sha "$_sha" --repo "$STORY_WORKTREE_PATH" --report {report_path} \
        --started-at {gate_start_epoch_ms} \
        --token-estimate {token_estimate_from_throughput_telemetry} \
        --telemetry-round {round_ordinal} \
@@ -337,7 +337,7 @@ For each short_name in run:
 
   5. If the skill dispatch itself fails (skill not installed, subagent
      errors before returning), record a FAILED verdict with
-     `--report-missing-reason "dispatch-failed: <reason>"` and `--sha "$_sha"`
+     `--report-missing-reason "dispatch-failed: <reason>"` and `--sha "$_sha" --repo "$STORY_WORKTREE_PATH"`
      (computed with the same guarded `_wt_arg` / validation / refusal pattern
      from step 4 — the dispatch-failed write MUST NOT reuse a `_sha` from an
      earlier Bash call), prefixed with `PROJECT_ROOT="$PROJECT_ROOT"` (derived

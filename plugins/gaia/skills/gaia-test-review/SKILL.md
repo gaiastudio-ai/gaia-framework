@@ -413,7 +413,7 @@ _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the st
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
 PROJECT_ROOT="$PROJECT_ROOT" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Test Review" \
-  --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH" \
+  --verdict "{PASSED|FAILED}" --sha "$_sha" --repo "$STORY_WORKTREE_PATH" --report "$REPORT_PATH" \
   --execution-evidence "$EXECUTION_EVIDENCE_PATH"
 ```
 

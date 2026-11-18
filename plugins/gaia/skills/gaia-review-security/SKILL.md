@@ -490,7 +490,7 @@ PROJECT_ROOT="$PROJECT_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.s
 _sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
   && [ "${#_sha}" -eq 40 ] \
   || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
-PROJECT_ROOT="$PROJECT_ROOT" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}" --sha "$_sha" --report "$REPORT_PATH"
+PROJECT_ROOT="$PROJECT_ROOT" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}" --sha "$_sha" --repo "$STORY_WORKTREE_PATH" --report "$REPORT_PATH"
 ```
 
 Confirm the update succeeded (exit code 0). Report the final status to the user. Note: sprint-status.yaml may now be out of sync. Run `/gaia-sprint-status` to reconcile.
