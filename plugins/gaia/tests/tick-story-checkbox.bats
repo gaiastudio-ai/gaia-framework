@@ -192,7 +192,7 @@ STORY_EOF
 # ---------------------------------------------------------------------------
 # Empty tasks section
 # ---------------------------------------------------------------------------
-@test "empty tasks section: exits 0 with no changes" {
+@test "empty tasks section: exits non-zero with no changes" {
   local empty="$TEST_TMP/empty.md"
   cat > "$empty" << 'EOF'
 ---
@@ -203,13 +203,13 @@ key: "E900-S2"
 
 ## Review Gate
 EOF
-  local before
+  local before after
   before="$(cat "$empty")"
   run bash "$TICK_SCRIPT" --file "$empty" --task 1
-  [ "$status" -eq 0 ]
-  local after
+  [ "$status" -eq 1 ]
   after="$(cat "$empty")"
   [ "$before" = "$after" ]
+  [[ "$output" == *"target section missing or has no checkboxes"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -514,6 +514,432 @@ SNAP_FIXTURE
 
   done_count="$(jq -r '.stories[0].tasks.done' "$cache")"
   [ "$done_count" -eq 3 ]
+}
+
+# ===========================================================================
+# Bare "## Tasks" heading recognized as task section
+# ===========================================================================
+
+@test "bare Tasks heading: --task ticks checkbox under it" {
+  local fix="$TEST_TMP/bare-tasks.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S90"
+---
+
+## Tasks
+
+- [ ] Task 1 -- Under bare heading
+
+## Review Gate
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1
+  [ "$status" -eq 0 ]
+  grep 'Task 1' "$fix" | grep -q '\[x\]'
+}
+
+# ===========================================================================
+# T-prefix subtask matching
+# ===========================================================================
+
+@test "subtask T-prefix: --task --subtask ticks T-prefixed label" {
+  local fix="$TEST_TMP/t-prefix.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S91"
+---
+
+## Tasks / Subtasks
+
+- [ ] Task 1 -- Parent
+  - [ ] T1.2 some subtask
+
+## Review Gate
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1 --subtask 2
+  [ "$status" -eq 0 ]
+  grep 'T1\.2' "$fix" | grep -q '\[x\]'
+}
+
+@test "subtask bold T-prefix: --task --subtask ticks bold T-prefixed label" {
+  local fix="$TEST_TMP/t-bold.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S92"
+---
+
+## Tasks / Subtasks
+
+- [ ] **Task 3:** Parent
+  - [ ] **T3.1:** Bold subtask with T-prefix
+
+## Review Gate
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --task 3 --subtask 1
+  [ "$status" -eq 0 ]
+  grep 'T3\.1' "$fix" | grep -q '\[x\]'
+}
+
+# Regression guard: extended minor number must NOT match shorter subtask
+@test "guard: T-prefix with extended minor number not matched by shorter subtask" {
+  local fix="$TEST_TMP/t-guard-20.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S93"
+---
+
+## Tasks / Subtasks
+
+- [ ] Task 1 -- Parent
+  - [ ] T1.20 extended numbering
+
+## Review Gate
+EOF
+  local before
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1 --subtask 2
+  [ "$status" -eq 1 ]
+  local after
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+# Regression guard: longer task number must NOT match shorter task
+@test "guard: T-prefix with longer task number not matched by shorter task" {
+  local fix="$TEST_TMP/t-guard-11.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S94"
+---
+
+## Tasks / Subtasks
+
+- [ ] Task 1 -- Parent
+  - [ ] T11.2 wrong task number
+
+## Review Gate
+EOF
+  local before
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1 --subtask 2
+  [ "$status" -eq 1 ]
+  local after
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+# Regression guard: non-dot separator must not match the dot in T-prefix
+@test "guard: T-prefix with non-dot separator not matched by subtask" {
+  local fix="$TEST_TMP/t-nondot.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S106"
+---
+
+## Tasks / Subtasks
+
+- [ ] Task 1 -- Parent
+  - [ ] T1x2 non-dot separator
+
+## Review Gate
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1 --subtask 2
+  [ "$status" -eq 1 ]
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+# ===========================================================================
+# Edge-case criterion matching (--ac-ec flag)
+# ===========================================================================
+
+@test "edge-case criterion: --ac-ec ticks plain label" {
+  local fix="$TEST_TMP/ac-ec-plain.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S95"
+---
+
+## Acceptance Criteria
+
+- [ ] AC-EC1: First edge case
+- [ ] AC-EC2: Second edge case
+
+## Tasks / Subtasks
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 0 ]
+  grep 'AC-EC1' "$fix" | grep -q '\[x\]'
+  grep 'AC-EC2' "$fix" | grep -q '\[ \]'
+}
+
+@test "edge-case criterion: --ac-ec ticks bold label" {
+  local fix="$TEST_TMP/ac-ec-bold.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S96"
+---
+
+## Acceptance Criteria
+
+- [ ] **AC-EC1:** Bold edge case
+
+## Tasks / Subtasks
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 0 ]
+  grep 'AC-EC1' "$fix" | grep -q '\[x\]'
+}
+
+@test "edge-case criterion boundary: --ac-ec does not tick higher-numbered label" {
+  local fix="$TEST_TMP/ac-ec-boundary.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S97"
+---
+
+## Acceptance Criteria
+
+- [ ] AC-EC1: First edge case
+- [ ] AC-EC10: Tenth edge case
+
+## Tasks / Subtasks
+EOF
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 0 ]
+  grep 'AC-EC1:' "$fix" | head -1 | grep -q '\[x\]'
+  grep 'AC-EC10' "$fix" | grep -q '\[ \]'
+}
+
+@test "edge-case criterion boundary: --ac-ec 1 exits 1 when only higher-numbered label exists" {
+  local fix="$TEST_TMP/ac-ec10-only.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S105"
+---
+
+## Acceptance Criteria
+
+- [ ] AC-EC10: Only the tenth edge case
+
+## Tasks / Subtasks
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no matching edge-case criterion"* ]] || false
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+# Regression guard: --ac must NOT match an edge-case-only fixture
+@test "guard: --ac does not match edge-case-only fixture" {
+  local fix="$TEST_TMP/ac-ec-only.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S98"
+---
+
+## Acceptance Criteria
+
+- [ ] AC-EC1: Only an edge case criterion
+
+## Tasks / Subtasks
+EOF
+  local before
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no matching"* ]] || false
+  local after
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+@test "edge-case criterion: --ac-ec exits 1 when only standard criterion exists" {
+  local fix="$TEST_TMP/ac-ec-mismatch.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S99"
+---
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Standard criterion only
+
+## Tasks / Subtasks
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 1 ]
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+  [[ "$output" == *"no matching edge-case criterion"* ]]
+}
+
+# Regression guard: AC-EC pattern must start at checkbox anchor, not mid-line
+@test "guard: AC-EC pattern requires checkbox-start anchor" {
+  local fix="$TEST_TMP/ac-ec-mid.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S107"
+---
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Description mentions AC-EC1: in text
+
+## Tasks / Subtasks
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no matching edge-case criterion"* ]] || false
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+@test "edge-case criterion: --ac-ec on already-ticked line is exit-0 no-op" {
+  local fix="$TEST_TMP/ac-ec-ticked.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S100"
+---
+
+## Acceptance Criteria
+
+- [x] AC-EC1: Already ticked
+
+## Tasks / Subtasks
+EOF
+  local before
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 0 ]
+  local after
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+}
+
+@test "edge-case criterion: --ac-ec rejects non-positive integer" {
+  run bash "$TICK_SCRIPT" --file "$FIXTURE" --ac-ec 0
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"must be a positive integer"* ]]
+}
+
+@test "edge-case criterion: --ac-ec and --task are mutually exclusive" {
+  run bash "$TICK_SCRIPT" --file "$FIXTURE" --ac-ec 1 --task 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "edge-case criterion: --ac-ec and --subtask are mutually exclusive" {
+  local before after
+  before="$(cat "$FIXTURE")"
+  run bash "$TICK_SCRIPT" --file "$FIXTURE" --ac-ec 1 --subtask 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--ac-ec and --task/--subtask/--ac are mutually exclusive"* ]] || false
+  after="$(cat "$FIXTURE")"
+  [ "$before" = "$after" ]
+}
+
+@test "edge-case criterion: --ac-ec and --ac are mutually exclusive" {
+  local before after
+  before="$(cat "$FIXTURE")"
+  run bash "$TICK_SCRIPT" --file "$FIXTURE" --ac-ec 1 --ac 1
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--ac-ec and --task/--subtask/--ac are mutually exclusive"* ]] || false
+  after="$(cat "$FIXTURE")"
+  [ "$before" = "$after" ]
+}
+
+@test "usage text includes --ac-ec flag" {
+  run bash "$TICK_SCRIPT" --help
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--ac-ec"* ]]
+}
+
+@test "edge-case criterion section scoping: --ac-ec ignores task section" {
+  local fix="$TEST_TMP/ac-ec-task-only.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S101"
+---
+
+## Tasks / Subtasks
+
+- [ ] AC-EC1: Edge case under wrong section
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Standard criterion only
+
+## Review Gate
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 1 ]
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+  [[ "$output" == *"no matching edge-case criterion"* ]]
+}
+
+@test "edge-case criterion section scoping: --ac-ec ignores bare Tasks heading" {
+  local fix="$TEST_TMP/ac-ec-bare-tasks.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S104"
+---
+
+## Tasks
+
+- [ ] AC-EC1: Edge case under bare tasks heading
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Standard criterion only
+
+## Review Gate
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --ac-ec 1
+  [ "$status" -eq 1 ]
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+  [[ "$output" == *"no matching edge-case criterion"* ]]
+}
+
+# ===========================================================================
+# Empty/missing section exits non-zero
+# ===========================================================================
+
+@test "missing section heading: exits non-zero with no changes" {
+  local fix="$TEST_TMP/no-heading.md"
+  cat > "$fix" << 'EOF'
+---
+key: "E900-S103"
+---
+
+## Some Other Heading
+
+- [ ] Task 1 -- Under wrong heading
+
+## Review Gate
+EOF
+  local before after
+  before="$(cat "$fix")"
+  run bash "$TICK_SCRIPT" --file "$fix" --task 1
+  [ "$status" -eq 1 ]
+  after="$(cat "$fix")"
+  [ "$before" = "$after" ]
+  [[ "$output" == *"target section missing or has no checkboxes"* ]]
 }
 
 # ---------------------------------------------------------------------------
