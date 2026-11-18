@@ -9373,10 +9373,10 @@ UX
   [ "$count" -eq 1 ] || \
     fail "separator char-class [-:| appears $count times on code lines (expected 1, in library only)"
 
-  # 4. Every document-parsing awk call prepends _SDA_AWK_LIB (expected 6)
+  # 4. Every document-parsing awk call prepends _SDA_AWK_LIB (expected 7)
   count="$(grep -v '^[[:space:]]*#' "$SYNC_SCRIPT" | grep -c '\$_SDA_AWK_LIB' || true)"
-  [ "$count" -eq 6 ] || \
-    fail "expected 6 awk calls with \$_SDA_AWK_LIB, got $count"
+  [ "$count" -eq 7 ] || \
+    fail "expected 7 awk calls with \$_SDA_AWK_LIB, got $count"
 
   # 5. No nocasematch heading regex remains
   count="$(grep -c 'nocasematch' "$SYNC_SCRIPT" || true)"
@@ -11074,4 +11074,745 @@ UX
   [ "$status" -eq 0 ] || fail "sync 2 failed: $output"
   [[ "$output" == *"up to date"* ]] || \
     fail "sync 2 not stable: $output"
+}
+
+
+# =========================================================================
+# Document path with equals-sign (awk name=value operand bug)
+# =========================================================================
+
+@test "sync with equals-sign document path does not empty the file" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Create a document under a directory whose name contains '='.
+  # awk treats a bare operand containing '=' as a variable assignment,
+  # not a filename, so every awk call reading the doc sees empty input.
+  local base_dir="$TEST_TMP/eqpath"
+  local doc_dir="$base_dir/dir=name"
+  mkdir -p "$doc_dir"
+
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  local snapshot="$base_dir/snapshot.json"
+  jq -n '{"components":["header","NewWidget"]}' > "$snapshot"
+
+  # Pre-check: document is non-empty and NewWidget absent
+  [ -s "$doc_dir/ux-design.md" ] || fail "fixture is empty"
+  ! grep -q 'NewWidget' "$doc_dir/ux-design.md" || \
+    fail "fixture already contains NewWidget"
+
+  # Run from the base directory with the bare relative path containing '='.
+  # Pipe stdin from /dev/null and use timeout to prevent hanging if the
+  # script reads from stdin when awk gets empty input.
+  run timeout 20 bash -c \
+    'cd "$1" && "$2" "$3" "dir=name/ux-design.md"' \
+    _ "$base_dir" "$SYNC_SCRIPT" "$snapshot" </dev/null
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Document must still be non-empty
+  [ -s "$doc_dir/ux-design.md" ] || \
+    fail "document is now empty (0 bytes) after sync"
+
+  # NewWidget must be present
+  grep -q 'NewWidget' "$doc_dir/ux-design.md" || \
+    fail "NewWidget not found in document after sync"
+}
+
+
+# =========================================================================
+# Padded component names — leading/trailing whitespace idempotence
+# =========================================================================
+
+@test "sync with leading-space component name is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Use a piped TABLE doc — extract_first_cell trims whitespace from table
+  # cells, so the read side normalises " header" to "header". The snapshot
+  # side is literal, so " header" != "header" and the name is re-added
+  # on every sync (not idempotent).
+  local doc_dir="$TEST_TMP/pad-lead"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| header | custom |
+
+## 9. Next Section
+UX
+
+  # Snapshot contains " header" (leading space).
+  local snapshot="$TEST_TMP/pad-lead-snap.json"
+  jq -n '{"components":[" header"]}' > "$snapshot"
+
+  # First sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Second sync — must be byte-identical (idempotent)
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  [ "$sha1" = "$sha2" ] || \
+    fail "second sync changed the doc (leading-space duplicate): sha $sha1 -> $sha2"
+}
+
+@test "sync with trailing-space component name is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Piped TABLE doc — same trimming mechanism as the leading-space test.
+  local doc_dir="$TEST_TMP/pad-trail"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| footer | custom |
+
+## 9. Next Section
+UX
+
+  # Snapshot contains "footer " (trailing space).
+  local snapshot="$TEST_TMP/pad-trail-snap.json"
+  jq -n '{"components":["footer "]}' > "$snapshot"
+
+  # First sync
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Second sync — must be byte-identical
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  [ "$sha1" = "$sha2" ] || \
+    fail "second sync changed the doc (trailing-space duplicate): sha $sha1 -> $sha2"
+}
+
+
+# =========================================================================
+# Separator-shaped component name --- regression guard (idempotent on
+# current code — does NOT reproduce, exempt from red-test requirement)
+# =========================================================================
+
+@test "sync with separator-shaped component name --- is idempotent" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Four forms tested together: piped two-column table with a "---" data
+  # row, piped one-column, pipe-less, and bullet. All are idempotent on
+  # the current code — this test documents the non-reproduction.
+  local doc_dir="$TEST_TMP/sep-name"
+  mkdir -p "$doc_dir"
+
+  # Piped two-column table: "---" is a valid data row after the separator.
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source |
+|-----------|--------|
+| --- | custom |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/sep-name-snap.json"
+  jq -n '{"components":["---"]}' > "$snapshot"
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 1 failed (exit $status): $output"
+  local sha1
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2 — idempotent
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync 2 failed (exit $status): $output"
+  local sha2
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  [ "$sha1" = "$sha2" ] || \
+    fail "second sync changed doc (separator-shaped name duplicate): sha $sha1 -> $sha2"
+
+  # Also test the bullet-mode form
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- ---
+
+## Design Record Reference
+UX
+
+  # Sync 1
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "bullet sync 1 failed (exit $status): $output"
+  sha1="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  # Sync 2
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "bullet sync 2 failed (exit $status): $output"
+  sha2="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  [ "$sha1" = "$sha2" ] || \
+    fail "bullet second sync changed doc (separator-shaped name): sha $sha1 -> $sha2"
+}
+
+
+# =========================================================================
+# Temp file safety: sibling directory, permissions, symlink, cleanup
+# =========================================================================
+
+@test "sync creates temp file in document directory not TMPDIR" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/tmpdir-check"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  local snapshot="$TEST_TMP/tmpdir-check-snap.json"
+  jq -n '{"components":["header","TmpNew"]}' > "$snapshot"
+
+  # Resolve the real mv binary BEFORE modifying PATH, so the shim can
+  # delegate to it.
+  local real_mv
+  real_mv="$(command -v mv)"
+
+  # Build an mv shim that logs the dirname of the source argument when
+  # the destination is the document path. The shim delegates to the real
+  # mv so the script succeeds normally.
+  local shim_dir="$TEST_TMP/mv-shim-bin"
+  local mv_log="$TEST_TMP/mv-shim-log"
+  mkdir -p "$shim_dir"
+  : > "$mv_log"
+
+  local abs_doc
+  abs_doc="$(cd "$doc_dir" && pwd)/ux-design.md"
+
+  cat > "$shim_dir/mv" <<SHIMEOF
+#!/usr/bin/env bash
+# mv shim — log the source directory for the move targeting our document.
+_args=("\$@")
+# Walk the args to find the final positional (destination) and the one
+# before it (source). Skip option flags.
+_src="" _dst=""
+for _a in "\${_args[@]}"; do
+  case "\$_a" in -*) continue ;; esac
+  _src="\$_dst"
+  _dst="\$_a"
+done
+if [ "\$_dst" = "$abs_doc" ] && [ -n "\$_src" ]; then
+  # Resolve the source directory to an absolute path
+  _srcdir="\$(cd "\$(dirname "\$_src")" 2>/dev/null && pwd)" || _srcdir="(unresolvable)"
+  printf '%s\n' "\$_srcdir" >> "$mv_log"
+fi
+exec "$real_mv" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
+
+  # Isolate TMPDIR to a separate directory.
+  local fake_tmp="$TEST_TMP/fake-tmp"
+  mkdir -p "$fake_tmp"
+
+  # Run the sync with the shim first on PATH
+  TMPDIR="$fake_tmp" PATH="$shim_dir:$PATH" \
+    run "$SYNC_SCRIPT" "$snapshot" "$abs_doc"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # Verify TmpNew was added (the sync actually wrote)
+  grep -q 'TmpNew' "$doc_dir/ux-design.md" || \
+    fail "TmpNew not found — sync did not write"
+
+  # The shim must have logged exactly one source directory
+  [ -s "$mv_log" ] || fail "mv shim did not log any source directory"
+
+  local src_dir
+  src_dir="$(head -1 "$mv_log")"
+  local expected_dir
+  expected_dir="$(cd "$doc_dir" && pwd)"
+
+  # On current (unfixed) code the source is $_sync_tmpdir/awk-out which
+  # lives under TMPDIR, NOT the document's directory. After the fix the
+  # source is a .sync-* sibling in the document's own directory.
+  [ "$src_dir" = "$expected_dir" ] || \
+    fail "temp file source is $src_dir, expected document dir $expected_dir"
+
+  # No .sync-* files should remain after a successful run
+  local leftover
+  leftover="$(find "$doc_dir" -maxdepth 1 -name '.sync-*' 2>/dev/null)"
+  [ -z "$leftover" ] || \
+    fail "sibling temp file leaked in doc dir: $leftover"
+}
+
+@test "sync preserves file permissions after write" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/perm-check"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  # Set a distinctive permission (0640) that differs from mktemp's 0600.
+  chmod 0640 "$doc_dir/ux-design.md"
+
+  local snapshot="$TEST_TMP/perm-check-snap.json"
+  jq -n '{"components":["header","PermTest"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  grep -q 'PermTest' "$doc_dir/ux-design.md" || \
+    fail "PermTest not found — sync did not write"
+
+  # Check the file's permission mode.
+  local mode
+  mode="$(stat -c '%a' "$doc_dir/ux-design.md" 2>/dev/null || \
+          stat -f '%Lp' "$doc_dir/ux-design.md")"
+  [ "$mode" = "640" ] || \
+    fail "file permissions changed after sync: expected 640, got $mode"
+}
+
+@test "sync resolves symlink before writing" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  local doc_dir="$TEST_TMP/symlink-check"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/real.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  # Create a symlink to the real file
+  ln -sf "$doc_dir/real.md" "$doc_dir/link.md"
+
+  local snapshot="$TEST_TMP/symlink-check-snap.json"
+  jq -n '{"components":["header","SymNew"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/link.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The real file must have the new component
+  grep -q 'SymNew' "$doc_dir/real.md" || \
+    fail "SymNew not found in real.md — symlink target not updated"
+
+  # The symlink must still be a symlink (not replaced by a regular file)
+  [ -L "$doc_dir/link.md" ] || \
+    fail "link.md is no longer a symlink — mv replaced it"
+
+  # The symlink still points to real.md
+  local target
+  target="$(readlink "$doc_dir/link.md")"
+  [ "$target" = "$doc_dir/real.md" ] || \
+    fail "symlink target changed: expected $doc_dir/real.md, got $target"
+}
+
+@test "sync resolves symlink in subdirectory with CWD decoy" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Create subdir/real.md as the real file, subdir/link.md -> real.md (relative).
+  # Also create a decoy real.md in CWD.
+  local base="$TEST_TMP/sym-decoy"
+  mkdir -p "$base/subdir"
+
+  cat > "$base/subdir/real.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  # Decoy in CWD — must NOT be modified
+  cat > "$base/real.md" <<'DECOY'
+---
+template: ux-design
+---
+
+# UX Design (decoy — must stay unchanged)
+
+## Component Inventory
+
+- decoy-only
+
+## Design Record Reference
+DECOY
+
+  # Relative symlink: subdir/link.md -> real.md
+  ln -sf "real.md" "$base/subdir/link.md"
+
+  local snapshot="$TEST_TMP/sym-decoy-snap.json"
+  jq -n '{"components":["header","DecoyTest"]}' > "$snapshot"
+
+  local decoy_sha_before
+  decoy_sha_before="$(_sha256_file "$base/real.md")"
+
+  # Run from $base (CWD) so "real.md" at CWD is the decoy
+  run timeout 20 bash -c \
+    'cd "$1" && "$2" "$3" "subdir/link.md"' \
+    _ "$base" "$SYNC_SCRIPT" "$snapshot" </dev/null
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # subdir/real.md must have the new component
+  grep -q 'DecoyTest' "$base/subdir/real.md" || \
+    fail "DecoyTest not found in subdir/real.md"
+
+  # Decoy in CWD must be unchanged
+  local decoy_sha_after
+  decoy_sha_after="$(_sha256_file "$base/real.md")"
+  [ "$decoy_sha_before" = "$decoy_sha_after" ] || \
+    fail "CWD decoy was modified: sha $decoy_sha_before -> $decoy_sha_after"
+
+  # subdir/link.md must still be a symlink
+  [ -L "$base/subdir/link.md" ] || \
+    fail "subdir/link.md is no longer a symlink"
+}
+
+@test "sync cleans up sibling temp file on failure" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Force a failure AFTER the awk output has been written to the temp file
+  # but DURING the final mv to the document. An mv shim that fails when
+  # the destination is the document path achieves this. After the fix,
+  # the sibling .sync-* temp file must be cleaned up by the EXIT trap
+  # despite the failure. The document must remain unchanged.
+  #
+  # On current (unfixed) code, there is no sibling .sync-* file — the temp
+  # lives under TMPDIR. The mv shim still makes the sync fail, but the
+  # cleanup assertion is vacuously true (no sibling to clean). This test
+  # is therefore a GUARD: it passes on current code for the trivial reason
+  # that the sibling temp file does not exist yet.
+
+  local doc_dir="$TEST_TMP/cleanup-check"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## Component Inventory
+
+- header
+
+## Design Record Reference
+UX
+
+  local doc_sha_before
+  doc_sha_before="$(_sha256_file "$doc_dir/ux-design.md")"
+
+  local snapshot="$TEST_TMP/cleanup-check-snap.json"
+  jq -n '{"components":["header","FailComp"]}' > "$snapshot"
+
+  # Resolve the real mv before modifying PATH
+  local real_mv
+  real_mv="$(command -v mv)"
+
+  local shim_dir="$TEST_TMP/mv-fail-shim-bin"
+  mkdir -p "$shim_dir"
+
+  local abs_doc
+  abs_doc="$(cd "$doc_dir" && pwd)/ux-design.md"
+
+  # mv shim: fail with exit 1 when the destination is the document.
+  # For all other calls, delegate to the real mv so the script's earlier
+  # moves (awk helper files etc.) succeed normally.
+  cat > "$shim_dir/mv" <<SHIMEOF
+#!/usr/bin/env bash
+_args=("\$@")
+_dst=""
+for _a in "\${_args[@]}"; do
+  case "\$_a" in -*) continue ;; esac
+  _dst="\$_a"
+done
+if [ "\$_dst" = "$abs_doc" ]; then
+  exit 1
+fi
+exec "$real_mv" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/mv"
+
+  PATH="$shim_dir:$PATH" \
+    run "$SYNC_SCRIPT" "$snapshot" "$abs_doc"
+  # The sync must fail (the final mv was rejected by the shim)
+  [ "$status" -ne 0 ] || fail "expected non-zero exit when mv fails"
+
+  # Document must be unchanged (the failed mv must not have corrupted it)
+  local doc_sha_after
+  doc_sha_after="$(_sha256_file "$doc_dir/ux-design.md")"
+  [ "$doc_sha_before" = "$doc_sha_after" ] || \
+    fail "document changed despite mv failure: sha $doc_sha_before -> $doc_sha_after"
+
+  # No .sync-* sibling temp files should remain after the failure.
+  # On current code this passes vacuously (no sibling temp exists).
+  # After the fix, the EXIT trap must clean the sibling.
+  local leftover
+  leftover="$(find "$doc_dir" -maxdepth 1 -name '.sync-*' 2>/dev/null)"
+  [ -z "$leftover" ] || \
+    fail "sibling temp file not cleaned up after failure: $leftover"
+}
+
+
+# =========================================================================
+# CRLF row matching: mixed line endings (header vs section rows)
+# =========================================================================
+
+@test "sync inserts CRLF row when table rows are CRLF but header is LF" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Build a document where the YAML frontmatter and markdown headings are LF
+  # but the table rows (header, separator, data) are CRLF. The script
+  # currently detects CRLF from head -1 (the frontmatter), which is LF,
+  # so the inserted row gets LF. After the fix, it should detect from the
+  # table's separator line and insert CRLF.
+  local doc_dir="$TEST_TMP/crlf-mixed-table"
+  mkdir -p "$doc_dir"
+
+  local cr
+  cr="$(printf '\r')"
+
+  # Write LF header + CRLF table rows manually.
+  # Use printf '%s\n' for lines starting with dashes (printf interprets
+  # bare '---' as an option).
+  {
+    printf '%s\n' '---'
+    printf '%s\n' 'template: ux-design'
+    printf '%s\n' '---'
+    printf '\n'
+    printf '%s\n' '# UX Design'
+    printf '\n'
+    printf '%s\n' '## 8. Components & Design System'
+    printf '\n'
+    printf '| Component | Source | Notes |%s\n' "$cr"
+    printf '|-----------|--------|-------|%s\n' "$cr"
+    printf '| header | custom | top |%s\n' "$cr"
+    printf '\n'
+    printf '%s\n' '## 9. Next Section'
+  } > "$doc_dir/ux-design.md"
+
+  local snapshot="$TEST_TMP/crlf-mixed-table-snap.json"
+  jq -n '{"components":["header","MixedCRLF"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted row must end with 0d 0a (CRLF), matching the table's convention.
+  local inserted_hex
+  inserted_hex="$(sed -n '/MixedCRLF/p' "$doc_dir/ux-design.md" | od -A n -t x1 | tr -d ' \n')"
+  [ -n "$inserted_hex" ] || fail "MixedCRLF row not found"
+
+  case "$inserted_hex" in
+    *0d0a) ;;
+    *) fail "inserted row does not end with CRLF: hex=$inserted_hex" ;;
+  esac
+}
+
+@test "sync inserts CRLF bullet when bullets are CRLF but header is LF" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # LF frontmatter/headings + CRLF bullets inside the components section.
+  # Also includes a fenced block with a bullet-like line to exercise the
+  # check_fence guard — the fenced line must NOT be used for CRLF detection.
+  local doc_dir="$TEST_TMP/crlf-mixed-bullet"
+  mkdir -p "$doc_dir"
+
+  local cr
+  cr="$(printf '\r')"
+
+  {
+    printf '%s\n' '---'
+    printf '%s\n' 'template: ux-design'
+    printf '%s\n' '---'
+    printf '\n'
+    printf '%s\n' '# UX Design'
+    printf '\n'
+    printf '%s\n' '## Component Inventory'
+    printf '\n'
+    # Fenced block with a bullet-like line (must be skipped by check_fence)
+    printf '%s\n' '```'
+    printf '%s\n' '- fenced-bullet-not-real'
+    printf '%s\n' '```'
+    printf '\n'
+    # Real CRLF bullets
+    printf '%s%s\n' '- header' "$cr"
+    printf '\n'
+    printf '%s\n' '## Design Record Reference'
+  } > "$doc_dir/ux-design.md"
+
+  local snapshot="$TEST_TMP/crlf-mixed-bullet-snap.json"
+  jq -n '{"components":["header","BulletCRLF"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted bullet must end with CRLF
+  local inserted_hex
+  inserted_hex="$(sed -n '/BulletCRLF/p' "$doc_dir/ux-design.md" | od -A n -t x1 | tr -d ' \n')"
+  [ -n "$inserted_hex" ] || fail "BulletCRLF not found"
+
+  case "$inserted_hex" in
+    *0d0a) ;;
+    *) fail "inserted bullet does not end with CRLF: hex=$inserted_hex" ;;
+  esac
+}
+
+@test "sync inserts LF row when table rows are LF" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # An all-LF document. Inserted row must stay LF (no spurious CR).
+  # This is a regression guard — it should pass on current code.
+  local doc_dir="$TEST_TMP/lf-table-stays"
+  mkdir -p "$doc_dir"
+  cat > "$doc_dir/ux-design.md" <<'UX'
+---
+template: ux-design
+---
+
+# UX Design
+
+## 8. Components & Design System
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| header | custom | top |
+
+## 9. Next Section
+UX
+
+  local snapshot="$TEST_TMP/lf-table-snap.json"
+  jq -n '{"components":["header","StaysLF"]}' > "$snapshot"
+
+  run "$SYNC_SCRIPT" "$snapshot" "$doc_dir/ux-design.md"
+  [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
+
+  # The inserted row must NOT contain 0d (CR)
+  local inserted_hex
+  inserted_hex="$(sed -n '/StaysLF/p' "$doc_dir/ux-design.md" | od -A n -t x1 | tr -d ' \n')"
+  [ -n "$inserted_hex" ] || fail "StaysLF row not found"
+
+  case "$inserted_hex" in
+    *0d*) fail "LF row contains spurious CR: hex=$inserted_hex" ;;
+  esac
+}
+
+
+# =========================================================================
+# Identifier sweep — no internal bookkeeping IDs in published plugin files
+# =========================================================================
+
+@test "no internal identifiers in sync script or test file" {
+  [ -x "$SYNC_SCRIPT" ] || fail "script missing: $SYNC_SCRIPT"
+
+  # Scan the script and this test file for internal identifiers.
+  # This is scoped to plugins/gaia/** (the published tree).
+  local file found=0
+  for file in "$SYNC_SCRIPT" \
+              "$BATS_TEST_DIRNAME/sync-derived-artifacts.bats"; do
+    [ -f "$file" ] || continue
+
+    # Requirement/decision IDs
+    if LC_ALL=C grep -Eq '\b(FR|NFR|SR|ADR)-[0-9]+\b' "$file"; then
+      printf 'leaked requirement/decision ID in %s\n' "$file" >&2
+      LC_ALL=C grep -En '\b(FR|NFR|SR|ADR)-[0-9]+\b' "$file" | head -5 >&2
+      found=1
+    fi
+
+    # Story keys — real ones only (allow synthetic test ranges)
+    if LC_ALL=C grep -En '\bE[0-9]+-S[0-9]+\b' "$file" | \
+       LC_ALL=C grep -vq 'E9[0-9][0-9]'; then
+      printf 'leaked story key in %s\n' "$file" >&2
+      LC_ALL=C grep -En '\bE[0-9]+-S[0-9]+\b' "$file" | \
+        LC_ALL=C grep -v 'E9[0-9][0-9]' | head -5 >&2
+      found=1
+    fi
+
+    # Cascade IDs
+    if LC_ALL=C grep -Eq '\bAF-[0-9]{4}-[0-9]{2}-[0-9]{2}\b' "$file"; then
+      printf 'leaked cascade ID in %s\n' "$file" >&2
+      found=1
+    fi
+  done
+
+  [ "$found" -eq 0 ] || return 1
 }
