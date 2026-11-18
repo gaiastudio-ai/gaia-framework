@@ -11356,8 +11356,11 @@ UX
   mkdir -p "$shim_dir"
   : > "$mv_log"
 
+  # Use pwd -P (physical) so the path matches even when TEST_TMP sits
+  # behind a symlink (e.g. macOS /var -> /private/var). The script's
+  # _resolve_symlink also uses pwd -P.
   local abs_doc
-  abs_doc="$(cd "$doc_dir" && pwd)/ux-design.md"
+  abs_doc="$(cd "$doc_dir" && pwd -P)/ux-design.md"
 
   cat > "$shim_dir/mv" <<SHIMEOF
 #!/usr/bin/env bash
@@ -11371,9 +11374,16 @@ for _a in "\${_args[@]}"; do
   _src="\$_dst"
   _dst="\$_a"
 done
-if [ "\$_dst" = "$abs_doc" ] && [ -n "\$_src" ]; then
-  # Resolve the source directory to an absolute path
-  _srcdir="\$(cd "\$(dirname "\$_src")" 2>/dev/null && pwd)" || _srcdir="(unresolvable)"
+# Resolve the destination physically so the comparison matches even when
+# the temp root contains symlinks.
+_dst_phys=""
+if [ -n "\$_dst" ]; then
+  _dst_dir="\$(cd "\$(dirname "\$_dst")" 2>/dev/null && pwd -P)" || _dst_dir=""
+  [ -n "\$_dst_dir" ] && _dst_phys="\$_dst_dir/\$(basename "\$_dst")"
+fi
+if [ "\$_dst_phys" = "$abs_doc" ] && [ -n "\$_src" ]; then
+  # Resolve the source directory to an absolute physical path
+  _srcdir="\$(cd "\$(dirname "\$_src")" 2>/dev/null && pwd -P)" || _srcdir="(unresolvable)"
   printf '%s\n' "\$_srcdir" >> "$mv_log"
 fi
 exec "$real_mv" "\$@"
@@ -11399,7 +11409,7 @@ SHIMEOF
   local src_dir
   src_dir="$(head -1 "$mv_log")"
   local expected_dir
-  expected_dir="$(cd "$doc_dir" && pwd)"
+  expected_dir="$(cd "$doc_dir" && pwd -P)"
 
   # On current (unfixed) code the source is $_sync_tmpdir/awk-out which
   # lives under TMPDIR, NOT the document's directory. After the fix the
@@ -11607,12 +11617,15 @@ UX
   local shim_dir="$TEST_TMP/mv-fail-shim-bin"
   mkdir -p "$shim_dir"
 
+  # Use pwd -P (physical) so the comparison matches when the temp root
+  # sits behind a symlink (e.g. macOS /var -> /private/var).
   local abs_doc
-  abs_doc="$(cd "$doc_dir" && pwd)/ux-design.md"
+  abs_doc="$(cd "$doc_dir" && pwd -P)/ux-design.md"
 
   # mv shim: fail with exit 1 when the destination is the document.
   # For all other calls, delegate to the real mv so the script's earlier
-  # moves (awk helper files etc.) succeed normally.
+  # moves (awk helper files etc.) succeed normally. The destination is
+  # resolved physically so the comparison matches under symlinked paths.
   cat > "$shim_dir/mv" <<SHIMEOF
 #!/usr/bin/env bash
 _args=("\$@")
@@ -11621,7 +11634,12 @@ for _a in "\${_args[@]}"; do
   case "\$_a" in -*) continue ;; esac
   _dst="\$_a"
 done
-if [ "\$_dst" = "$abs_doc" ]; then
+_dst_phys=""
+if [ -n "\$_dst" ]; then
+  _dst_dir="\$(cd "\$(dirname "\$_dst")" 2>/dev/null && pwd -P)" || _dst_dir=""
+  [ -n "\$_dst_dir" ] && _dst_phys="\$_dst_dir/\$(basename "\$_dst")"
+fi
+if [ "\$_dst_phys" = "$abs_doc" ]; then
   exit 1
 fi
 exec "$real_mv" "\$@"
