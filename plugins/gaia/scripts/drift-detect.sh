@@ -83,41 +83,82 @@ _dd_is_concurrent_mode() {
 }
 
 # ---------------------------------------------------------------------------
+# _dd_chain_key_value <config_file> <key>
+#   Read the first value of <key>: under ci_cd.promotion_chain.
+#   The key is anchored as a YAML mapping key (after an optional list-item
+#   dash and whitespace), so "source_branch:" does not match "branch" and
+#   "target_branch:" does not match "branch" or "target".
+#   Prints the value on stdout (empty if not found).
+# ---------------------------------------------------------------------------
+_dd_chain_key_value() {
+  local config_f="$1" key="$2"
+  awk -v k="$key" '
+    BEGIN { in_ci=0; in_pc=0
+            pat_item = "^[[:space:]]*-[[:space:]]*" k ":"
+            pat_cont = "^[[:space:]]+" k ":" }
+    /^ci_cd:/ { in_ci=1; next }
+    in_ci && /^[^[:space:]]/ { in_ci=0 }
+    in_ci && /promotion_chain:/ { in_pc=1; next }
+    in_pc && /^[^[:space:]]/ { in_pc=0 }
+    in_pc && ($0 ~ pat_item || $0 ~ pat_cont) {
+      v=$0; sub(".*" k ":[[:space:]]*", "", v)
+      gsub(/["'"'"'[:space:]]/, "", v)
+      if (v != "") { print v; exit }
+    }
+  ' "$config_f" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# _dd_verify_ref <name>
+#   Try origin/<name>, then <name> as a git ref.  Prints the resolved
+#   ref spec on stdout and returns 0, or returns 1 if neither resolves.
+# ---------------------------------------------------------------------------
+_dd_verify_ref() {
+  local name="$1"
+  if git rev-parse --verify "origin/${name}" >/dev/null 2>&1; then
+    printf '%s' "origin/${name}"
+    return 0
+  fi
+  if git rev-parse --verify "$name" >/dev/null 2>&1; then
+    printf '%s' "$name"
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # _dd_resolve_base_branch
-#   Priority: promotion_chain target > origin/HEAD > fail-closed.
+#   Priority: promotion_chain branch > promotion_chain target (deprecated)
+#             > origin/HEAD > fail-closed.
+#   When branch is set but unresolvable, target is NOT consulted.
 # ---------------------------------------------------------------------------
 _dd_resolve_base_branch() {
   local config_f="${_DD_PROJECT_ROOT%/}/${_DD_CONFIG_REL}"
+  local resolved=""
 
-  # Try promotion_chain target.
   if [ -f "$config_f" ]; then
-    local target=""
-    target="$(awk '
-      BEGIN { in_ci=0; in_pc=0 }
-      /^ci_cd:/ { in_ci=1; next }
-      in_ci && /^[^[:space:]]/ { in_ci=0 }
-      in_ci && /promotion_chain:/ { in_pc=1; next }
-      in_pc && /^[^[:space:]]/ { in_pc=0 }
-      in_pc && /^[[:space:]]*-[[:space:]]*target:/ {
-        v=$0; sub(/.*target:[[:space:]]*/, "", v)
-        gsub(/["'"'"'[:space:]]/, "", v)
-        if (v != "") { print v; exit }
-      }
-      in_pc && /target:/ {
-        v=$0; sub(/.*target:[[:space:]]*/, "", v)
-        gsub(/["'"'"'[:space:]]/, "", v)
-        if (v != "") { print v; exit }
-      }
-    ' "$config_f" 2>/dev/null)" || true
-
-    if [ -n "$target" ]; then
-      if git rev-parse --verify "origin/${target}" >/dev/null 2>&1; then
-        printf '%s' "origin/${target}"
+    # Canonical key: promotion_chain branch.
+    local branch_val=""
+    branch_val="$(_dd_chain_key_value "$config_f" "branch")" || true
+    if [ -n "$branch_val" ]; then
+      resolved="$(_dd_verify_ref "$branch_val")" || true
+      if [ -n "$resolved" ]; then
+        printf '%s' "$resolved"
         return 0
       fi
-      if git rev-parse --verify "$target" >/dev/null 2>&1; then
-        printf '%s' "$target"
-        return 0
+      # branch is set but unresolvable — skip target, fall through.
+    else
+      # Legacy fallback: promotion_chain target (deprecated).
+      local target_val=""
+      target_val="$(_dd_chain_key_value "$config_f" "target")" || true
+      if [ -n "$target_val" ]; then
+        printf '%s: DEPRECATION: promotion_chain "target:" is deprecated; use "branch:" instead\n' \
+          "$SCRIPT_NAME" >&2
+        resolved="$(_dd_verify_ref "$target_val")" || true
+        if [ -n "$resolved" ]; then
+          printf '%s' "$resolved"
+          return 0
+        fi
       fi
     fi
   fi
@@ -247,12 +288,31 @@ main() {
   fi
 
   # Determine checkout directory name for path mapping.
+  # In a linked worktree the git toplevel is the worktree directory (e.g.
+  # the story key), not the main checkout.  Resolve the main checkout via
+  # --git-common-dir so path prefixes match predicted_touch_set entries.
   local git_toplevel checkout_dir
   git_toplevel="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     printf '%s: cannot determine git top-level\n' "$SCRIPT_NAME" >&2
     exit 2
   }
-  checkout_dir="${git_toplevel##*/}"
+  local _dd_common_dir
+  _dd_common_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || _dd_common_dir=""
+  if [ -n "$_dd_common_dir" ]; then
+    # Resolve relative paths (main worktree returns ".git").
+    case "$_dd_common_dir" in
+      /*) ;;
+      *)  _dd_common_dir="${git_toplevel}/${_dd_common_dir}" ;;
+    esac
+    # Normalize in a subshell; strip the .git dir to get the main root.
+    _dd_common_dir="$( (cd "$_dd_common_dir" && pwd -P) 2>/dev/null )" || _dd_common_dir=""
+  fi
+  if [ -n "$_dd_common_dir" ]; then
+    checkout_dir="$(dirname "$_dd_common_dir")"
+    checkout_dir="${checkout_dir##*/}"
+  else
+    checkout_dir="${git_toplevel##*/}"
+  fi
 
   # Compute merge-base.
   local merge_base
