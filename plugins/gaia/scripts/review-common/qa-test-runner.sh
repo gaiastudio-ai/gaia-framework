@@ -118,9 +118,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# --code-tree must be a directory when given.
+# --code-tree must be a directory when given; normalise to absolute so that
+# discovery paths and the cd prefix use the same canonical root.
 if [ -n "$CODE_TREE" ] && [ ! -d "$CODE_TREE" ]; then
   die "--code-tree path does not exist or is not a directory: $CODE_TREE"
+fi
+if [ -n "$CODE_TREE" ]; then
+  CODE_TREE="$(cd "$CODE_TREE" && pwd)"
 fi
 
 # ---------- check-evidence mode (read-only, runs no tiers) ----------

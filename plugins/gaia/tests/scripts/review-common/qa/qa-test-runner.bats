@@ -1266,7 +1266,7 @@ BATS
   [ "$interval_hits" -eq 0 ]
 }
 
-# --- RF-1: code-tree governs story-scoped test discovery --------------------
+# --- code-tree governs story-scoped test discovery ---------------------------
 
 @test "story-scoped narrowing discovers tests from the code tree, not the config project_path" {
   # Two distinct trees: "main" (config's project_path) and "tree" (--code-tree).
@@ -1326,7 +1326,7 @@ EOF
   [[ "$cmd" != *"${main_dir}"* ]]
 }
 
-# --- RF-2: bridge path writes tier output log --------------------------------
+# --- bridge path writes tier output log ---------------------------------------
 
 # Helper: write a bridge-enabled config with a stub bridge script.
 _write_bridge_config_with_stub() {
@@ -1381,7 +1381,7 @@ STUB
   [ "$log_found" = "true" ]
 }
 
-# --- RF-3: check-evidence refuses skipped evidence ---------------------------
+# --- check-evidence refuses skipped evidence ----------------------------------
 
 @test "check-evidence refuses when evidence JSON is a skipped run" {
   # A skipped run (e.g. no matching tier) writes skipped:true evidence.
@@ -1454,4 +1454,61 @@ JSON
   [ "$status" -ne 0 ]
   local combined="${output}${stderr}"
   [[ "$combined" == *"not valid JSON"* ]]
+}
+
+# --- relative code-tree path -------------------------------------------------
+
+@test "relative code-tree path is normalised to absolute for story-scoped runs" {
+  # A relative --code-tree must be resolved to absolute so that the scoped
+  # bats command and the cd prefix both use the same canonical path.
+  local parent="$TEST_TMP/rel-parent"
+  local tree_name="rel-tree"
+  local tree_abs="$parent/$tree_name"
+  mkdir -p "$tree_abs/src" "$tree_abs/tests" "$tree_abs/all-tests"
+
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$tree_abs/src/widget.sh"
+  cat > "$tree_abs/tests/widget.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "widget works" { true; }' >> "$tree_abs/tests/widget.bats"
+
+  local story_file="$TEST_TMP/story-rel.md"
+  write_story_with_file_list "$story_file" "src/widget.sh"
+
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${tree_abs}
+project_path: ${tree_abs}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "bats ${tree_abs}/all-tests/"
+    timeout_seconds: 30
+EOF
+
+  # Invoke with a RELATIVE --code-tree from the parent directory.
+  # Use a subshell cd to set the cwd, since env -C is a GNU extension.
+  run --separate-stderr bash -c "
+    cd $(printf '%q' "$parent") && \
+    GAIA_EXECUTION_CONTEXT=local \
+    $(printf '%q' "$QA_TEST_RUNNER") \
+      --story-key $(printf '%q' "$STORY_KEY") \
+      --workdir $(printf '%q' "$WORKDIR") \
+      --config $(printf '%q' "$TEST_TMP/project-config.yaml") \
+      --story-file $(printf '%q' "$story_file") \
+      --code-tree $(printf '%q' "$tree_name")
+  "
+  [ "$status" -eq 0 ]
+
+  # The recorded command must use the absolute path, not the relative one.
+  local cmd
+  cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+  [[ "$cmd" == *"${tree_abs}/tests/widget.bats"* ]]
+  # The suite must pass cleanly (exit_code 0 and fail_count 0).
+  jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
+  jq -e '.suites[0].fail_count == 0' "$WORKDIR/execution-evidence.json" >/dev/null
 }
