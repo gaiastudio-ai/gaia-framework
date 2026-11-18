@@ -137,7 +137,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
-- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode a story-file glob. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any write.
 - Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`).
 - **Persona resolution via `agent-overlay.sh` (V2).** In the parent context, resolve the security reviewer persona via the shared overlay:

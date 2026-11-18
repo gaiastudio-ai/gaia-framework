@@ -3363,7 +3363,7 @@ STORY
   [[ "$output" != *"not a descendant"* ]]
 }
 
-# AC8: all nine review skills use resolve-story-file.sh (no inline flat-glob)
+# AC8: all ten review skills use resolve-story-file.sh (no inline flat-glob)
 @test "all ten review skills use resolve-story-file.sh, no inline flat-glob, and halt on key mismatch" {
   local skills=(
     "gaia-code-review"
@@ -3404,6 +3404,32 @@ STORY
       echo "FAIL: $skill Critical Rules/Step 1 missing key-mismatch halt instruction"
       return 1
     fi
+    # Every story-resolution instruction anywhere in the file (e.g. the
+    # Phase 1 setup step) must use the resolver, carry no inline story-file
+    # glob, and be followed by the key-mismatch halt within a few lines.
+    local resolve_lines
+    resolve_lines="$(grep -nE '[Rr]esolv(e|es|ing) the story file|story file (path )?(via|using)' "$skill_md" | cut -d: -f1)"
+    if [ -z "$resolve_lines" ]; then
+      echo "FAIL: $skill has no story-resolution instruction outside Critical Rules"
+      return 1
+    fi
+    local n line window
+    for n in $resolve_lines; do
+      line="$(sed -n "${n}p" "$skill_md")"
+      if ! grep -q 'resolve-story-file\.sh' <<< "$line"; then
+        echo "FAIL: $skill line $n resolves the story file without resolve-story-file.sh"
+        return 1
+      fi
+      if grep -qE 'canonical glob|using the .*glob' <<< "$line"; then
+        echo "FAIL: $skill line $n still resolves the story file with an inline glob"
+        return 1
+      fi
+      window="$(sed -n "${n},$((n + 4))p" "$skill_md")"
+      if ! grep -qiE 'halt[^.]*mismatch|differ, halt|halts on mismatch' <<< "$window"; then
+        echo "FAIL: $skill line $n story-resolution step lacks the key-mismatch halt"
+        return 1
+      fi
+    done
   done
 }
 
