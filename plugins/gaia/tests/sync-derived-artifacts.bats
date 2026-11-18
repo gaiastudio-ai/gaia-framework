@@ -25,6 +25,21 @@ _sha256_file() {
   fi
 }
 
+# _timeout_cmd SECONDS CMD [ARGS...] — portable timeout wrapper.
+# Uses timeout (GNU coreutils) if present, else gtimeout (Homebrew), else
+# runs the command directly (acceptable when stdin is /dev/null so the
+# pre-fix hang path cannot occur).
+_timeout_cmd() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 SYNC_SCRIPT=""
 
 # _find_enclosing_project — walk up from the test file's directory to find
@@ -11114,9 +11129,9 @@ UX
     fail "fixture already contains NewWidget"
 
   # Run from the base directory with the bare relative path containing '='.
-  # Pipe stdin from /dev/null and use timeout to prevent hanging if the
-  # script reads from stdin when awk gets empty input.
-  run timeout 20 bash -c \
+  # Pipe stdin from /dev/null and use a portable timeout to prevent hanging
+  # if the script reads from stdin when awk gets empty input.
+  run _timeout_cmd 20 bash -c \
     'cd "$1" && "$2" "$3" "dir=name/ux-design.md"' \
     _ "$base_dir" "$SYNC_SCRIPT" "$snapshot" </dev/null
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
@@ -11528,7 +11543,7 @@ DECOY
   decoy_sha_before="$(_sha256_file "$base/real.md")"
 
   # Run from $base (CWD) so "real.md" at CWD is the decoy
-  run timeout 20 bash -c \
+  run _timeout_cmd 20 bash -c \
     'cd "$1" && "$2" "$3" "subdir/link.md"' \
     _ "$base" "$SYNC_SCRIPT" "$snapshot" </dev/null
   [ "$status" -eq 0 ] || fail "sync failed (exit $status): $output"
