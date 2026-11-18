@@ -693,6 +693,10 @@ _reset_reconcile_fixture() {
   { [[ "$stderr" == *"lock_timeout"* ]] || [[ "$stderr" == *"acquisition failed"* ]]; } \
     || { echo "stderr missing reason (lock_timeout or acquisition failed): $stderr"; false; }
 
+  # The outer die must NOT claim the lock was held.
+  [[ "$stderr" != *"locked critical section"* ]] \
+    || { echo "stderr wrongly claims lock was held: $stderr"; false; }
+
   # stdout must NOT contain RECONCILE SUMMARY (no masking from stale .result).
   [[ "$output" != *"RECONCILE SUMMARY"* ]] \
     || { echo "FAIL: RECONCILE SUMMARY appeared despite lock failure: $output"; false; }

@@ -2421,7 +2421,7 @@ cmd_reconcile() {
     _acq_rc=0
     acquire_lock "$SPRINT_STATUS_LOCK" 5 9 || _acq_rc=$?
     if [ "$_acq_rc" -ne 0 ]; then
-      printf 'reconcile: lock acquisition failed: %s (rc=%s)\n' "$SPRINT_STATUS_LOCK" "$_acq_rc" >&2
+      printf '%s: error: lock acquisition failed: %s (rc=%s)\n' "$SCRIPT_NAME" "$SPRINT_STATUS_LOCK" "$_acq_rc" >&2
       exit "$_acq_rc"
     fi
     trap 'release_lock 9 2>/dev/null || true; _cleanup_tmps' EXIT
@@ -2438,7 +2438,7 @@ cmd_reconcile() {
     if [ -n "$_recon_output" ]; then
       printf '%s\n' "$_recon_output" | sed '/^_RECON_COUNTERS_ /d'
     fi
-    die "reconcile failed inside the locked critical section (rc=$sub_rc)"
+    die "reconcile failed (rc=$sub_rc)"
   fi
   local _counters
   _counters=$(printf '%s\n' "$_recon_output" | sed -n 's/^_RECON_COUNTERS_ //p')
