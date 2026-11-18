@@ -749,6 +749,20 @@ _ic_resolve_artifact_dirs() {
   printf '%s\t%s' "$planning_dir" "$test_dir"
 }
 
+# _ic_realpath_owner <realpath_map> <keys_file> <resolved_path>
+#   Print the story key that owns <resolved_path> on the side defined by
+#   <keys_file>. Filters the realpath_map to entries whose owner ($3) is
+#   present in <keys_file>, then prints the first match for the given path.
+#   Defensive backup: the direct-overlap check catches every realistic case
+#   first; this branch is currently unreachable (see Phase 3 invariant).
+_ic_realpath_owner() {
+  local rmap="$1" kf="$2" rpath="$3"
+  awk -F'\t' -v p="$rpath" '
+    NR==FNR { w[$1]=1; next }
+    $2==p && ($3 in w) { print $3; exit }
+  ' "$kf" "$rmap"
+}
+
 # _ic_classify_family <rel_path> <planning_dir> <test_dir>
 #   Classify a PROJECT_ROOT-relative path into a planning-artifact family.
 #   Prints the family name or empty if unclassified.
@@ -1580,8 +1594,10 @@ _ic_run_rules_cd() {
     local act_all_types="$act_types_filtered"
 
     # 1. Direct path overlap (resolved paths).
+    # De-duplicate each side independently so intra-sprint duplicates
+    # (two stories in one sprint sharing a path) cannot trigger uniq -d.
     local overlap_path=""
-    overlap_path="$(sort "$cand_all_paths" "$act_all_paths" 2>/dev/null | uniq -d | head -1)" || true
+    overlap_path="$({ sort -u "$cand_all_paths"; sort -u "$act_all_paths"; } 2>/dev/null | sort | uniq -d | head -1)" || true
     if [ -n "$overlap_path" ]; then
       # Find which stories own this path.
       local ck_owner ak_owner
@@ -1606,9 +1622,11 @@ _ic_run_rules_cd() {
       local real_overlap
       real_overlap="$(sort "$cand_reals" "$act_reals" 2>/dev/null | uniq -d | head -1)" || true
       if [ -n "$real_overlap" ]; then
+        # Defensive: filter owner by side (realpath branch is currently
+        # unreachable via direct-overlap superset, but kept correct for safety).
         local ck_owner ak_owner
-        ck_owner="$(awk -F'\t' -v p="$real_overlap" '$2 == p { print $3; exit }' "$realpath_map")"
-        ak_owner="$(awk -F'\t' -v p="$real_overlap" '$2 == p && NR > 1 { print $3; exit }' "$realpath_map")"
+        ck_owner="$(_ic_realpath_owner "$realpath_map" "$cand_keys_f" "$real_overlap")"
+        ak_owner="$(_ic_realpath_owner "$realpath_map" "$act_keys_f" "$real_overlap")"
         rule_c_fail=1
         rule_c_diag="FAIL rule (c): paths overlap ${ck_owner:-?} and ${ak_owner:-?}: ${real_overlap} (${candidate} -> ${active_id})"
       fi
