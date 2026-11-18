@@ -963,7 +963,7 @@ EOF
   jq -e '.suites[0].exit_code == 0' "$WORKDIR/execution-evidence.json" >/dev/null
 }
 
-# --- tier output log preserved (plan test 3) --------------------------------
+# --- tier output log preserved -----------------------------------------------
 
 @test "tier output log is kept after the run" {
   # The tier output log must survive at a known path after the run.
@@ -1264,4 +1264,194 @@ BATS
   local interval_hits
   interval_hits="$(grep -cE '\{[0-9]+,([0-9]*)?\}' "$QA_TEST_RUNNER" || true)"
   [ "$interval_hits" -eq 0 ]
+}
+
+# --- RF-1: code-tree governs story-scoped test discovery --------------------
+
+@test "story-scoped narrowing discovers tests from the code tree, not the config project_path" {
+  # Two distinct trees: "main" (config's project_path) and "tree" (--code-tree).
+  # Both contain src/widget.sh and tests/widget.bats, but we assert the
+  # recorded command uses tree's path, not main's.
+  local main_dir="$TEST_TMP/main-tree"
+  local code_dir="$TEST_TMP/code-tree"
+  mkdir -p "$main_dir/src" "$main_dir/tests"
+  mkdir -p "$code_dir/src" "$code_dir/tests"
+
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$main_dir/src/widget.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$code_dir/src/widget.sh"
+
+  cat > "$main_dir/tests/widget.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "main widget" { true; }' >> "$main_dir/tests/widget.bats"
+
+  cat > "$code_dir/tests/widget.bats" <<'BATS'
+#!/usr/bin/env bats
+BATS
+  printf '%s\n' '@test "code-tree widget" { true; }' >> "$code_dir/tests/widget.bats"
+
+  local story_file="$TEST_TMP/story-two-tree.md"
+  write_story_with_file_list "$story_file" "src/widget.sh"
+
+  # Config's project_path points at main_dir; --code-tree at code_dir.
+  mkdir -p "${TEST_TMP}/all-tests"
+  cat > "$TEST_TMP/project-config.yaml" <<EOF
+project_root: ${main_dir}
+project_path: ${main_dir}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution:
+  tier_1:
+    placement: local
+    command: "bats ${main_dir}/all-tests/"
+    timeout_seconds: 30
+EOF
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml" \
+      --story-file "$story_file" \
+      --code-tree "$code_dir"
+  [ "$status" -eq 0 ]
+
+  # The recorded command must reference the code tree's test file.
+  local cmd
+  cmd="$(jq -r '.suites[0].command' "$WORKDIR/execution-evidence.json")"
+  [[ "$cmd" == *"${code_dir}/tests/widget.bats"* ]]
+  [[ "$cmd" != *"${main_dir}"* ]]
+}
+
+# --- RF-2: bridge path writes tier output log --------------------------------
+
+# Helper: write a bridge-enabled config with a stub bridge script.
+_write_bridge_config_with_stub() {
+  local config_path="$1" bridge_script="$2"
+  cat > "$config_path" <<EOF
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+memory_path: ${TEST_TMP}/_memory
+checkpoint_path: ${TEST_TMP}/_memory/checkpoints
+installed_path: ${TEST_TMP}
+framework_version: "1.134.1"
+date: "2026-05-05"
+test_execution_bridge:
+  bridge_enabled: true
+  run_tests_path: ${bridge_script}
+test_execution:
+  tier_1:
+    placement: local
+    command: "true"
+    timeout_seconds: 30
+EOF
+}
+
+@test "bridge path preserves tier output log" {
+  # A bridge-enabled run must write qa-tier-output-<sha>.log.
+  local bridge_script="${TEST_TMP}/stub-bridge.sh"
+  cat > "$bridge_script" <<'STUB'
+#!/usr/bin/env bash
+printf 'bridge output line 1\n'
+cat <<JSON
+{"suites":[{"name":"bridge","exit_code":0,"pass_count":1,"fail_count":0,"duration_seconds":0.01}]}
+JSON
+exit 0
+STUB
+  chmod +x "$bridge_script"
+
+  _write_bridge_config_with_stub "$TEST_TMP/project-config.yaml" "$bridge_script"
+
+  run --separate-stderr env GAIA_EXECUTION_CONTEXT=local \
+    "$QA_TEST_RUNNER" \
+      --story-key "$STORY_KEY" \
+      --workdir "$WORKDIR" \
+      --config "$TEST_TMP/project-config.yaml"
+  [ "$status" -eq 0 ]
+
+  # A tier output log must exist in WORKDIR.
+  local log_found=false
+  local f
+  for f in "$WORKDIR"/qa-tier-output-*.log; do
+    if [ -f "$f" ]; then log_found=true; break; fi
+  done
+  [ "$log_found" = "true" ]
+}
+
+# --- RF-3: check-evidence refuses skipped evidence ---------------------------
+
+@test "check-evidence refuses when evidence JSON is a skipped run" {
+  # A skipped run (e.g. no matching tier) writes skipped:true evidence.
+  # Even with a valid tier log for the current SHA, the gate must refuse
+  # because a skipped run is not real execution evidence.
+  _make_evidence_fixture skipped-json --log
+  cat > "$_CE_DIR/execution-evidence.json" <<'JSON'
+{
+  "tier": "none",
+  "context": "local",
+  "wall_clock_seconds": 0,
+  "skipped": true,
+  "bridge_used": false,
+  "suites": [],
+  "diagnostics": ["test_execution not configured; skipping test execution"]
+}
+JSON
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"skipped"* ]]
+}
+
+@test "check-evidence refuses skipped evidence even without jq on PATH" {
+  # The skipped-run check must not fail open when jq is absent. Build a
+  # shim PATH with every tool the check-evidence path needs except jq.
+  _make_evidence_fixture skipped-nojq --log
+  cat > "$_CE_DIR/execution-evidence.json" <<'JSON'
+{
+  "tier": "none",
+  "context": "local",
+  "wall_clock_seconds": 0,
+  "skipped": true,
+  "bridge_used": false,
+  "suites": [],
+  "diagnostics": ["test_execution not configured; skipping test execution"]
+}
+JSON
+
+  local shim_bin="$TEST_TMP/no-jq-bin"
+  mkdir -p "$shim_bin"
+  local tool tool_path
+  for tool in sh bash env git grep sed awk cat printf rm mkdir dirname basename \
+              head tail tr cut readlink stat; do
+    tool_path="$(command -v "$tool" 2>/dev/null)" || continue
+    ln -sf "$tool_path" "$shim_bin/$tool"
+  done
+  # Verify the premise: jq must not be reachable through the shim PATH.
+  PATH="$shim_bin" command -v jq >/dev/null 2>&1 && \
+    { echo "shim PATH still resolves jq"; false; }
+
+  run --separate-stderr env \
+    PATH="$shim_bin" \
+    "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"skipped"* ]]
+}
+
+@test "check-evidence refuses when evidence file is invalid JSON" {
+  # Malformed JSON must not be accepted — the gate must fail closed.
+  _make_evidence_fixture bad-json --log
+  printf 'THIS IS NOT JSON {{{' > "$_CE_DIR/execution-evidence.json"
+
+  run --separate-stderr "$QA_TEST_RUNNER" \
+    --check-evidence --workdir "$_CE_DIR" --code-tree "$_CE_REPO"
+  [ "$status" -ne 0 ]
+  local combined="${output}${stderr}"
+  [[ "$combined" == *"not valid JSON"* ]]
 }

@@ -140,6 +140,41 @@ check_evidence_mode() {
     || { err "missing tier output log: ${WORKDIR}/qa-tier-output-${sha}.log"; missing=1; }
   [ -f "${WORKDIR}/execution-evidence.json" ] \
     || { err "missing evidence file: ${WORKDIR}/execution-evidence.json"; missing=1; }
+
+  # A skipped run (no matching tier, test_execution absent) is not real
+  # execution evidence — refuse it even when both files are present.
+  # This is a gate check: every branch must fail closed (never accept on
+  # error, unreadable file, or malformed JSON).
+  if [ "$missing" -eq 0 ]; then
+    local _ev="${WORKDIR}/execution-evidence.json"
+    if [ ! -r "$_ev" ]; then
+      err "evidence file is not readable: $_ev"
+      missing=1
+    elif command -v jq >/dev/null 2>&1; then
+      local skipped
+      skipped="$(jq -r '.skipped // false' "$_ev" 2>&1)" || {
+        err "evidence file is not valid JSON: $_ev"
+        missing=1
+      }
+      if [ "$missing" -eq 0 ] && [ "$skipped" = "true" ]; then
+        err "evidence is a skipped run (no tiers executed)"
+        missing=1
+      fi
+    else
+      # POSIX fallback when jq is not on PATH. grep exit 1 = no match
+      # (not skipped, accept); exit >=2 = error (fail closed).
+      local _grep_rc=0
+      grep -Eq '"skipped"[[:space:]]*:[[:space:]]*true' "$_ev" || _grep_rc=$?
+      if [ "$_grep_rc" -eq 0 ]; then
+        err "evidence is a skipped run (no tiers executed)"
+        missing=1
+      elif [ "$_grep_rc" -ge 2 ]; then
+        err "evidence file is not readable: $_ev"
+        missing=1
+      fi
+    fi
+  fi
+
   return "$missing"
 }
 
@@ -571,6 +606,10 @@ run_bridge() {
   fi
   BRIDGE_EXIT="$rc"
   BRIDGE_DURATION="$dur"
+  # Preserve the bridge output in the tier log (same contract as direct path).
+  if [ -n "${TIER_LOG:-}" ]; then
+    cat "$out_file" >> "$TIER_LOG" 2>/dev/null || true
+  fi
   rm -f "$out_file"
   return 0
 }
@@ -721,6 +760,13 @@ else
   info "heavy-reviewer-slots.sh not found; proceeding without concurrency cap"
 fi
 
+# Resolve the code tree HEAD for the tier output log filename. Placed before
+# both the bridge and direct paths so either can write the log.
+_head_sha="$(git -C "${CODE_TREE:-.}" rev-parse HEAD 2>/dev/null || echo unknown)"
+TIER_LOG="${WORKDIR}/qa-tier-output-${_head_sha}.log"
+# A re-run overwrites any prior log for this SHA.
+rm -f "$TIER_LOG"
+
 # Bridge delegation — single bridge call covers all active tiers.
 if [ "$BRIDGE_ENABLED" = "true" ] && [ -n "$BRIDGE_PATH" ]; then
   if run_bridge "$BRIDGE_PATH"; then
@@ -756,18 +802,24 @@ fi
 
 SCOPED_TEST_CMD=""
 if [ -n "$STORY_FILE" ] && [ "$CONTEXT" = "local" ]; then
-  # Resolve project_path from the config (used as base for test discovery).
-  _project_path="$(awk '
-    /^project_path[[:space:]]*:/ {
-      sub(/^project_path[[:space:]]*:[[:space:]]*/, "")
-      sub(/[[:space:]]*$/, "")
-      gsub(/"/, "")
-      gsub(/'\''/, "")
-      print
-      exit
-    }
-  ' "$CONFIG")"
-  [ -n "$_project_path" ] || _project_path="$(dirname "$CONFIG")"
+  # Resolve the discovery root for story-scoped test files. When --code-tree
+  # is set, tests live there (the story worktree); otherwise fall back to the
+  # config's project_path (backward compatible).
+  if [ -n "$CODE_TREE" ]; then
+    _project_path="$CODE_TREE"
+  else
+    _project_path="$(awk '
+      /^project_path[[:space:]]*:/ {
+        sub(/^project_path[[:space:]]*:[[:space:]]*/, "")
+        sub(/[[:space:]]*$/, "")
+        gsub(/"/, "")
+        gsub(/'\''/, "")
+        print
+        exit
+      }
+    ' "$CONFIG")"
+    [ -n "$_project_path" ] || _project_path="$(dirname "$CONFIG")"
+  fi
 
   if [ -r "$STORY_FILE" ]; then
     _file_list="$(extract_story_file_list "$STORY_FILE" || true)"
@@ -811,11 +863,6 @@ EOF
   fi
 fi
 
-# Resolve the code tree HEAD for the tier output log filename.
-_head_sha="$(git -C "${CODE_TREE:-.}" rev-parse HEAD 2>/dev/null || echo unknown)"
-TIER_LOG="${WORKDIR}/qa-tier-output-${_head_sha}.log"
-# A re-run overwrites any prior log for this SHA.
-rm -f "$TIER_LOG"
 # Diagnostic messages accumulated across tiers (comma-separated JSON strings).
 _DIAGNOSTICS=""
 
