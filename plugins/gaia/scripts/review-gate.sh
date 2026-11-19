@@ -10,7 +10,7 @@
 # Invocation contract (stable for bats-core authors):
 #
 #   review-gate.sh check             --story <key>
-#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
+#   review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--repo <path>] [--plan-id <id>]
 #   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
 #   review-gate.sh review-gate-check --story <key>
 #   review-gate.sh --help
@@ -344,7 +344,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   review-gate.sh check             --story <key>
-  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--plan-id <id>]
+  review-gate.sh update            --story <key> --gate <name> --verdict <PASSED|FAILED|UNVERIFIED> [--sha <sha>] [--repo <path>] [--plan-id <id>]
   review-gate.sh status            --story <key> [--gate <name> --plan-id <id>]
   review-gate.sh review-gate-check --story <key>
   review-gate.sh carry-forward     --story <key> --row <gate> --from <sha> --to <sha>
@@ -396,6 +396,12 @@ Flags:
   --story <key>      Story key (required for all subcommands).
   --gate <name>      Gate name (required for update; optional for status).
   --verdict <V>      Verdict value (required for update).
+  --repo <path>      Story repository (the story worktree) used to validate
+                     --sha, to bind HEAD when --sha is omitted, and to check
+                     whether the SHA descends from the one previously
+                     recorded for the gate (update only). Must be a git work
+                     tree; anything else is refused. Defaults to
+                     $PROJECT_PATH, then ".".
   --sha <sha>        Commit SHA to bind the verdict to (update only).
                      Defaults to the worktree HEAD; 'none' outside a git
                      work tree.
@@ -1264,7 +1270,7 @@ main() {
   esac
 
   local story_key="" gate_name="" verdict="" plan_id="" sprint_id=""
-  local sha_arg="" carry_from="" carry_to="" carry_row="" carry_evidence=""
+  local repo_arg="" sha_arg="" sha_given=0 carry_from="" carry_to="" carry_row="" carry_evidence=""
   # Proof-of-execution flags:
   # --report <path> — path to the per-review report file written by the dispatched skill.
   # --execution-evidence <path> — path to execution-evidence.json (required for test-execution gates).
@@ -1323,9 +1329,14 @@ main() {
         [ $# -ge 2 ] || die "--report-missing-reason requires a value"
         report_missing_reason="$2"; shift 2
         ;;
+      --repo)
+        [ $# -ge 2 ] || die "--repo requires a value"
+        [ -n "$2" ] || die "--repo was given with an empty value"
+        repo_arg="$2"; shift 2
+        ;;
       --sha)
         [ $# -ge 2 ] || die "--sha requires a value"
-        sha_arg="$2"; shift 2
+        sha_arg="$2"; sha_given=1; shift 2
         ;;
       --row)
         [ $# -ge 2 ] || die "--row requires a value"
@@ -1603,10 +1614,26 @@ main() {
       # Resolve the SHA for the Reviewed SHA column. Default to the
       # worktree HEAD when not explicitly provided; "none" outside a git
       # work tree. This preserves backward compatibility — existing callers
-      # that omit --sha get automatic HEAD binding.
+      # that omit --sha get automatic HEAD binding. An explicitly empty
+      # --sha (flag given with blank value) is refused — callers must
+      # either pass a real SHA or omit the flag entirely.
+      if [ "$sha_given" -eq 1 ] && [ -z "$sha_arg" ]; then
+        die "--sha was given with an empty value; pass a commit SHA or omit --sha to auto-bind HEAD"
+      fi
+      # An explicit --repo names the story repository; it must be a git
+      # work tree. An invalid --repo is refused before anything is written.
+      if [ -n "$repo_arg" ]; then
+        case "$repo_arg" in
+          -*) die "--repo starts with '-' — refusing" ;;
+        esac
+        # rev-parse exits 0 and prints "false" inside a .git directory or a
+        # bare repository, so the printed value is what decides.
+        [ "$(git -C "$repo_arg" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] \
+          || die "--repo '$repo_arg' is not a git work tree — refusing to record the gate"
+      fi
       local resolved_sha="$sha_arg"
       if [ -z "$resolved_sha" ]; then
-        local pp="${PROJECT_PATH:-.}"
+        local pp="${repo_arg:-${PROJECT_PATH:-.}}"
         if git -C "$pp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
           resolved_sha="$(git -C "$pp" rev-parse HEAD 2>/dev/null)" || resolved_sha="none"
         else
@@ -1616,8 +1643,44 @@ main() {
         # Explicit --sha: validate table-safety and hex format.
         _validate_table_value "--sha" "$resolved_sha"
         if [ "$resolved_sha" != "none" ]; then
-          local pp="${PROJECT_PATH:-.}"
+          local pp="${repo_arg:-${PROJECT_PATH:-.}}"
           resolved_sha="$(_validate_sha_arg "--sha" "$resolved_sha" "$pp")"
+        fi
+      fi
+
+      # Non-descendant SHA advisory warning. Never changes the exit code
+      # or blocks the write — purely informational stderr output. The
+      # ancestry check runs in the story repository: --repo when given,
+      # else $PROJECT_PATH, else ".". When ancestry cannot be evaluated
+      # (not a git work tree, a SHA missing from the repo, or a git error)
+      # a distinct NOTICE is printed instead — never a silent skip.
+      if [ "$resolved_sha" != "none" ] && [ -n "$resolved_sha" ]; then
+        local _prior_sha=""
+        _prior_sha="$(parse_review_gate_table "$STORY_FILE" 2>/dev/null \
+          | awk -F'\t' -v g="$gate_name" '$1 == g { print $4 }')" || _prior_sha=""
+        if [ -n "$_prior_sha" ] && [ "$_prior_sha" != "absent" ] && [ "$_prior_sha" != "none" ]; then
+          local _anc_repo="${repo_arg:-${PROJECT_PATH:-.}}" _anc_why="" _anc_rc=0
+          if ! git -C "$_anc_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            _anc_why="$_anc_repo is not a git work tree"
+          elif ! git -C "$_anc_repo" cat-file -e "${_prior_sha}^{commit}" 2>/dev/null; then
+            _anc_why="prior SHA $_prior_sha is not present in $_anc_repo"
+          elif ! git -C "$_anc_repo" cat-file -e "${resolved_sha}^{commit}" 2>/dev/null; then
+            _anc_why="new SHA $resolved_sha is not present in $_anc_repo"
+          else
+            git -C "$_anc_repo" merge-base --is-ancestor "$_prior_sha" "$resolved_sha" 2>/dev/null || _anc_rc=$?
+            case "$_anc_rc" in
+              0) ;;
+              1)
+                printf '%s: WARNING — new SHA %s is not a descendant of prior SHA %s for gate "%s" (possible rebase/force-push); row still written\n' \
+                  "$SCRIPT_NAME" "$resolved_sha" "$_prior_sha" "$gate_name" >&2
+                ;;
+              *) _anc_why="git merge-base failed (exit $_anc_rc) in $_anc_repo" ;;
+            esac
+          fi
+          if [ -n "$_anc_why" ]; then
+            printf '%s: NOTICE — cannot check whether new SHA %s descends from prior SHA %s for gate "%s": %s; row still written\n' \
+              "$SCRIPT_NAME" "$resolved_sha" "$_prior_sha" "$gate_name" "$_anc_why" >&2
+          fi
         fi
       fi
 
