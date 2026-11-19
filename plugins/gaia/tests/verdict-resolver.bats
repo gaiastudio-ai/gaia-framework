@@ -1631,8 +1631,9 @@ JSON
   [ "$leftover" -eq 0 ]
 }
 
-@test "resolver fallback: jq fallback branch emits its diagnostic to stderr" {
-  # Narrow PATH to force the jq fallback (no python3/ajv).
+@test "resolver: jq structural fallback approves valid input and blocks invalid input" {
+  # Narrow PATH so neither ajv nor python3 (with jsonschema) is reachable,
+  # forcing the resolver to use the jq-only structural fallback.
   local jq_path
   jq_path="$(command -v jq)"
   local jq_link_dir="$BATS_TEST_TMPDIR/jq-only"
@@ -1646,24 +1647,27 @@ exit 127
 STUB
   chmod +x "$hide_dir/python3"
   local narrowed="$hide_dir:$jq_link_dir:/usr/bin:/bin"
-  # Confirm python3 is blocked
-  run -127 env PATH="$narrowed" bash -c 'python3 -c "import jsonschema" 2>/dev/null'
-  # Build valid analysis -> should APPROVE via jq fallback
+  # Confirm the full validator is blocked (python3 stub exits 127)
+  run -127 env PATH="$narrowed" python3 -c "import jsonschema" 2>/dev/null
+
+  # 1) Valid analysis -> APPROVE via jq structural fallback
   write_analysis "$BATS_TEST_TMPDIR/a.json" '[{"name":"check1","status":"passed","findings":[]}]'
   write_findings "$BATS_TEST_TMPDIR/f.json" '[]'
   run --separate-stderr env PATH="$narrowed" "$SCRIPT" \
     --analysis-results "$BATS_TEST_TMPDIR/a.json" --llm-findings "$BATS_TEST_TMPDIR/f.json"
   [ "$status" -eq 0 ]
   [ "$output" = "APPROVE" ]
-  # The jq fallback itself does not emit a diagnostic, but the validator
-  # library's fallback path means the schema validator was not found (rc=3).
-  # Verify that the schema validator did NOT run successfully: ajv/python3
-  # should not be reachable, so either the validator script fell through
-  # to rc=3, or the lib was not found. The key assertion is that this
-  # PATH produces the same APPROVE without the full validator.
-  # Prove the fallback ran by checking that python3 is unreachable in this env.
-  run env PATH="$narrowed" bash -c 'command -v python3 && python3 -c "import jsonschema" 2>/dev/null'
-  [ "$status" -ne 0 ]
+
+  # 2) Invalid analysis (missing checks key) -> BLOCKED via jq structural check.
+  #    This proves the fallback branch ran and caught the structural violation.
+  cat > "$BATS_TEST_TMPDIR/bad.json" <<'JSON'
+{"schema_version":"1.0","tools":[]}
+JSON
+  write_findings "$BATS_TEST_TMPDIR/f2.json" '[]'
+  run --separate-stderr env PATH="$narrowed" "$SCRIPT" \
+    --analysis-results "$BATS_TEST_TMPDIR/bad.json" --llm-findings "$BATS_TEST_TMPDIR/f2.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
 }
 
 # ===========================================================================
@@ -1771,4 +1775,71 @@ JSON
   [ "$status" -eq 0 ]
   # Must be APPROVE (not BLOCKED from extension check)
   [ "$output" = "APPROVE" ]
+}
+
+# ===========================================================================
+# Analyzer: no temp files left after a successful run
+# ===========================================================================
+
+@test "analyzer: no temp files remain in TMPDIR after a successful run" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  local custom_tmpdir="$BATS_TEST_TMPDIR/analyzer-tmpdir"
+  mkdir -p "$custom_tmpdir"
+  _write_story_fixture "$BATS_TEST_TMPDIR/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$BATS_TEST_TMPDIR/tests"
+  _write_bats_fixture "$BATS_TEST_TMPDIR/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  run env TMPDIR="$custom_tmpdir" "$analyzer" --story-file "$BATS_TEST_TMPDIR/story.md" \
+    --story-key "$_FK99" --test-dir "$BATS_TEST_TMPDIR/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Verify the output is valid before checking for leftovers
+  echo "$output" | jq -e '.name == "ac-coverage"'
+  # No files should remain in the custom TMPDIR after a clean exit
+  local leftover
+  leftover="$(find "$custom_tmpdir" -type f 2>/dev/null | wc -l)"
+  [ "$leftover" -eq 0 ]
+}
+
+# ===========================================================================
+# Analyzer: duplicate AC ids emit a non-blocking warning
+# ===========================================================================
+
+@test "analyzer: duplicate AC id emits non-blocking ac-quality warning naming the duplicate" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$BATS_TEST_TMPDIR/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.' \
+    '- [ ] **AC1:** Given a user, when they submit data, then it is saved.'
+  mkdir -p "$BATS_TEST_TMPDIR/tests"
+  _write_bats_fixture "$BATS_TEST_TMPDIR/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  run "$analyzer" --story-file "$BATS_TEST_TMPDIR/story.md" --story-key "$_FK99" \
+    --test-dir "$BATS_TEST_TMPDIR/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Must emit an ac-quality finding that names the duplicate
+  echo "$output" | jq -e '.findings[] | select(.rule == "ac-quality") | select(.message | test("[Dd]uplicate")) | select(.message | test("AC1"))'
+  # The finding must be non-blocking
+  echo "$output" | jq -e '.findings[] | select(.rule == "ac-quality") | select(.message | test("[Dd]uplicate")) | .blocking == false'
+}
+
+# ===========================================================================
+# Analyzer: backslash and double-quote in unattributed data produce valid JSON
+# ===========================================================================
+
+@test "analyzer: backslash and double-quote in unattributed data round-trip through jq" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$BATS_TEST_TMPDIR/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$BATS_TEST_TMPDIR/tests"
+  _write_bats_fixture "$BATS_TEST_TMPDIR/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  # Unattributed file: filename has a double quote, test name has a backslash.
+  # Use printf with split @/%s token to avoid inflating bats' test plan.
+  printf '@%s "has a \\ in name" { true; }\n' "test" > "$BATS_TEST_TMPDIR/tests/dq\".bats"
+  run "$analyzer" --story-file "$BATS_TEST_TMPDIR/story.md" --story-key "$_FK99" \
+    --test-dir "$BATS_TEST_TMPDIR/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # JSON must be valid (implicit: jq -e parses it without error)
+  echo "$output" | jq -e '.name == "ac-coverage"'
+  # The backslash identifier must survive the JSON round-trip
+  echo "$output" | jq -e '[.unattributed_tests[] | select(.identifier | contains("\\"))] | length > 0'
+  # The double-quote file path must survive the JSON round-trip
+  echo "$output" | jq -e '[.unattributed_tests[] | select(.file | contains("dq"))] | length > 0'
 }

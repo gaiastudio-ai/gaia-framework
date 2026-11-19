@@ -51,14 +51,33 @@ done
 [ -n "$STORY_KEY" ]  || { printf 'ac-coverage-analyzer.sh: missing required --story-key\n' >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Stopwords list (used by fallback matching)
+# Single work directory — cleaned by one EXIT trap
+# ---------------------------------------------------------------------------
+
+_TMPDIR="${TMPDIR:-/tmp}"
+_WORKDIR="$(mktemp -d "$_TMPDIR/ac-cov-XXXXXX")"
+trap 'rm -rf "$_WORKDIR"' EXIT
+
+_AC_LIST="$_WORKDIR/aclist"
+_TEST_PAIRS="$_WORKDIR/testpairs"
+_FINDINGS="$_WORKDIR/findings"
+_AC_RESULTS="$_WORKDIR/acresults"
+_NDJSON_AC="$_WORKDIR/ndjson-ac"
+_NDJSON_FINDINGS="$_WORKDIR/ndjson-find"
+_NDJSON_UNATTR="$_WORKDIR/ndjson-unattr"
+_PATTERNS="$_WORKDIR/patterns"
+_MATCH_OUT="$_WORKDIR/matchout"
+
+# ---------------------------------------------------------------------------
+# Stopwords list (shared between shell and awk)
 # Stopwords are stripped so single-word phrases like "user" or "submit" do not
 # produce false PARTIALLY MET matches against unrelated test identifiers.
 # "when", "then", "given" are included because the G/W/T keywords themselves
 # carry no semantic value once the phrase has been split.
 # ---------------------------------------------------------------------------
 
-_STOPWORDS=" a an the is are was were to of in on with for that it and or but not when then given should must can will be "
+_STOPWORDS_LIST="a an the is are was were to of in on with for that it and or but not when then given should must can will be"
+_STOPWORDS=" $_STOPWORDS_LIST "
 
 _is_stopword() {
   case "$_STOPWORDS" in
@@ -91,16 +110,6 @@ PRIORITY="$(_read_priority)"
 # ---------------------------------------------------------------------------
 
 # Each line: AC_ID<TAB>IS_EDGE<TAB>HAS_GWT<TAB>AC_TEXT_AFTER_COLON
-_TMPDIR="${TMPDIR:-/tmp}"
-_AC_LIST="$(mktemp "$_TMPDIR/aclist-XXXXXX")"
-_TEST_PAIRS="$(mktemp "$_TMPDIR/testpairs-XXXXXX")"
-_UNATTR="$(mktemp "$_TMPDIR/unattr-XXXXXX")"
-_FINDINGS="$(mktemp "$_TMPDIR/findings-XXXXXX")"
-_AC_RESULTS="$(mktemp "$_TMPDIR/acresults-XXXXXX")"
-_NDJSON_AC="$(mktemp "$_TMPDIR/ndjson-ac-XXXXXX")"
-_NDJSON_FINDINGS="$(mktemp "$_TMPDIR/ndjson-find-XXXXXX")"
-_NDJSON_UNATTR="$(mktemp "$_TMPDIR/ndjson-unattr-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
 
 # AC id allowlist: must match ^AC[A-Za-z0-9_-]*$
 _valid_ac_id() {
@@ -118,6 +127,13 @@ _valid_ac_id() {
 }
 
 # Extract ACs — accept both unchecked (- [ ]) and checked (- [x]/- [X]) forms
+: > "$_AC_LIST"
+: > "$_NDJSON_AC"
+: > "$_NDJSON_FINDINGS"
+
+# Track seen AC ids for duplicate detection
+_seen_ac_ids=""
+
 while IFS= read -r line; do
   # Extract the text between the first ** pair (the bold label).
   _bold_text="$(printf '%s' "$line" | sed -n 's/^- \[[ xX]\] \*\*\([^*]*\)\*\*.*/\1/p')"
@@ -140,6 +156,18 @@ while IFS= read -r line; do
       >> "$_NDJSON_FINDINGS"
     continue
   fi
+
+  # Duplicate AC id detection: emit a non-blocking warning
+  case "$_seen_ac_ids" in
+    *"|$ac_id|"*)
+      jq -nc --arg id "$ac_id" \
+        '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Duplicate AC id: " + $id)}' \
+        >> "$_NDJSON_FINDINGS"
+      # Skip the duplicate — the first occurrence is authoritative
+      continue
+      ;;
+  esac
+  _seen_ac_ids="${_seen_ac_ids}|${ac_id}|"
 
   # Edge-case detection: id contains "EC" (case-insensitive)
   is_edge=0
@@ -282,11 +310,10 @@ _extract_identifiers() {
 }
 
 # ---------------------------------------------------------------------------
-# Build (file, identifier) pairs and separate attributed vs unattributed
+# Build (file, identifier) pairs
 # ---------------------------------------------------------------------------
 
-_test_files="$(mktemp "$_TMPDIR/testfiles-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
+_test_files="$_WORKDIR/testfiles"
 
 _find_tests "$TEST_DIR" "$STACK" | sort > "$_test_files"
 
@@ -308,27 +335,6 @@ while IFS= read -r tf; do
     printf '%s\t%s\n' "$tf" "$ident"
   done < <(_extract_identifiers "$tf" "$STACK")
 done < "$_test_files" | sort > "$_TEST_PAIRS"
-
-# Separate attributed vs unattributed.
-# Attribution requires the story key to be bounded: preceded by a non-alnum or
-# start, and followed by a non-digit or end.  This prevents a shorter key from
-# matching a path/identifier that contains a longer key with the same prefix.
-: > "$_UNATTR"
-_ATTR_PAIRS="$(mktemp "$_TMPDIR/attrpairs-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
-
-_key_re="$(printf '%s' "$STORY_KEY" | sed 's/[][\.^$*+?(){}|/]/\\&/g')"
-_attr_re="(^|[^[:alnum:]])${_key_re}([^0-9]|$)"
-
-while IFS="$(printf '\t')" read -r tf ident; do
-  [ -n "$tf" ] || continue
-  if printf '%s' "$tf" | grep -qE "$_attr_re" 2>/dev/null || \
-     printf '%s' "$ident" | grep -qE "$_attr_re" 2>/dev/null; then
-    printf '%s\t%s\n' "$tf" "$ident" >> "$_ATTR_PAIRS"
-  else
-    printf '%s\t%s\n' "$tf" "$ident" >> "$_UNATTR"
-  fi
-done < "$_TEST_PAIRS"
 
 # ---------------------------------------------------------------------------
 # Fallback helper: extract content words from a phrase
@@ -353,63 +359,6 @@ _content_words() {
     eval "$_cw_save_glob" 2>/dev/null || true
     printf '%s' "$result"
   }
-}
-
-# ---------------------------------------------------------------------------
-# Fallback helper: normalize an identifier for phrase matching
-# Applies camelCase split, lowercasing, separator normalization, and
-# stopword removal — same normalization as _content_words applies to phrases.
-# ---------------------------------------------------------------------------
-
-_normalize_identifier() {
-  # Insert space at lower->upper transitions, lowercase, _ and - -> space,
-  # then remove stopwords for symmetric matching with AC phrases.
-  printf '%s' "$1" \
-    | sed 's/\([a-z]\)\([A-Z]\)/\1 \2/g' \
-    | tr '[:upper:]' '[:lower:]' \
-    | tr '_-' '  ' \
-    | tr -s ' ' | {
-    local result="" w _ni_save_glob
-    _ni_save_glob="$(set +o | grep noglob)" || true
-    set -f
-    read -r line
-    for w in $line; do
-      if ! _is_stopword "$w"; then
-        if [ -n "$result" ]; then
-          result="$result $w"
-        else
-          result="$w"
-        fi
-      fi
-    done
-    eval "$_ni_save_glob" 2>/dev/null || true
-    printf '%s' "$result"
-  }
-}
-
-# ---------------------------------------------------------------------------
-# Fallback helper: check if a phrase matches in a normalized identifier
-# A phrase matches when at least one consecutive content-word pair (w1, w2)
-# matches grep -qE "${w1}[^[:alnum:]]+${w2}" in the normalized identifier.
-# ---------------------------------------------------------------------------
-
-_phrase_matches_in_ident() {
-  local phrase_words="$1" norm_ident="$2"
-  # phrase_words is space-separated content words
-  local prev="" w _pm_save_glob
-  _pm_save_glob="$(set +o | grep noglob)" || true
-  set -f
-  for w in $phrase_words; do
-    if [ -n "$prev" ]; then
-      if printf '%s' "$norm_ident" | grep -qE "${prev}[^[:alnum:]]+${w}" 2>/dev/null; then
-        eval "$_pm_save_glob" 2>/dev/null || true
-        return 0
-      fi
-    fi
-    prev="$w"
-  done
-  eval "$_pm_save_glob" 2>/dev/null || true
-  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -479,33 +428,34 @@ _word_count() {
 }
 
 # ---------------------------------------------------------------------------
-# Per-AC matching — single awk pass over attributed pairs
+# Per-AC matching — single awk pass over all test pairs
 #
 # Phase 1 (shell): pre-compute per-AC data (O(ACs) subprocesses — bounded).
 #   - Skip no-G/W/T ACs with their findings.
 #   - Build primary regex and fallback phrase words for each matchable AC.
-#   - Write a patterns file: ac_id<TAB>primary_re<TAB>gw<TAB>ww<TAB>tw
+#   - Write a patterns file: ac_id<TAB>primary_re<TAB>fb_possible<TAB>is_edge<TAB>gw<TAB>ww<TAB>tw
 #
-# Phase 2 (one awk invocation): read patterns, then read all attributed pairs.
-#   - For each pair, test path and identifier against every AC primary regex.
+# Phase 2 (one awk invocation): read patterns, then read ALL test pairs.
+#   - For each pair, check attribution against the story key (bounded regex).
+#   - For attributed pairs, test path and identifier against every AC primary regex.
 #   - For ACs with no primary match, normalize identifiers and do fallback
 #     word-pair matching entirely inside awk (no per-pair subprocesses).
-#   - Output: ac_id<TAB>primary_count<TAB>fallback_count per AC.
+#   - Collect unattributed pairs and emit their NDJSON in the END block.
+#   - Output: ac_id<TAB>primary_count<TAB>fallback_count<TAB>is_edge per AC,
+#     plus NDJSON lines for unattributed tests written to a separate file.
 #
 # Phase 3 (shell): read awk output and write results/findings.
 #
 # Process count is O(ACs) for shell pre-computation + O(1) for the awk pass,
-# independent of the number of attributed pairs.
+# independent of the number of test pairs.
 # ---------------------------------------------------------------------------
 
 : > "$_FINDINGS"
 : > "$_AC_RESULTS"
+: > "$_PATTERNS"
 
 _any_not_met=0
 _all_skipped=1  # becomes 0 when at least one AC is not skipped
-
-_PATTERNS="$(mktemp "$_TMPDIR/patterns-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_PATTERNS"' EXIT
 
 # Phase 1: pre-compute patterns (bounded subprocess count, one per AC)
 while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
@@ -545,41 +495,67 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
     then_words=""
   fi
 
-  # patterns file: ac_id<TAB>primary_re<TAB>fb_possible<TAB>gw<TAB>ww<TAB>tw
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$ac_id" "$primary_re" "$_fb_possible" "$given_words" "$when_words" "$then_words" \
+  # patterns file: ac_id<TAB>primary_re<TAB>fb_possible<TAB>is_edge<TAB>gw<TAB>ww<TAB>tw
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$ac_id" "$primary_re" "$_fb_possible" "$is_edge" "$given_words" "$when_words" "$then_words" \
     >> "$_PATTERNS"
 done < "$_AC_LIST"
 
-# Phase 2: single awk pass — primary + fallback matching over all pairs.
-# The awk program reads the patterns file first (phase==1), then processes
-# attributed pairs (phase==2). No per-pair subprocesses.
-_MATCH_OUT="$(mktemp "$_TMPDIR/matchout-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_PATTERNS" "$_MATCH_OUT"' EXIT
+# Build the attribution regex for the story key (ERE).
+# A story key is attributed when it is preceded by start or non-alphanumeric
+# and followed by end or a non-digit.
+_key_re="$(printf '%s' "$STORY_KEY" | sed 's/[][\.^$*+?(){}|/]/\\&/g')"
+_attr_re="(^|[^[:alnum:]])${_key_re}([^0-9]|$)"
 
-awk -F '\t' '
-# --- Stopwords table ---
+# Phase 2: single awk pass — attribution check, primary + fallback matching,
+# and unattributed NDJSON emission.  Reads the patterns file first (ARGV[1]),
+# then all test pairs (ARGV[2]).
+: > "$_NDJSON_UNATTR"
+
+awk -F '\t' \
+    -v attr_re="$_attr_re" \
+    -v sw_str="$_STOPWORDS_LIST" \
+    -v unattr_file="$_NDJSON_UNATTR" \
+'
+# --- Stopwords table (single source, shared with the shell) ---
 BEGIN {
-  split("a an the is are was were to of in on with for that it and or but not when then given should must can will be", _sw, " ")
-  for (_i in _sw) stopwords[_sw[_i]] = 1
+  _swn = split(sw_str, _sw, " ")
+  for (_i = 1; _i <= _swn; _i++) stopwords[_sw[_i]] = 1
+}
+
+# --- Helper: JSON-escape a string (backslash, double quote, control chars) ---
+function json_esc(s) {
+  gsub(/\\/, "\\\\", s)
+  gsub(/"/, "\\\"", s)
+  gsub(/\t/, "\\t", s)
+  gsub(/\n/, "\\n", s)
+  gsub(/\r/, "\\r", s)
+  return s
 }
 
 # --- Helper: normalize an identifier (camelCase split, lowercase, _ - to space, strip stopwords) ---
-function norm_ident(s,    out, i, prev_lower, ch, n, _words) {
+# Uses gsub and substr-chunk building to avoid O(len^2) char-by-char concatenation.
+function norm_ident(s,    out, i, n, start, ch, prev_lower, _words) {
+  # Replace _ and - with space (gsub is O(n))
+  gsub(/[_-]/, " ", s)
+  # CamelCase split: insert space before uppercase preceded by lowercase.
+  # Build result from substrings between transition points.
+  n = length(s)
   out = ""
+  start = 1
   prev_lower = 0
-  for (i = 1; i <= length(s); i++) {
+  for (i = 1; i <= n; i++) {
     ch = substr(s, i, 1)
-    # Insert space at lower->upper transition
-    if (prev_lower && ch ~ /[A-Z]/) out = out " "
+    if (prev_lower && ch ~ /[A-Z]/) {
+      out = out substr(s, start, i - start) " "
+      start = i
+    }
     prev_lower = (ch ~ /[a-z]/)
-    # Replace _ and - with space
-    if (ch == "_" || ch == "-") ch = " "
-    out = out ch
   }
+  out = out substr(s, start)
   # Lowercase
   out = tolower(out)
-  # Collapse spaces
+  # Collapse spaces, strip leading/trailing
   gsub(/  +/, " ", out)
   gsub(/^ +| +$/, "", out)
   # Remove stopwords
@@ -610,64 +586,61 @@ FILENAME == ARGV[1] {
   ac_ids[ac_count] = $1
   ac_res[ac_count] = $2   # primary regex
   ac_fb[ac_count] = $3    # fallback possible (0/1)
-  ac_gw[ac_count] = $4    # given words
-  ac_ww[ac_count] = $5    # when words
-  ac_tw[ac_count] = $6    # then words
+  ac_edge[ac_count] = $4  # is_edge (0/1)
+  ac_gw[ac_count] = $5    # given words
+  ac_ww[ac_count] = $6    # when words
+  ac_tw[ac_count] = $7    # then words
   prim_count[ac_count] = 0
   fb_count[ac_count] = 0
   next
 }
 
-# Phase 2: read attributed pairs (second file argument)
+# Phase 2: read ALL test pairs (second file argument)
 {
   tf = $1
   ident = $2
   if (tf == "") next
 
-  # Normalize identifier once for fallback use (computed lazily below)
-  nident_done = 0
-  nident = ""
+  # Attribution check: story key bounded by non-alnum start and non-digit end
+  if (match(tf, attr_re) || match(ident, attr_re)) {
+    # Attributed pair — match against AC patterns
+    nident_done = 0
+    nident = ""
 
-  for (a = 1; a <= ac_count; a++) {
-    # Primary match: test path and identifier against AC regex
-    if (match(tf, ac_res[a]) || match(ident, ac_res[a])) {
-      prim_count[a]++
-    } else if (ac_fb[a] == "1" && prim_count[a] == 0) {
-      # Fallback: only if no primary match yet (optimization: skip if already MET)
-      if (!nident_done) {
-        nident = norm_ident(ident)
-        nident_done = 1
-      }
-      if (phrase_match(ac_gw[a], nident) &&
-          phrase_match(ac_ww[a], nident) &&
-          phrase_match(ac_tw[a], nident)) {
-        fb_count[a]++
+    for (a = 1; a <= ac_count; a++) {
+      # Primary match: test path and identifier against AC regex
+      if (match(tf, ac_res[a]) || match(ident, ac_res[a])) {
+        prim_count[a]++
+      } else if (ac_fb[a] == "1" && prim_count[a] == 0) {
+        # Fallback: only if no primary match yet
+        if (!nident_done) {
+          nident = norm_ident(ident)
+          nident_done = 1
+        }
+        if (phrase_match(ac_gw[a], nident) &&
+            phrase_match(ac_ww[a], nident) &&
+            phrase_match(ac_tw[a], nident)) {
+          fb_count[a]++
+        }
       }
     }
+  } else {
+    # Unattributed pair — emit NDJSON directly (no per-pair jq subprocess)
+    printf "{\"file\":\"%s\",\"identifier\":\"%s\"}\n", json_esc(tf), json_esc(ident) > unattr_file
   }
 }
 
 END {
   for (a = 1; a <= ac_count; a++) {
-    print ac_ids[a] "\t" prim_count[a] "\t" fb_count[a]
+    print ac_ids[a] "\t" prim_count[a] "\t" fb_count[a] "\t" ac_edge[a]
   }
 }
-' "$_PATTERNS" "$_ATTR_PAIRS" > "$_MATCH_OUT"
+' "$_PATTERNS" "$_TEST_PAIRS" > "$_MATCH_OUT"
 
 # Phase 3: read awk output and write results/findings.
-# _AC_LIST is re-read for is_edge metadata not passed through awk.
-# Build a lookup of is_edge from _AC_LIST.
-while IFS="$(printf '\t')" read -r _mid _mpc _mfc; do
+# is_edge is carried in the awk output — no re-read of _AC_LIST needed.
+while IFS="$(printf '\t')" read -r _mid _mpc _mfc _mis_edge; do
   [ -n "$_mid" ] || continue
-
-  # Look up is_edge from _AC_LIST
-  _mis_edge=0
-  while IFS="$(printf '\t')" read -r _aid _aedge _agwt _atext; do
-    if [ "$_aid" = "$_mid" ]; then
-      _mis_edge="$_aedge"
-      break
-    fi
-  done < "$_AC_LIST"
 
   if [ "$_mpc" -gt 0 ]; then
     # MET
@@ -750,11 +723,7 @@ if [ -s "$_FINDINGS" ]; then
   cat "$_FINDINGS" >> "$_NDJSON_FINDINGS"
 fi
 
-# Build unattributed_tests NDJSON
-while IFS="$(printf '\t')" read -r tf ident; do
-  [ -n "$tf" ] || continue
-  jq -nc --arg f "$tf" --arg i "$ident" '{"file": $f, "identifier": $i}' >> "$_NDJSON_UNATTR"
-done < "$_UNATTR"
+# Unattributed NDJSON already written by the awk pass to $_NDJSON_UNATTR
 
 # Ensure NDJSON files exist (may be empty)
 [ -f "$_NDJSON_AC" ] || : > "$_NDJSON_AC"
@@ -770,10 +739,9 @@ _find_arr="$(jq -s '.' "$_NDJSON_FINDINGS")"
 _unattr_arr="$(jq -s '.' "$_NDJSON_UNATTR")"
 
 # Write arrays to temp files for --slurpfile (avoids large argv)
-_tmp_ac_arr="$(mktemp "$_TMPDIR/ac-arr-XXXXXX")"
-_tmp_find_arr="$(mktemp "$_TMPDIR/find-arr-XXXXXX")"
-_tmp_unattr_arr="$(mktemp "$_TMPDIR/unattr-arr-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_tmp_ac_arr" "$_tmp_find_arr" "$_tmp_unattr_arr"' EXIT
+_tmp_ac_arr="$_WORKDIR/ac-arr"
+_tmp_find_arr="$_WORKDIR/find-arr"
+_tmp_unattr_arr="$_WORKDIR/unattr-arr"
 
 printf '%s' "$_ac_arr" > "$_tmp_ac_arr"
 printf '%s' "$_find_arr" > "$_tmp_find_arr"
