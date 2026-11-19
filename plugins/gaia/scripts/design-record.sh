@@ -1307,8 +1307,8 @@ cmd_transition() {
       *) _die "transition: illegal --integration-state value \"$int_state\"; legal values: available, missing, unauthorized" ;;
     esac
     case "$int_source" in
-      attested|probed) ;;
-      *) _die "transition: illegal --integration-source value \"$int_source\"; legal values: attested, probed" ;;
+      attested|probed|fail-closed) ;;
+      *) _die "transition: illegal --integration-source value \"$int_source\"; legal values: attested, probed, fail-closed" ;;
     esac
   fi
 

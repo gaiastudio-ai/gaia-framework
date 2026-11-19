@@ -484,14 +484,16 @@ adhere to the hygiene rules at dispatch time.
 **Design impact assessment:** Before proceeding to story creation, assess whether this feature affects the project's design. If the feature changes user-facing layout, interaction patterns, navigation, component structure, or visual language, it is design-affecting. If the impact is ambiguous or uncertain, default to treating it as design-affecting (stale is safer than stale-undetected).
 
 <!-- design-attestation begin -->
-**Integration availability check:** When the decision is `yes` or `ambiguous`, make a single cheap Claude Design call (`list_projects`) to determine whether the integration is available. Classify the outcome:
+**Integration availability check:** When the decision is `yes` or `ambiguous`, read `design_system_project.surface` from the design record (missing field defaults to `designsync`). Classify the outcome:
 <!-- design-availability begin -->
 - `available` — the call succeeded.
 - `unauthorized` — the call failed with an authorization or permission error.
 - `missing` — the call failed for any other reason (timeout, tool not found, etc.).
 <!-- design-availability end -->
 
-Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe.
+When the surface is `artifact`: make a built-in Artifact `list` call on the design-system reference. When `designsync`: make a single cheap Claude Design call (`list_projects`).
+
+Pass the result as `--integration <available|missing|unauthorized>`. When the decision is `no`, skip the check and omit `--integration`. When availability cannot be determined, omit `--integration` and the driver will fall back to its own probe. For artifact-managed records, the fallback fails closed — the DesignSync bridge cannot classify the Artifact surface.
 
 The driver trusts this classification without a second probe. If the token is revoked between this check and the driver run, the republish step that follows the stale transition surfaces the failure — it is not silently absorbed.
 <!-- design-attestation end -->
