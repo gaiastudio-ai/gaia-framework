@@ -1626,7 +1626,9 @@ main() {
         case "$repo_arg" in
           -*) die "--repo starts with '-' — refusing" ;;
         esac
-        git -C "$repo_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+        # rev-parse exits 0 and prints "false" inside a .git directory or a
+        # bare repository, so the printed value is what decides.
+        [ "$(git -C "$repo_arg" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] \
           || die "--repo '$repo_arg' is not a git work tree — refusing to record the gate"
       fi
       local resolved_sha="$sha_arg"
