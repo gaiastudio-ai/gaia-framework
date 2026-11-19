@@ -117,24 +117,25 @@ _valid_ac_id() {
   esac
 }
 
-# Escape ERE metacharacters in a string
-_ere_escape() {
-  printf '%s' "$1" | sed 's/[][\.^$*+?(){}|/]/\\&/g'
-}
-
 # Extract ACs — accept both unchecked (- [ ]) and checked (- [x]/- [X]) forms
 while IFS= read -r line; do
-  # Extract AC id: token between first ** pair, strip trailing non-alphanumerics
-  ac_id="$(printf '%s' "$line" | sed -n 's/^- \[[ xX]\] \*\*\([^*]*\)\*\*.*/\1/p' | sed 's/[^[:alnum:]]*$//')"
-  [ -n "$ac_id" ] || continue
+  # Extract the text between the first ** pair (the bold label).
+  _bold_text="$(printf '%s' "$line" | sed -n 's/^- \[[ xX]\] \*\*\([^*]*\)\*\*.*/\1/p')"
+  [ -n "$_bold_text" ] || continue
 
-  # Validate AC id against allowlist
-  if ! _valid_ac_id "$ac_id"; then
+  # Take the leading token matching AC followed by at least one id character
+  # as the id. Decorated forms like "AC2 — Export works:" or "AC1 (P0):"
+  # yield AC2 / AC1. Bare "AC" without a suffix is treated as malformed.
+  ac_id="$(printf '%s' "$_bold_text" | sed -n 's/^\(AC[A-Za-z0-9_-][A-Za-z0-9_-]*\).*/\1/p')"
+
+  # A line whose bold label has no leading AC token is malformed.
+  if [ -z "$ac_id" ] || ! _valid_ac_id "$ac_id"; then
     # Malformed AC id: report as skipped with ac-quality finding, never silently dropped
-    jq -nc --arg id "$ac_id" \
+    _malformed_label="$(printf '%s' "$_bold_text" | sed 's/[^[:alnum:]]*$//')"
+    jq -nc --arg id "$_malformed_label" \
       '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Malformed AC id (does not match allowlist)"}' \
       >> "$_NDJSON_AC"
-    jq -nc --arg id "$ac_id" \
+    jq -nc --arg id "$_malformed_label" \
       '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Malformed AC id: " + $id)}' \
       >> "$_NDJSON_FINDINGS"
     continue
@@ -336,7 +337,9 @@ done < "$_TEST_PAIRS"
 _content_words() {
   # Input: phrase text on stdin; output: space-separated content words
   tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' ' ' | tr -s ' ' | sed 's/^ *//;s/ *$//' | {
-    local result=""
+    local result="" _cw_save_glob
+    _cw_save_glob="$(set +o | grep noglob)" || true
+    set -f
     read -r line
     for w in $line; do
       if ! _is_stopword "$w"; then
@@ -347,6 +350,7 @@ _content_words() {
         fi
       fi
     done
+    eval "$_cw_save_glob" 2>/dev/null || true
     printf '%s' "$result"
   }
 }
@@ -365,7 +369,9 @@ _normalize_identifier() {
     | tr '[:upper:]' '[:lower:]' \
     | tr '_-' '  ' \
     | tr -s ' ' | {
-    local result="" w
+    local result="" w _ni_save_glob
+    _ni_save_glob="$(set +o | grep noglob)" || true
+    set -f
     read -r line
     for w in $line; do
       if ! _is_stopword "$w"; then
@@ -376,6 +382,7 @@ _normalize_identifier() {
         fi
       fi
     done
+    eval "$_ni_save_glob" 2>/dev/null || true
     printf '%s' "$result"
   }
 }
@@ -389,15 +396,19 @@ _normalize_identifier() {
 _phrase_matches_in_ident() {
   local phrase_words="$1" norm_ident="$2"
   # phrase_words is space-separated content words
-  local prev="" w
+  local prev="" w _pm_save_glob
+  _pm_save_glob="$(set +o | grep noglob)" || true
+  set -f
   for w in $phrase_words; do
     if [ -n "$prev" ]; then
       if printf '%s' "$norm_ident" | grep -qE "${prev}[^[:alnum:]]+${w}" 2>/dev/null; then
+        eval "$_pm_save_glob" 2>/dev/null || true
         return 0
       fi
     fi
     prev="$w"
   done
+  eval "$_pm_save_glob" 2>/dev/null || true
   return 1
 }
 
@@ -457,15 +468,34 @@ _split_gwt() {
 # ---------------------------------------------------------------------------
 
 _word_count() {
-  local count=0 w
+  local count=0 w _wc_save_glob
+  _wc_save_glob="$(set +o | grep noglob)" || true
+  set -f
   for w in $1; do
     count=$((count + 1))
   done
+  eval "$_wc_save_glob" 2>/dev/null || true
   printf '%s' "$count"
 }
 
 # ---------------------------------------------------------------------------
-# Per-AC matching
+# Per-AC matching — single awk pass over attributed pairs
+#
+# Phase 1 (shell): pre-compute per-AC data (O(ACs) subprocesses — bounded).
+#   - Skip no-G/W/T ACs with their findings.
+#   - Build primary regex and fallback phrase words for each matchable AC.
+#   - Write a patterns file: ac_id<TAB>primary_re<TAB>gw<TAB>ww<TAB>tw
+#
+# Phase 2 (one awk invocation): read patterns, then read all attributed pairs.
+#   - For each pair, test path and identifier against every AC primary regex.
+#   - For ACs with no primary match, normalize identifiers and do fallback
+#     word-pair matching entirely inside awk (no per-pair subprocesses).
+#   - Output: ac_id<TAB>primary_count<TAB>fallback_count per AC.
+#
+# Phase 3 (shell): read awk output and write results/findings.
+#
+# Process count is O(ACs) for shell pre-computation + O(1) for the awk pass,
+# independent of the number of attributed pairs.
 # ---------------------------------------------------------------------------
 
 : > "$_FINDINGS"
@@ -474,13 +504,16 @@ _word_count() {
 _any_not_met=0
 _all_skipped=1  # becomes 0 when at least one AC is not skipped
 
+_PATTERNS="$(mktemp "$_TMPDIR/patterns-XXXXXX")"
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_PATTERNS"' EXIT
+
+# Phase 1: pre-compute patterns (bounded subprocess count, one per AC)
 while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
   [ -n "$ac_id" ] || continue
 
   # --- No G/W/T structure -> skipped ---
   if [ "$has_gwt" -eq 0 ]; then
     printf '%s\t%s\t%s\t%s\n' "$ac_id" "false" "0" "skipped" >> "$_AC_RESULTS"
-    # ac-quality finding (built safely via jq)
     jq -nc --arg id "$ac_id" \
       '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("AC " + $id + " has no Given/When/Then structure")}' \
       >> "$_FINDINGS"
@@ -489,99 +522,181 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
 
   _all_skipped=0
 
-  # --- Build primary match regex ---
-  # Hyphen/underscore equivalence: AC-EC3 matches AC_EC3 in test identifiers.
-  # Word-boundary anchoring prevents AC1 from matching AC10 or AC1b — the regex
-  # requires a non-alphanumeric (or casing transition) on both sides.
-  # Escape ERE metacharacters first so ids like AC1.2 match literally.
-  ac_id_escaped="$(_ere_escape "$ac_id")"
-  ac_id_re="$(printf '%s' "$ac_id_escaped" | sed 's/\\-/[-_]/g; s/-/[-_]/g')"
+  # Build primary match regex with hyphen/underscore equivalence.
+  ac_id_re="$(printf '%s' "$ac_id" | sed 's/-/[-_]/g')"
   primary_re="(^|[^[:alnum:]]|[a-z])${ac_id_re}([^[:alnum:]]|[A-Z]|$)"
 
-  # --- Primary match against attributed pairs ---
-  primary_count=0
-  while IFS="$(printf '\t')" read -r tf ident; do
-    [ -n "$tf" ] || continue
-    matched=0
-    if printf '%s' "$tf" | grep -qE "$primary_re" 2>/dev/null; then
-      matched=1
-    elif printf '%s' "$ident" | grep -qE "$primary_re" 2>/dev/null; then
-      matched=1
-    fi
-    if [ "$matched" -eq 1 ]; then
-      primary_count=$((primary_count + 1))
-    fi
-  done < "$_ATTR_PAIRS"
-
-  if [ "$primary_count" -gt 0 ]; then
-    # MET
-    printf '%s\t%s\t%s\t%s\n' "$ac_id" "true" "$primary_count" "MET" >> "$_AC_RESULTS"
-    continue
-  fi
-
-  # --- Fallback match (only with G/W/T) ---
+  # Compute fallback phrase words (G/W/T content words)
   gwt_output="$(_split_gwt "$ac_text")"
   given_words="$(printf '%s' "$gwt_output" | sed -n '1p')"
   when_words="$(printf '%s' "$gwt_output" | sed -n '2p')"
   then_words="$(printf '%s' "$gwt_output" | sed -n '3p')"
 
-  # Minimum-pair gate: each G/W/T phrase must have >= 2 content words.
-  # Single-word phrases like "user" or "save" match too broadly in test
-  # identifiers and would inflate false PARTIALLY MET results.
+  # Minimum-pair gate: each phrase must have >= 2 content words.
   gw_count="$(_word_count "$given_words")"
   ww_count="$(_word_count "$when_words")"
   tw_count="$(_word_count "$then_words")"
 
-  fallback_possible=1
+  _fb_possible=1
   if [ "$gw_count" -lt 2 ] || [ "$ww_count" -lt 2 ] || [ "$tw_count" -lt 2 ]; then
-    fallback_possible=0
+    _fb_possible=0
+    given_words=""
+    when_words=""
+    then_words=""
   fi
 
-  fallback_count=0
-  if [ "$fallback_possible" -eq 1 ]; then
-    while IFS="$(printf '\t')" read -r tf ident; do
-      [ -n "$tf" ] || continue
-      norm="$(_normalize_identifier "$ident")"
-      # All three phrases must match in this one identifier
-      if _phrase_matches_in_ident "$given_words" "$norm" && \
-         _phrase_matches_in_ident "$when_words" "$norm" && \
-         _phrase_matches_in_ident "$then_words" "$norm"; then
-        fallback_count=$((fallback_count + 1))
-      fi
-    done < "$_ATTR_PAIRS"
-  fi
+  # patterns file: ac_id<TAB>primary_re<TAB>fb_possible<TAB>gw<TAB>ww<TAB>tw
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$ac_id" "$primary_re" "$_fb_possible" "$given_words" "$when_words" "$then_words" \
+    >> "$_PATTERNS"
+done < "$_AC_LIST"
 
-  if [ "$fallback_count" -gt 0 ]; then
+# Phase 2: single awk pass — primary + fallback matching over all pairs.
+# The awk program reads the patterns file first (phase==1), then processes
+# attributed pairs (phase==2). No per-pair subprocesses.
+_MATCH_OUT="$(mktemp "$_TMPDIR/matchout-XXXXXX")"
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_PATTERNS" "$_MATCH_OUT"' EXIT
+
+awk -F '\t' '
+# --- Stopwords table ---
+BEGIN {
+  split("a an the is are was were to of in on with for that it and or but not when then given should must can will be", _sw, " ")
+  for (_i in _sw) stopwords[_sw[_i]] = 1
+}
+
+# --- Helper: normalize an identifier (camelCase split, lowercase, _ - to space, strip stopwords) ---
+function norm_ident(s,    out, i, prev_lower, ch, n, _words) {
+  out = ""
+  prev_lower = 0
+  for (i = 1; i <= length(s); i++) {
+    ch = substr(s, i, 1)
+    # Insert space at lower->upper transition
+    if (prev_lower && ch ~ /[A-Z]/) out = out " "
+    prev_lower = (ch ~ /[a-z]/)
+    # Replace _ and - with space
+    if (ch == "_" || ch == "-") ch = " "
+    out = out ch
+  }
+  # Lowercase
+  out = tolower(out)
+  # Collapse spaces
+  gsub(/  +/, " ", out)
+  gsub(/^ +| +$/, "", out)
+  # Remove stopwords
+  n = split(out, _words, " ")
+  out = ""
+  for (i = 1; i <= n; i++) {
+    if (!(_words[i] in stopwords)) {
+      out = (out == "" ? _words[i] : out " " _words[i])
+    }
+  }
+  return out
+}
+
+# --- Helper: check if a phrase (space-separated words) has a consecutive
+#     word-pair match in a normalized identifier ---
+function phrase_match(phrase, nident,    n, _pw, i, pair_re) {
+  n = split(phrase, _pw, " ")
+  for (i = 2; i <= n; i++) {
+    pair_re = _pw[i-1] "[^a-zA-Z0-9]+" _pw[i]
+    if (match(nident, pair_re)) return 1
+  }
+  return 0
+}
+
+# Phase 1: read patterns file (first file argument)
+FILENAME == ARGV[1] {
+  ac_count++
+  ac_ids[ac_count] = $1
+  ac_res[ac_count] = $2   # primary regex
+  ac_fb[ac_count] = $3    # fallback possible (0/1)
+  ac_gw[ac_count] = $4    # given words
+  ac_ww[ac_count] = $5    # when words
+  ac_tw[ac_count] = $6    # then words
+  prim_count[ac_count] = 0
+  fb_count[ac_count] = 0
+  next
+}
+
+# Phase 2: read attributed pairs (second file argument)
+{
+  tf = $1
+  ident = $2
+  if (tf == "") next
+
+  # Normalize identifier once for fallback use (computed lazily below)
+  nident_done = 0
+  nident = ""
+
+  for (a = 1; a <= ac_count; a++) {
+    # Primary match: test path and identifier against AC regex
+    if (match(tf, ac_res[a]) || match(ident, ac_res[a])) {
+      prim_count[a]++
+    } else if (ac_fb[a] == "1" && prim_count[a] == 0) {
+      # Fallback: only if no primary match yet (optimization: skip if already MET)
+      if (!nident_done) {
+        nident = norm_ident(ident)
+        nident_done = 1
+      }
+      if (phrase_match(ac_gw[a], nident) &&
+          phrase_match(ac_ww[a], nident) &&
+          phrase_match(ac_tw[a], nident)) {
+        fb_count[a]++
+      }
+    }
+  }
+}
+
+END {
+  for (a = 1; a <= ac_count; a++) {
+    print ac_ids[a] "\t" prim_count[a] "\t" fb_count[a]
+  }
+}
+' "$_PATTERNS" "$_ATTR_PAIRS" > "$_MATCH_OUT"
+
+# Phase 3: read awk output and write results/findings.
+# _AC_LIST is re-read for is_edge metadata not passed through awk.
+# Build a lookup of is_edge from _AC_LIST.
+while IFS="$(printf '\t')" read -r _mid _mpc _mfc; do
+  [ -n "$_mid" ] || continue
+
+  # Look up is_edge from _AC_LIST
+  _mis_edge=0
+  while IFS="$(printf '\t')" read -r _aid _aedge _agwt _atext; do
+    if [ "$_aid" = "$_mid" ]; then
+      _mis_edge="$_aedge"
+      break
+    fi
+  done < "$_AC_LIST"
+
+  if [ "$_mpc" -gt 0 ]; then
+    # MET
+    printf '%s\t%s\t%s\t%s\n' "$_mid" "true" "$_mpc" "MET" >> "$_AC_RESULTS"
+  elif [ "$_mfc" -gt 0 ]; then
     # PARTIALLY MET
-    printf '%s\t%s\t%s\t%s\n' "$ac_id" "true" "$fallback_count" "PARTIALLY MET" >> "$_AC_RESULTS"
-    # Non-blocking finding (built safely via jq)
-    jq -nc --arg id "$ac_id" --argjson cnt "$fallback_count" \
+    printf '%s\t%s\t%s\t%s\n' "$_mid" "true" "$_mfc" "PARTIALLY MET" >> "$_AC_RESULTS"
+    jq -nc --arg id "$_mid" --argjson cnt "$_mfc" \
       '{"rule": ("ac-partial-" + $id), "severity": "warning", "blocking": false, "message": ("AC " + $id + " is PARTIALLY MET via fallback matching: " + ($cnt | tostring) + " tests")}' \
       >> "$_FINDINGS"
-    continue
-  fi
-
-  # --- NOT MET ---
-  _any_not_met=1
-  printf '%s\t%s\t%s\t%s\n' "$ac_id" "false" "0" "NOT MET" >> "$_AC_RESULTS"
-
-  if [ "$is_edge" -eq 1 ]; then
-    # Edge-case NOT MET: non-blocking, warning
-    jq -nc --arg id "$ac_id" \
-      '{"rule": ("ac-coverage-" + $id), "severity": "warning", "blocking": false, "message": ("Edge-case AC " + $id + " is NOT MET: 0 matching tests")}' \
-      >> "$_FINDINGS"
   else
-    # Primary NOT MET: blocking true, severity based on priority
-    _sev="warning"
-    if [ "$PRIORITY" = "P0" ]; then
-      _sev="critical"
+    # NOT MET
+    _any_not_met=1
+    printf '%s\t%s\t%s\t%s\n' "$_mid" "false" "0" "NOT MET" >> "$_AC_RESULTS"
+    if [ "$_mis_edge" -eq 1 ]; then
+      jq -nc --arg id "$_mid" \
+        '{"rule": ("ac-coverage-" + $id), "severity": "warning", "blocking": false, "message": ("Edge-case AC " + $id + " is NOT MET: 0 matching tests")}' \
+        >> "$_FINDINGS"
+    else
+      _sev="warning"
+      if [ "$PRIORITY" = "P0" ]; then
+        _sev="critical"
+      fi
+      jq -nc --arg id "$_mid" --arg sev "$_sev" \
+        '{"rule": ("ac-coverage-" + $id), "severity": $sev, "blocking": true, "message": ("Primary AC " + $id + " is NOT MET: 0 matching tests")}' \
+        >> "$_FINDINGS"
     fi
-    jq -nc --arg id "$ac_id" --arg sev "$_sev" \
-      '{"rule": ("ac-coverage-" + $id), "severity": $sev, "blocking": true, "message": ("Primary AC " + $id + " is NOT MET: 0 matching tests")}' \
-      >> "$_FINDINGS"
   fi
-
-done < "$_AC_LIST"
+done < "$_MATCH_OUT"
 
 # ---------------------------------------------------------------------------
 # Aggregate status and special-case findings
@@ -646,11 +761,13 @@ done < "$_UNATTR"
 [ -f "$_NDJSON_FINDINGS" ] || : > "$_NDJSON_FINDINGS"
 [ -f "$_NDJSON_UNATTR" ] || : > "$_NDJSON_UNATTR"
 
-# Assemble and sort the final check object using --slurpfile
+# Assemble and sort the final check object using --slurpfile.
 # Empty NDJSON files produce empty arrays via jq -s.
-_ac_arr="$(jq -s '.' "$_NDJSON_AC" 2>/dev/null || echo '[]')"
-_find_arr="$(jq -s '.' "$_NDJSON_FINDINGS" 2>/dev/null || echo '[]')"
-_unattr_arr="$(jq -s '.' "$_NDJSON_UNATTR" 2>/dev/null || echo '[]')"
+# No fallback: a corrupt NDJSON stream must fail the script (exit non-zero)
+# so the collector writes an errored check and the resolver returns BLOCKED.
+_ac_arr="$(jq -s '.' "$_NDJSON_AC")"
+_find_arr="$(jq -s '.' "$_NDJSON_FINDINGS")"
+_unattr_arr="$(jq -s '.' "$_NDJSON_UNATTR")"
 
 # Write arrays to temp files for --slurpfile (avoids large argv)
 _tmp_ac_arr="$(mktemp "$_TMPDIR/ac-arr-XXXXXX")"

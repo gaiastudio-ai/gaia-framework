@@ -65,7 +65,7 @@ The toolkit invoked by Phase 3A is selected by the canonical stack name emitted 
 
 Phase 3A scope is **strict**: test-discovery + AC-to-test coverage analysis. Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`.
 
-Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on test-discovery with `skip_reason` populated.
+Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → the analyzer exits non-zero; the collector writes an errored check; the resolver returns BLOCKED.
 
 ## Severity Rubric
 
@@ -157,7 +157,7 @@ Exit semantics: exit 0 always writes `analysis-results.json` (even with an error
 
 1. **Test discovery.** Look up the test-file globs in the Stack Toolkit Table above using the canonical stack name from Phase 1. Discovery is bounded by `--test-dir` (default `.`); wall-clock cap: 30 s (graceful degrade when `timeout` is absent).
 
-2. **AC parser.** Extract ACs from the story file (lines matching `^- [<space-or-xX>] **AC`, accepting both unchecked `- [ ]` and checked-off `- [x]`/`- [X]` forms). AC id = token between the first `**` pair, validated against `^AC[A-Za-z0-9_-]*$`; ids failing validation are reported as malformed (skipped with `skip_reason`, non-blocking `ac-quality` finding). Edge-case ACs contain "EC" in the id (case-insensitive). Given/When/Then structure = all three keywords present (case-insensitive) after `:**`. Malformed ACs (no Given/When/Then structure) are reported with `status: skipped` and a `skip_reason`, plus a non-blocking `ac-quality` finding (rule `ac-quality`, severity warning, `blocking: false`). Unknown `--stack` values cause the analyzer to exit non-zero; the collector writes an errored check and the resolver returns BLOCKED.
+2. **AC parser.** Extract ACs from the story file (lines matching `^- [<space-or-xX>] **AC`, accepting both unchecked `- [ ]` and checked-off `- [x]`/`- [X]` forms). AC id = the leading token matching `AC[A-Za-z0-9_-]*` from the bold label between `**` markers; decorated forms like `**AC2 — Export works:**` or `**AC1 (P0):**` yield `AC2` / `AC1`. A bold label whose text has no such leading token is treated as malformed (skipped with `skip_reason`, non-blocking `ac-quality` finding). Edge-case ACs contain "EC" in the id (case-insensitive). Given/When/Then structure = all three keywords present (case-insensitive) after `:**`. Malformed ACs (no Given/When/Then structure) are reported with `status: skipped` and a `skip_reason`, plus a non-blocking `ac-quality` finding (rule `ac-quality`, severity warning, `blocking: false`). Unknown `--stack` values cause the analyzer to exit non-zero; the collector writes an errored check and the resolver returns BLOCKED.
 
 3. **AC-coverage matching (dual-strategy).** Two-pass match per AC:
    - **Primary match** — AC-ID as a word-boundary token in test path or test identifier. Examples: `tests/{story_key}-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`. Hyphen and underscore are interchangeable (AC-EC3 matches AC_EC3). Edge-case AC reference form: edge-case ACs must be referenced by the full AC-EC\<n\> form; a bare EC\<n\> is not searched.

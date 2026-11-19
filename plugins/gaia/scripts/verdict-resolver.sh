@@ -358,7 +358,10 @@ if [ -n "$ANALYSIS" ] && [ "$ACTION_MODE" -eq 0 ]; then
   case "$ANALYSIS" in
     *.json) ;; # already has extension
     *)
-      _vr_tmp_json="$(mktemp "${TMPDIR:-/tmp}/vr-analysis-XXXXXX.json")"
+      # Use mktemp -d for portability (BSD mktemp only randomizes trailing Xs).
+      _vr_tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vr-analysis-XXXXXX")"
+      _vr_tmp_json="$_vr_tmp_dir/analysis.json"
+      trap 'rm -rf "${_vr_tmp_dir:-}"' EXIT
       cp "$ANALYSIS" "$_vr_tmp_json"
       _vr_analysis_path="$_vr_tmp_json"
       ;;
@@ -397,17 +400,14 @@ if [ -n "$ANALYSIS" ] && [ "$ACTION_MODE" -eq 0 ]; then
       and (.checks | all(
         (.name | type == "string")
         and (.status | type == "string")
-        and (.status | IN("passed","failed","errored","skipped"))
+        and (.status as $s | ["passed","failed","errored","skipped"] | index($s) != null)
       ))
     ' "$ANALYSIS" >/dev/null 2>&1; then
       printf '%s: malformed analysis-results.json: missing schema_version or required fields\n' "$SCRIPT_NAME" >&2
       emit "BLOCKED"
     fi
   fi
-  # Clean up temp .json copy if created
-  if [ -n "${_vr_tmp_json:-}" ] && [ -f "$_vr_tmp_json" ]; then
-    rm -f "$_vr_tmp_json"
-  fi
+  # Temp .json copy cleaned up by EXIT trap (set at mktemp -d above).
 fi
 
 # LLM findings file: fail closed on any defect. Aligned with the sibling
