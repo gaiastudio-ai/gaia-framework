@@ -1144,3 +1144,48 @@ _extract_designsync_clause() {
     fail "design-review missing and unauthorized halts must differ"
   fi
 }
+
+# =========================================================================
+# No-record default routes to artifact surface and halts attach or-no-record
+# to the artifact branch exclusively
+# =========================================================================
+
+@test "no-record default routes to artifact surface and halts attach or-no-record to artifact branch" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+
+  local section
+  section="$(_extract_availability_section "$SKILL_MD_CUX")"
+  [ -n "$section" ] || fail "availability section not found in create-ux"
+
+  # --- Surface-read sentence: no-record default is artifact, v1 default is designsync ---
+  local surface_sentence
+  surface_sentence="$(grep -F 'design_system_project.surface' <<<"$section" | head -1)"
+  [ -n "$surface_sentence" ] || fail "surface-read sentence not found in availability section"
+
+  grep -qF 'default `artifact` when no record exists' <<<"$surface_sentence" \
+    || fail "surface-read sentence must state no-record default is artifact"
+  grep -qF 'v1 records default to `designsync`' <<<"$surface_sentence" \
+    || fail "surface-read sentence must state v1 records default to designsync"
+
+  # --- Missing halt: "(or no record)" on artifact branch, not on designsync ---
+  local missing_para
+  missing_para="$(printf '%s\n' "$section" | sed -n '/On.*`missing`.*halt/,/^$/p')" || true
+  [ -n "$missing_para" ] || fail "missing halt paragraph not found"
+
+  grep -qF 'For `artifact` (or no record):' <<<"$missing_para" \
+    || fail "missing halt must attach (or no record) to the artifact branch"
+  if grep -qF 'For `designsync` (or no record)' <<<"$missing_para"; then
+    fail "missing halt must NOT attach (or no record) to the designsync branch"
+  fi
+
+  # --- Unauthorized halt: "(or no record)" on artifact branch, not on designsync ---
+  local unauth_para
+  unauth_para="$(printf '%s\n' "$section" | sed -n '/On.*`unauthorized`.*halt/,/^$/p')" || true
+  [ -n "$unauth_para" ] || fail "unauthorized halt paragraph not found"
+
+  grep -qF 'For `artifact` (or no record):' <<<"$unauth_para" \
+    || fail "unauthorized halt must attach (or no record) to the artifact branch"
+  if grep -qF 'For `designsync` (or no record)' <<<"$unauth_para"; then
+    fail "unauthorized halt must NOT attach (or no record) to the designsync branch"
+  fi
+}
