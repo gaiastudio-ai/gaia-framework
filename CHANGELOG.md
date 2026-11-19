@@ -17,6 +17,19 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
   never deleted unless the reaper can prove the file it inspected is the
   same file still at the lock path at deletion time. This closes three
   bugs where the bare `rm -f` could delete a live holder's lock.
+- Concurrent reapers are serialised by a file-based mutex created
+  atomically via hard link. The file contains a unique owner token (PID
+  plus a random nonce) written before the link, so there is never an
+  ownerless window and PID reuse cannot produce a false match. Only the
+  owner removes its mutex (after a token self-check); a dead owner's
+  mutex is never reclaimed automatically. If a reaper dies while holding
+  the mutex, acquirers time out with a diagnostic naming the leftover
+  file and the manual remedy: stop or quiesce every process that uses
+  the lock path, then remove the file.
+- Inside the mutex, the reaper renames the lock file to a private temp,
+  re-verifies the inode of the renamed file against the shadow, and
+  deletes only if they match. On mismatch (a new holder linked between
+  the check and the rename), the file is restored via hard link.
 - The reaper reads PID and epoch from the shadow link (a private hard
   link the reaper controls), not from the live lock path. A failed read
   (file unlinked between existence check and read) no longer leads to
@@ -32,13 +45,80 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
 - Reverse mixed-mode guard: the flock acquisition path now checks for a
   live fallback holder's PID in the file after acquiring the kernel lock.
   A flock acquirer no longer bypasses a fallback holder.
+- The reaper's flock probe is now held through the mutex-guarded
+  rename-and-delete, so a flock-mode acquirer cannot take the lock on
+  the old inode between the probe and the delete. The probe's inode is
+  verified against the shadow-pinned inode before proceeding.
+- The flock acquisition path now re-checks that the locked descriptor's
+  inode matches the path's inode after flock succeeds. On mismatch (the
+  path was replaced while waiting) the lock is released and acquisition
+  retries within the original deadline. A single deadline covers all
+  flock waits and reopen attempts.
+- The lock-path type enforcer now distinguishes a transient vacancy
+  (path vanished between existence and type checks during concurrent
+  reaping) from a genuinely non-regular entry. Vacancies are retried;
+  permanent entries (non-empty directories, fifos, sockets) fail at once.
 - The `.lock-tmp.*` residue sweeper in the directory-reclaim path also
   cleans `.lock-reap.*` shadow residue left by a crashed reaper.
+- Publication refusals (the post-link inode check failed) now return a
+  distinct exit code (`ACQUIRE_LOCK_EXIT_PUBLISH`, 6) so callers can
+  distinguish them from permanent failures and retry appropriately.
+- **Mixed-mode double-holder fix:** a flock-mode acquirer now enters only
+  when the locked file descriptor shows an empty file (checked via stat
+  on the fd, never the pathname). A non-empty file — such as a crashed
+  fallback holder's stale record — triggers a reap attempt and retry
+  within the original deadline, with bounded backoff while waiting for
+  the age threshold. This prevents a flock holder and a fallback reaper
+  from both entering simultaneously on a stale dead-PID record. Older
+  helper versions are compatible only by quiescing all processes before
+  upgrading.
+- Flock capability is probed at source time: if `-w` (timeout) is not
+  supported (e.g. BusyBox flock), the helper uses a bounded `flock -n`
+  polling loop within the original deadline with backoff and jitter. If
+  neither `-w` nor `-n` is supported, flock is treated as incompatible
+  and the fallback path is used. The parallel-execution gate now checks
+  capability, not just presence, and rejects incompatible flock with a
+  diagnostic naming the missing feature.
+- Temp files are now created exclusively via `mktemp` (O_EXCL), so
+  concurrent subshells on bash 3.2 (which share `$$` and can draw the
+  same `$RANDOM`) never collide on the temp name.
+- The owner token and release check now use the real per-acquirer PID
+  (via `/proc/self/stat` on Linux, or an exclusive-mktemp `sh` probe on
+  macOS bash 3.2; fails closed if neither works — never falls back to `$$`),
+  so subshells of the same parent correctly identify and release only
+  their own locks. The fallback mixed-mode guards use the same identity.
+- A failed publication check now cleans up the stale lock it left behind
+  by reading the file and removing it only if the full token (PID, epoch,
+  and a per-acquisition nonce) matches the exact line this acquisition
+  wrote. A replacement holder's lock is never moved, renamed, or removed
+  by the cleanup.
+- Release now compares the full token (not just the PID) against the lock
+  file content, so two acquisitions by the same PID in sequence cannot
+  accidentally remove each other's locks. Old two-field records are
+  handled with a PID-only fallback for compatibility.
+- The post-release empty-file sentinels in `transition-story-status.sh`
+  and `set-story-sprint.sh` are removed. Under the fail-closed reaper
+  rule, an empty lock file left at the lock path could block a
+  process without flock from acquiring.
+- The action-items escalation incrementer (`action-items-increment.sh`)
+  now uses the shared lock helper instead of self-managed flock/mkdir,
+  so it participates in the same serialization domain as the writer
+  and produces the same timeout handling and diagnostics.
+- On hosts without flock (for example macOS by default), an empty
+  `.story-status.lock` left by earlier versions blocks story transitions
+  until it is removed once by hand, as described in the troubleshooting
+  guide's lock-recovery section. No automatic migration.
+- The troubleshooting page documents one-time manual lock recovery
+  for the "cannot safely clear" and reaper-mutex timeout messages.
 
 #### Added
 - `_al_reap_window_hook` test-only function hook: fires between the
   shadow pin and the final inode comparison in `_al_try_reap`, letting
   tests inject a deterministic replacement of the lock file.
+- `_al_reap_pre_rm_hook` test-only function hook: fires inside the reap
+  mutex after the inode comparison passes, just before the rename-and-
+  verify removal step. Lets tests pause a reaper in the real window to
+  prove the mutex serialises concurrent reapers.
 
 ### CI JUnit ingestion and SHA-pinned validation
 
@@ -109,6 +189,28 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) for t
   check.
 - `aiw_resolve` creates its temp file only after the lock is held, so a
   timeout leaves no leftover temp files.
+- The writer no longer removes a legacy `.lockdir` folder automatically.
+  A leftover directory from an older writer version is left untouched;
+  manual removal (after stopping all GAIA processes) is documented in the
+  troubleshooting guide under "Lock recovery".
+- The writer's lock wrapper now distinguishes permanent failures (fails at
+  once with the helper's reason) from transient publication refusals
+  (retries within the remaining deadline only). Non-timeout failures no
+  longer spin for the full timeout, and "parallel execution requires flock"
+  is reported only when flock is actually absent.
+- See also **Stale-lock reaper safety hardening** above for the shared
+  helper changes. On hosts without a usable `stat` (neither GNU nor BSD
+  format), the fallback reaper never deletes an empty or dead lock file;
+  a crashed holder's lock remains until removed by hand. On hosts where
+  some processes have no usable flock on their PATH, those processes can
+  no longer clear an empty lock file that a flock-mode process may hold;
+  they time out with a diagnostic naming the cause, and recovery is
+  manual (make util-linux flock available on the process's PATH, or
+  quiesce every user and configure all to one locking mode). If a reaper dies
+  while holding its serialisation mutex, the stale lock is no longer
+  cleared automatically and acquirers time out with a diagnostic naming
+  the leftover file. Recovery is manual: stop every user of that lock
+  path, then remove the file.
 
 ### Review packet assembly
 
