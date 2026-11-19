@@ -8,7 +8,9 @@
 #   (1) has a materialized file (resolve-story-file.sh) AND is `ready-for-dev`
 #       (status read from the story FILE — the source of truth, not the yaml roster);
 #   (2) if ATDD-required (risk: high per the /gaia-atdd predicate), has an ATDD
-#       artifact under --test-artifacts (atdd-{epic}*.md OR atdd-{key}*.md);
+#       artifact under --test-artifacts — resolved via
+#       resolve-test-artifact-per-story.sh (nested canonical or legacy flat),
+#       exact flat atdd-{key}.md, or exact epic-level atdd-{epic_key}.md;
 #   (3) the elaborated batch passes the agent-native capacity check
 #       (sm-capacity-check.sh) — read via --json `.flagged` (the script exits 0
 #       whether flagged or not; exit 1 is bad-args only).
@@ -107,19 +109,32 @@ while IFS= read -r key; do
     not_ready="${not_ready}${not_ready:+ }${key}(${st:-unknown})"
   fi
 
-  # (2) ATDD-required (high-risk)? Apply the /gaia-atdd predicate+glob inline
-  # against the story file we already resolved and the explicit --test-artifacts
-  # dir (the atdd-gate.sh idiom — risk: high requires atdd-{epic}*.md OR
-  # atdd-{key}*.md). We do NOT shell out to atdd-gate.sh here because it
-  # re-resolves the story file via its own legacy path logic, which does not
-  # honor an arbitrary --impl-root / the new per-story layout.
+  # (2) ATDD-required (high-risk)? Use the shared resolver for the primary
+  # check (nested canonical, legacy stories/, flat per-story), then fall back
+  # to exact flat atdd-{key}.md and exact epic-level atdd-{epic_key}.md. No
+  # prefix globs — exact names only to prevent sibling false-pass. We do NOT
+  # shell out to atdd-gate.sh because it re-resolves the story file via its
+  # own path logic, which does not honor an arbitrary --impl-root.
   risk="$(awk '/^risk:[[:space:]]*/{sub(/^risk:[[:space:]]*/,""); gsub(/["\x27]/,""); sub(/[[:space:]]+$/,""); print; exit}' "$sf" 2>/dev/null)"
   if [ "$risk" = "high" ]; then
     epic_key="${key%%-*}"
     atdd_found=0
-    for cand in "$TEST_ARTIFACTS/atdd-${key}"*.md "$TEST_ARTIFACTS/atdd-${epic_key}"-*.md "$TEST_ARTIFACTS/atdd-${epic_key}".md; do
-      [ -f "$cand" ] && { atdd_found=1; break; }
-    done
+    # Primary: shared resolver (nested canonical + legacy flat per-story)
+    if [ ! -f "$SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh" ]; then
+      log "WARNING: per-story resolver not found at $SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh; falling back to exact-name checks only"
+    elif p="$(TEST_ARTIFACTS="$TEST_ARTIFACTS" IMPLEMENTATION_ARTIFACTS="$IMPL_ROOT" \
+        bash "$SCRIPT_DIR/lib/resolve-test-artifact-per-story.sh" atdd "$key" --existing-only 2>/dev/null)" \
+        && [ -n "$p" ] && [ -f "$p" ]; then
+      atdd_found=1
+    fi
+    # Fallback 1: exact flat per-story
+    if [ "$atdd_found" -eq 0 ] && [ -f "$TEST_ARTIFACTS/atdd-${key}.md" ]; then
+      atdd_found=1
+    fi
+    # Fallback 2: exact epic-level shared coverage
+    if [ "$atdd_found" -eq 0 ] && [ -f "$TEST_ARTIFACTS/atdd-${epic_key}.md" ]; then
+      atdd_found=1
+    fi
     [ "$atdd_found" -eq 0 ] && missing_atdd="${missing_atdd}${missing_atdd:+ }${key}"
   fi
 done <<EOF

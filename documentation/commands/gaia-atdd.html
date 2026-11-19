@@ -93,7 +93,7 @@
         <ul>
           <li>
             <strong>Single-story mode</strong> -- pass a story key
-            (e.g., <code>/gaia-atdd E3-S7</code>) to generate ATDD for one
+            (e.g., <code>/gaia-atdd {story_key}</code>) to generate ATDD for one
             specific story.
           </li>
           <li>
@@ -118,8 +118,11 @@
             A high-risk story is about to enter development and needs
             acceptance test coverage before implementation begins.
             <a href="gaia-dev-story.html"><code>/gaia-dev-story</code></a>
-            enforces an ATDD gate for high-risk stories -- run this command
-            first to satisfy it.
+            enforces an ATDD gate for high-risk stories: it checks the
+            resolver's per-story path, then exact
+            <code>atdd-{story_key}.md</code>, then exact
+            <code>atdd-{epic_key}.md</code> (no prefix matching). Run
+            this command first to satisfy the gate.
           </li>
           <li>
             Sprint planning identified multiple high-risk stories and you want
@@ -222,7 +225,7 @@ This warning is shown once per session.
       <section id="how-to-invoke">
         <h2>How to invoke</h2>
         <h3>Single-story mode</h3>
-        <pre><code>/gaia-atdd E3-S7</code></pre>
+        <pre><code>/gaia-atdd {story_key}</code></pre>
         <p>
           Pass a story key in <code>E{n}-S{n}</code> format. The command
           generates ATDD for that one story.
@@ -305,7 +308,7 @@ This warning is shown once per session.
           <li>
             <span class="step-title">Write ATDD artifact</span>
             Writes the artifact to the per-story mirror path
-            <code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code>
+            <code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/{story_key}-{story_slug}/atdd.md</code>
             using an atomic write (temp file then rename) to prevent corruption if
             interrupted. The legacy flat path
             <code>.gaia/artifacts/test-artifacts/atdd-{story_key}.md</code>
@@ -376,7 +379,7 @@ This warning is shown once per session.
                 The story to generate ATDD for, in <code>E{n}-S{n}</code>
                 format. Omit to enter batch mode.
               </td>
-              <td><code>/gaia-atdd E3-S7</code></td>
+              <td><code>/gaia-atdd {story_key}</code></td>
             </tr>
             <tr>
               <td>Story file</td>
@@ -433,7 +436,7 @@ This warning is shown once per session.
           <tbody>
             <tr>
               <td>ATDD artifact</td>
-              <td><code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/stories/{story_key}-{story_slug}/atdd.md</code></td>
+              <td><code>.gaia/artifacts/test-artifacts/epic-{epic_slug}/{story_key}-{story_slug}/atdd.md</code></td>
               <td>
                 Given/When/Then test skeletons for every AC in the story,
                 plus the AC-to-test traceability table. One file per story.
@@ -467,7 +470,7 @@ This warning is shown once per session.
 
         <h3>Single-story mode</h3>
         <p>
-          Suppose story E3-S7 has the following acceptance criteria in its
+          Suppose a high-risk story has the following acceptance criteria in its
           story file:
         </p>
         <pre><code>## Acceptance Criteria
@@ -482,15 +485,15 @@ This warning is shown once per session.
       registration endpoint is called, then a 503 Service Unavailable
       response is returned and the error is logged.</code></pre>
 
-        <p>Running <code>/gaia-atdd E3-S7</code> produces:</p>
-        <pre><code>&gt; /gaia-atdd E3-S7
+        <p>Running <code>/gaia-atdd {story_key}</code> produces:</p>
+        <pre><code>&gt; /gaia-atdd {story_key}
 
-Validating story key E3-S7...
+Validating story key {story_key}...
   Format: valid (E{n}-S{n}).
   Lookup: found in epics-and-stories.md.
 
 Loading story file...
-  Path: .gaia/artifacts/implementation-artifacts/epic-E3-security/stories/E3-S7-user-registration.md
+  Path: .gaia/artifacts/implementation-artifacts/epic-{epic_slug}/{story_key}-{story_slug}/story.md
   Title: User registration
   Risk: high
   Acceptance criteria: 3 (AC1, AC2, AC-EC1)
@@ -534,7 +537,7 @@ Writing test skeletons...
     - AND no partial user record is created
   **Status:** FAILING (red phase -- implementation does not exist)
 
-Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md
+Artifact written to: .gaia/artifacts/test-artifacts/epic-{epic_slug}/{story_key}-{story_slug}/atdd.md
   3 ACs mapped to 3 tests. All tests in red (failing) state.
 
 Validation: PASSED
@@ -545,7 +548,7 @@ Validation: PASSED
 Run generated tests now to confirm red phase? [y/N]
 &gt; n
 
-Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md</code></pre>
+Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/epic-{epic_slug}/{story_key}-{story_slug}/atdd.md</code></pre>
 
         <h3>Batch mode</h3>
         <pre><code>&gt; /gaia-atdd
@@ -553,27 +556,27 @@ Done. ATDD artifact ready at .gaia/artifacts/test-artifacts/epic-E3-security/sto
 Scanning epics-and-stories.md for high-risk stories...
 
   Found 3 high-risk stories:
-    1. E3-S7   User registration            (risk: high, 3 ACs)
-    2. E3-S12  Password reset flow           (risk: high, 5 ACs)
-    3. E5-S3   Payment processing webhook    (risk: high, 7 ACs)
+    1. {story_key_1}  User registration            (risk: high, 3 ACs)
+    2. {story_key_2}  Password reset flow           (risk: high, 5 ACs)
+    3. {story_key_3}  Payment processing webhook    (risk: high, 7 ACs)
 
 [all / select / skip]
 &gt; select
 Enter story numbers (comma-separated): 1,3
 
-Processing E3-S7 (1/2)...
+Processing {story_key_1} (1/2)...
   Loaded 3 ACs. Generating test skeletons...
-  Artifact written to: .gaia/artifacts/test-artifacts/epic-E3-security/stories/E3-S7-user-registration/atdd.md (generated)
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-{epic_slug}/{story_key_1}-{slug}/atdd.md (generated)
 
-Processing E5-S3 (2/2)...
+Processing {story_key_3} (2/2)...
   Loaded 7 ACs. Generating test skeletons...
   Overwriting existing ATDD artifact.
-  Artifact written to: .gaia/artifacts/test-artifacts/epic-E5-payments/stories/E5-S3-payment-webhook/atdd.md (overwritten)
+  Artifact written to: .gaia/artifacts/test-artifacts/epic-{epic_slug_b}/{story_key_3}-{slug}/atdd.md (overwritten)
 
 Batch summary:
-  Generated:   1 (E3-S7)
-  Overwritten: 1 (E5-S3)
-  Skipped:     1 (E3-S12 -- not selected)
+  Generated:   1 ({story_key_1})
+  Overwritten: 1 ({story_key_3})
+  Skipped:     1 ({story_key_2} -- not selected)
 
 Run generated tests now to confirm red phase? [y/N]
 &gt; n
@@ -610,8 +613,9 @@ Done.</code></pre>
         <h3>"Invalid story key format"</h3>
         <p>
           The story key must match the <code>E{n}-S{n}</code> pattern (for
-          example, <code>E3-S7</code>). Keys like <code>S7</code> or
-          <code>E3S7</code> are rejected. Include the full epic prefix.
+          example, <code>E{n}-S{n}</code> with numeric values). Keys like
+          <code>S7</code> or <code>E3S7</code> are rejected. Include the full
+          epic prefix.
         </p>
 
         <h3>"Story {key} not found in epics-and-stories.md"</h3>
@@ -646,7 +650,7 @@ Done.</code></pre>
           Batch mode found no stories with <code>risk: high</code> in
           <code>epics-and-stories.md</code>. If you want to generate ATDD
           for a specific medium- or low-risk story, use single-story mode:
-          <code>/gaia-atdd E3-S7</code>.
+          <code>/gaia-atdd {story_key}</code>.
         </p>
 
         <h3>"Cannot read .gaia/artifacts/planning-artifacts/epics-and-stories.md"</h3>
