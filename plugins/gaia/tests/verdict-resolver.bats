@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# verdict-resolver.bats — unit tests for plugins/gaia/scripts/verdict-resolver.sh (E65-S1)
-# Covers TC-DEJ-VERDICT-01..04, TC-DEJ-OVERRIDE-1, EC-1, EC-2, EC-10.
+# verdict-resolver.bats — unit tests for plugins/gaia/scripts/verdict-resolver.sh
+# Covers verdict precedence, LLM-override invariant, edge cases, register mode,
+# schema validation, AC-coverage analyzer, and Phase 3A collector.
 
 load 'test_helper.bash'
 
@@ -8,6 +9,9 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
+  _FK99="E$((900))-S$((99))"
+  _FK88="E$((900))-S$((88))"
   SCRIPT="$SCRIPTS_DIR/verdict-resolver.sh"
 }
 teardown() { common_teardown; }
@@ -20,7 +24,7 @@ write_analysis() {
   cat > "$path" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "E65-S1",
+  "story_key": "$_FK",
   "skill": "gaia-code-review",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -702,4 +706,618 @@ JSON
     --execution-evidence "$TEST_TMP/ee.json"
   [ "$status" -eq 0 ]
   [ "$output" = "REQUEST_CHANGES" ]
+}
+
+# ===========================================================================
+# Payload C: schema_version present but structurally invalid
+# ===========================================================================
+
+@test "payload C (schema_version with tools instead of checks) -> BLOCKED" {
+  # Payload C: has schema_version but uses "tools" key instead of "checks",
+  # and is missing required skill/model fields. The current code only checks
+  # for schema_version presence, so this payload will slip through on pre-fix
+  # code. Post-fix, schema validation catches it.
+  cat > "$TEST_TMP/payload_c.json" <<'JSON'
+{"schema_version":"1.0","tools":[]}
+JSON
+  write_findings "$TEST_TMP/f.json" '[]'
+  run --separate-stderr "$SCRIPT" --analysis-results "$TEST_TMP/payload_c.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
+}
+
+# ===========================================================================
+# End-to-end: story with uncovered AC -> collector -> resolver
+# ===========================================================================
+
+@test "end-to-end: uncovered AC through real collector to resolver yields REQUEST_CHANGES" {
+  # Story fixture with one uncovered primary AC; empty-findings LLM file;
+  # run the real phase3a-collect.sh -> verdict-resolver.sh pipeline end-to-end.
+  # Fails on pre-fix code because phase3a-collect.sh does not exist yet.
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/e2e-output"
+  mkdir -p "$outdir"
+
+  # Story fixture with one primary AC that cannot be matched
+  cat > "$TEST_TMP/story.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P1"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+STORY
+
+  # Empty LLM findings (so the test fails for the missing analyzer, not missing input)
+  write_findings "$TEST_TMP/f.json" '[]'
+
+  # Run the collector
+  run "$collector" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP" --stack bash-dev
+  [ "$status" -eq 0 ]
+
+  # The collector should have written analysis-results.json
+  [ -f "$outdir/analysis-results.json" ]
+
+  # Feed it to the resolver — expect REQUEST_CHANGES (uncovered primary AC)
+  run "$SCRIPT" --analysis-results "$outdir/analysis-results.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+# ===========================================================================
+# Analyzer unit cases (17 tests) — ac-coverage-analyzer.sh
+# ===========================================================================
+
+# Helper: build a story fixture with given ACs
+_write_story_fixture() {
+  local path="$1" key="$2"; shift 2
+  cat > "$path" <<FRONT
+---
+key: "$key"
+title: "Test story"
+status: in-progress
+priority: "P1"
+---
+
+# Story
+
+## Acceptance Criteria
+
+FRONT
+  # Remaining args are AC lines
+  for ac in "$@"; do
+    printf '%s\n' "$ac" >> "$path"
+  done
+}
+
+# Helper: write a bats fixture file without a literal @test token in the
+# heredoc — avoids bats test-plan inflation (the token inflates the plan
+# when it appears anywhere in the file, even inside heredocs).
+_write_bats_fixture() {
+  local path="$1"; shift
+  : > "$path"
+  for name in "$@"; do
+    printf '@%s "%s" { true; }\n' "test" "$name" >> "$path"
+  done
+}
+
+@test "analyzer: MET via test file path containing AC id" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Check that AC1 is MET
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+  echo "$output" | jq -e '.status == "passed"'
+}
+
+@test "analyzer: MET via snake_case test name" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" "test_AC1_login_dashboard"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+}
+
+@test "analyzer: MET via camelCase test name (java style)" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" "testAC1Rejects"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+}
+
+@test "analyzer: MET via bats test name" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" "AC1 rejects invalid input"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+}
+
+@test "analyzer: edge-case AC id with hyphen/underscore equivalence" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC-EC3:** Given an edge case, when boundary hit, then handled gracefully.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" "AC_EC3 handles boundary"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC-EC3") | .status == "MET"'
+}
+
+@test "analyzer: PARTIALLY MET via Given/When/Then fallback with multi-word phrases" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC2:** Given invalid email address, when form submitted, then reject with error message.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" \
+    "should_reject_invalid_email_address_when_form_submitted_with_error_message"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC2") | .status == "PARTIALLY MET"'
+}
+
+@test "analyzer: uncovered primary AC yields NOT MET with blocking finding and failed status" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.'
+  mkdir -p "$TEST_TMP/tests"
+  # No test files match AC1
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"'
+  echo "$output" | jq -e '.status == "failed"'
+  echo "$output" | jq -e '.findings[] | select(.blocking == true)'
+}
+
+@test "analyzer: unattributed test not counted for coverage" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.'
+  mkdir -p "$TEST_TMP/tests"
+  # Test file has a different story key — not attributed to $_FK99
+  _write_bats_fixture "$TEST_TMP/tests/$_FK88-AC1.bats" "AC1 saves data"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # AC1 should be NOT MET because the test belongs to a different story
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"'
+  # The test should appear in unattributed_tests
+  echo "$output" | jq -e '.unattributed_tests | length > 0'
+}
+
+@test "analyzer: edge-case NOT MET yields non-blocking finding" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC-EC1:** Given an edge case input, when processed, then no crash occurs.'
+  mkdir -p "$TEST_TMP/tests"
+  # No matching tests
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC-EC1") | .status == "NOT MET"'
+  echo "$output" | jq -e '.status == "failed"'
+  # Edge-case NOT MET -> blocking: false
+  echo "$output" | jq -e '.findings[] | select(.blocking == false)'
+}
+
+@test "analyzer: zero ACs yields failed with blocking finding" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  # Story with no ACs
+  cat > "$TEST_TMP/story.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+---
+
+# Story
+
+## Acceptance Criteria
+
+(none)
+STORY
+  mkdir -p "$TEST_TMP/tests"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.status == "failed"'
+  echo "$output" | jq -e '.findings[] | select(.blocking == true) | select(.rule == "ac-coverage-empty")'
+}
+
+@test "analyzer: all ACs malformed yields failed with blocking finding" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** This AC has no Given/When/Then structure at all.'
+  mkdir -p "$TEST_TMP/tests"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.status == "failed"'
+  echo "$output" | jq -e '.findings[] | select(.blocking == true) | select(.rule == "ac-coverage-all-malformed")'
+  # The individual AC should be reported as skipped
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "skipped"'
+}
+
+@test "analyzer: longer AC id is not matched by shorter AC id test" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  # Use a clean directory whose path cannot accidentally contain the AC ids
+  # under test (bats encodes the test name into the temp directory path).
+  local cleandir
+  cleandir="$(mktemp -d "${TMPDIR:-/tmp}/boundary-XXXXXX")"
+  _write_story_fixture "$cleandir/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.' \
+    '- [ ] **AC10:** Given a manager, when they export data, then a CSV is downloaded.'
+  mkdir -p "$cleandir/tests"
+  _write_bats_fixture "$cleandir/tests/$_FK99-test.bats" "AC1 login shows dashboard"
+  run "$analyzer" --story-file "$cleandir/story.md" --story-key $_FK99 \
+    --test-dir "$cleandir/tests" --stack bash-dev
+  rm -rf "$cleandir"
+  [ "$status" -eq 0 ]
+  # AC1 is MET
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+  # AC10 must NOT be matched by the AC1 test — it should be NOT MET
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC10") | .status == "NOT MET"'
+}
+
+@test "analyzer: single-word phrases never produce PARTIALLY MET" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC2:** Given user, when submit, then save.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" \
+    "test_user_can_submit_form_and_save_draft"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Minimum-pair gate: single-word phrases cannot produce PARTIALLY MET
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC2") | .status == "NOT MET"'
+}
+
+@test "analyzer: fallback requires all three phrases in one test (not spread)" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC2:** Given invalid email address, when form submitted, then reject with error message.'
+  mkdir -p "$TEST_TMP/tests"
+  # Two tests: each matches only some phrases, not all three in one test
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-given.bats" "test_invalid_email_address"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-then.bats" "test_reject_with_error_message"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Spread across tests -> NOT MET (not PARTIALLY MET)
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC2") | .status == "NOT MET"'
+}
+
+@test "analyzer: genuine multi-word fallback yields PARTIALLY MET" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC2:** Given invalid email address, when form submitted, then reject with error message.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-test.bats" \
+    "should_reject_invalid_email_address_when_form_submitted_with_error_message"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC2") | .status == "PARTIALLY MET"'
+}
+
+@test "analyzer: deterministic output (run twice, identical)" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.' \
+    '- [ ] **AC2:** Given invalid email address, when form submitted, then reject with error message.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev > "$TEST_TMP/run1.json"
+  "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev > "$TEST_TMP/run2.json"
+  cmp "$TEST_TMP/run1.json" "$TEST_TMP/run2.json"
+}
+
+@test "analyzer: malformed AC reported as skipped with ac-quality finding" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** This AC has no Given/When/Then structure.' \
+    '- [ ] **AC2:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-AC2.bats" "AC2 login shows dashboard"
+  run "$analyzer" --story-file "$TEST_TMP/story.md" --story-key $_FK99 \
+    --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # AC1 should be skipped (malformed)
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "skipped"'
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .skip_reason != null'
+  # Non-blocking ac-quality finding
+  echo "$output" | jq -e '.findings[] | select(.rule == "ac-quality") | select(.blocking == false)'
+  # AC2 should be MET; overall passed since no NOT MET
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC2") | .status == "MET"'
+  echo "$output" | jq -e '.status == "passed"'
+}
+
+# ===========================================================================
+# Collector unit cases (8 tests) — phase3a-collect.sh
+# ===========================================================================
+
+@test "collector: all ACs covered yields APPROVE through resolver" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  _write_bats_fixture "$TEST_TMP/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
+  run "$collector" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+  # Feed to resolver
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$outdir/analysis-results.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "collector: unreadable story file yields errored check -> BLOCKED" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  run "$collector" --story-key $_FK99 --story-file "$TEST_TMP/no-such-story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+  # The errored check should cause BLOCKED
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$outdir/analysis-results.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
+}
+
+@test "collector: stub-directory analyzer failure yields errored check -> BLOCKED" {
+  # Copy the collector into a temp dir with a stub analyzer that exits 1
+  local collector_src="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local tmpbin="$TEST_TMP/stubdir"
+  mkdir -p "$tmpbin"
+  cp "$collector_src" "$tmpbin/phase3a-collect.sh"
+  chmod +x "$tmpbin/phase3a-collect.sh"
+  # Stub analyzer that always fails
+  cat > "$tmpbin/ac-coverage-analyzer.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+  chmod +x "$tmpbin/ac-coverage-analyzer.sh"
+
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  run "$tmpbin/phase3a-collect.sh" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$outdir/analysis-results.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
+}
+
+@test "collector: narrowed PATH still writes output" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  mkdir -p "$TEST_TMP/tests"
+  # Narrow PATH but keep jq and standard tools reachable
+  local jq_path
+  jq_path="$(command -v jq)"
+  local jq_dir
+  jq_dir="$(dirname "$jq_path")"
+  run env PATH="/usr/bin:/bin:$jq_dir" \
+    "$collector" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+}
+
+@test "collector: missing --story-key flag exits 1" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  run "$collector" --story-file "$TEST_TMP/story.md" --output-dir "$outdir"
+  [ "$status" -eq 1 ]
+}
+
+@test "collector: unwritable output directory exits 1" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  local outdir="$TEST_TMP/readonly-dir"
+  mkdir -p "$outdir"
+  chmod 444 "$outdir"
+  run "$collector" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir"
+  [ "$status" -eq 1 ]
+  # Clean up — restore permissions so teardown can remove it
+  chmod 755 "$outdir"
+}
+
+@test "collector: malformed story key exits 1" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  _write_story_fixture "$TEST_TMP/story.md" "BADKEY" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  run "$collector" --story-key "BADKEY" --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir"
+  [ "$status" -eq 1 ]
+}
+
+@test "collector: non-existent test-dir exits 1" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/collect-out"
+  mkdir -p "$outdir"
+  _write_story_fixture "$TEST_TMP/story.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.'
+  run "$collector" --story-key $_FK99 --story-file "$TEST_TMP/story.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/no-such-dir"
+  [ "$status" -eq 1 ]
+}
+
+# ===========================================================================
+# Fallback-tier test: PATH narrowed so no ajv/python3 validator is found
+# ===========================================================================
+
+@test "fallback tier: payload C with no schema validator still yields BLOCKED" {
+  # Narrow PATH so ajv and python3 are absent but jq stays reachable.
+  # The jq-native structural check should catch the missing checks/skill/model.
+  local jq_path
+  jq_path="$(command -v jq)"
+  local jq_dir
+  jq_dir="$(dirname "$jq_path")"
+  local narrowed="/usr/bin:/bin:$jq_dir"
+
+  # Confirm the validators are actually absent under the narrowed PATH.
+  # command -v is a builtin, so env alone cannot test it; use bash -c.
+  run env PATH="$narrowed" bash -c 'command -v ajv'
+  [ "$status" -ne 0 ]
+  # python3 may or may not be in /usr/bin; if present we also need to verify
+  # jsonschema is not importable. But the core assertion is that the resolver
+  # still returns BLOCKED via the jq fallback even without schema validators.
+  # If python3 IS found, the full validator runs and BLOCKED is still expected.
+  if env PATH="$narrowed" bash -c 'command -v python3' >/dev/null 2>&1; then
+    run env PATH="$narrowed" bash -c 'python3 -c "import jsonschema" 2>/dev/null'
+    # If jsonschema is importable, the full validator runs — BLOCKED still expected
+  fi
+
+  cat > "$TEST_TMP/payload_c.json" <<'JSON'
+{"schema_version":"1.0","tools":[]}
+JSON
+  write_findings "$TEST_TMP/f.json" '[]'
+  run --separate-stderr env PATH="$narrowed" "$SCRIPT" --analysis-results "$TEST_TMP/payload_c.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "BLOCKED" ]
+}
+
+# ===========================================================================
+# Action-mode exemption (regression guard — expected to PASS on current code)
+# ===========================================================================
+
+@test "action-mode fixture is exempt from schema validation (regression guard)" {
+  # Action-mode analysis-results use a different shape (plan/execution/placeholders).
+  # Schema validation must not apply to them. This test is expected to pass on
+  # current code and guards against regressions when schema validation is added.
+  cat > "$TEST_TMP/action.json" <<'JSON'
+{"plan":"present","execution":"success","placeholders":false,"mocks_sut":false,"breaks_suite":false}
+JSON
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$TEST_TMP/action.json" --llm-findings "$TEST_TMP/f.json" --action-mode
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+# ===========================================================================
+# Primary NOT MET -> REQUEST_CHANGES (regression guard — may pass on current code
+# if the fixture already has a failed check with blocking finding)
+# ===========================================================================
+
+@test "primary NOT MET AC yields REQUEST_CHANGES (regression guard)" {
+  # A fixture with a failed ac-coverage check and a blocking finding
+  # simulates what the analyzer will produce for a primary NOT MET AC.
+  # This tests the resolver's handling of the failed-check-with-blocking-finding
+  # rule. Expected to pass on current code — this is a regression guard.
+  cat > "$TEST_TMP/a.json" <<JSON
+{
+  "schema_version": "1.0",
+  "story_key": "$_FK99",
+  "skill": "gaia-qa-tests",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "checks": [
+    {
+      "name": "ac-coverage",
+      "status": "failed",
+      "findings": [
+        {
+          "severity": "critical",
+          "blocking": true,
+          "rule": "ac-coverage-AC1",
+          "message": "Primary AC1 is NOT MET: 0 matching tests"
+        }
+      ]
+    }
+  ]
+}
+JSON
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "REQUEST_CHANGES" ]
+}
+
+# ===========================================================================
+# Edge-case NOT MET alone -> APPROVE (regression guard — may pass on current
+# code via rule 2: failed check whose findings are all blocking: false)
+# ===========================================================================
+
+@test "edge-case NOT MET AC alone yields APPROVE (regression guard)" {
+  # A fixture with a failed ac-coverage check but only non-blocking findings
+  # simulates what the analyzer will produce when only an edge-case AC is NOT MET.
+  # The resolver's rule 2 gives APPROVE for a failed check whose findings are
+  # all blocking: false. Expected to pass on current code — regression guard.
+  cat > "$TEST_TMP/a.json" <<JSON
+{
+  "schema_version": "1.0",
+  "story_key": "$_FK99",
+  "skill": "gaia-qa-tests",
+  "model": "claude-opus-4-7",
+  "model_temperature": 0,
+  "checks": [
+    {
+      "name": "ac-coverage",
+      "status": "failed",
+      "findings": [
+        {
+          "severity": "warning",
+          "blocking": false,
+          "rule": "ac-coverage-AC-EC1",
+          "message": "Edge-case AC-EC1 is NOT MET: 0 matching tests"
+        }
+      ]
+    }
+  ]
+}
+JSON
+  write_findings "$TEST_TMP/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$TEST_TMP/a.json" --llm-findings "$TEST_TMP/f.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
 }

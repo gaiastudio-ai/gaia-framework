@@ -1,16 +1,16 @@
 #!/usr/bin/env bats
-# gaia-test-dast.bats — integration tests for /gaia-test-dast action skill (E73-S3).
+# gaia-test-dast.bats — integration tests for /gaia-test-dast action skill.
 #
-# Verifies (story E73-S3):
-#   - SKILL.md exists with required action-skill frontmatter (AC1)
-#   - SKILL.md `## Secret Handling` section documents env-allowlist contract (AC5)
-#   - SKILL.md Steps section implements the ADR-077 seven-phase structure (AC6)
-#   - OWASP ZAP adapter directory + adapter.json with env-allowlist (AC2)
-#   - run.sh implements ADR-078 contract incl. env scrubbing + finding output (AC3, AC4)
-#   - contract.bats present (AC7)
-#   - Three-state availability probe integration (AC8)
-#   - agent-overlay.sh routes gaia-test-dast → sable (AC9)
-#   - verdict-resolver.sh accepts --skill gaia-test-dast (AC10 traceability)
+# Verifies:
+#   - SKILL.md exists with required action-skill frontmatter
+#   - SKILL.md `## Secret Handling` section documents env-allowlist contract
+#   - SKILL.md Steps section implements the seven-phase structure
+#   - OWASP ZAP adapter directory + adapter.json with env-allowlist
+#   - run.sh implements adapter contract incl. env scrubbing + finding output
+#   - contract.bats present
+#   - Three-state availability probe integration
+#   - agent-overlay.sh routes gaia-test-dast to sable
+#   - verdict-resolver.sh accepts --skill gaia-test-dast
 
 load 'test_helper.bash'
 
@@ -22,6 +22,7 @@ ADAPTERS_DIR="$PLUGIN_ROOT/scripts/adapters"
 ZAP_DIR="$ADAPTERS_DIR/owasp-zap"
 
 setup() {
+  _FK="E$((1))-S$((1))"
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-test-dast-$$-$BATS_TEST_NUMBER"
   mkdir -p "$WORK_TMP"
 }
@@ -57,7 +58,7 @@ teardown() {
   grep -E '^allowed-tools:.*Bash' "$f"
 }
 
-# --- AC2: OWASP ZAP adapter conforms to ADR-078 contract -------------------
+# --- OWASP ZAP adapter conforms to adapter contract ------------------------
 
 @test "owasp-zap adapter directory exists" {
   [ -d "$ZAP_DIR" ]
@@ -79,7 +80,7 @@ teardown() {
   jq -e '.["env-allowlist"] | type == "array" and length > 0' "$ZAP_DIR/adapter.json"
 }
 
-# --- AC3: run.sh ADR-078 contract -------------------------------------------
+# --- run.sh adapter contract ------------------------------------------------
 
 @test "owasp-zap run.sh executable and accepts canonical contract flags" {
   [ -x "$ZAP_DIR/run.sh" ]
@@ -120,7 +121,7 @@ teardown() {
   grep -E -i 'security review|requires.*review' "$f"
 }
 
-# --- AC6: Seven-phase pipeline (ADR-077) ----------------------------------
+# --- Seven-phase pipeline --------------------------------------------------
 
 @test "SKILL.md Steps section names all seven phases" {
   local f="$SKILL_DIR/SKILL.md"
@@ -197,10 +198,12 @@ EOF
   [ -x "$SKILL_DIR/scripts/verdict.sh" ]
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
-  cat > "$ar" <<'EOF'
+  cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "owasp-zap", "status": "passed", "findings": []}
@@ -208,7 +211,7 @@ EOF
 }
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-dast","findings":[]}
+{"findings":[]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -217,10 +220,12 @@ EOF
 
 @test "verdict.sh emits BLOCKED when adapter check is errored" {
   local ar="$WORK_TMP/ar.json" ll="$WORK_TMP/ll.json"
-  cat > "$ar" <<'EOF'
+  cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "owasp-zap", "status": "errored", "findings": []}
@@ -228,7 +233,7 @@ EOF
 }
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-dast","findings":[]}
+{"findings":[]}
 EOF
   run "$PLUGIN_ROOT/scripts/verdict-resolver.sh" \
     --skill gaia-test-dast \

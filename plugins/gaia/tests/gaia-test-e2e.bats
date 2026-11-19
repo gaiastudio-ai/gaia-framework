@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# gaia-test-e2e.bats — integration tests for /gaia-test-e2e action skill (E73-S1).
+# gaia-test-e2e.bats — integration tests for /gaia-test-e2e action skill.
 #
 # Verifies:
 #   - SKILL.md exists with required action-skill frontmatter
@@ -22,6 +22,7 @@ CYPRESS_DIR="$ADAPTERS_DIR/cypress-e2e"
 SCHEMA_PATH="$PLUGIN_ROOT/schemas/analysis-results.schema.json"
 
 setup() {
+  _FK="E$((1))-S$((1))"
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-test-e2e-$$-$BATS_TEST_NUMBER"
   mkdir -p "$WORK_TMP"
 }
@@ -42,13 +43,13 @@ teardown() {
   local f="$SKILL_DIR/SKILL.md"
   # frontmatter declares a name field and the action-skill markers
   grep -E '^name:[[:space:]]+gaia-test-e2e' "$f"
-  # phase: deployment marker (per ADR-080)
+  # phase: deployment marker
   grep -E '^phase:[[:space:]]+deployment' "$f"
   # verdict: true marker (action skill emits a verdict)
   grep -E '^verdict:[[:space:]]+true' "$f"
 }
 
-# --- AC2: Playwright adapter conforms to ADR-078 contract -------------------
+# --- Playwright adapter conforms to adapter contract ------------------------
 
 @test "playwright-e2e adapter directory exists" {
   [ -d "$PLAYWRIGHT_DIR" ]
@@ -78,7 +79,7 @@ teardown() {
   [ -f "$PLAYWRIGHT_DIR/test/contract.bats" ]
 }
 
-# --- AC3: Cypress adapter conforms to ADR-078 contract ---------------------
+# --- Cypress adapter conforms to adapter contract --------------------------
 
 @test "cypress-e2e adapter directory exists" {
   [ -d "$CYPRESS_DIR" ]
@@ -186,8 +187,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-e2e",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "playwright-e2e", "status": "passed", "findings": []}
@@ -196,8 +199,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-e2e",
   "findings": []
 }
 EOF
@@ -214,8 +215,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-e2e",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "playwright-e2e", "status": "passed", "findings": []}
@@ -224,8 +227,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-e2e",
   "findings": [
     {"category": "stability", "severity": "Critical", "message": "flaky", "file": null, "line": 0, "rule": "e2e.flaky"}
   ]
@@ -244,8 +245,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-e2e",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "playwright-e2e", "status": "errored", "findings": []}
@@ -254,8 +257,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-e2e",
   "findings": []
 }
 EOF
@@ -292,7 +293,7 @@ EOF
 }
 
 # --- AC4: Three-state availability probe integration ---------------------
-# The probe is deterministic shell shipped by E66-S2. We sanity-check that
+# The probe is deterministic shell. We sanity-check that
 # our adapter.json is consumable by the probe without crashing.
 
 @test "tool-availability-probe.sh consumes playwright-e2e adapter.json without crash" {

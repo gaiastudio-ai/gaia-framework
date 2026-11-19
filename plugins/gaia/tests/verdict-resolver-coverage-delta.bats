@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# verdict-resolver-coverage-delta.bats — E67-S3 coverage-delta integration tests
-# for verdict-resolver.sh (FR-RSV2-2, TC-RSV2-TESTAUTOMATE-3, AC2, AC3, AC4, AC6).
+# verdict-resolver-coverage-delta.bats — coverage-delta integration tests
+# for verdict-resolver.sh.
 #
 # Validates the new --coverage-delta flag and the precedence rule inserted
 # between LLM-Critical and the default APPROVE branch:
@@ -21,6 +21,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
   SCRIPT="$SCRIPTS_DIR/verdict-resolver.sh"
 }
 teardown() { common_teardown; }
@@ -32,7 +33,7 @@ write_analysis() {
   cat > "$path" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "E67-S3",
+  "story_key": "$_FK",
   "skill": "gaia-test-automate",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",

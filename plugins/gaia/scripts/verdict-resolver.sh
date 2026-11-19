@@ -344,11 +344,51 @@ if [ "$ACTION_MODE" -eq 1 ]; then
   emit "APPROVE"
 fi
 
-# Required schema_version field check — skip when register-only (no analysis).
-if [ -n "$ANALYSIS" ]; then
-  if ! jq -e '(.schema_version // "") | length > 0' "$ANALYSIS" >/dev/null 2>&1; then
-    printf '%s: malformed analysis-results.json: missing schema_version\n' "$SCRIPT_NAME" >&2
-    emit "BLOCKED"
+# Two-tier schema validation — skip when register-only (no analysis) or action-mode
+# (action-mode inputs use a flat JSON shape, not the analysis-results schema).
+if [ -n "$ANALYSIS" ] && [ "$ACTION_MODE" -eq 0 ]; then
+  _vr_schema_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _vr_schema_file="$_vr_schema_dir/../schemas/analysis-results.schema.json"
+  _vr_validator="$_vr_schema_dir/lib/validate-artifact-schema.sh"
+  _vr_schema_rc=0
+  if [ -r "$_vr_validator" ] && [ -r "$_vr_schema_file" ]; then
+    # shellcheck source=lib/validate-artifact-schema.sh
+    . "$_vr_validator"
+    validate_artifact_schema "$_vr_schema_file" "$ANALYSIS" >/dev/null 2>&1 || _vr_schema_rc=$?
+    case "$_vr_schema_rc" in
+      0) ;; # valid — continue
+      1) # schema-invalid
+        printf '%s: malformed analysis-results.json: missing schema_version or schema-invalid\n' "$SCRIPT_NAME" >&2
+        emit "BLOCKED" ;;
+      3) # validator absent — fall through to jq structural check
+        _vr_schema_rc=3 ;;
+      *) # unexpected exit (including exit 2 usage error) -> BLOCKED
+        printf '%s: schema validator unexpected exit %d -> BLOCKED\n' "$SCRIPT_NAME" "$_vr_schema_rc" >&2
+        emit "BLOCKED" ;;
+    esac
+  else
+    _vr_schema_rc=3  # validator or schema not found — fall through to jq
+  fi
+  if [ "$_vr_schema_rc" -eq 3 ]; then
+    # jq-native structural fallback: check the minimum required fields.
+    # schema_version must be exactly "1.0"; story_key, skill, model must be
+    # non-empty strings; checks must be an array; each check must have name
+    # and status as strings. model_temperature not checked (optional).
+    # story_key pattern not enforced in the fallback (install python3+jsonschema
+    # locally to match CI).
+    if ! jq -e '
+      .schema_version == "1.0"
+      and ((.story_key // "") | length > 0)
+      and ((.skill // "") | length > 0)
+      and ((.model // "") | length > 0)
+      and (.checks | type == "array")
+      and (.checks | all(
+        (.name | type == "string") and (.status | type == "string")
+      ))
+    ' "$ANALYSIS" >/dev/null 2>&1; then
+      printf '%s: malformed analysis-results.json: missing schema_version or required fields\n' "$SCRIPT_NAME" >&2
+      emit "BLOCKED"
+    fi
   fi
 fi
 

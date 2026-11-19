@@ -12,6 +12,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((900))-S$((2))"
   SCRIPT="$SCRIPTS_DIR/review-common/register-write.sh"
   if [ ! -x "$SCRIPT" ]; then
     echo "register-write.sh not executable: $SCRIPT" >&2
@@ -59,7 +60,7 @@ _minimal_register() {
   local path="$1"
   local entries="${2:-"[]"}"
   _write_register "$path" "schema_version: 1
-story: TEST-S1
+story: $_FK
 gate_runs: []
 entries: ${entries}"
 }
@@ -106,14 +107,14 @@ _write_legacy_story() {
 # ---------------------------------------------------------------------------
 
 @test "writer add creates register with schema_version 1 and sequential ID" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "null pointer on empty input" \
     --type bug --severity critical --gate code-review \
     --evidence "src/main.ts:42" --impact "crash on startup" \
     --blocking --blocking-rationale "Critical severity: crash on production path"
   [ "$status" -eq 0 ]
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ]
   local sv
   sv="$(yq '.schema_version' "$reg")"
@@ -125,7 +126,7 @@ _write_legacy_story() {
 
 @test "writer add with matching dedup key merges into existing entry" {
   # First add
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "SQL injection in login" \
     --type security --severity critical --gate security-review \
     --dedup-key "src/auth.ts:10-15:injection" \
@@ -133,7 +134,7 @@ _write_legacy_story() {
   [ "$status" -eq 0 ]
 
   # Second add with same dedup key from different gate
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "SQL injection in login handler" \
     --type security --severity high --gate code-review \
     --dedup-key "src/auth.ts:10-15:injection" \
@@ -141,7 +142,7 @@ _write_legacy_story() {
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local count
   count="$(yq '.entries | length' "$reg")"
   [ "$count" -eq 1 ]
@@ -155,30 +156,30 @@ _write_legacy_story() {
 
 @test "writer add with matching dedup key on resolved entry reopens it and moves severity_resolution to history" {
   # Create and resolve an entry
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Missing validation" --type bug --severity high \
     --gate code-review --dedup-key "src/form.ts:20-25:validation" \
     --blocking --blocking-rationale "High severity: missing input validation"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false \
     --rationale "Reviewed: internal-only endpoint, not user-facing"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition resolved
   [ "$status" -eq 0 ]
 
   # Re-add with same dedup key from a new gate
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Missing validation on form" --type bug --severity high \
     --gate qa-tests --dedup-key "src/form.ts:20-25:validation" \
     --blocking --blocking-rationale "High severity: missing validation"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   # Same ID — not a new entry
   local count
   count="$(yq '.entries | length' "$reg")"
@@ -206,27 +207,27 @@ _write_legacy_story() {
 }
 
 @test "writer merge unifies two entries keeping lower ID and removes source" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Memory leak in handler" --type bug --severity high \
     --gate code-review --dedup-key "src/handler.ts:10:leak" \
     --blocking --blocking-rationale "High severity: memory leak"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Resource not freed" --type bug --severity medium \
     --gate performance-review --dedup-key "src/handler.ts:12:resource"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local before
   before="$(yq '.entries | length' "$reg")"
   [ "$before" -eq 2 ]
 
-  run "$SCRIPT" merge --story TEST-S1 --source-id RF-2 --target-id RF-1
+  run "$SCRIPT" merge --story $_FK --source-id RF-2 --target-id RF-1
   [ "$status" -eq 0 ]
 
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local after
   after="$(yq '.entries | length' "$reg")"
   [ "$after" -eq 1 ]
@@ -239,42 +240,42 @@ _write_legacy_story() {
 }
 
 @test "writer resolve-severity with empty rationale exits non-zero" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Test defect" --type bug --severity high \
     --gate code-review --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale ""
   [ "$status" -ne 0 ]
   { grep -qF "rationale" <<<"$output"; } || { grep -qF "rationale" <<<"${stderr:-$output}"; }
 }
 
 @test "writer resolve-severity with whitespace-only rationale exits non-zero" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Test defect" --type bug --severity high \
     --gate code-review --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "   "
   [ "$status" -ne 0 ]
   { grep -qF "rationale" <<<"$output"; } || { grep -qF "rationale" <<<"${stderr:-$output}"; }
 }
 
 @test "writer resolve-severity with valid rationale records resolution" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Test defect" --type bug --severity high \
     --gate code-review --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false \
     --rationale "Reviewed: low-risk internal path"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local resolved_sev
   resolved_sev="$(yq '.entries[0].severity_resolution.resolved_severity' "$reg")"
   [ "$resolved_sev" = "medium" ]
@@ -284,19 +285,19 @@ _write_legacy_story() {
 }
 
 @test "writer resolve-severity cannot clear material true" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Untested auth bypass" --type security --severity low \
     --gate security-review --material \
     --blocking --blocking-rationale "Material risk: auth bypass unverified"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity low --blocking false \
     --rationale "Attempting to clear material"
   # Either exits non-zero or the material flag stays true
   if [ "$status" -eq 0 ]; then
     local reg
-    reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+    reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
     local mat
     mat="$(yq '.entries[0].material' "$reg")"
     [ "$mat" = "true" ]
@@ -309,12 +310,12 @@ _write_legacy_story() {
 }
 
 @test "writer set-disposition triage without owner or priority exits non-zero" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Minor style issue" --type code-debt --severity low \
     --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage
   [ "$status" -ne 0 ]
   { grep -qF "owner" <<<"$output"; } \
@@ -324,17 +325,17 @@ _write_legacy_story() {
 }
 
 @test "writer set-disposition triage with owner and priority succeeds" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Minor style issue" --type code-debt --severity low \
     --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local disp
   disp="$(yq '.entries[0].disposition' "$reg")"
   [ "$disp" = "triage" ]
@@ -358,18 +359,18 @@ _write_legacy_story() {
 }
 
 @test "writer rejects unknown disposition" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition wontfix-maybe
   [ "$status" -ne 0 ]
   { grep -qF "disposition" <<<"$output"; } || { grep -qF "disposition" <<<"${stderr:-$output}"; }
 }
 
 @test "writer rejects unknown severity" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity Blocker --gate code-review
   [ "$status" -ne 0 ]
   { grep -qF "severity" <<<"$output"; } || { grep -qF "severity" <<<"${stderr:-$output}"; }
@@ -377,12 +378,12 @@ _write_legacy_story() {
 
 @test "writer normalises template tier names to canonical severity" {
   # Critical -> critical
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "tier test" --type bug --severity Critical --gate code-review \
     --blocking --blocking-rationale "Critical severity"
   [ "$status" -eq 0 ]
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local sev
   sev="$(yq '.entries[0].severity' "$reg")"
   [ "$sev" = "critical" ]
@@ -410,25 +411,25 @@ _write_legacy_story() {
   # Without --blocking, high auto-derives to blocking.  This test verifies
   # that the writer does not allow an explicit override that contradicts the
   # blocker definition.
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "high bug override" --type bug --severity high --gate code-review
   # Without explicit --blocking, high auto-derives to blocking -> succeeds
   [ "$status" -eq 0 ]
   # The entry should be blocking
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local blk
   blk="$(yq '.entries[0].blocking' "$reg")"
   [ "$blk" = "true" ]
 }
 
 @test "writer set-disposition triage rejects high-severity bug" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "high sev bug" --type bug --severity high --gate code-review \
     --blocking --blocking-rationale "High severity bug"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority high
   [ "$status" -ne 0 ]
   { grep -qF "bug" <<<"$output"; } \
@@ -438,14 +439,14 @@ _write_legacy_story() {
 }
 
 @test "writer rejects unknown type" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "unknown type" --type foobar --severity low --gate code-review
   [ "$status" -ne 0 ]
   { grep -qF "type" <<<"$output"; } || { grep -qF "type" <<<"${stderr:-$output}"; }
 }
 
 @test "writer rejects blocking true without blocking_rationale" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "missing rationale" --type bug --severity medium \
     --gate code-review --blocking
   [ "$status" -ne 0 ]
@@ -455,14 +456,14 @@ _write_legacy_story() {
 @test "writer round-trips YAML metacharacters without execution" {
   local nasty_defect='has "quotes" and $(echo pwned) and {braces: true} and [array] and |pipe'
   local nasty_evidence=$'line1\nline2\nline3'
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "$nasty_defect" \
     --type bug --severity medium --gate code-review \
     --evidence "$nasty_evidence"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local readback
   readback="$(yq '.entries[0].defect' "$reg")"
   [ "$readback" = "$nasty_defect" ]
@@ -472,9 +473,9 @@ _write_legacy_story() {
 
 @test "writer exits non-zero on malformed register" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP"
-  printf 'this is not: valid: yaml: [[[' > "$TEST_TMP/findings-register-TEST-S1.yaml"
+  printf 'this is not: valid: yaml: [[[' > "$TEST_TMP/findings-register-$_FK.yaml"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
   { grep -qF "structural" <<<"$output"; } \
@@ -486,9 +487,9 @@ _write_legacy_story() {
 
 @test "writer exits non-zero on truncated register" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP"
-  printf 'schema_version: 1\nstory: TEST-S1\nentries:\n  - id: RF-' > "$TEST_TMP/findings-register-TEST-S1.yaml"
+  printf 'schema_version: 1\nstory: $_FK\nentries:\n  - id: RF-' > "$TEST_TMP/findings-register-$_FK.yaml"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
   { grep -qF "structural" <<<"$output"; } \
@@ -500,14 +501,14 @@ _write_legacy_story() {
 
 @test "writer exits non-zero on register with entries as scalar string" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP"
-  cat > "$TEST_TMP/findings-register-TEST-S1.yaml" <<'YAML'
+  cat > "$TEST_TMP/findings-register-$_FK.yaml" <<YAML
 schema_version: 1
-story: TEST-S1
+story: $_FK
 gate_runs: []
 entries: "not a sequence"
 YAML
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
   { grep -qF "structural" <<<"$output"; } || { grep -qF "structural" <<<"${stderr:-$output}"; }
@@ -515,14 +516,14 @@ YAML
 
 @test "writer exits non-zero on register with entries as scalar number" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP"
-  cat > "$TEST_TMP/findings-register-TEST-S1.yaml" <<'YAML'
+  cat > "$TEST_TMP/findings-register-$_FK.yaml" <<YAML
 schema_version: 1
-story: TEST-S1
+story: $_FK
 gate_runs: []
 entries: 42
 YAML
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 2 ]
   { grep -qF "structural" <<<"$output"; } || { grep -qF "structural" <<<"${stderr:-$output}"; }
@@ -539,7 +540,7 @@ YAML
   fi
   local pids=()
   for i in 1 2 3 4 5 6 7 8; do
-    "$SCRIPT" add --story TEST-S1 \
+    "$SCRIPT" add --story $_FK \
       --defect "concurrent finding $i" --type bug --severity low \
       --gate code-review --dedup-key "src/c${i}.ts:1:concurrent-${i}" &
     pids+=("$!")
@@ -551,7 +552,7 @@ YAML
   [ "$failed" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   yq '.' "$reg" >/dev/null 2>&1  # valid YAML
   local count
   count="$(yq '.entries | length' "$reg")"
@@ -568,7 +569,7 @@ YAML
   export GAIA_LOCK_FORCE_FALLBACK=1
   local pids=()
   for i in 1 2 3 4 5 6 7 8; do
-    "$SCRIPT" add --story TEST-S1 \
+    "$SCRIPT" add --story $_FK \
       --defect "fallback finding $i" --type bug --severity low \
       --gate code-review --dedup-key "src/f${i}.ts:1:fallback-${i}" &
     pids+=("$!")
@@ -580,7 +581,7 @@ YAML
   [ "$failed" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   yq '.' "$reg" >/dev/null 2>&1
   local count
   count="$(yq '.entries | length' "$reg")"
@@ -594,12 +595,12 @@ YAML
 
 @test "writer record-run writes a gate_runs entry" {
   _minimal_register "$TEST_TMP/reg.yaml"
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local gr_len
   gr_len="$(yq '.gate_runs | length' "$reg")"
   [ "$gr_len" -ge 1 ]
@@ -618,24 +619,24 @@ YAML
 @test "writer findings-rows writes triage entries as pipe-delimited rows in Findings section" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Add a finding then triage it
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Minor style gap" --type code-debt --severity low \
     --gate code-review --reproduction "grep -n style src/main.ts"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # Verify the row appears in the story file
@@ -647,25 +648,25 @@ YAML
 @test "writer findings-rows sanitises pipe and triple-dash and TRIAGED markers" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Defect text with pipes, triple dashes, and nested TRIAGED markers
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "found | in output --- also [[TRIAGED stuff" \
     --type bug --severity low --gate code-review \
     --reproduction "echo test | grep ---"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # The row must contain the sanitised forms
@@ -686,8 +687,8 @@ YAML
 @test "findings-rows strips bracket markers when the rows total more than 128 KB" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Two ~100 KB defects: each stays under the per-argument limit Linux puts on
   # a single command-line string, but together the rows exceed 128 KB, which
@@ -697,25 +698,25 @@ YAML
   local big1="first [TRIAGED marker ${padding} middle [DISMISSED end [[TRIAGED tail"
   local big2="second [DISMISSED marker ${padding} middle [TRIAGED end tail"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "$big1" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "$big2" --type tech-debt --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   local id
   for id in RF-1 RF-2; do
-    run "$SCRIPT" set-disposition --story TEST-S1 --id "$id" \
+    run "$SCRIPT" set-disposition --story $_FK --id "$id" \
       --disposition triage --owner code-review --priority low
     [ "$status" -eq 0 ]
   done
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local section
@@ -742,22 +743,22 @@ YAML
 @test "writer findings-rows replaces placeholder row and is idempotent" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Test finding" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # Placeholder row should be gone
@@ -766,7 +767,7 @@ YAML
   fi
 
   # Run again — idempotent: RF-1 not duplicated
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local rf1_count
@@ -777,25 +778,25 @@ YAML
 @test "writer findings-rows joins multi-line reproduction with semicolon-space" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   local multiline_repro
   multiline_repro="$(printf 'cd /tmp\necho hello\ngrep test file.txt')"
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Multi-line repro" --type bug --severity low --gate code-review \
     --reproduction "$multiline_repro"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local row
@@ -807,22 +808,22 @@ YAML
 @test "writer findings-rows uses em dash separator before owner" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Em dash test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local row
@@ -832,14 +833,14 @@ YAML
 }
 
 @test "material true with low severity is blocking" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Material risk with low severity" --type security --severity low \
     --gate security-review --material \
     --blocking --blocking-rationale "Material risk: unverified auth"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local blk
   blk="$(yq '.entries[0].blocking' "$reg")"
   [ "$blk" = "true" ]
@@ -856,22 +857,22 @@ YAML
 @test "non-blocking add then triage then findings-rows produces a Findings row" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Low priority item" --type tech-debt --severity low \
     --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   grep -q 'RF-1' "$story_file"
@@ -880,30 +881,30 @@ YAML
 
 @test "triage-nonblocking skips disagreement entries with mixed blocking ratings" {
   # Two gates, one says blocking, one says not
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Disagreement entry" --type bug --severity high \
     --gate security-review --dedup-key "src/x.ts:1:disagree" \
     --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Same thing, lower rating" --type bug --severity medium \
     --gate code-review --dedup-key "src/x.ts:1:disagree"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate security-review --outcome completed
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # Entry should still be open (not triaged) because of disagreement
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local disp
   disp="$(yq '.entries[0].disposition' "$reg")"
   [ "$disp" = "open" ]
@@ -914,43 +915,43 @@ YAML
 # ---------------------------------------------------------------------------
 
 @test "writer gate-status returns RAN for completed current-run gate" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "RAN" ]
 }
 
 @test "writer gate-status returns UNVERIFIED for absent gate" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate security-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate security-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
 
 @test "writer gate-status returns UNVERIFIED for errored gate" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate security-review --outcome errored
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate security-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate security-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
@@ -961,27 +962,27 @@ YAML
 
 @test "cross-gate integration: two gates record same defect, both resolve same verdict" {
   # Gate A (code-review) adds a blocking finding
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "XSS in template" --type security --severity critical \
     --gate code-review --dedup-key "src/view.ts:10-15:xss" \
     --blocking --blocking-rationale "Critical severity: XSS vulnerability"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   # Gate B (security-review) adds with same dedup key
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "XSS in view template" --type security --severity critical \
     --gate security-review --dedup-key "src/view.ts:10-15:xss" \
     --blocking --blocking-rationale "Critical severity: XSS"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate security-review --outcome completed
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # One merged entry
   local count
@@ -1004,16 +1005,16 @@ YAML
 
 @test "cross-gate integration: gate A runs without B blocking, B adds blocker, consolidation makes both FAILED" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   # Gate A runs, no findings
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Verdict for gate A at this point: APPROVE (empty register)
   run --separate-stderr "$RESOLVER" --register "$reg"
@@ -1021,16 +1022,16 @@ YAML
   [ "$output" = "APPROVE" ]
 
   # Gate B adds a blocker
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Critical auth bypass" --type security --severity critical \
     --gate security-review --blocking --blocking-rationale "Critical severity"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate security-review --outcome completed
   [ "$status" -eq 0 ]
 
   # After consolidation re-resolution, BOTH gates see REQUEST_CHANGES
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   run --separate-stderr "$RESOLVER" --register "$reg" --skill gaia-code-review
   [ "$status" -eq 0 ]
   [ "$output" = "REQUEST_CHANGES" ]
@@ -1084,20 +1085,20 @@ EOF
 
 @test "open entry with non-blocking severity then material rating from second gate yields REQUEST_CHANGES" {
   # First gate: medium severity, non-blocking
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Potential auth issue" --type security --severity medium \
     --gate code-review --dedup-key "src/auth.ts:5:auth"
   [ "$status" -eq 0 ]
 
   # Second gate: same dedup key, material risk
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "Auth bypass risk" --type security --severity low \
     --gate security-review --dedup-key "src/auth.ts:5:auth" \
     --material --blocking --blocking-rationale "Material risk: auth bypass"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local mat
   mat="$(yq '.entries[0].material' "$reg")"
   [ "$mat" = "true" ]
@@ -1112,25 +1113,25 @@ EOF
 
 @test "first run with no register and existing legacy reports creates register without parsing old reports" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
   mkdir -p "$story_dir/reviews"
 
   # Write a legacy review report
-  cat > "$story_dir/reviews/code-review-TEST-S1.md" <<'EOF'
+  cat > "$story_dir/reviews/code-review-$_FK.md" <<'EOF'
 # Code Review Report
 ## Findings
 - Critical: Old bug from legacy review
 EOF
 
   # First register write
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "New finding from this run" --type bug --severity medium \
     --gate code-review
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local count
   count="$(yq '.entries | length' "$reg")"
   [ "$count" -eq 1 ]
@@ -1146,52 +1147,52 @@ EOF
 
 @test "consolidation with absent gate for current run-id yields UNVERIFIED" {
   # Record only code-review, then check security-review status
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate security-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate security-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
 
 @test "gate with only earlier run record yields UNVERIFIED" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   # Check with a different (newer) run-id
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-002 --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-002 --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
 
 @test "gate with errored outcome yields UNVERIFIED" {
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "test" --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome errored
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
 
 @test "gate with current-run completed and zero entries is not UNVERIFIED" {
   _minimal_register "$TEST_TMP/reg.yaml"
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "RAN" ]
 }
@@ -1202,14 +1203,14 @@ EOF
 
 @test "test-dast verdict.sh with story key and register reflects register rule" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   # Create analysis and findings fixtures
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1225,20 +1226,20 @@ EOF
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
   grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-perf verdict.sh with story key and register reflects register rule" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1254,16 +1255,16 @@ EOF
 EOF
 
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
   grep -qF "APPROVE" <<<"$output"
 }
 
 @test "test-dast verdict.sh without register uses legacy llm-findings path unchanged" {
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1285,10 +1286,10 @@ EOF
 }
 
 @test "test-perf verdict.sh without register uses legacy llm-findings path unchanged" {
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1311,13 +1312,13 @@ EOF
 
 @test "test-dast verdict.sh standalone mints run-id and records run" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1333,11 +1334,11 @@ EOF
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ]
   local gr_len
   gr_len="$(yq '.gate_runs | length' "$reg")"
@@ -1346,13 +1347,13 @@ EOF
 
 @test "test-dast verdict.sh with register and missing register file does not spuriously BLOCK" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1369,7 +1370,7 @@ EOF
 
   # No register exists yet — should be created by the first add, not BLOCKED
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
   if grep -qF "BLOCKED" <<<"$output"; then
     echo "expected non-BLOCKED verdict for empty register, got BLOCKED" >&2; false
@@ -1378,13 +1379,13 @@ EOF
 
 @test "test-dast verdict.sh with register and Critical finding in register yields REQUEST_CHANGES" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1400,20 +1401,20 @@ EOF
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
   grep -qF "REQUEST_CHANGES" <<<"$output"
 }
 
 @test "test-dast verdict.sh with two distinct findings produces two register entries" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1432,11 +1433,11 @@ EOF
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local count
   count="$(yq '.entries | length' "$reg")"
   [ "$count" -eq 2 ]
@@ -1449,13 +1450,13 @@ EOF
 
 @test "test-perf verdict.sh with two distinct findings produces two register entries" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1474,11 +1475,11 @@ EOF
 EOF
 
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local count
   count="$(yq '.entries | length' "$reg")"
   [ "$count" -eq 2 ]
@@ -1531,23 +1532,23 @@ EOF
 
 @test "writer add on open entry with stale severity resolution archives it and new rating counts" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   # Step 1: add medium (code-review) + high (qa-tests) with same dedup key
-  run "$SCRIPT" add --story TEST-S1 --defect "dup-test" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "dup-test" --type bug \
     --severity medium --gate code-review --dedup-key "k1"
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" add --story TEST-S1 --defect "dup-test" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "dup-test" --type bug \
     --severity high --gate qa-tests --dedup-key "k1"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Step 2: resolve-severity to non-blocking medium (entry is still open)
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "agreed medium"
   [ "$status" -eq 0 ]
 
@@ -1557,7 +1558,7 @@ EOF
   [ "$output" = "APPROVE" ]
 
   # Step 3: new critical security rating on the same dedup key
-  run "$SCRIPT" add --story TEST-S1 --defect "dup-test" --type security \
+  run "$SCRIPT" add --story $_FK --defect "dup-test" --type security \
     --severity critical --gate security-review --dedup-key "k1"
   [ "$status" -eq 0 ]
 
@@ -1578,20 +1579,20 @@ EOF
 
 @test "writer merge rejects self-merge with non-zero exit" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 --defect "self-merge-test" \
+  run "$SCRIPT" add --story $_FK --defect "self-merge-test" \
     --type bug --severity critical --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" merge --story TEST-S1 --source-id RF-1 --target-id RF-1
+  run "$SCRIPT" merge --story $_FK --source-id RF-1 --target-id RF-1
   [ "$status" -ne 0 ]
   grep -qF "source and target must differ" <<<"$output"
 
   # Entry must still exist
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local count
   count="$(yq '.entries | length' "$reg")"
   [ "$count" -eq 1 ]
@@ -1599,31 +1600,31 @@ EOF
 
 @test "writer merge of unresolved source into resolved target reopens the target" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   # Create two entries
-  run "$SCRIPT" add --story TEST-S1 --defect "source-defect" \
+  run "$SCRIPT" add --story $_FK --defect "source-defect" \
     --type bug --severity critical --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" add --story TEST-S1 --defect "target-defect" \
+  run "$SCRIPT" add --story $_FK --defect "target-defect" \
     --type bug --severity medium --gate qa-tests
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Resolve the target (RF-2) so it is not blocking
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-2 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-2 \
     --severity low --blocking false --rationale "downgraded"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-2 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-2 \
     --disposition resolved
   [ "$status" -eq 0 ]
 
   # Merge unresolved critical source (RF-1) into resolved target (RF-2)
-  run "$SCRIPT" merge --story TEST-S1 --source-id RF-1 --target-id RF-2
+  run "$SCRIPT" merge --story $_FK --source-id RF-1 --target-id RF-2
   [ "$status" -eq 0 ]
 
   # The merged entry must be reopened (open, not resolved)
@@ -1644,38 +1645,38 @@ EOF
 @test "writer findings-rows with three entries is idempotent on re-run" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Create three entries, triage them
-  run "$SCRIPT" add --story TEST-S1 --defect "issue one" \
+  run "$SCRIPT" add --story $_FK --defect "issue one" \
     --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 --defect "issue two" \
+  run "$SCRIPT" add --story $_FK --defect "issue two" \
     --type bug --severity low --gate qa-tests
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 --defect "issue three" \
+  run "$SCRIPT" add --story $_FK --defect "issue three" \
     --type bug --severity low --gate test-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # First run writes 3 rows
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local story_file
-  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" $_FK)"
   local count1
   count1="$(grep -c 'RF-' "$story_file" || true)"
   [ "$count1" -eq 3 ]
 
   # Second run must not duplicate rows
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local count2
@@ -1686,25 +1687,25 @@ EOF
 @test "writer findings-rows preserves literal backslash-n and backslash-x in finding text" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect 'echo \n and \x7c should stay literal' \
     --type bug --severity low --gate code-review \
     --reproduction 'printf "%s\n" test'
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local story_file
-  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" $_FK)"
   local findings_section
   findings_section="$(sed -n '/^## Findings/,/^## [^F]/p' "$story_file")"
 
@@ -1724,29 +1725,29 @@ EOF
 @test "writer findings-rows uses exact cell match so first entry is not confused with tenth" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Create 10 entries to get RF-1 through RF-10
   local j=1
   while [ "$j" -le 10 ]; do
-    run "$SCRIPT" add --story TEST-S1 --defect "entry $j" \
+    run "$SCRIPT" add --story $_FK --defect "entry $j" \
       --type bug --severity low --gate code-review
     [ "$status" -eq 0 ]
     j=$((j + 1))
   done
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # Write ONLY RF-10 into the story file (manually, to simulate a prior run
   # that wrote RF-10 but not RF-1 — e.g. RF-1 was open then, now triaged).
   # Replace the placeholder row with just RF-10.
   local sf
-  sf="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  sf="$("$SCRIPTS_DIR/resolve-story-file.sh" $_FK)"
   local emdash
   emdash="$(printf '\xe2\x80\x94')"
   # Portable in-place edit (BSD and GNU sed disagree on -i).
@@ -1760,7 +1761,7 @@ EOF
   fi
 
   # Now run findings-rows — RF-1 must be inserted, RF-10 must not be duplicated
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   # RF-1 must now appear (was new, must not have been confused with RF-10)
@@ -1778,13 +1779,13 @@ EOF
 
 @test "dast verdict.sh normalises non-standard severity labels to rubric scale" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
+  cat > "$TEST_TMP/a.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "gaia-test-dast",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -1802,14 +1803,14 @@ EOF
 
   # Severity "Critical Risk" is normalised to "critical" (not rejected)
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
 
   # The finding should produce REQUEST_CHANGES (critical is blocking)
   grep -qF "REQUEST_CHANGES" <<<"$output"
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local sev
   sev="$(yq '.entries[0].severity' "$reg")"
   [ "$sev" = "critical" ]
@@ -1821,20 +1822,20 @@ EOF
 
 @test "writer resolve-severity accepts and normalises uppercase TRUE for blocking" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 --defect "blocking-val-test" \
+  run "$SCRIPT" add --story $_FK --defect "blocking-val-test" \
     --type tech-debt --severity medium --gate code-review
   [ "$status" -eq 0 ]
 
   # TRUE (uppercase) must be accepted and normalised to lowercase true
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking TRUE --rationale "test uppercase"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   # The stored resolved_blocking must be the boolean true
   local rb
   rb="$(yq '.entries[0].severity_resolution.resolved_blocking' "$reg")"
@@ -1847,15 +1848,15 @@ EOF
 
 @test "writer resolve-severity rejects yes for blocking" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 --defect "blocking-val-test" \
+  run "$SCRIPT" add --story $_FK --defect "blocking-val-test" \
     --type tech-debt --severity medium --gate code-review
   [ "$status" -eq 0 ]
 
   # "yes" is not true or false — must be rejected
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking yes --rationale "test invalid value"
   [ "$status" -ne 0 ]
   grep -qF "must be true or false" <<<"$output"
@@ -1868,24 +1869,24 @@ EOF
 @test "writer findings-rows breaks 5-dash and 9-dash runs in finding text" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
-  run "$SCRIPT" add --story TEST-S1 \
+  run "$SCRIPT" add --story $_FK \
     --defect "five -----x and nine ---------y dashes" \
     --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
-  run "$SCRIPT" triage-nonblocking --story TEST-S1 --run-id run-001
+  run "$SCRIPT" triage-nonblocking --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -eq 0 ]
 
   local story_file
-  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" TEST-S1)"
+  story_file="$("$SCRIPTS_DIR/resolve-story-file.sh" $_FK)"
   local findings_section
   findings_section="$(sed -n '/^## Findings/,/^## [^F]/p' "$story_file")"
 
@@ -1905,19 +1906,19 @@ EOF
 @test "identical re-report from the same gate keeps severity resolution intact" {
   # A settled disagreement must not be wiped by the same gate re-reporting
   # the same medium severity on the next round.
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-stable" --type bug \
     --severity medium --gate code-review --dedup-key "disagree:stable"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-stable" --type bug \
     --severity high --gate qa-tests --dedup-key "disagree:stable" \
     --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Resolve to non-blocking medium
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "agreed medium after review"
   [ "$status" -eq 0 ]
 
@@ -1926,7 +1927,7 @@ EOF
   [ "$output" = "APPROVE" ]
 
   # Re-report identical medium from code-review (same dedup key, same gate, same severity)
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-stable" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-stable" --type bug \
     --severity medium --gate code-review --dedup-key "disagree:stable"
   [ "$status" -eq 0 ]
 
@@ -1941,18 +1942,18 @@ EOF
 }
 
 @test "new gate rating on a resolved disagreement archives the resolution" {
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-new-gate" --type bug \
     --severity medium --gate code-review --dedup-key "disagree:newgate"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-new-gate" --type bug \
     --severity high --gate qa-tests --dedup-key "disagree:newgate" \
     --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "agreed medium"
   [ "$status" -eq 0 ]
 
@@ -1960,7 +1961,7 @@ EOF
   [ "$output" = "APPROVE" ]
 
   # A NEW gate (security-review) rates it critical
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-new-gate" --type security \
+  run "$SCRIPT" add --story $_FK --defect "disagree-new-gate" --type security \
     --severity critical --gate security-review --dedup-key "disagree:newgate"
   [ "$status" -eq 0 ]
 
@@ -1973,18 +1974,18 @@ EOF
 }
 
 @test "same gate raising its severity archives the resolution" {
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-raise" --type bug \
     --severity medium --gate code-review --dedup-key "disagree:raise"
   [ "$status" -eq 0 ]
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-raise" --type bug \
     --severity high --gate qa-tests --dedup-key "disagree:raise" \
     --blocking --blocking-rationale "High severity"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "agreed medium"
   [ "$status" -eq 0 ]
 
@@ -1992,7 +1993,7 @@ EOF
   [ "$output" = "APPROVE" ]
 
   # code-review re-reports with HIGHER severity (critical)
-  run "$SCRIPT" add --story TEST-S1 --defect "disagree-raise" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "disagree-raise" --type bug \
     --severity critical --gate code-review --dedup-key "disagree:raise" \
     --blocking --blocking-rationale "Upgraded to critical"
   [ "$status" -eq 0 ]
@@ -2011,22 +2012,22 @@ EOF
 
 @test "test-dast verdict.sh normalises Informational to low" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-dast","model":"claude-opus-4-7","checks":[{"name":"zap","status":"passed","findings":[]}]}
 EOF
   cat > "$TEST_TMP/f.json" <<'EOF'
 {"findings":[{"category":"info","severity":"Informational","message":"Info finding","file":"src/a.ts","line":1,"rule":"dast.info"}]}
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local sev
   sev="$(yq '.entries[0].severity' "$reg")"
   [ "$sev" = "low" ]
@@ -2040,11 +2041,11 @@ EOF
 
 @test "test-dast verdict.sh with story-key but no --register still writes the register" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-dast","model":"claude-opus-4-7","checks":[{"name":"zap","status":"passed","findings":[]}]}
 EOF
   cat > "$TEST_TMP/f.json" <<'EOF'
 {"findings":[{"category":"xss","severity":"medium","message":"reflected xss","file":"src/a.ts","line":1,"rule":"dast.xss"}]}
@@ -2052,12 +2053,12 @@ EOF
 
   # Invoke with --story-key but WITHOUT --register
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK
   [ "$status" -eq 0 ]
 
   # The register must exist and contain the finding
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ]
   local count
   count="$(yq '.entries | length' "$reg")"
@@ -2069,11 +2070,11 @@ EOF
 
 @test "test-perf verdict.sh with story-key but no --register still writes the register" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","checks":[{"name":"perf","status":"passed","findings":[]}]}
 EOF
   cat > "$TEST_TMP/f.json" <<'EOF'
 {"findings":[{"category":"slo","severity":"medium","message":"p95 too high","file":"src/b.ts","line":5,"rule":"perf.slo"}]}
@@ -2081,12 +2082,12 @@ EOF
 
   # Invoke with --story-key but WITHOUT --register
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK
   [ "$status" -eq 0 ]
 
   # The register must exist and contain the finding
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ]
   local count
   count="$(yq '.entries | length' "$reg")"
@@ -2103,17 +2104,17 @@ EOF
 @test "merge into resolved open entry with severity_resolution archives the resolution" {
   # Scenario: open entry with medium resolved non-blocking, then critical merged in.
   # Resolver must return REQUEST_CHANGES after the merge, not APPROVE.
-  run "$SCRIPT" add --story TEST-S1 --defect "merge-sr-open" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "merge-sr-open" --type bug \
     --severity medium --gate code-review --dedup-key "merge:sr:open:a"
   [ "$status" -eq 0 ]
 
   # Resolve as non-blocking
-  run "$SCRIPT" resolve-severity --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" resolve-severity --story $_FK --id RF-1 \
     --severity medium --blocking false --rationale "accepted medium"
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Verdict before merge: APPROVE (resolved non-blocking)
   run --separate-stderr "$RESOLVER" --register "$reg"
@@ -2121,14 +2122,14 @@ EOF
   [ "$output" = "APPROVE" ]
 
   # Add a critical finding as a second entry
-  run "$SCRIPT" add --story TEST-S1 --defect "merge-sr-open-crit" --type security \
+  run "$SCRIPT" add --story $_FK --defect "merge-sr-open-crit" --type security \
     --severity critical --gate security-review \
     --blocking --blocking-rationale "Critical severity" \
     --dedup-key "merge:sr:open:b"
   [ "$status" -eq 0 ]
 
   # Merge the critical entry into the first (open, resolved non-blocking)
-  run "$SCRIPT" merge --story TEST-S1 --source-id RF-2 --target-id RF-1
+  run "$SCRIPT" merge --story $_FK --source-id RF-2 --target-id RF-1
   [ "$status" -eq 0 ]
 
   # After merge: severity_resolution must be archived, verdict REQUEST_CHANGES
@@ -2146,27 +2147,27 @@ EOF
 }
 
 @test "merge blocking entry into triage target reopens it to open" {
-  run "$SCRIPT" add --story TEST-S1 --defect "merge-triage" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "merge-triage" --type bug \
     --severity low --gate code-review --dedup-key "merge:triage:a"
   [ "$status" -eq 0 ]
 
   # Triage the first entry
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
   # Add a critical blocking entry
-  run "$SCRIPT" add --story TEST-S1 --defect "merge-triage-crit" --type security \
+  run "$SCRIPT" add --story $_FK --defect "merge-triage-crit" --type security \
     --severity critical --gate security-review \
     --blocking --blocking-rationale "Critical" --dedup-key "merge:triage:b"
   [ "$status" -eq 0 ]
 
   # Merge critical into triage target
-  run "$SCRIPT" merge --story TEST-S1 --source-id RF-2 --target-id RF-1
+  run "$SCRIPT" merge --story $_FK --source-id RF-2 --target-id RF-1
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # The merged entry must be open (not triage), and blocking
   local disp blk
@@ -2181,25 +2182,25 @@ EOF
 # ---------------------------------------------------------------------------
 
 @test "gate-status rejects unknown gate names with a clear error" {
-  run "$SCRIPT" add --story TEST-S1 --defect "gate-val" --type bug \
+  run "$SCRIPT" add --story $_FK --defect "gate-val" --type bug \
     --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
   # Known gate: succeeds
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate code-review
   [ "$status" -eq 0 ]
 
   # Unknown gate: must fail with "unknown gate" message
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate review-perf
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate review-perf
   [ "$status" -ne 0 ]
   grep -qF 'unknown gate' <<<"$output" || { echo "expected 'unknown gate' error, got: $output" >&2; false; }
 
   # The correct register gate name works
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id run-001 --gate performance-review
+  run "$SCRIPT" gate-status --story $_FK --run-id run-001 --gate performance-review
   [ "$status" -eq 0 ]
 }
 
@@ -2210,30 +2211,30 @@ EOF
 @test "findings-rows exits non-zero when register has a non-string type field" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
   local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
-  local story_file="$story_dir/TEST-S1-test-story.md"
-  _write_story_file "$story_file" "TEST-S1"
+  local story_file="$story_dir/$_FK-test-story.md"
+  _write_story_file "$story_file" "$_FK"
 
   # Create a valid register with one triage entry, then corrupt the type field
-  run "$SCRIPT" add --story TEST-S1 --defect "pipeline-fail" \
+  run "$SCRIPT" add --story $_FK --defect "pipeline-fail" \
     --type bug --severity low --gate code-review
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" set-disposition --story TEST-S1 --id RF-1 \
+  run "$SCRIPT" set-disposition --story $_FK --id RF-1 \
     --disposition triage --owner code-review --priority low
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
 
   # Corrupt the type field to a non-string (array)
   yq -i '.entries[0].type = ["not","a","string"]' "$reg"
 
   # findings-rows must fail (jq type mismatch on .type | sanitise_cell)
-  run "$SCRIPT" findings-rows --story TEST-S1 --run-id run-001
+  run "$SCRIPT" findings-rows --story $_FK --run-id run-001
   [ "$status" -ne 0 ] || { echo "expected non-zero exit on pipeline error, got 0" >&2; false; }
 
   # Story file must be untouched (no zero-length rows written)
@@ -2247,14 +2248,14 @@ EOF
 
 @test "dast verdict.sh BLOCKED from write failure still updates gate row to FAILED" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
   local story_file="$story_dir/story.md"
   mkdir -p "$story_dir"
   # Story file with canonical Review Gate section so review-gate.sh can update it
-  cat > "$story_file" <<'STORY'
+  cat > "$story_file" <<STORY
 ---
 template: 'story'
-key: "TEST-S1"
+key: "$_FK"
 title: "Test Story"
 status: in-progress
 epic: "TEST"
@@ -2281,8 +2282,8 @@ epic: "TEST"
 | — | — | — | — | — |
 STORY
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-dast","model":"claude-opus-4-7","checks":[{"name":"zap","status":"passed","findings":[]}]}
 EOF
   cat > "$TEST_TMP/f.json" <<'EOF'
 {"findings":[{"category":"xss","severity":"critical","message":"reflected xss","file":"src/a.ts","line":1,"rule":"dast.xss"}]}
@@ -2290,13 +2291,13 @@ EOF
 
   # Make the register path unwritable so register-write.sh add fails
   local reg_path
-  reg_path="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg_path="$("$REPORT_PATH" --key $_FK --type findings-register)"
   mkdir -p "$(dirname "$reg_path")"
   : > "$reg_path"
   chmod 000 "$reg_path"
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register \
     --gate "Security Review"
   chmod 644 "$reg_path" 2>/dev/null || true
 
@@ -2313,13 +2314,13 @@ EOF
 
 @test "perf verdict.sh BLOCKED from write failure still updates gate row to FAILED" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
   local story_file="$story_dir/story.md"
   mkdir -p "$story_dir"
-  cat > "$story_file" <<'STORY'
+  cat > "$story_file" <<STORY
 ---
 template: 'story'
-key: "TEST-S1"
+key: "$_FK"
 title: "Test Story"
 status: in-progress
 epic: "TEST"
@@ -2346,8 +2347,8 @@ epic: "TEST"
 | — | — | — | — | — |
 STORY
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","checks":[{"name":"perf","status":"passed","findings":[]}]}
 EOF
   cat > "$TEST_TMP/f.json" <<'EOF'
 {"findings":[{"category":"slo","severity":"critical","message":"p95 breach","file":"src/b.ts","line":5,"rule":"perf.slo.p95"}]}
@@ -2355,13 +2356,13 @@ EOF
 
   # Make the register path unwritable
   local reg_path
-  reg_path="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg_path="$("$REPORT_PATH" --key $_FK --type findings-register)"
   mkdir -p "$(dirname "$reg_path")"
   : > "$reg_path"
   chmod 000 "$reg_path"
 
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register \
     --gate "Performance Review"
   chmod 644 "$reg_path" 2>/dev/null || true
 
@@ -2382,27 +2383,27 @@ EOF
 
 @test "round end-to-end: run ID minted once is used by all gate records and gate-status" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   local run_id="round-20260101T120000Z-99999"
 
   # Each gate records a run with the shared run_id
   local g
   for g in code-review qa-tests security-review test-automate test-review performance-review; do
-    run "$SCRIPT" record-run --story TEST-S1 --run-id "$run_id" --gate "$g" --outcome completed
+    run "$SCRIPT" record-run --story $_FK --run-id "$run_id" --gate "$g" --outcome completed
     [ "$status" -eq 0 ]
   done
 
   # gate-status must report RAN for every gate with the same run_id
   for g in code-review qa-tests security-review test-automate test-review performance-review; do
-    run "$SCRIPT" gate-status --story TEST-S1 --run-id "$run_id" --gate "$g"
+    run "$SCRIPT" gate-status --story $_FK --run-id "$run_id" --gate "$g"
     [ "$status" -eq 0 ]
     [ "$output" = "RAN" ] || { echo "expected RAN for $g, got: $output" >&2; false; }
   done
 
   # A different run_id must report UNVERIFIED
-  run "$SCRIPT" gate-status --story TEST-S1 --run-id "other-run" --gate code-review
+  run "$SCRIPT" gate-status --story $_FK --run-id "other-run" --gate code-review
   [ "$status" -eq 0 ]
   [ "$output" = "UNVERIFIED" ]
 }
@@ -2413,13 +2414,13 @@ EOF
 
 @test "dast verdict.sh PASSED verdict does not write gate row via escape hatch" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
   local story_file="$story_dir/story.md"
   mkdir -p "$story_dir"
-  cat > "$story_file" <<'STORY'
+  cat > "$story_file" <<STORY
 ---
 template: 'story'
-key: "TEST-S1"
+key: "$_FK"
 title: "Test Story"
 status: in-progress
 epic: "TEST"
@@ -2446,8 +2447,8 @@ epic: "TEST"
 | — | — | — | — | — |
 STORY
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"zap","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-dast","model":"claude-opus-4-7","checks":[{"name":"zap","status":"passed","findings":[]}]}
 EOF
   # No findings — verdict will be APPROVE
   cat > "$TEST_TMP/f.json" <<'EOF'
@@ -2455,7 +2456,7 @@ EOF
 EOF
 
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register \
     --gate "Security Review"
   [ "$status" -eq 0 ]
 
@@ -2474,13 +2475,13 @@ EOF
 
 @test "perf verdict.sh PASSED verdict does not write gate row via escape hatch" {
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
   local story_file="$story_dir/story.md"
   mkdir -p "$story_dir"
-  cat > "$story_file" <<'STORY'
+  cat > "$story_file" <<STORY
 ---
 template: 'story'
-key: "TEST-S1"
+key: "$_FK"
 title: "Test Story"
 status: in-progress
 epic: "TEST"
@@ -2507,8 +2508,8 @@ epic: "TEST"
 | — | — | — | — | — |
 STORY
 
-  cat > "$TEST_TMP/a.json" <<'EOF'
-{"schema_version":"1.0","checks":[{"name":"perf","status":"passed","findings":[]}]}
+  cat > "$TEST_TMP/a.json" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","checks":[{"name":"perf","status":"passed","findings":[]}]}
 EOF
   # No findings — verdict will be APPROVE
   cat > "$TEST_TMP/f.json" <<'EOF'
@@ -2516,7 +2517,7 @@ EOF
 EOF
 
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/a.json" \
-    --llm-findings "$TEST_TMP/f.json" --story-key TEST-S1 --register \
+    --llm-findings "$TEST_TMP/f.json" --story-key $_FK --register \
     --gate "Performance Review"
   [ "$status" -eq 0 ]
 
@@ -2545,13 +2546,13 @@ EOF
 _failclosed_setup() {
   local skill="$1"
   export IMPLEMENTATION_ARTIFACTS="$TEST_TMP/.gaia/artifacts/implementation-artifacts"
-  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/TEST-S1-test-story"
-  _write_story_file "$story_dir/story.md" "TEST-S1"
+  local story_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/$_FK-test-story"
+  _write_story_file "$story_dir/story.md" "$_FK"
 
   cat > "$TEST_TMP/ar.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "TEST-S1",
+  "story_key": "$_FK",
   "skill": "$skill",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -2576,7 +2577,7 @@ _assert_blocked_errored() {
   }
   # Check register outcome — assert existence, then check the outcome.
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "$label: register file not found at $reg" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
@@ -2590,7 +2591,7 @@ _assert_blocked_errored() {
 @test "dast verdict.sh register mode: omitted llm-findings yields BLOCKED with errored run" {
   _failclosed_setup "gaia-test-dast"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-omitted"
 }
 
@@ -2598,7 +2599,7 @@ _assert_blocked_errored() {
   _failclosed_setup "gaia-test-dast"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/no-such-file.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-missing"
 }
 
@@ -2610,7 +2611,7 @@ _assert_blocked_errored() {
   chmod 000 "$f"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$f" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-unreadable"
 }
 
@@ -2619,7 +2620,7 @@ _assert_blocked_errored() {
   : > "$TEST_TMP/empty.json"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/empty.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-empty"
 }
 
@@ -2628,7 +2629,7 @@ _assert_blocked_errored() {
   printf '{"findings": [{"severity":' > "$TEST_TMP/truncated.json"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/truncated.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-truncated"
 }
 
@@ -2637,7 +2638,7 @@ _assert_blocked_errored() {
   printf '{"results": []}' > "$TEST_TMP/nofind.json"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nofind.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "dast-no-findings-key"
 }
 
@@ -2646,7 +2647,7 @@ _assert_blocked_errored() {
   printf '{"findings":[]}' > "$TEST_TMP/ok.json"
   run "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/ok.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ]
   local last_line
   last_line="$(tail -n1 <<<"$output")"
@@ -2654,7 +2655,7 @@ _assert_blocked_errored() {
     echo "dast-control: expected APPROVE on last line, got: $last_line" >&2; false
   }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-control: register file not found at $reg" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
@@ -2668,7 +2669,7 @@ _assert_blocked_errored() {
 @test "perf verdict.sh register mode: omitted llm-findings yields BLOCKED with errored run" {
   _failclosed_setup "gaia-test-perf"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-omitted"
 }
 
@@ -2676,7 +2677,7 @@ _assert_blocked_errored() {
   _failclosed_setup "gaia-test-perf"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/no-such-file.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-missing"
 }
 
@@ -2688,7 +2689,7 @@ _assert_blocked_errored() {
   chmod 000 "$f"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$f" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-unreadable"
 }
 
@@ -2697,7 +2698,7 @@ _assert_blocked_errored() {
   : > "$TEST_TMP/empty.json"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/empty.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-empty"
 }
 
@@ -2706,7 +2707,7 @@ _assert_blocked_errored() {
   printf '{"findings": [{"severity":' > "$TEST_TMP/truncated.json"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/truncated.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-truncated"
 }
 
@@ -2715,7 +2716,7 @@ _assert_blocked_errored() {
   printf '{"results": []}' > "$TEST_TMP/nofind.json"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nofind.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   _assert_blocked_errored "perf-no-findings-key"
 }
 
@@ -2724,7 +2725,7 @@ _assert_blocked_errored() {
   printf '{"findings":[]}' > "$TEST_TMP/ok.json"
   run "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/ok.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ]
   local last_line
   last_line="$(tail -n1 <<<"$output")"
@@ -2732,7 +2733,7 @@ _assert_blocked_errored() {
     echo "perf-control: expected APPROVE on last line, got: $last_line" >&2; false
   }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-control: register file not found at $reg" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg" 2>/dev/null)" || outcome=""
@@ -2754,13 +2755,13 @@ _assert_blocked_errored() {
   printf '{"findings":[{"severity":"critical","message":"x"}]}\n{"findings":[]}\n' > "$TEST_TMP/twodoc.json"
   run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/twodoc.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "dast-twodoc-crit: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "dast-twodoc-crit: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-twodoc-crit: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2772,13 +2773,13 @@ _assert_blocked_errored() {
   printf '{"findings":[]}\n{"findings":[{"severity":"critical","message":"x"}]}\n' > "$TEST_TMP/twodoc2.json"
   run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/twodoc2.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "dast-twodoc-empty: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "dast-twodoc-empty: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-twodoc-empty: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2790,13 +2791,13 @@ _assert_blocked_errored() {
   printf '{"findings":[1]}' > "$TEST_TMP/nonobj.json"
   run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nonobj.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "dast-nonobj: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "dast-nonobj: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-nonobj: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2808,13 +2809,13 @@ _assert_blocked_errored() {
   printf '{"findings":[[]]}' > "$TEST_TMP/nested.json"
   run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nested.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "dast-nested: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "dast-nested: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-nested: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2826,13 +2827,13 @@ _assert_blocked_errored() {
   printf '{"findings":[{"severity":"critical","message":"x"}]}\n{"findings":[]}\n' > "$TEST_TMP/twodoc.json"
   run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/twodoc.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "perf-twodoc-crit: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "perf-twodoc-crit: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-twodoc-crit: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2844,13 +2845,13 @@ _assert_blocked_errored() {
   printf '{"findings":[]}\n{"findings":[{"severity":"critical","message":"x"}]}\n' > "$TEST_TMP/twodoc2.json"
   run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/twodoc2.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "perf-twodoc-empty: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "perf-twodoc-empty: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-twodoc-empty: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2862,13 +2863,13 @@ _assert_blocked_errored() {
   printf '{"findings":[1]}' > "$TEST_TMP/nonobj.json"
   run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nonobj.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "perf-nonobj: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "perf-nonobj: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-nonobj: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2880,13 +2881,13 @@ _assert_blocked_errored() {
   printf '{"findings":[[]]}' > "$TEST_TMP/nested.json"
   run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/nested.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "perf-nested: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "BLOCKED" ] || { echo "perf-nested: expected BLOCKED, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-nested: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2902,13 +2903,13 @@ _assert_blocked_errored() {
   printf '{"findings":[]}' > "$TEST_TMP/ok.json"
   _write_failed=1 run --separate-stderr "$DAST_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/ok.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "dast-inherit: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "APPROVE" ] || { echo "dast-inherit: expected APPROVE, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "dast-inherit: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2920,13 +2921,13 @@ _assert_blocked_errored() {
   printf '{"findings":[]}' > "$TEST_TMP/ok.json"
   _write_failed=1 run --separate-stderr "$PERF_VERDICT" --analysis-results "$TEST_TMP/ar.json" \
     --llm-findings "$TEST_TMP/ok.json" \
-    --story-key TEST-S1 --register
+    --story-key $_FK --register
   [ "$status" -eq 0 ] || { echo "perf-inherit: non-zero exit ($status)" >&2; false; }
   local last_line
   last_line="$(tail -n1 <<<"$output")"
   [ "$last_line" = "APPROVE" ] || { echo "perf-inherit: expected APPROVE, got: $last_line" >&2; false; }
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   [ -f "$reg" ] || { echo "perf-inherit: register not found" >&2; false; }
   local outcome
   outcome="$(yq '.gate_runs[-1].outcome' "$reg")"
@@ -2942,10 +2943,10 @@ _assert_blocked_errored() {
 
   local stories_dir="$IMPLEMENTATION_ARTIFACTS/epic-test/stories"
   mkdir -p "$stories_dir"
-  cat > "$stories_dir/TEST-S1-test-story.md" <<'STORY'
+  cat > "$stories_dir/$_FK-test-story.md" <<STORY
 ---
 template: 'story'
-key: "TEST-S1"
+key: "$_FK"
 title: "Test Story"
 status: in-progress
 epic: "TEST"
@@ -2959,16 +2960,16 @@ epic: "TEST"
 | — | — | — | — | — |
 STORY
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-001 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-001 \
     --gate code-review --outcome completed
   [ "$status" -eq 0 ]
 
-  run "$SCRIPT" record-run --story TEST-S1 --run-id run-002 \
+  run "$SCRIPT" record-run --story $_FK --run-id run-002 \
     --gate qa-tests --outcome completed
   [ "$status" -eq 0 ]
 
   local reg
-  reg="$("$REPORT_PATH" --key TEST-S1 --type findings-register)"
+  reg="$("$REPORT_PATH" --key $_FK --type findings-register)"
   local seq1
   seq1="$(yq '.gate_runs[0].seq' "$reg")"
   local seq2

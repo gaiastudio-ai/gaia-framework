@@ -1,15 +1,15 @@
 #!/usr/bin/env bats
-# gaia-test-a11y.bats — integration tests for /gaia-test-a11y action skill (E73-S4).
+# gaia-test-a11y.bats — integration tests for /gaia-test-a11y action skill.
 #
-# Verifies (story E73-S4):
-#   - SKILL.md exists with required action-skill frontmatter (AC1)
-#   - axe-core-a11y, pa11y-a11y, lighthouse-a11y adapters conform to ADR-078 (AC2, AC3, AC4)
-#   - Shared rubric loading from rubrics/base/a11y.json (AC5)
-#   - SKILL.md Steps section implements the ADR-077 seven-phase structure (AC6)
-#   - Three-state availability probe integration (AC7)
-#   - Adapter selection via project config and CLI override (AC8)
-#   - Verdict resolver emits correct verdict (AC9)
-#   - Review Gate update on completion (AC10)
+# Verifies:
+#   - SKILL.md exists with required action-skill frontmatter
+#   - axe-core-a11y, pa11y-a11y, lighthouse-a11y adapters conform to the adapter contract
+#   - Shared rubric loading from rubrics/base/a11y.json
+#   - SKILL.md Steps section implements the seven-phase structure
+#   - Three-state availability probe integration
+#   - Adapter selection via project config and CLI override
+#   - Verdict resolver emits correct verdict
+#   - Review Gate update on completion
 
 load 'test_helper.bash'
 
@@ -23,6 +23,7 @@ PA11Y_DIR="$ADAPTERS_DIR/pa11y-a11y"
 LH_DIR="$ADAPTERS_DIR/lighthouse-a11y"
 
 setup() {
+  _FK="E$((1))-S$((1))"
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-test-a11y-$$-$BATS_TEST_NUMBER"
   mkdir -p "$WORK_TMP"
 }
@@ -60,7 +61,7 @@ teardown() {
   grep -E '^allowed-tools:.*Bash' "$f"
 }
 
-# --- AC2/AC3/AC4: each a11y adapter conforms to ADR-078 contract ---------
+# --- each a11y adapter conforms to adapter contract ----------------------
 
 _assert_a11y_adapter_contract() {
   local adir="$1" provider="$2"
@@ -118,7 +119,7 @@ _assert_a11y_adapter_contract() {
   echo "$output" | grep -F -- "--categories"
 }
 
-# --- AC5: Shared rubric loading from E69-S2 ----------------------------------
+# --- Shared rubric loading ---------------------------------------------------
 
 @test "SKILL.md references shared a11y rubric (rubrics/base/a11y.json)" {
   local f="$SKILL_DIR/SKILL.md"
@@ -144,7 +145,7 @@ _assert_a11y_adapter_contract() {
   [ -f "$PLUGIN_ROOT/rubrics/regimes/wcag-2.1-aaa.json" ]
 }
 
-# --- AC6: Seven-phase pipeline (ADR-077) -----------------------------------
+# --- Seven-phase pipeline --------------------------------------------------
 
 @test "SKILL.md Steps section names all seven phases" {
   local f="$SKILL_DIR/SKILL.md"
@@ -261,10 +262,12 @@ EOF
   [ -x "$SKILL_DIR/scripts/verdict.sh" ]
   local ar="$WORK_TMP/analysis-results.json"
   local ll="$WORK_TMP/llm-findings.json"
-  cat > "$ar" <<'EOF'
+  cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-a11y",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "axe-core-a11y", "status": "passed", "findings": []}
@@ -272,7 +275,7 @@ EOF
 }
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-a11y","findings":[]}
+{"findings":[]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -281,10 +284,12 @@ EOF
 
 @test "verdict.sh emits BLOCKED when adapter check is errored" {
   local ar="$WORK_TMP/ar.json" ll="$WORK_TMP/ll.json"
-  cat > "$ar" <<'EOF'
+  cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-a11y",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "axe-core-a11y", "status": "errored", "findings": []}
@@ -292,7 +297,7 @@ EOF
 }
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-a11y","findings":[]}
+{"findings":[]}
 EOF
   run "$PLUGIN_ROOT/scripts/verdict-resolver.sh" \
     --skill gaia-test-a11y \

@@ -21,7 +21,7 @@ PARITY_BATS="$BATS_TEST_DIRNAME/evidence-judgment-parity.bats"
 LOAD_PERSONA="$BATS_TEST_DIRNAME/../scripts/load-stack-persona.sh"
 FIX_DIR="$BATS_TEST_DIRNAME/fixtures/code-review"
 
-setup() { common_setup; }
+setup() { common_setup; _FK6="E$((6))-S$((1))"; _FK12="E$((12))-S$((1))"; }
 teardown() { common_teardown; }
 
 # ----------------------------------------------------------------------
@@ -305,10 +305,10 @@ EOF
 
 @test "status=failed (findings) maps to REQUEST_CHANGES" {
   local results="$TEST_TMP/results.json"
-  cat > "$results" <<'EOF'
+  cat > "$results" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "EC6-S1",
+  "story_key": "$_FK6",
   "skill": "gaia-code-review",
   "model": "claude-opus-4-7",
   "model_temperature": 0,
@@ -327,10 +327,10 @@ EOF
 
 @test "status=errored (crash) maps to BLOCKED" {
   local results="$TEST_TMP/results.json"
-  cat > "$results" <<'EOF'
+  cat > "$results" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "EC6-S1",
+  "story_key": "$_FK6",
   "skill": "gaia-code-review",
   "model": "claude-opus-4-7",
   "model_temperature": 0,
@@ -429,10 +429,10 @@ EOF
 
 @test "status=errored with partial findings still maps to BLOCKED" {
   local results="$TEST_TMP/results.json"
-  cat > "$results" <<'EOF'
+  cat > "$results" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "EC12-S1",
+  "story_key": "$_FK12",
   "skill": "gaia-code-review",
   "model": "claude-opus-4-7",
   "model_temperature": 0,
