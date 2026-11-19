@@ -198,3 +198,13 @@ teardown() { common_teardown; }
 @test "SKILL.md Phase 3A references phase3a-collect.sh" {
   grep -F 'phase3a-collect.sh' "$SKILL_FILE" >/dev/null
 }
+
+# ---------------------------------------------------------------------------
+# Temperature wording must use recorded-convention language
+# ---------------------------------------------------------------------------
+
+@test "SKILL.md severity rubric uses recorded-convention wording (not pin/regression)" {
+  # The rubric divergence sentence must NOT say "model-pin or temperature regression"
+  run grep -F 'temperature regression' "$SKILL_FILE"
+  [ "$status" -ne 0 ]
+}

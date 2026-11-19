@@ -351,10 +351,22 @@ if [ -n "$ANALYSIS" ] && [ "$ACTION_MODE" -eq 0 ]; then
   _vr_schema_file="$_vr_schema_dir/../schemas/analysis-results.schema.json"
   _vr_validator="$_vr_schema_dir/lib/validate-artifact-schema.sh"
   _vr_schema_rc=0
+  # When the analysis path lacks a .json extension, the validator exits 2
+  # (usage error). Copy to a temp .json file to avoid a false BLOCKED.
+  _vr_analysis_path="$ANALYSIS"
+  _vr_tmp_json=""
+  case "$ANALYSIS" in
+    *.json) ;; # already has extension
+    *)
+      _vr_tmp_json="$(mktemp "${TMPDIR:-/tmp}/vr-analysis-XXXXXX.json")"
+      cp "$ANALYSIS" "$_vr_tmp_json"
+      _vr_analysis_path="$_vr_tmp_json"
+      ;;
+  esac
   if [ -r "$_vr_validator" ] && [ -r "$_vr_schema_file" ]; then
     # shellcheck source=lib/validate-artifact-schema.sh
     . "$_vr_validator"
-    validate_artifact_schema "$_vr_schema_file" "$ANALYSIS" >/dev/null 2>&1 || _vr_schema_rc=$?
+    validate_artifact_schema "$_vr_schema_file" "$_vr_analysis_path" >/dev/null 2>&1 || _vr_schema_rc=$?
     case "$_vr_schema_rc" in
       0) ;; # valid — continue
       1) # schema-invalid
@@ -383,12 +395,18 @@ if [ -n "$ANALYSIS" ] && [ "$ACTION_MODE" -eq 0 ]; then
       and ((.model // "") | length > 0)
       and (.checks | type == "array")
       and (.checks | all(
-        (.name | type == "string") and (.status | type == "string")
+        (.name | type == "string")
+        and (.status | type == "string")
+        and (.status | IN("passed","failed","errored","skipped"))
       ))
     ' "$ANALYSIS" >/dev/null 2>&1; then
       printf '%s: malformed analysis-results.json: missing schema_version or required fields\n' "$SCRIPT_NAME" >&2
       emit "BLOCKED"
     fi
+  fi
+  # Clean up temp .json copy if created
+  if [ -n "${_vr_tmp_json:-}" ] && [ -f "$_vr_tmp_json" ]; then
+    rm -f "$_vr_tmp_json"
   fi
 fi
 

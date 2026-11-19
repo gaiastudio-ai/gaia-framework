@@ -11,7 +11,8 @@
 #
 # Exit codes:
 #   0 — success (JSON check on stdout)
-#   1 — missing required argument
+#   1 — missing required argument or unrecoverable error (unknown stack,
+#       discovery timeout)
 
 set -euo pipefail
 LC_ALL=C
@@ -96,13 +97,48 @@ _TEST_PAIRS="$(mktemp "$_TMPDIR/testpairs-XXXXXX")"
 _UNATTR="$(mktemp "$_TMPDIR/unattr-XXXXXX")"
 _FINDINGS="$(mktemp "$_TMPDIR/findings-XXXXXX")"
 _AC_RESULTS="$(mktemp "$_TMPDIR/acresults-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS"' EXIT
+_NDJSON_AC="$(mktemp "$_TMPDIR/ndjson-ac-XXXXXX")"
+_NDJSON_FINDINGS="$(mktemp "$_TMPDIR/ndjson-find-XXXXXX")"
+_NDJSON_UNATTR="$(mktemp "$_TMPDIR/ndjson-unattr-XXXXXX")"
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
 
-# Extract ACs
+# AC id allowlist: must match ^AC[A-Za-z0-9_-]*$
+_valid_ac_id() {
+  case "$1" in
+    AC*) ;;
+    *) return 1 ;;
+  esac
+  # Check that the remaining chars (after AC) are only alphanumerics, underscore, hyphen
+  local rest
+  rest="$(printf '%s' "$1" | sed 's/^AC//')"
+  case "$rest" in
+    *[!A-Za-z0-9_-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# Escape ERE metacharacters in a string
+_ere_escape() {
+  printf '%s' "$1" | sed 's/[][\.^$*+?(){}|/]/\\&/g'
+}
+
+# Extract ACs — accept both unchecked (- [ ]) and checked (- [x]/- [X]) forms
 while IFS= read -r line; do
   # Extract AC id: token between first ** pair, strip trailing non-alphanumerics
-  ac_id="$(printf '%s' "$line" | sed -n 's/^- \[ \] \*\*\([^*]*\)\*\*.*/\1/p' | sed 's/[^[:alnum:]]*$//')"
+  ac_id="$(printf '%s' "$line" | sed -n 's/^- \[[ xX]\] \*\*\([^*]*\)\*\*.*/\1/p' | sed 's/[^[:alnum:]]*$//')"
   [ -n "$ac_id" ] || continue
+
+  # Validate AC id against allowlist
+  if ! _valid_ac_id "$ac_id"; then
+    # Malformed AC id: report as skipped with ac-quality finding, never silently dropped
+    jq -nc --arg id "$ac_id" \
+      '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Malformed AC id (does not match allowlist)"}' \
+      >> "$_NDJSON_AC"
+    jq -nc --arg id "$ac_id" \
+      '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Malformed AC id: " + $id)}' \
+      >> "$_NDJSON_FINDINGS"
+    continue
+  fi
 
   # Edge-case detection: id contains "EC" (case-insensitive)
   is_edge=0
@@ -125,12 +161,20 @@ while IFS= read -r line; do
   fi
 
   printf '%s\t%s\t%s\t%s\n' "$ac_id" "$is_edge" "$has_gwt" "$ac_text" >> "$_AC_LIST"
-done < <(grep '^- \[ \] \*\*AC' "$STORY_FILE" 2>/dev/null || true)
+done < <(grep '^- \[[ xX]\] \*\*AC' "$STORY_FILE" 2>/dev/null || true)
 
 AC_COUNT=0
+# Count both valid ACs (in _AC_LIST) and malformed ones (in _NDJSON_AC)
 while IFS= read -r _; do
   AC_COUNT=$((AC_COUNT + 1))
 done < "$_AC_LIST"
+_malformed_count=0
+if [ -s "$_NDJSON_AC" ]; then
+  while IFS= read -r _; do
+    _malformed_count=$((_malformed_count + 1))
+  done < "$_NDJSON_AC"
+fi
+AC_COUNT=$((AC_COUNT + _malformed_count))
 
 # ---------------------------------------------------------------------------
 # Discover test files
@@ -139,49 +183,59 @@ done < "$_AC_LIST"
 _find_tests() {
   local dir="$1" stack="$2"
   local find_cmd="find"
+  local use_timeout=0
   if command -v timeout >/dev/null 2>&1; then
     find_cmd="timeout 30 find"
+    use_timeout=1
   else
     printf 'ac-coverage-analyzer.sh: timeout command not found; running find uncapped (bounded by --test-dir)\n' >&2
   fi
 
+  local find_rc=0
   case "$stack" in
     ts-dev)
       $find_cmd "$dir" -type f \( \
         -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' \
         -o -name '*.spec.ts' -o -name '*.spec.tsx' -o -name '*.spec.js' -o -name '*.spec.jsx' \
-      \) 2>/dev/null || true
+      \) 2>/dev/null || find_rc=$?
       ;;
     java-dev)
-      $find_cmd "$dir" -type f -path '*/src/test/*' -name '*Test.java' 2>/dev/null || true
+      $find_cmd "$dir" -type f -path '*/src/test/*' -name '*Test.java' 2>/dev/null || find_rc=$?
       ;;
     python-dev)
-      $find_cmd "$dir" -type f \( -name 'test_*.py' -o -name '*_test.py' \) 2>/dev/null || true
+      $find_cmd "$dir" -type f \( -name 'test_*.py' -o -name '*_test.py' \) 2>/dev/null || find_rc=$?
       ;;
     go-dev)
-      $find_cmd "$dir" -type f -name '*_test.go' 2>/dev/null || true
+      $find_cmd "$dir" -type f -name '*_test.go' 2>/dev/null || find_rc=$?
       ;;
     flutter-dev)
-      $find_cmd "$dir" -type f -path '*/test/*' -name '*_test.dart' 2>/dev/null || true
+      $find_cmd "$dir" -type f -path '*/test/*' -name '*_test.dart' 2>/dev/null || find_rc=$?
       ;;
     mobile-dev)
-      $find_cmd "$dir" -type f \( -name '*Tests.swift' -o -name '*Test.kt' \) 2>/dev/null || true
+      $find_cmd "$dir" -type f \( -name '*Tests.swift' -o -name '*Test.kt' \) 2>/dev/null || find_rc=$?
       ;;
     angular-dev)
       $find_cmd "$dir" -type f \( \
         -name '*.spec.ts' -o -name '*.spec.js' -o -name '*.test.ts' -o -name '*.test.js' \
-      \) 2>/dev/null || true
+      \) 2>/dev/null || find_rc=$?
       ;;
     bash-dev)
-      $find_cmd "$dir" -type f -name '*.bats' 2>/dev/null || true
+      $find_cmd "$dir" -type f -name '*.bats' 2>/dev/null || find_rc=$?
       ;;
     embedded-dev)
-      $find_cmd "$dir" -type f \( -name '*_test.c' -o -name '*_test.cpp' \) 2>/dev/null || true
+      $find_cmd "$dir" -type f \( -name '*_test.c' -o -name '*_test.cpp' \) 2>/dev/null || find_rc=$?
       ;;
     *)
-      printf 'ac-coverage-analyzer.sh: unknown stack: %s\n' "$stack" >&2
+      printf 'ac-coverage-analyzer.sh: unknown stack: %s (exit 1)\n' "$stack" >&2
+      exit 1
       ;;
   esac
+  # Exit 124 from timeout means discovery timed out — do not silently return
+  # partial results as that would mark untested ACs as NOT MET.
+  if [ "$find_rc" -eq 124 ] && [ "$use_timeout" -eq 1 ]; then
+    printf 'ac-coverage-analyzer.sh: test discovery timed out (exit 1)\n' >&2
+    exit 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -231,7 +285,7 @@ _extract_identifiers() {
 # ---------------------------------------------------------------------------
 
 _test_files="$(mktemp "$_TMPDIR/testfiles-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files"' EXIT
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
 
 _find_tests "$TEST_DIR" "$STACK" | sort > "$_test_files"
 
@@ -254,15 +308,21 @@ while IFS= read -r tf; do
   done < <(_extract_identifiers "$tf" "$STACK")
 done < "$_test_files" | sort > "$_TEST_PAIRS"
 
-# Separate attributed vs unattributed
+# Separate attributed vs unattributed.
+# Attribution requires the story key to be bounded: preceded by a non-alnum or
+# start, and followed by a non-digit or end.  This prevents a shorter key from
+# matching a path/identifier that contains a longer key with the same prefix.
 : > "$_UNATTR"
 _ATTR_PAIRS="$(mktemp "$_TMPDIR/attrpairs-XXXXXX")"
-trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS"' EXIT
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR"' EXIT
+
+_key_re="$(printf '%s' "$STORY_KEY" | sed 's/[][\.^$*+?(){}|/]/\\&/g')"
+_attr_re="(^|[^[:alnum:]])${_key_re}([^0-9]|$)"
 
 while IFS="$(printf '\t')" read -r tf ident; do
   [ -n "$tf" ] || continue
-  if printf '%s' "$tf" | grep -qF "$STORY_KEY" 2>/dev/null || \
-     printf '%s' "$ident" | grep -qF "$STORY_KEY" 2>/dev/null; then
+  if printf '%s' "$tf" | grep -qE "$_attr_re" 2>/dev/null || \
+     printf '%s' "$ident" | grep -qE "$_attr_re" 2>/dev/null; then
     printf '%s\t%s\n' "$tf" "$ident" >> "$_ATTR_PAIRS"
   else
     printf '%s\t%s\n' "$tf" "$ident" >> "$_UNATTR"
@@ -293,15 +353,31 @@ _content_words() {
 
 # ---------------------------------------------------------------------------
 # Fallback helper: normalize an identifier for phrase matching
+# Applies camelCase split, lowercasing, separator normalization, and
+# stopword removal — same normalization as _content_words applies to phrases.
 # ---------------------------------------------------------------------------
 
 _normalize_identifier() {
-  # Insert space at lower->upper transitions, lowercase, _ and - -> space
+  # Insert space at lower->upper transitions, lowercase, _ and - -> space,
+  # then remove stopwords for symmetric matching with AC phrases.
   printf '%s' "$1" \
     | sed 's/\([a-z]\)\([A-Z]\)/\1 \2/g' \
     | tr '[:upper:]' '[:lower:]' \
     | tr '_-' '  ' \
-    | tr -s ' '
+    | tr -s ' ' | {
+    local result="" w
+    read -r line
+    for w in $line; do
+      if ! _is_stopword "$w"; then
+        if [ -n "$result" ]; then
+          result="$result $w"
+        else
+          result="$w"
+        fi
+      fi
+    done
+    printf '%s' "$result"
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -334,10 +410,10 @@ _split_gwt() {
   local text="$1"
 
   # Extract given/when/then phrases using awk (positional keyword order).
-  # Outputs from the original text to preserve word forms.
+  # All keyword matching uses tolower() for portability across awk
+  # implementations (gawk, mawk, BSD awk).
   local result
   result="$(printf '%s' "$text" | awk '
-  BEGIN { IGNORECASE = 1 }
   {
     s = $0
     sl = tolower(s)
@@ -404,8 +480,10 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
   # --- No G/W/T structure -> skipped ---
   if [ "$has_gwt" -eq 0 ]; then
     printf '%s\t%s\t%s\t%s\n' "$ac_id" "false" "0" "skipped" >> "$_AC_RESULTS"
-    # ac-quality finding
-    printf '{"rule":"ac-quality","severity":"warning","blocking":false,"message":"AC %s has no Given/When/Then structure"}\n' "$ac_id" >> "$_FINDINGS"
+    # ac-quality finding (built safely via jq)
+    jq -nc --arg id "$ac_id" \
+      '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("AC " + $id + " has no Given/When/Then structure")}' \
+      >> "$_FINDINGS"
     continue
   fi
 
@@ -415,7 +493,9 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
   # Hyphen/underscore equivalence: AC-EC3 matches AC_EC3 in test identifiers.
   # Word-boundary anchoring prevents AC1 from matching AC10 or AC1b — the regex
   # requires a non-alphanumeric (or casing transition) on both sides.
-  ac_id_re="$(printf '%s' "$ac_id" | sed 's/-/[-_]/g')"
+  # Escape ERE metacharacters first so ids like AC1.2 match literally.
+  ac_id_escaped="$(_ere_escape "$ac_id")"
+  ac_id_re="$(printf '%s' "$ac_id_escaped" | sed 's/\\-/[-_]/g; s/-/[-_]/g')"
   primary_re="(^|[^[:alnum:]]|[a-z])${ac_id_re}([^[:alnum:]]|[A-Z]|$)"
 
   # --- Primary match against attributed pairs ---
@@ -474,9 +554,10 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
   if [ "$fallback_count" -gt 0 ]; then
     # PARTIALLY MET
     printf '%s\t%s\t%s\t%s\n' "$ac_id" "true" "$fallback_count" "PARTIALLY MET" >> "$_AC_RESULTS"
-    # Non-blocking finding
-    printf '{"rule":"ac-partial-%s","severity":"warning","blocking":false,"message":"AC %s is PARTIALLY MET via fallback matching: %d tests"}\n' \
-      "$ac_id" "$ac_id" "$fallback_count" >> "$_FINDINGS"
+    # Non-blocking finding (built safely via jq)
+    jq -nc --arg id "$ac_id" --argjson cnt "$fallback_count" \
+      '{"rule": ("ac-partial-" + $id), "severity": "warning", "blocking": false, "message": ("AC " + $id + " is PARTIALLY MET via fallback matching: " + ($cnt | tostring) + " tests")}' \
+      >> "$_FINDINGS"
     continue
   fi
 
@@ -486,16 +567,18 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
 
   if [ "$is_edge" -eq 1 ]; then
     # Edge-case NOT MET: non-blocking, warning
-    printf '{"rule":"ac-coverage-%s","severity":"warning","blocking":false,"message":"Edge-case AC %s is NOT MET: 0 matching tests"}\n' \
-      "$ac_id" "$ac_id" >> "$_FINDINGS"
+    jq -nc --arg id "$ac_id" \
+      '{"rule": ("ac-coverage-" + $id), "severity": "warning", "blocking": false, "message": ("Edge-case AC " + $id + " is NOT MET: 0 matching tests")}' \
+      >> "$_FINDINGS"
   else
     # Primary NOT MET: blocking true, severity based on priority
     _sev="warning"
     if [ "$PRIORITY" = "P0" ]; then
       _sev="critical"
     fi
-    printf '{"rule":"ac-coverage-%s","severity":"%s","blocking":true,"message":"Primary AC %s is NOT MET: 0 matching tests"}\n' \
-      "$ac_id" "$_sev" "$ac_id" >> "$_FINDINGS"
+    jq -nc --arg id "$ac_id" --arg sev "$_sev" \
+      '{"rule": ("ac-coverage-" + $id), "severity": $sev, "blocking": true, "message": ("Primary AC " + $id + " is NOT MET: 0 matching tests")}' \
+      >> "$_FINDINGS"
   fi
 
 done < "$_AC_LIST"
@@ -504,12 +587,22 @@ done < "$_AC_LIST"
 # Aggregate status and special-case findings
 # ---------------------------------------------------------------------------
 
+# Count valid (non-malformed) ACs for the all-skipped check
+_valid_ac_count=0
+while IFS= read -r _; do
+  _valid_ac_count=$((_valid_ac_count + 1))
+done < "$_AC_LIST"
+
 if [ "$AC_COUNT" -eq 0 ]; then
   _status="failed"
-  printf '{"rule":"ac-coverage-empty","severity":"critical","blocking":true,"message":"No acceptance criteria found in story"}\n' >> "$_FINDINGS"
-elif [ "$_all_skipped" -eq 1 ]; then
+  jq -nc '{"rule": "ac-coverage-empty", "severity": "critical", "blocking": true, "message": "No acceptance criteria found in story"}' >> "$_FINDINGS"
+elif [ "$_valid_ac_count" -eq 0 ] && [ "$_malformed_count" -gt 0 ]; then
+  # All ACs were malformed (failed id validation) — treat as all-malformed
   _status="failed"
-  printf '{"rule":"ac-coverage-all-malformed","severity":"critical","blocking":true,"message":"All acceptance criteria are malformed (no Given/When/Then structure)"}\n' >> "$_FINDINGS"
+  jq -nc '{"rule": "ac-coverage-all-malformed", "severity": "critical", "blocking": true, "message": "All acceptance criteria are malformed (no Given/When/Then structure or invalid AC id)"}' >> "$_FINDINGS"
+elif [ "$_all_skipped" -eq 1 ] && [ "$_valid_ac_count" -gt 0 ]; then
+  _status="failed"
+  jq -nc '{"rule": "ac-coverage-all-malformed", "severity": "critical", "blocking": true, "message": "All acceptance criteria are malformed (no Given/When/Then structure)"}' >> "$_FINDINGS"
 elif [ "$_any_not_met" -eq 1 ]; then
   _status="failed"
 else
@@ -517,53 +610,69 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Build JSON output via jq
+# Build JSON output via NDJSON temp files + jq -s (no large argv payloads)
 # ---------------------------------------------------------------------------
 
-# Build ac_results JSON array from TSV
-_ac_json="[]"
+# Build ac_results NDJSON from TSV
 while IFS="$(printf '\t')" read -r ac_id matched test_count status; do
   [ -n "$ac_id" ] || continue
   _matched_bool="false"
   if [ "$matched" = "true" ]; then _matched_bool="true"; fi
   if [ "$status" = "skipped" ]; then
-    _ac_json="$(printf '%s' "$_ac_json" | jq --arg id "$ac_id" --argjson tc "$test_count" \
-      --arg st "$status" \
-      '. + [{"ac_id": $id, "matched": false, "test_count": $tc, "status": $st, "skip_reason": "No Given/When/Then structure"}]')"
+    jq -nc --arg id "$ac_id" --argjson tc "$test_count" --arg st "$status" \
+      '{"ac_id": $id, "matched": false, "test_count": $tc, "status": $st, "skip_reason": "No Given/When/Then structure"}' \
+      >> "$_NDJSON_AC"
   else
-    _ac_json="$(printf '%s' "$_ac_json" | jq --arg id "$ac_id" --argjson m "$_matched_bool" --argjson tc "$test_count" \
-      --arg st "$status" \
-      '. + [{"ac_id": $id, "matched": $m, "test_count": $tc, "status": $st}]')"
+    jq -nc --arg id "$ac_id" --argjson m "$_matched_bool" --argjson tc "$test_count" --arg st "$status" \
+      '{"ac_id": $id, "matched": $m, "test_count": $tc, "status": $st}' \
+      >> "$_NDJSON_AC"
   fi
 done < "$_AC_RESULTS"
 
-# Build findings JSON array
-_findings_json="[]"
-while IFS= read -r fline; do
-  [ -n "$fline" ] || continue
-  _findings_json="$(printf '%s' "$_findings_json" | jq --argjson f "$fline" '. + [$f]')"
-done < "$_FINDINGS"
+# Findings NDJSON already written to $_FINDINGS by the per-AC loop (via jq -nc)
+# Copy to the NDJSON temp file
+if [ -s "$_FINDINGS" ]; then
+  cat "$_FINDINGS" >> "$_NDJSON_FINDINGS"
+fi
 
-# Build unattributed_tests JSON array
-_unattr_json="[]"
+# Build unattributed_tests NDJSON
 while IFS="$(printf '\t')" read -r tf ident; do
   [ -n "$tf" ] || continue
-  _unattr_json="$(printf '%s' "$_unattr_json" | jq --arg f "$tf" --arg i "$ident" \
-    '. + [{"file": $f, "identifier": $i}]')"
+  jq -nc --arg f "$tf" --arg i "$ident" '{"file": $f, "identifier": $i}' >> "$_NDJSON_UNATTR"
 done < "$_UNATTR"
 
-# Assemble and sort the final check object
+# Ensure NDJSON files exist (may be empty)
+[ -f "$_NDJSON_AC" ] || : > "$_NDJSON_AC"
+[ -f "$_NDJSON_FINDINGS" ] || : > "$_NDJSON_FINDINGS"
+[ -f "$_NDJSON_UNATTR" ] || : > "$_NDJSON_UNATTR"
+
+# Assemble and sort the final check object using --slurpfile
+# Empty NDJSON files produce empty arrays via jq -s.
+_ac_arr="$(jq -s '.' "$_NDJSON_AC" 2>/dev/null || echo '[]')"
+_find_arr="$(jq -s '.' "$_NDJSON_FINDINGS" 2>/dev/null || echo '[]')"
+_unattr_arr="$(jq -s '.' "$_NDJSON_UNATTR" 2>/dev/null || echo '[]')"
+
+# Write arrays to temp files for --slurpfile (avoids large argv)
+_tmp_ac_arr="$(mktemp "$_TMPDIR/ac-arr-XXXXXX")"
+_tmp_find_arr="$(mktemp "$_TMPDIR/find-arr-XXXXXX")"
+_tmp_unattr_arr="$(mktemp "$_TMPDIR/unattr-arr-XXXXXX")"
+trap 'rm -f "$_AC_LIST" "$_TEST_PAIRS" "$_UNATTR" "$_FINDINGS" "$_AC_RESULTS" "$_test_files" "$_ATTR_PAIRS" "$_NDJSON_AC" "$_NDJSON_FINDINGS" "$_NDJSON_UNATTR" "$_tmp_ac_arr" "$_tmp_find_arr" "$_tmp_unattr_arr"' EXIT
+
+printf '%s' "$_ac_arr" > "$_tmp_ac_arr"
+printf '%s' "$_find_arr" > "$_tmp_find_arr"
+printf '%s' "$_unattr_arr" > "$_tmp_unattr_arr"
+
 jq -n \
   --arg status "$_status" \
-  --argjson findings "$_findings_json" \
-  --argjson ac_results "$_ac_json" \
-  --argjson unattributed "$_unattr_json" \
+  --slurpfile findings "$_tmp_find_arr" \
+  --slurpfile ac_results "$_tmp_ac_arr" \
+  --slurpfile unattributed "$_tmp_unattr_arr" \
   '{
     name: "ac-coverage",
     status: $status,
-    findings: ($findings | sort_by(.rule, .severity)),
-    ac_results: ($ac_results | sort_by(.ac_id)),
-    unattributed_tests: ($unattributed | sort_by(.file, .identifier))
+    findings: ($findings[0] | sort_by(.rule, .severity)),
+    ac_results: ($ac_results[0] | sort_by(.ac_id)),
+    unattributed_tests: ($unattributed[0] | sort_by(.file, .identifier))
   }'
 
 exit 0
