@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# AF-21-22: final 10-skill SKILL.md sweep.
-# gaia-run-all-reviews retains 3 dual-layout caveat refs (legacy + canonical).
+# Final 10-skill SKILL.md sweep — asserts zero legacy docs/ artifact path
+# literals in skills that have been migrated to the canonical .gaia/ layout.
 
 load 'test_helper.bash'
 
@@ -38,9 +38,8 @@ teardown() { common_teardown; }
 @test "gaia-fill-test-gaps/SKILL.md zero legacy hits" {
   ! grep -qE 'docs/(planning-artifacts|test-artifacts|creative-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-fill-test-gaps/SKILL.md"
 }
-@test "gaia-run-all-reviews/SKILL.md only intentional dual-layout caveat refs" {
-  # 3 intentional caveats remain (lines 26, 67, 178 — explain dual-layout for ADR-070/ADR-111)
+@test "gaia-run-all-reviews/SKILL.md zero legacy refs" {
   local hits
-  hits=$(grep -cE 'docs/(planning-artifacts|test-artifacts|creative-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-run-all-reviews/SKILL.md")
-  [ "$hits" -le 3 ]
+  hits=$(grep -cE 'docs/(planning-artifacts|test-artifacts|creative-artifacts|implementation-artifacts)' "$PLUGIN_ROOT/skills/gaia-run-all-reviews/SKILL.md" 2>/dev/null || true)
+  [ "${hits:-0}" -eq 0 ]
 }
