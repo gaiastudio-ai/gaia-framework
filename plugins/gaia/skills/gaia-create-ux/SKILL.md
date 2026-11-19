@@ -74,7 +74,7 @@ This skill is the native Claude Code conversion of the legacy `_gaia/lifecycle/w
 
 On `missing`, halt. For `artifact` (or no record): "Artifact surface unavailable for artifact-managed record: the built-in Artifact surface could not be reached (absent or unreachable). Ensure the Artifact surface is available." For `designsync`: "The Claude Design integration could not be reached and is treated as unavailable. Use a session that exposes the DesignSync tool surface."
 
-On `unauthorized`, halt. For `artifact` (or no record): "Artifact surface unauthorized for artifact-managed record: the built-in Artifact surface is not authorized. Ensure the Artifact surface is authorized." For `designsync`: "The Claude Design integration is not authorized. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
+On `unauthorized`, halt. For `artifact` (or no record): "Artifact surface unavailable for artifact-managed record: the built-in Artifact surface is not authorized. Ensure the Artifact surface is authorized." For `designsync`: "The Claude Design integration is not authorized. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
 
 The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
 

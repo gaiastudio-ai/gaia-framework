@@ -149,15 +149,15 @@ _assert_availability_identity() {
 
   # --- Artifact-surface unauthorized branch ---
   # Non-vacuity: the named diagnostic literal must be present
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_cux" \
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$unauth_cux" \
     || fail "create-ux unauthorized should contain the artifact named diagnostic"
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_dr" \
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$unauth_dr" \
     || fail "design-review unauthorized should contain the artifact named diagnostic"
 
   # Extract just the artifact branch text (from the diagnostic to 'For `designsync`')
   local art_unauth_cux art_unauth_dr
-  art_unauth_cux="$(echo "$unauth_cux" | sed -n 's/.*\(Artifact surface unauthorized for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
-  art_unauth_dr="$(echo "$unauth_dr" | sed -n 's/.*\(Artifact surface unauthorized for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
+  art_unauth_cux="$(echo "$unauth_cux" | sed -n 's/.*\(Artifact surface unavailable for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
+  art_unauth_dr="$(echo "$unauth_dr" | sed -n 's/.*\(Artifact surface unavailable for artifact-managed record[^"]*\)" For .designsync.*/\1/p')"
   [ -n "$art_unauth_cux" ] || fail "could not extract artifact unauthorized branch from create-ux"
   [ -n "$art_unauth_dr" ] || fail "could not extract artifact unauthorized branch from design-review"
 
@@ -816,9 +816,9 @@ _assert_availability_identity() {
   [ -n "$section_cux" ] || fail "availability section not found in create-ux"
   [ -n "$section_dr" ] || fail "availability section not found in design-review"
 
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$section_cux" \
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_cux" \
     || fail "create-ux unauthorized halt should contain the named diagnostic form"
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$section_dr" \
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
     || fail "design-review unauthorized halt should contain the named diagnostic form"
 }
 
@@ -876,12 +876,12 @@ _assert_availability_identity() {
   [ -n "$art_unauth_cux" ] || fail "could not extract artifact unauthorized branch from create-ux"
   [ -n "$art_unauth_dr" ] || fail "could not extract artifact unauthorized branch from design-review"
 
-  # Must contain the AC11 named diagnostic form and the specific reason
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$art_unauth_cux" \
+  # Must contain the named diagnostic and the specific reason
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$art_unauth_cux" \
     || fail "create-ux artifact unauthorized branch must contain the named diagnostic"
   grep -qF 'not authorized' <<<"$art_unauth_cux" \
     || fail "create-ux artifact unauthorized branch must contain the specific reason"
-  grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$art_unauth_dr" \
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$art_unauth_dr" \
     || fail "design-review artifact unauthorized branch must contain the named diagnostic"
   grep -qF 'not authorized' <<<"$art_unauth_dr" \
     || fail "design-review artifact unauthorized branch must contain the specific reason"
@@ -1087,4 +1087,60 @@ _extract_designsync_clause() {
     || fail "create-ux artifact missing halt must exist"
   grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$section_dr" \
     || fail "design-review artifact missing halt must exist"
+}
+
+@test "both missing and unauthorized artifact halts use the unavailable diagnostic literal and stay distinguishable" {
+  [ -f "$SKILL_MD_CUX" ] || fail "create-ux SKILL.md not found"
+  [ -f "$SKILL_MD_DR" ] || fail "design-review SKILL.md not found"
+
+  local section_cux section_dr
+  section_cux="$(_extract_availability_section "$SKILL_MD_CUX")"
+  section_dr="$(_extract_availability_section "$SKILL_MD_DR")"
+  [ -n "$section_cux" ] || fail "availability section not found in create-ux"
+  [ -n "$section_dr" ] || fail "availability section not found in design-review"
+
+  # Extract missing and unauthorized halt paragraphs
+  local miss_cux miss_dr unauth_cux unauth_dr
+  miss_cux="$(echo "$section_cux" | sed -n '/On.*missing.*halt/,/^$/p')"
+  miss_dr="$(echo "$section_dr" | sed -n '/On.*missing.*halt/,/^$/p')"
+  unauth_cux="$(echo "$section_cux" | sed -n '/On.*unauthorized.*halt/,/^$/p')"
+  unauth_dr="$(echo "$section_dr" | sed -n '/On.*unauthorized.*halt/,/^$/p')"
+  [ -n "$miss_cux" ] || fail "create-ux missing halt paragraph not found"
+  [ -n "$miss_dr" ] || fail "design-review missing halt paragraph not found"
+  [ -n "$unauth_cux" ] || fail "create-ux unauthorized halt paragraph not found"
+  [ -n "$unauth_dr" ] || fail "design-review unauthorized halt paragraph not found"
+
+  # Both missing halts must start with the unavailable diagnostic literal
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$miss_cux" \
+    || fail "create-ux missing halt should begin with the unavailable diagnostic literal"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$miss_dr" \
+    || fail "design-review missing halt should begin with the unavailable diagnostic literal"
+
+  # Both unauthorized halts must ALSO start with the unavailable diagnostic literal
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$unauth_cux" \
+    || fail "create-ux unauthorized halt should use the unavailable diagnostic literal"
+  grep -qF 'Artifact surface unavailable for artifact-managed record' <<<"$unauth_dr" \
+    || fail "design-review unauthorized halt should use the unavailable diagnostic literal"
+
+  # Neither unauthorized halt should contain the old 'unauthorized' diagnostic form
+  if grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_cux"; then
+    fail "create-ux unauthorized halt must not use the old unauthorized diagnostic form"
+  fi
+  if grep -qF 'Artifact surface unauthorized for artifact-managed record' <<<"$unauth_dr"; then
+    fail "design-review unauthorized halt must not use the old unauthorized diagnostic form"
+  fi
+
+  # The unauthorized halt must still carry its unauthorized-specific reason
+  grep -qF 'not authorized' <<<"$unauth_cux" \
+    || fail "create-ux unauthorized halt must still contain its unauthorized reason"
+  grep -qF 'not authorized' <<<"$unauth_dr" \
+    || fail "design-review unauthorized halt must still contain its unauthorized reason"
+
+  # The two cases (missing vs unauthorized) must remain distinguishable
+  if [ "$miss_cux" = "$unauth_cux" ]; then
+    fail "create-ux missing and unauthorized halts must differ"
+  fi
+  if [ "$miss_dr" = "$unauth_dr" ]; then
+    fail "design-review missing and unauthorized halts must differ"
+  fi
 }
