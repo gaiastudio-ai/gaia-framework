@@ -655,3 +655,1246 @@ _seed_file() {
   [ "$overlaps" -eq 0 ]
 }
 
+# ================================================================
+# LC_ALL containment: sourcing the writer must not leak LC_ALL=C
+# ================================================================
+
+@test "sourcing the writer with LC_ALL unset preserves unset state" {
+  # The writer sources acquire-lock.sh which exports LC_ALL=C. After
+  # sourcing, the caller's LC_ALL must be restored to its prior value
+  # (unset, in this case). acquire_lock / release_lock must still work.
+  local out
+  out="$(
+    unset LC_ALL
+    source "$AIW_SH"
+    if [ -n "${LC_ALL+set}" ]; then
+      printf 'LEAKED=%s\n' "${LC_ALL}"
+    else
+      printf 'UNSET\n'
+    fi
+    # Verify the helper functions are still callable.
+    local _lf="$TEST_TMP/lc-test.lock"
+    GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$_lf" 5 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+    printf 'CALLABLE\n'
+  )"
+  [[ "$out" == *"UNSET"* ]] || {
+    echo "LC_ALL was not restored after sourcing the writer: $out" >&2
+    false
+  }
+  [[ "$out" == *"CALLABLE"* ]] || {
+    echo "acquire_lock / release_lock not callable after LC_ALL restore: $out" >&2
+    false
+  }
+}
+
+@test "sourcing the writer with LC_ALL set to a non-C value restores it" {
+  # The writer's lock helper exports LC_ALL=C internally. After
+  # sourcing, the caller's LC_ALL must be restored to its original
+  # non-C value. Supports _TEST_AIW_OVERRIDE for red-phase checks.
+  local _w="${_TEST_AIW_OVERRIDE:-$AIW_SH}"
+  local out
+  out="$(
+    export LC_ALL=en_US.UTF-8
+    source "$_w"
+    printf 'AFTER=%s\n' "${LC_ALL}"
+    # Verify the helper functions are still callable.
+    local _lf="$TEST_TMP/lc-nonc-test.lock"
+    GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$_lf" 5 9 2>/dev/null || true
+    release_lock 9 2>/dev/null || true
+    printf 'CALLABLE\n'
+  )" 2>/dev/null  # suppress any locale-not-found warnings
+  [[ "$out" == *"AFTER=en_US.UTF-8"* ]] || {
+    echo "LC_ALL not restored to non-C value after sourcing the writer: $out" >&2
+    false
+  }
+  [[ "$out" == *"CALLABLE"* ]] || {
+    echo "acquire_lock / release_lock not callable after LC_ALL restore: $out" >&2
+    false
+  }
+}
+
+# ================================================================
+# Permanent lock failure: fails at once, not after the full timeout
+# ================================================================
+
+@test "permanent lock failure fails at once without spinning" {
+  # An unwritable lock directory causes acquire_lock to return rc=1
+  # immediately. The writer wrapper must not spin for the full timeout;
+  # it must fail at once with a descriptive reason.
+  source "$AIW_SH"
+
+  local target="$TEST_TMP/perm-fail.yaml"
+  _seed_file "$target" 1
+
+  # Create the lock directory and make it unwritable.
+  local lock_dir="$TEST_TMP/unwritable-lock"
+  mkdir -p "$lock_dir"
+  chmod 000 "$lock_dir"
+
+  local lock_file="$lock_dir/perm-fail.lock"
+  local start_epoch out rc
+  start_epoch="$(date +%s)"
+  out="$(
+    GAIA_AIW_LOCK_TIMEOUT=5 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "perm-test" 2>/dev/null
+  )" && rc=0 || rc=$?
+  local elapsed=$(( $(date +%s) - start_epoch ))
+
+  # Restore permissions for cleanup.
+  chmod 755 "$lock_dir"
+
+  # Must fail.
+  [ "$rc" -ne 0 ] || {
+    echo "expected failure but got rc=0" >&2
+    false
+  }
+
+  # Must finish well before the 5 s timeout (< 3 s).
+  [ "$elapsed" -lt 3 ] || {
+    echo "spent $elapsed seconds — spun for the full timeout instead of failing at once" >&2
+    false
+  }
+
+  # Reason must NOT be "lock timeout" or "parallel execution requires flock".
+  [[ "$out" != *"lock timeout"* ]] || {
+    echo "reported 'lock timeout' for a permanent failure: $out" >&2
+    false
+  }
+  [[ "$out" != *"parallel execution requires flock"* ]] || {
+    echo "reported 'parallel execution requires flock' for a permanent failure: $out" >&2
+    false
+  }
+}
+
+# ================================================================
+# Publication refusal retry: total wait never exceeds one timeout
+# ================================================================
+
+@test "publication refusal retries within remaining deadline only" {
+  # A late publication refusal must not restart the full timeout.
+  # The test holds a live lock so every acquire_lock attempt waits for
+  # the full timeout. The wrapper acquire_lock is shimmed so the FIRST
+  # call burns most of the budget as a publication refusal (rc=1).
+  # Under the current code, _aiw_lock retries with the FULL timeout
+  # again (3 s), so total elapsed approaches 2 * 3 = 6 s. After the fix
+  # (remaining-deadline), the second call gets only the leftover budget
+  # and the total stays near 3 s.
+  source "$AIW_SH"
+  source "$LOCK_LIB"
+
+  local lock_file="$TEST_TMP/pub-retry.lock"
+
+  # Hold the lock so every real acquire_lock attempt blocks until timeout.
+  GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$lock_file" 120 7
+
+  local n_calls_file="$TEST_TMP/pub-retry-calls"
+  printf '0' > "$n_calls_file"
+  eval "_real_$(declare -f acquire_lock)"
+  acquire_lock() {
+    local _nc
+    _nc="$(cat "$n_calls_file")"
+    _nc=$((_nc + 1))
+    printf '%s' "$_nc" > "$n_calls_file"
+    if [ "$_nc" -eq 1 ]; then
+      # Simulate a late publication refusal: burn 2 s of the 3 s budget.
+      sleep 2 2>/dev/null || sleep 2
+      printf 'acquire-lock: refusing a lock that did not publish at %s\n' "$1" >&2
+      return "$ACQUIRE_LOCK_EXIT_PUBLISH"
+    fi
+    # Subsequent calls go to the real acquire_lock (which will time out
+    # because the lock is held).
+    _real_acquire_lock "$@"
+  }
+
+  local start_epoch out rc
+  start_epoch="$(date +%s)"
+  out="$(
+    GAIA_AIW_LOCK_TIMEOUT=3 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "pub-retry-test" 2>/dev/null
+  )" && rc=0 || rc=$?
+  local elapsed=$(( $(date +%s) - start_epoch ))
+  local total_calls
+  total_calls="$(cat "$n_calls_file")"
+
+  release_lock 7
+
+  # At least one retry must have happened (total_calls >= 2).
+  [ "$total_calls" -ge 2 ] || {
+    echo "expected at least one retry but acquire_lock was called only $total_calls times" >&2
+    false
+  }
+
+  # With the doubled-wait bug, total elapsed approaches 2 + 3 = 5 s.
+  # After the fix, it should be about 2 + 1 = 3 s (original budget).
+  # Measured 10 runs: all 3 s. Threshold < 4 s catches the bug with margin.
+  [ "$elapsed" -lt 4 ] || {
+    echo "elapsed $elapsed s — the retry restarted with the full timeout (doubled-wait bug)" >&2
+    false
+  }
+}
+
+# ================================================================
+# Parallel execution: permission denied must not say "requires flock"
+# ================================================================
+
+@test "flock present but permission denied does not say requires flock" {
+  # When GAIA_PARALLEL_EXECUTION=1 and flock IS present, a non-flock
+  # failure (permission denied) must report the real reason, not
+  # "parallel execution requires flock".
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+
+  source "$AIW_SH"
+
+  # Wrap acquire_lock to simulate a permission-denied failure (rc=1).
+  eval "_real_$(declare -f acquire_lock)"
+  acquire_lock() {
+    printf 'acquire-lock: permission denied opening lock file: %s\n' "$1" >&2
+    return 1
+  }
+
+  local out
+  out="$(
+    GAIA_PARALLEL_EXECUTION=1 GAIA_AIW_LOCK_TIMEOUT=1 \
+    _aiw_lock "$TEST_TMP/pe-test.lock" "pe-test" 2>/dev/null
+  )" && rc=0 || rc=$?
+
+  [ "$rc" -ne 0 ] || {
+    echo "expected failure but got rc=0" >&2
+    false
+  }
+
+  # The reason must NOT say "parallel execution requires flock" since
+  # flock IS present — the failure was permission denied.
+  [[ "$out" != *"parallel execution requires flock"* ]] || {
+    echo "incorrectly reported 'parallel execution requires flock': $out" >&2
+    false
+  }
+}
+
+# ================================================================
+# Legacy .lockdir cleanup timing
+# ================================================================
+
+@test "legacy lockdir left untouched by the writer (never auto-removed)" {
+  # Approved behaviour: the writer never removes a legacy .lockdir.
+  # Leftover directories are cleared only by documented manual recovery
+  # after stopping all processes.
+  source "$AIW_SH"
+  source "$LOCK_LIB"
+
+  local target="$TEST_TMP/lockdir-timing.yaml"
+  _seed_file "$target" 1
+  local lock_file="${target}.lock"
+  local lockdir="${target}.lockdir"
+
+  # Create a legacy .lockdir.
+  mkdir -p "$lockdir"
+
+  # Hold the lock so _aiw_lock times out.
+  GAIA_LOCK_FORCE_FALLBACK=1 acquire_lock "$lock_file" 120 7
+
+  local rc=0
+  GAIA_AIW_LOCK_TIMEOUT=1 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "lockdir-test" >/dev/null 2>/dev/null \
+    && rc=0 || rc=$?
+
+  # After a failed acquire, the .lockdir must still exist.
+  [ -d "$lockdir" ] || {
+    echo ".lockdir was removed during a failed acquire" >&2
+    release_lock 7
+    false
+  }
+
+  release_lock 7
+
+  # Acquire successfully — call _aiw_lock in the main shell (not a
+  # subshell) so _aiw_unlock can release the same fd.
+  rc=0
+  GAIA_AIW_LOCK_TIMEOUT=5 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "lockdir-test" >/dev/null 2>/dev/null \
+    && rc=0 || rc=$?
+
+  [ "$rc" -eq 0 ] || {
+    echo "acquire failed unexpectedly (rc=$rc)" >&2; false; }
+
+  # The .lockdir is left untouched after a successful acquire.
+  [ -d "$lockdir" ] || {
+    echo ".lockdir was removed after successful acquire — writer must never auto-remove it" >&2
+    _aiw_unlock; false
+  }
+
+  _aiw_unlock
+
+  # The writer acquires normally even with a legacy .lockdir present.
+  rc=0
+  GAIA_AIW_LOCK_TIMEOUT=5 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "lockdir-test-2" >/dev/null 2>/dev/null \
+    && rc=0 || rc=$?
+
+  [ "$rc" -eq 0 ] || {
+    echo "second acquire failed with .lockdir present (rc=$rc)" >&2; false; }
+  [ -d "$lockdir" ] || {
+    echo ".lockdir was removed on second acquire" >&2; _aiw_unlock; false; }
+  _aiw_unlock
+}
+
+# ================================================================
+# Comment hygiene guard: no bare commit hashes or branch refs
+# ================================================================
+
+@test "no bare commit hashes or branch refs in lock test comments" {
+  # Scan comment lines (first non-blank char is #) of the two lock test
+  # files this story touches for leaked identifiers.
+  local files=(
+    "$BATS_TEST_DIRNAME/action-items-write-lock.bats"
+    "$BATS_TEST_DIRNAME/lock-helper.bats"
+  )
+  local violations="" f
+  for f in "${files[@]}"; do
+    [ -f "$f" ] || continue
+    # Extract comment lines (first non-blank character is #).
+    local comments
+    comments="$(grep '^[[:space:]]*#' "$f")" || continue
+
+    # Check for 7+ character standalone lowercase hex tokens containing
+    # at least one letter a-f (bare commit hashes). Word boundaries (\b)
+    # exclude hex-like substrings of English words (e.g. "succeeded").
+    # Strip sha256:<hex> tokens BEFORE extracting, so the filter actually
+    # removes them (grep -v after grep -oE would not match the prefix).
+    local hex_hits
+    hex_hits="$(echo "$comments" | sed 's/sha256:[0-9a-f]*/SHA_REDACTED/g' | grep -noE '\b[0-9a-f]{7,}\b' | grep '[a-f]')" || hex_hits=""
+    if [ -n "$hex_hits" ]; then
+      violations="${violations}$(basename "$f"): bare hex tokens:\n${hex_hits}\n"
+    fi
+
+    # Check for git branch references: origin/<word> or quoted branch names.
+    local branch_hits
+    branch_hits="$(echo "$comments" | grep -noE 'origin/[[:alnum:]_-]+' )" || branch_hits=""
+    if [ -n "$branch_hits" ]; then
+      violations="${violations}$(basename "$f"): origin/ references:\n${branch_hits}\n"
+    fi
+    local quoted_branch_hits
+    quoted_branch_hits="$(echo "$comments" | grep -noE '['\''"\x60](staging|main|master)['\''"\x60]')" || quoted_branch_hits=""
+    if [ -n "$quoted_branch_hits" ]; then
+      violations="${violations}$(basename "$f"): quoted branch names:\n${quoted_branch_hits}\n"
+    fi
+  done
+
+  if [ -n "$violations" ]; then
+    printf 'Comment hygiene violations found:\n%b' "$violations" >&2
+    false
+  fi
+}
+
+# ================================================================
+# Permanent path-type failure: a non-regular, uncleanable entry at
+# the lock path must fail fast with the reason, not "lock timeout".
+# ================================================================
+
+@test "non-regular uncleanable entry at lock path fails fast with reason on stderr" {
+  # A non-empty directory at the lock path is a permanent failure:
+  # the helper cannot clear it and must not spin until timeout.
+  # Stdout carries the two-line status/reason protocol unchanged;
+  # stderr carries the helper's full diagnostic (remedy lines).
+  source "$AIW_SH"
+
+  local target="$TEST_TMP/pathtype-perm.yaml"
+  _seed_file "$target" 1
+  local lock_file="${target}.lock"
+
+  # Create a non-empty directory at the lock path.
+  mkdir -p "$lock_file"
+  printf 'planted\n' > "$lock_file/occupant.txt"
+
+  local start_epoch out err rc
+  start_epoch="$(date +%s)"
+  out="$(
+    GAIA_AIW_LOCK_TIMEOUT=4 GAIA_LOCK_FORCE_FALLBACK=1 \
+    _aiw_lock "$lock_file" "pathtype-test" 2>"$TEST_TMP/pathtype-stderr"
+  )" && rc=0 || rc=$?
+  err="$(cat "$TEST_TMP/pathtype-stderr" 2>/dev/null)"
+  local elapsed=$(( $(date +%s) - start_epoch ))
+
+  # Clean up the planted directory.
+  rm -rf "$lock_file"
+
+  # Must fail.
+  [ "$rc" -ne 0 ] || {
+    echo "expected failure but got rc=0" >&2
+    false
+  }
+
+  # Must finish well before the 4 s timeout (< 2 s).
+  [ "$elapsed" -lt 2 ] || {
+    echo "spent $elapsed s — spun for the full timeout instead of failing at once" >&2
+    false
+  }
+
+  # Stdout: reason must NOT be "lock timeout".
+  [[ "$out" != *"lock timeout"* ]] || {
+    echo "reported 'lock timeout' for a permanent path-type failure: $out" >&2
+    false
+  }
+
+  # Stdout: must have the status=error protocol.
+  [[ "$out" == *"status=error"* ]] || {
+    echo "no status=error in output: $out" >&2
+    false
+  }
+
+  # Stderr: must carry the helper's diagnostic (remedy text).
+  [[ "$err" == *"remove it by hand"* ]] || [[ "$err" == *"directory with unrelated contents"* ]] || {
+    echo "stderr does not carry the helper's diagnostic: $err" >&2
+    false
+  }
+}
+
+# ================================================================
+# Writer-level reap-mutex diagnostic: stderr must forward the
+# helper's diagnostic naming the .reap-mtx file and the remedy.
+# ================================================================
+
+@test "writer timeout forwards the reap-mutex diagnostic to stderr" {
+  source "$AIW_SH"
+
+  local lock_file="$TEST_TMP/mtx-diag-writer.yaml.lock"
+  local mutex="${lock_file}.reap-mtx"
+  local lock_dir
+  lock_dir="$(dirname "$lock_file")"
+  mkdir -p "$lock_dir"
+
+  # Plant a stale lock (dead PID, backdated).
+  printf '99999 1000000000\n' > "$lock_file"
+  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
+    touch -d '2020-01-01' "$lock_file"
+  else
+    touch -t 202001010000 "$lock_file"
+  fi
+
+  # Plant a dead-owner reap mutex.
+  printf '99999 dead-nonce\n' > "$mutex"
+
+  # Call _aiw_lock capturing stdout and stderr separately.
+  local out="" err="" rc=0
+  out="$(
+    GAIA_AIW_LOCK_TIMEOUT=2 GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=1 \
+    _aiw_lock "$lock_file" "diag-test" 2>"$TEST_TMP/diag-stderr"
+  )" && rc=0 || rc=$?
+  err="$(cat "$TEST_TMP/diag-stderr" 2>/dev/null)"
+
+  # Exit status must be 1 (the writer's protocol for failure).
+  [ "$rc" -eq 1 ] || {
+    echo "expected rc=1, got rc=$rc" >&2; false; }
+
+  # Stdout: exactly the two-line status=error / reason=...lock timeout protocol.
+  local line1 line2
+  line1="$(printf '%s\n' "$out" | sed -n '1p')"
+  line2="$(printf '%s\n' "$out" | sed -n '2p')"
+  [ "$line1" = "status=error" ] || {
+    echo "stdout line 1: expected 'status=error', got '$line1'" >&2; false; }
+  [[ "$line2" == reason=*"lock timeout"* ]] || {
+    echo "stdout line 2: expected lock timeout reason, got '$line2'" >&2; false; }
+
+  # Stderr: must contain the exact .reap-mtx path.
+  [[ "$err" == *"$mutex"* ]] || {
+    echo "stderr does not name the reap-mutex path: $err" >&2; false; }
+
+  # Stderr: must contain the stop/quiesce-first remedy.
+  [[ "$err" == *"stop or quiesce"* ]] || {
+    echo "stderr does not give the quiesce-first remedy: $err" >&2; false; }
+
+  rm -f "$mutex" "$lock_file"
+}
+
+# ================================================================
+# Increment-vs-writer contention
+# ================================================================
+
+INCREMENT_SH="$BATS_TEST_DIRNAME/../skills/gaia-retro/scripts/action-items-increment.sh"
+
+_seed_increment_file() {
+  local target="$1"
+  mkdir -p "$(dirname "$target")"
+  # The awk in the increment script sets in_target=1 on the theme_hash
+  # line, so escalation_count must appear AFTER theme_hash for the
+  # match to work. This matches the canonical writer's output order.
+  {
+    printf 'items:\n'
+    printf '  - id: "AI-1"\n'
+    printf '    sprint_id: "sprint-99"\n'
+    printf '    text: "Test item"\n'
+    printf '    classification: "implementation"\n'
+    printf '    status: "open"\n'
+    printf '    theme_hash: "sha256:abc123"\n'
+    printf '    escalation_count: 0\n'
+    printf '    story_key: "STORY-1"\n'
+  } > "$target"
+}
+
+@test "increment and writer contention preserves all updates (fallback)" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+  source "$AIW_SH"
+
+  # Place the file at the allowlisted path so the increment's boundary
+  # check passes.
+  local proj_root="$TEST_TMP/incr-proj"
+  mkdir -p "$proj_root/.gaia/state"
+  local target="$proj_root/.gaia/state/action-items.yaml"
+  _seed_increment_file "$target"
+
+  local pids=()
+  (
+    unset GAIA_PARALLEL_EXECUTION
+    export GAIA_LOCK_FORCE_FALLBACK=1 PROJECT_ROOT="$proj_root"
+    bash "$INCREMENT_SH" --file "$target" --theme-hash "abc123" --sprint-id "sprint-100" 2>/dev/null
+  ) &
+  pids+=($!)
+  (
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "$AIW_SH"
+    aiw_write --target "$target" --sprint-id sprint-99 \
+      --classification implementation --text "Contention item" \
+      --ref-key story_key --ref-value "STORY-2" > /dev/null 2>&1
+  ) &
+  pids+=($!)
+  for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+
+  local esc_count
+  esc_count="$(grep 'escalation_count:' "$target" | head -1 | tr -dc '0-9')"
+  [ "$esc_count" = "1" ] || {
+    echo "escalation_count not bumped: got $esc_count" >&2; false; }
+  grep -q 'Contention item' "$target" || {
+    echo "writer append lost during contention" >&2; false; }
+}
+
+@test "after normal completion no lock file blocks the next no-flock acquirer" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+  source "$AIW_SH"
+
+  local proj_root="$TEST_TMP/incr-noleak-proj"
+  mkdir -p "$proj_root/.gaia/state"
+  local target="$proj_root/.gaia/state/action-items.yaml"
+  _seed_increment_file "$target"
+  local ledger="${target}.escalation-ledger"
+  : > "$ledger"
+  local lock_file="${target}.lock"
+
+  PROJECT_ROOT="$proj_root" GAIA_LOCK_FORCE_FALLBACK=1 bash "$INCREMENT_SH" \
+    --file "$target" --theme-hash "abc123" --sprint-id "sprint-100" 2>/dev/null
+
+  [ ! -f "$lock_file" ] || {
+    echo "lock file left behind after increment: $(cat "$lock_file")" >&2; false; }
+
+  local out
+  out="$(
+    GAIA_LOCK_FORCE_FALLBACK=1 \
+    aiw_write --target "$target" --sprint-id sprint-99 \
+      --classification implementation --text "Post-increment" \
+      --ref-key story_key --ref-value "STORY-3" 2>/dev/null
+  )"
+  [[ "$out" == *"status=ok"* ]] || {
+    echo "post-increment writer failed: $out" >&2; false; }
+}
+
+@test "writer timeout diagnostic works when mktemp fails" {
+  # When mktemp fails, the writer must let helper stderr pass through
+  # so the reap-mutex diagnostic reaches the caller.
+  source "$AIW_SH"
+
+  local lock_file="$TEST_TMP/mtx-diag-nomktemp.yaml.lock"
+  local mutex="${lock_file}.reap-mtx"
+  local lock_dir
+  lock_dir="$(dirname "$lock_file")"
+  mkdir -p "$lock_dir"
+
+  # Plant a stale lock (dead PID, backdated).
+  printf '99999 1000000000\n' > "$lock_file"
+  if [ "$_TEST_STAT_FMT" = "gnu" ]; then
+    touch -d '2020-01-01' "$lock_file"
+  else
+    touch -t 202001010000 "$lock_file"
+  fi
+  # Plant a dead-owner reap mutex.
+  printf '99999 dead-nonce\n' > "$mutex"
+
+  # Create a mktemp shim that fails only the bare (no-template) call the
+  # writer uses for its stderr capture. The helper calls mktemp with a
+  # template argument, so those calls pass through to the real mktemp.
+  local shim_dir="$TEST_TMP/mktemp-shim"
+  mkdir -p "$shim_dir"
+  local real_mktemp
+  real_mktemp="$(command -v mktemp)"
+  cat > "$shim_dir/mktemp" <<SHIMEOF
+#!/bin/sh
+if [ \$# -eq 0 ]; then exit 1; fi
+exec "$real_mktemp" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/mktemp"
+
+  # Call _aiw_lock with the shim first on PATH, capturing stdout and stderr.
+  local out="" err="" rc=0
+  out="$(
+    PATH="$shim_dir:$PATH" \
+    GAIA_AIW_LOCK_TIMEOUT=2 GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=1 \
+    _aiw_lock "$lock_file" "nomktemp-test" 2>"$TEST_TMP/diag-stderr-nomk"
+  )" && rc=0 || rc=$?
+  err="$(cat "$TEST_TMP/diag-stderr-nomk" 2>/dev/null)"
+
+  # Exit status must be 1.
+  [ "$rc" -eq 1 ] || {
+    echo "expected rc=1, got rc=$rc" >&2; false; }
+
+  # Stdout: the unchanged status=error / reason=lock timeout protocol.
+  local line1 line2
+  line1="$(printf '%s\n' "$out" | sed -n '1p')"
+  line2="$(printf '%s\n' "$out" | sed -n '2p')"
+  [ "$line1" = "status=error" ] || {
+    echo "stdout line 1: expected 'status=error', got '$line1'" >&2; false; }
+  [[ "$line2" == reason=*"lock timeout"* ]] || {
+    echo "stdout line 2: expected lock timeout reason, got '$line2'" >&2; false; }
+
+  # Stderr: must contain the exact .reap-mtx path (passed through directly).
+  [[ "$err" == *"$mutex"* ]] || {
+    echo "stderr does not name the reap-mutex path: $err" >&2; false; }
+
+  # Stderr: must contain the stop/quiesce-first remedy.
+  [[ "$err" == *"stop or quiesce"* ]] || {
+    echo "stderr does not give the quiesce-first remedy: $err" >&2; false; }
+
+  rm -f "$mutex" "$lock_file"
+}
+
+# ================================================================
+# Deterministic increment-vs-writer contention (cross-tool locking)
+#
+# Three test groups prove the increment (which sources the shared
+# writer for locking) and the writer itself correctly exclude each
+# other via the same lock file:
+#
+#   (a) Writer holds the lock (test-only hold hook); the increment
+#       must NOT mutate during the hold (checksum proof); both
+#       updates land afterwards.
+#   (b) Short timeout while the writer holds; the increment exits
+#       non-zero and the file is byte-identical afterwards.
+#   (c) Reverse: the increment holds; the writer must NOT mutate
+#       during the hold; both updates land afterwards.
+#
+# Each runs in: flock, fallback (forced + no flock on PATH), and
+# mixed (one side flock, the other forced fallback).
+# ================================================================
+
+# Build a directory with symlinks to every executable on PATH except
+# flock, so flock is genuinely absent at both source time and run time.
+_dcont_build_noflock_path() {
+  local dir="$1"
+  mkdir -p "$dir"
+  local _pd _f _bn OLDIFS="$IFS"; IFS=':'
+  # shellcheck disable=SC2086
+  for _pd in $PATH; do
+    [ -d "$_pd" ] || continue
+    for _f in "$_pd"/*; do
+      [ -x "$_f" ] || continue
+      _bn="${_f##*/}"
+      [ "$_bn" = "flock" ] && continue
+      [ -e "$dir/$_bn" ] || ln -sf "$_f" "$dir/$_bn" 2>/dev/null || true
+    done
+  done
+  IFS="$OLDIFS"
+}
+
+_dcont_cksum() {
+  cksum "$1" | awk '{print $1, $2}'
+}
+
+_dcont_wait_lock() {
+  local lf="$1" n=0
+  while [ ! -e "$lf" ] && [ "$n" -lt 60 ]; do
+    sleep 0.05 2>/dev/null || sleep 1; n=$((n + 1))
+  done
+  sleep 0.2 2>/dev/null || sleep 1
+  [ -e "$lf" ]
+}
+
+# --- (a) writer holds, increment waits ---------------------------------
+
+@test "deterministic contention: writer holds, increment waits, both land (flock)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/da-fl"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Writer: holds lock 3 s via test hook, then appends an item.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_AIW_TEST_HOLD_SECONDS=3; source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Increment: blocks on the held lock.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr"
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  # During the hold window: file must be unchanged.
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$wp" 2>/dev/null || true
+  wait "$ip" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+@test "deterministic contention: writer holds, increment waits, both land (fallback no-flock)" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/da-fb"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0 nfd="$TEST_TMP/nfb-da-fb"
+  cs0="$(_dcont_cksum "$t")"
+  _dcont_build_noflock_path "$nfd"
+
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_TEST_HOLD_SECONDS=3
+    source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_LOCK_FORCE_FALLBACK=1
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$wp" 2>/dev/null || true
+  wait "$ip" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+@test "deterministic contention: writer holds, increment waits, both land (mixed)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/da-mx"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Writer: flock mode.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_AIW_TEST_HOLD_SECONDS=3; source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Increment: forced fallback mode.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_LOCK_FORCE_FALLBACK=1
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$wp" 2>/dev/null || true
+  wait "$ip" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+# --- (b) increment timeout -----------------------------------------------
+
+@test "deterministic contention: increment timeout leaves file unchanged (flock)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/db-fl"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Writer: holds for 10 s (long enough for the increment to time out).
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_AIW_TEST_HOLD_SECONDS=10; source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Blocker" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Increment with 1 s timeout: must fail.
+  local rc=0
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_AIW_LOCK_TIMEOUT=1
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) || rc=$?
+
+  kill "$wp" 2>/dev/null || true; wait "$wp" 2>/dev/null || true
+
+  [ "$rc" -ne 0 ] || { echo "increment should have failed (rc=$rc)" >&2; false; }
+
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file changed after timeout: $cs0 -> $cs1" >&2; false; }
+}
+
+@test "deterministic contention: increment timeout leaves file unchanged (fallback no-flock)" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/db-fb"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0 nfd="$TEST_TMP/nfb-db-fb"
+  cs0="$(_dcont_cksum "$t")"
+  _dcont_build_noflock_path "$nfd"
+
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_TEST_HOLD_SECONDS=10
+    source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Blocker" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  local rc=0
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=1
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) || rc=$?
+
+  kill "$wp" 2>/dev/null || true; wait "$wp" 2>/dev/null || true
+
+  [ "$rc" -ne 0 ] || { echo "increment should have failed (rc=$rc)" >&2; false; }
+
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file changed after timeout: $cs0 -> $cs1" >&2; false; }
+}
+
+@test "deterministic contention: increment timeout leaves file unchanged (mixed)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/db-mx"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Writer: flock, long hold.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_AIW_TEST_HOLD_SECONDS=10; source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Blocker" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Increment: forced fallback, short timeout.
+  local rc=0
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=1
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) || rc=$?
+
+  kill "$wp" 2>/dev/null || true; wait "$wp" 2>/dev/null || true
+
+  [ "$rc" -ne 0 ] || { echo "increment should have failed (rc=$rc)" >&2; false; }
+
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file changed after timeout: $cs0 -> $cs1" >&2; false; }
+}
+
+# --- (c) reverse: increment holds, writer waits --------------------------
+
+@test "deterministic contention: increment holds, writer waits, both land (flock)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/dc-fl"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Increment: holds lock 3 s via test hook, then bumps escalation_count.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_AIW_TEST_HOLD_SECONDS=3
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Writer: blocks on the held lock.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  # During the hold window: file must be unchanged.
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$ip" 2>/dev/null || true
+  wait "$wp" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+@test "deterministic contention: increment holds, writer waits, both land (fallback no-flock)" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/dc-fb"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0 nfd="$TEST_TMP/nfb-dc-fb"
+  cs0="$(_dcont_cksum "$t")"
+  _dcont_build_noflock_path "$nfd"
+
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_TEST_HOLD_SECONDS=3
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1
+    source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$ip" 2>/dev/null || true
+  wait "$wp" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+@test "deterministic contention: increment holds, writer waits, both land (mixed)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/dc-mx"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Increment: flock mode, holds lock 3 s.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export PROJECT_ROOT="$pr" GAIA_AIW_TEST_HOLD_SECONDS=3
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null
+  ) &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Writer: forced fallback mode.
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1; source "$AIW_SH"
+    aiw_write --target "$t" --sprint-id sprint-99 \
+      --classification implementation --text "Writer item" \
+      --ref-key story_key --ref-value "STORY-2" >/dev/null 2>&1
+  ) &
+  local wp=$!
+
+  sleep 1
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "mutated during hold: $cs0 -> $cs1" >&2
+    kill "$wp" "$ip" 2>/dev/null || true; wait 2>/dev/null || true; false; }
+
+  wait "$ip" 2>/dev/null || true
+  wait "$wp" 2>/dev/null || true
+
+  local ec; ec="$(grep 'escalation_count:' "$t" | head -1 | tr -dc '0-9')"
+  [ "$ec" = "1" ] || { echo "esc=$ec want 1" >&2; false; }
+  grep -q 'Writer item' "$t" || { echo "writer append lost" >&2; false; }
+}
+
+# ================================================================
+# Signal-safe lock cleanup in the increment script
+#
+# When the increment is killed mid-hold (TERM or INT), the trap must:
+#   (a) terminate the process with non-zero status,
+#   (b) leave action-items.yaml unmodified (or atomically reverted),
+#   (c) release the lock so the next acquirer proceeds at once.
+# ================================================================
+
+@test "signal cleanup: TERM during increment hold exits non-zero and releases lock (fallback)" {
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/sig-fb"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0 nfd="$TEST_TMP/nfb-sig-fb"
+  cs0="$(_dcont_cksum "$t")"
+  _dcont_build_noflock_path "$nfd"
+
+  # Increment: fallback, holds lock 10 s so we can TERM it mid-hold.
+  PATH="$nfd" GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_TEST_HOLD_SECONDS=10 \
+    PROJECT_ROOT="$pr" \
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  # Send TERM while the increment holds the lock inside the test-hold sleep.
+  kill -TERM "$ip" 2>/dev/null || true
+  local wrc=0
+  wait "$ip" 2>/dev/null || wrc=$?
+
+  # (a) Process terminated with exit 143 (128 + SIGTERM).
+  [ "$wrc" -ne 0 ] || {
+    echo "increment should have exited non-zero after TERM (rc=$wrc)" >&2; false; }
+  [ "$wrc" -eq 143 ] || {
+    echo "expected exit 143, got $wrc" >&2; false; }
+
+  # (b) File unchanged (no partial write after lock release).
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file mutated after TERM: $cs0 -> $cs1" >&2; false; }
+
+  # (c) Next acquirer succeeds promptly (< 3 s), not after a 60 s reap.
+  local start_s
+  start_s="$(date +%s)"
+  local acq_rc=0
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=300
+    source "$LOCK_LIB"
+    acquire_lock "$lf" 5 200
+    release_lock 200
+  ) || acq_rc=$?
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$acq_rc" -eq 0 ] || {
+    echo "next acquirer failed (rc=$acq_rc) after ${elapsed}s" >&2; false; }
+  [ "$elapsed" -lt 3 ] || {
+    echo "next acquirer took ${elapsed}s — lock was not released by signal handler" >&2; false; }
+
+  # (d) No leftover .bak.
+  [ ! -f "${t}.bak" ] || {
+    echo ".bak file left behind after signal" >&2; false; }
+}
+
+@test "signal cleanup: TERM during increment hold exits non-zero and releases lock (flock)" {
+  if ! command -v flock >/dev/null 2>&1; then skip "flock not available"; fi
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/sig-fl"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0
+  cs0="$(_dcont_cksum "$t")"
+
+  # Increment: flock mode, holds lock 10 s.
+  GAIA_AIW_TEST_HOLD_SECONDS=10 PROJECT_ROOT="$pr" \
+    bash "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+      --sprint-id sprint-200 2>/dev/null &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  kill -TERM "$ip" 2>/dev/null || true
+  local wrc=0
+  wait "$ip" 2>/dev/null || wrc=$?
+
+  [ "$wrc" -ne 0 ] || {
+    echo "increment should have exited non-zero after TERM (rc=$wrc)" >&2; false; }
+  [ "$wrc" -eq 143 ] || {
+    echo "expected exit 143, got $wrc" >&2; false; }
+
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file mutated after TERM: $cs0 -> $cs1" >&2; false; }
+
+  # In flock mode, the fd close on process exit releases the kernel lock.
+  # Verify the next acquirer succeeds promptly.
+  local start_s acq_rc=0
+  start_s="$(date +%s)"
+  (
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    source "$LOCK_LIB"
+    acquire_lock "$lf" 5 200
+    release_lock 200
+  ) || acq_rc=$?
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$acq_rc" -eq 0 ] || {
+    echo "next acquirer failed (rc=$acq_rc) after ${elapsed}s" >&2; false; }
+  [ "$elapsed" -lt 3 ] || {
+    echo "next acquirer took ${elapsed}s — lock was not released" >&2; false; }
+}
+
+@test "signal cleanup: INT during increment hold exits 130 and releases lock (fallback)" {
+  # Backgrounding with & sets SIGINT to SIG_IGN (POSIX). Bash cannot
+  # re-trap a signal that was SIG_IGN at entry. Perl can reset the
+  # disposition: $SIG{INT}="DEFAULT" calls sigaction(SIGINT, SIG_DFL)
+  # directly, then exec replaces perl with bash (same PID).
+  command -v perl >/dev/null 2>&1 || skip "perl not available"  # lint-pack:allow-skip
+  [ -f "$INCREMENT_SH" ] || { echo "increment script not found: $INCREMENT_SH" >&2; false; }
+
+  local pr="$TEST_TMP/sig-int-fb"; mkdir -p "$pr/.gaia/state"
+  local t="$pr/.gaia/state/action-items.yaml"
+  _seed_increment_file "$t"
+  local lf="${t}.lock" cs0 nfd="$TEST_TMP/nfb-sig-int"
+  cs0="$(_dcont_cksum "$t")"
+  _dcont_build_noflock_path "$nfd"
+
+  # Perl exec launcher: resets SIGINT to SIG_DFL, then replaces itself
+  # with the increment (same PID). $! gives the PID to signal and wait on.
+  PATH="$nfd" \
+  GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_TEST_HOLD_SECONDS=10 \
+  PROJECT_ROOT="$pr" \
+  perl -e '$SIG{INT}="DEFAULT"; exec("bash", @ARGV)' \
+    -- "$INCREMENT_SH" --file "$t" --theme-hash abc123 \
+       --sprint-id sprint-200 2>/dev/null &
+  local ip=$!
+
+  _dcont_wait_lock "$lf"
+
+  kill -INT "$ip" 2>/dev/null || true
+  local wrc=0
+  wait "$ip" 2>/dev/null || wrc=$?
+
+  # (a) Process terminated with exit 130 (128 + SIGINT).
+  [ "$wrc" -ne 0 ] || {
+    echo "increment should have exited non-zero after INT (rc=$wrc)" >&2; false; }
+  [ "$wrc" -eq 130 ] || {
+    echo "expected exit 130, got $wrc" >&2; false; }
+
+  # (b) File unchanged.
+  local cs1; cs1="$(_dcont_cksum "$t")"
+  [ "$cs1" = "$cs0" ] || {
+    echo "file mutated after INT: $cs0 -> $cs1" >&2; false; }
+
+  # (c) Next acquirer succeeds promptly (< 3 s).
+  local start_s acq_rc=0
+  start_s="$(date +%s)"
+  (
+    export PATH="$nfd"
+    unset GAIA_PARALLEL_EXECUTION GAIA_WORKTREE_MODE
+    export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_LOCK_REAP_SECONDS=300
+    source "$LOCK_LIB"
+    acquire_lock "$lf" 5 200
+    release_lock 200
+  ) || acq_rc=$?
+  local elapsed=$(( $(date +%s) - start_s ))
+
+  [ "$acq_rc" -eq 0 ] || {
+    echo "next acquirer failed (rc=$acq_rc) after ${elapsed}s" >&2; false; }
+  [ "$elapsed" -lt 3 ] || {
+    echo "next acquirer took ${elapsed}s — lock was not released by INT handler" >&2; false; }
+
+  # (d) No leftover .bak.
+  [ ! -f "${t}.bak" ] || {
+    echo ".bak file left behind after INT" >&2; false; }
+}

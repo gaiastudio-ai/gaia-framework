@@ -404,7 +404,7 @@ _wait_for_file() {
   yq eval '.items += [{"key": "ETEST-S9", "status": "backlog", "points": 1}]' -i "$SPRINT_STATUS_YAML"
   printf '| ETEST-S8 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
   printf '| ETEST-S9 | Test | backlog | 1 |\n' >> "$PLAN/epics-and-stories.md"
-  # Run 1: transition S8 (leaves a post-release sentinel).
+  # Run 1: transition S8 (the ownership-checked release removes the lock).
   local stderr1="$TEST_TMP/stderr1"
   bash -c '
     export PATH="'"$SAFE_PATH"'"
@@ -442,8 +442,8 @@ _wait_for_file() {
 _assert_no_leaked_lock() {
   local what="$1"
   local lock_file="$MEMORY/.story-status.lock"
-  # A leaked fallback lock is "<pid> <epoch>" with a live PID. A zero-byte
-  # sentinel (what the release path re-touches) is fine.
+  # A leaked fallback lock is "<pid> <epoch>" with a live PID. An absent
+  # lock file (what the ownership-checked release leaves) is fine.
   if [ -s "$lock_file" ]; then
     local holder
     read -r holder _ < "$lock_file" 2>/dev/null || true
