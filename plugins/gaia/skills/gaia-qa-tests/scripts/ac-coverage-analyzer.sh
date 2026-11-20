@@ -131,6 +131,10 @@ _valid_ac_id() {
 : > "$_NDJSON_AC"
 : > "$_NDJSON_FINDINGS"
 
+# Track blocking findings from truncation, duplicate, or malformed-with-GWT.
+# When set to 1, the aggregate status will be "failed" even if no AC is NOT MET.
+_has_blocking_finding=0
+
 # Track seen AC ids for duplicate detection
 _seen_ac_ids=""
 
@@ -146,23 +150,64 @@ while IFS= read -r line; do
 
   # A line whose bold label has no leading AC token is malformed.
   if [ -z "$ac_id" ] || ! _valid_ac_id "$ac_id"; then
-    # Malformed AC id: report as skipped with ac-quality finding, never silently dropped
+    # Malformed AC id: check if it has Given/When/Then structure.
+    # With G/W/T → fail closed (blocking finding); without → skipped + non-blocking warning.
     _malformed_label="$(printf '%s' "$_bold_text" | sed 's/[^[:alnum:]]*$//')"
-    jq -nc --arg id "$_malformed_label" \
-      '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Malformed AC id (does not match allowlist)"}' \
-      >> "$_NDJSON_AC"
-    jq -nc --arg id "$_malformed_label" \
-      '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Malformed AC id: " + $id)}' \
-      >> "$_NDJSON_FINDINGS"
+    _ac_body_m="$(printf '%s' "$line" | sed 's/^[^*]*\*\*[^*]*\*\*[[:space:]]*//')"
+    _ac_body_m_lower="$(printf '%s' "$_ac_body_m" | tr '[:upper:]' '[:lower:]')"
+    _has_gwt_m=0
+    if printf '%s' " $_ac_body_m_lower" | grep -qE '[[:space:]]given[[:space:]]' 2>/dev/null && \
+       printf '%s' " $_ac_body_m_lower" | grep -qE '[[:space:]]when[[:space:]]' 2>/dev/null && \
+       printf '%s' " $_ac_body_m_lower" | grep -qE '[[:space:]]then[[:space:]]' 2>/dev/null; then
+      _has_gwt_m=1
+    fi
+    if [ "$_has_gwt_m" -eq 1 ]; then
+      # Malformed label with valid criterion structure: fail closed
+      jq -nc --arg id "$_malformed_label" \
+        '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Malformed AC id with valid criterion structure"}' \
+        >> "$_NDJSON_AC"
+      jq -nc --arg id "$_malformed_label" \
+        '{"rule": "ac-coverage-malformed", "severity": "critical", "blocking": true, "message": ("Malformed AC id with valid criterion structure: " + $id)}' \
+        >> "$_NDJSON_FINDINGS"
+      _has_blocking_finding=1
+    else
+      # No G/W/T structure: skipped with non-blocking ac-quality warning
+      jq -nc --arg id "$_malformed_label" \
+        '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Malformed AC id (does not match allowlist)"}' \
+        >> "$_NDJSON_AC"
+      jq -nc --arg id "$_malformed_label" \
+        '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Malformed AC id: " + $id)}' \
+        >> "$_NDJSON_FINDINGS"
+    fi
     continue
   fi
 
-  # Duplicate AC id detection: emit a non-blocking warning
+  # Truncation detection: a label whose extracted id is followed by '.' and an
+  # alphanumeric (e.g. AC1.1, AC1.2) has a dotted continuation that collapsed
+  # to the shorter token. Fail closed with a blocking finding.
+  # ac_id contains only [A-Za-z0-9_-] (validated), so parameter expansion is safe.
+  _rest_after_id="${_bold_text#"$ac_id"}"
+  case "$_rest_after_id" in
+    .[A-Za-z0-9]*)
+      jq -nc --arg id "$ac_id" --arg label "$(printf '%s' "$_bold_text" | sed 's/[^[:alnum:].:]*$//')" \
+        '{"ac_id": $id, "matched": false, "test_count": 0, "status": "skipped", "skip_reason": "Truncated label (dotted continuation)"}' \
+        >> "$_NDJSON_AC"
+      jq -nc --arg id "$ac_id" --arg label "$(printf '%s' "$_bold_text" | sed 's/[^[:alnum:].:]*$//')" \
+        '{"rule": "ac-coverage-truncated", "severity": "critical", "blocking": true, "message": ("Truncated AC id: label " + $label + " collapsed to " + $id)}' \
+        >> "$_NDJSON_FINDINGS"
+      _has_blocking_finding=1
+      continue
+      ;;
+  esac
+
+  # Duplicate AC id detection: a repeated id (literal or produced by
+  # truncation) is a blocking finding so the resolver does not APPROVE.
   case "$_seen_ac_ids" in
     *"|$ac_id|"*)
       jq -nc --arg id "$ac_id" \
-        '{"rule": "ac-quality", "severity": "warning", "blocking": false, "message": ("Duplicate AC id: " + $id)}' \
+        '{"rule": "ac-coverage-duplicate", "severity": "critical", "blocking": true, "message": ("Duplicate AC id: " + $id)}' \
         >> "$_NDJSON_FINDINGS"
+      _has_blocking_finding=1
       # Skip the duplicate — the first occurrence is authoritative
       continue
       ;;
@@ -473,8 +518,13 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
   _all_skipped=0
 
   # Build primary match regex with hyphen/underscore equivalence.
+  # Two alternatives enforce the boundary rule:
+  #   camelCase position: [a-z]ID([^[:alnum:]]|[A-Z]|$)
+  #   standalone position: (^|[^[:alnum:]])ID([^[:alnum:]]|$)
+  # This prevents an uppercase letter after the id from matching at a
+  # standalone position (e.g. AC1B from start-of-string must not credit AC1).
   ac_id_re="$(printf '%s' "$ac_id" | sed 's/-/[-_]/g')"
-  primary_re="(^|[^[:alnum:]]|[a-z])${ac_id_re}([^[:alnum:]]|[A-Z]|$)"
+  primary_re="[a-z]${ac_id_re}([^[:alnum:]]|[A-Z]|$)|(^|[^[:alnum:]])${ac_id_re}([^[:alnum:]]|$)"
 
   # Compute fallback phrase words (G/W/T content words)
   gwt_output="$(_split_gwt "$ac_text")"
@@ -500,6 +550,36 @@ while IFS="$(printf '\t')" read -r ac_id is_edge has_gwt ac_text; do
     "$ac_id" "$primary_re" "$_fb_possible" "$is_edge" "$given_words" "$when_words" "$then_words" \
     >> "$_PATTERNS"
 done < "$_AC_LIST"
+
+# Phase 1b: compute per-AC exclusion suffixes for the boundary check.
+# For each AC id, find other story AC ids that extend it (share the same prefix
+# followed by additional characters). The awk pass uses these suffixes to reject
+# a match whose trailing text continues into a longer id.
+_PATTERNS_FINAL="$_WORKDIR/patterns-final"
+: > "$_PATTERNS_FINAL"
+
+while IFS="$(printf '\t')" read -r _pid _pre _pfb _pedge _pgw _pww _ptw; do
+  [ -n "$_pid" ] || continue
+  _excl=""
+  while IFS="$(printf '\t')" read -r _oid _dummy _d2 _d3 _d4 _d5 _d6; do
+    [ -n "$_oid" ] || continue
+    if [ "$_oid" != "$_pid" ]; then
+      case "$_oid" in
+        "${_pid}"?*)
+          _suf="${_oid#"${_pid}"}"
+          if [ -n "$_excl" ]; then
+            _excl="${_excl}|${_suf}"
+          else
+            _excl="$_suf"
+          fi
+          ;;
+      esac
+    fi
+  done < "$_PATTERNS"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$_pid" "$_pre" "$_pfb" "$_pedge" "$_pgw" "$_pww" "$_ptw" "$_excl" \
+    >> "$_PATTERNS_FINAL"
+done < "$_PATTERNS"
 
 # Build the attribution regex for the story key (ERE).
 # A story key is attributed when it is preceded by start or non-alphanumeric
@@ -580,6 +660,38 @@ function phrase_match(phrase, nident,    n, _pw, i, pair_re) {
   return 0
 }
 
+# --- Helper: boundary rejection check ---
+# After matching an AC id regex in string s, verify the match is not at a
+# position where a longer AC id actually starts. Returns 1 to reject.
+# Checks (a) the id-like continuation pattern [-_][0-9] and (b) known
+# exclusion suffixes from longer story AC ids.
+function boundary_reject(s, a_idx,    id_start, after_pos, after_text, suf_n, _suf, i) {
+  # The AC id always starts with "A". If the match region starts with "A",
+  # the leading anchor was ^ (zero-width); otherwise the leading anchor
+  # consumed one character.
+  if (substr(s, RSTART, 1) == "A") {
+    id_start = RSTART
+  } else {
+    id_start = RSTART + 1
+  }
+  after_pos = id_start + ac_id_len[a_idx]
+  after_text = substr(s, after_pos)
+
+  # (a) Reject if the text after the id starts with [-_] followed by a digit
+  if (match(after_text, /^[-_][0-9]/)) return 1
+
+  # (b) Reject if the text after the id starts with a known suffix from a
+  #     longer story AC id (e.g. AC1 with suffix "-extra" from AC1-extra)
+  if (ac_excl[a_idx] != "") {
+    suf_n = split(ac_excl[a_idx], _suf, "|")
+    for (i = 1; i <= suf_n; i++) {
+      if (index(after_text, _suf[i]) == 1) return 1
+    }
+  }
+
+  return 0
+}
+
 # Phase 1: read patterns file (first file argument)
 FILENAME == ARGV[1] {
   ac_count++
@@ -590,6 +702,8 @@ FILENAME == ARGV[1] {
   ac_gw[ac_count] = $5    # given words
   ac_ww[ac_count] = $6    # when words
   ac_tw[ac_count] = $7    # then words
+  ac_excl[ac_count] = $8  # exclusion suffixes (pipe-separated)
+  ac_id_len[ac_count] = length($1)
   prim_count[ac_count] = 0
   fb_count[ac_count] = 0
   next
@@ -608,8 +722,17 @@ FILENAME == ARGV[1] {
     nident = ""
 
     for (a = 1; a <= ac_count; a++) {
-      # Primary match: test path and identifier against AC regex
-      if (match(tf, ac_res[a]) || match(ident, ac_res[a])) {
+      # Primary match: test path and identifier against AC regex.
+      # After a regex match, the boundary_reject check ensures the match
+      # is not at a position where a longer AC id actually starts.
+      _matched_a = 0
+      if (match(tf, ac_res[a]) && !boundary_reject(tf, a)) {
+        _matched_a = 1
+      }
+      if (!_matched_a && match(ident, ac_res[a]) && !boundary_reject(ident, a)) {
+        _matched_a = 1
+      }
+      if (_matched_a) {
         prim_count[a]++
       } else if (ac_fb[a] == "1" && prim_count[a] == 0) {
         # Fallback: only if no primary match yet
@@ -635,7 +758,7 @@ END {
     print ac_ids[a] "\t" prim_count[a] "\t" fb_count[a] "\t" ac_edge[a]
   }
 }
-' "$_PATTERNS" "$_TEST_PAIRS" > "$_MATCH_OUT"
+' "$_PATTERNS_FINAL" "$_TEST_PAIRS" > "$_MATCH_OUT"
 
 # Phase 3: read awk output and write results/findings.
 # is_edge is carried in the awk output — no re-read of _AC_LIST needed.
@@ -692,6 +815,11 @@ elif [ "$_all_skipped" -eq 1 ] && [ "$_valid_ac_count" -gt 0 ]; then
   _status="failed"
   jq -nc '{"rule": "ac-coverage-all-malformed", "severity": "critical", "blocking": true, "message": "All acceptance criteria are malformed (no Given/When/Then structure)"}' >> "$_FINDINGS"
 elif [ "$_any_not_met" -eq 1 ]; then
+  _status="failed"
+elif [ "$_has_blocking_finding" -eq 1 ]; then
+  # A blocking finding was emitted (truncation, duplicate, or malformed-with-GWT)
+  # even though no AC is NOT MET. The check must be failed so the resolver sees
+  # the blocking finding and returns REQUEST_CHANGES.
   _status="failed"
 else
   _status="passed"

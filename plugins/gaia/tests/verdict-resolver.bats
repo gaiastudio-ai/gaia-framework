@@ -1804,20 +1804,27 @@ JSON
 # Analyzer: duplicate AC ids emit a non-blocking warning
 # ===========================================================================
 
-@test "analyzer: duplicate AC id emits non-blocking ac-quality warning naming the duplicate" {
-  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+@test "analyzer: duplicate AC id produces blocking finding and resolver does not approve" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$BATS_TEST_TMPDIR/dup-out"
+  mkdir -p "$outdir"
   _write_story_fixture "$BATS_TEST_TMPDIR/story.md" "$_FK99" \
     '- [ ] **AC1:** Given a user, when they login, then they see the dashboard.' \
     '- [ ] **AC1:** Given a user, when they submit data, then it is saved.'
   mkdir -p "$BATS_TEST_TMPDIR/tests"
   _write_bats_fixture "$BATS_TEST_TMPDIR/tests/$_FK99-AC1.bats" "AC1 login shows dashboard"
-  run "$analyzer" --story-file "$BATS_TEST_TMPDIR/story.md" --story-key "$_FK99" \
-    --test-dir "$BATS_TEST_TMPDIR/tests" --stack bash-dev
+  run "$collector" --story-key "$_FK99" --story-file "$BATS_TEST_TMPDIR/story.md" \
+    --output-dir "$outdir" --test-dir "$BATS_TEST_TMPDIR/tests" --stack bash-dev
   [ "$status" -eq 0 ]
-  # Must emit an ac-quality finding that names the duplicate
-  echo "$output" | jq -e '.findings[] | select(.rule == "ac-quality") | select(.message | test("[Dd]uplicate")) | select(.message | test("AC1"))'
-  # The finding must be non-blocking
-  echo "$output" | jq -e '.findings[] | select(.rule == "ac-quality") | select(.message | test("[Dd]uplicate")) | .blocking == false'
+  [ -f "$outdir/analysis-results.json" ]
+  local ar="$outdir/analysis-results.json"
+  # Must emit a finding that names the duplicate and is blocking
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.message | test("[Dd]uplicate")) | select(.message | test("AC1")) | .blocking == true' < "$ar"
+  # The resolver must NOT approve
+  write_findings "$BATS_TEST_TMPDIR/f-dup.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$BATS_TEST_TMPDIR/f-dup.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
 }
 
 # ===========================================================================
@@ -1842,4 +1849,476 @@ JSON
   echo "$output" | jq -e '[.unattributed_tests[] | select(.identifier | contains("\\"))] | length > 0'
   # The double-quote file path must survive the JSON round-trip
   echo "$output" | jq -e '[.unattributed_tests[] | select(.file | contains("dq"))] | length > 0'
+}
+
+# ===========================================================================
+# Defect: AC id truncation / collision — dotted labels (e.g. AC1.1, AC1.2)
+# silently collapse to the shorter token because the id-extraction regex
+# does not include '.' in its character class. The duplicate-id handler then
+# drops the repeated id with a non-blocking warning, so uncovered ACs vanish
+# and the gate incorrectly APPROVEs.
+# These tests must FAIL on pre-fix code.
+# ===========================================================================
+
+@test "truncation: dotted AC labels collapse to same id and second AC vanishes" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-a1"
+  mkdir -p "$outdir"
+
+  # P0 story with two dotted AC labels that both truncate to AC1
+  cat > "$TEST_TMP/story-a1.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1.1:** Given a document exists, when the user downloads it, then the file is saved to disk.
+- [ ] **AC1.2:** Given a document exists, when the user previews it, then a thumbnail is rendered.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-a1"
+  _write_bats_fixture "$TEST_TMP/tests-a1/$_FK99-test.bats" "AC1: download saves file"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-a1.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-a1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # The analysis must carry at least one blocking finding for the truncated/lost AC
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  # The resolver must NOT approve
+  write_findings "$TEST_TMP/f-a1.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-a1.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+@test "truncation: sole dotted AC label credited by shorter id test" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-a2"
+  mkdir -p "$outdir"
+
+  # P0 story whose sole AC is AC1.2 — truncates to AC1
+  cat > "$TEST_TMP/story-a2.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1.2:** Given a document exists, when the user previews it, then a thumbnail is rendered.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-a2"
+  _write_bats_fixture "$TEST_TMP/tests-a2/$_FK99-test.bats" "AC1 basic path"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-a2.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-a2" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # A label whose id token is followed by '.' and an alphanumeric must fail closed
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-a2.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-a2.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+@test "truncation: literal duplicate AC id lines must fail closed" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-a3"
+  mkdir -p "$outdir"
+
+  # P0 story with two literal AC1 lines (different text, same id)
+  cat > "$TEST_TMP/story-a3.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-a3"
+  _write_bats_fixture "$TEST_TMP/tests-a3/$_FK99-test.bats" "AC1 saves form data"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-a3.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-a3" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # A repeated AC id (whether literal or from truncation) must produce a blocking finding
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-a3.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-a3.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
+# Defect: AC id boundary — a test for a hyphen-or-underscore-extended AC id
+# (e.g. AC1-2, AC1_2) falsely credits the shorter AC id (AC1) because the
+# matching regex treats '-' and '_' as word terminators.
+# These tests must FAIL on pre-fix code.
+# ===========================================================================
+
+@test "boundary: hyphen-extended AC id test falsely credits shorter AC" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-b1"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-b1.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1-2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-b1"
+  _write_bats_fixture "$TEST_TMP/tests-b1/$_FK99-test.bats" "AC1-2 other criterion"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-b1.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-b1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be NOT MET — the hyphen-extended test must not credit the shorter id
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"' < "$ar"
+  # AC1-2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1-2") | .status == "MET"' < "$ar"
+  # At least one blocking finding for the uncovered AC
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-b1.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-b1.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+@test "boundary: underscore-extended AC id test falsely credits shorter AC" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-b2"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-b2.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1_2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-b2"
+  _write_bats_fixture "$TEST_TMP/tests-b2/$_FK99-test.bats" "AC1_2 other criterion"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-b2.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-b2" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be NOT MET — the underscore-extended test must not credit the shorter id
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"' < "$ar"
+  # AC1_2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1_2") | .status == "MET"' < "$ar"
+  # At least one blocking finding for the uncovered AC
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-b2.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-b2.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
+# Regression guards: the boundary fix must NOT break snake_case or camelCase
+# test naming conventions. These must PASS on current code AND after fix.
+# ===========================================================================
+
+@test "boundary regression: snake_case test name still credits AC" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story-rg1.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.'
+  mkdir -p "$TEST_TMP/tests-rg1"
+  _write_bats_fixture "$TEST_TMP/tests-rg1/$_FK99-test.bats" "test_AC1_rejects_empty"
+  run "$analyzer" --story-file "$TEST_TMP/story-rg1.md" --story-key "$_FK99" \
+    --test-dir "$TEST_TMP/tests-rg1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+}
+
+@test "boundary regression: camelCase test name still credits AC" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  _write_story_fixture "$TEST_TMP/story-rg2.md" "$_FK99" \
+    '- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.'
+  mkdir -p "$TEST_TMP/tests-rg2"
+  _write_bats_fixture "$TEST_TMP/tests-rg2/$_FK99-test.bats" "TestAC1Reject"
+  run "$analyzer" --story-file "$TEST_TMP/story-rg2.md" --story-key "$_FK99" \
+    --test-dir "$TEST_TMP/tests-rg2" --stack bash-dev
+  [ "$status" -eq 0 ]
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+}
+
+# ===========================================================================
+# Boundary: uppercase-extended AC id test must not falsely credit shorter AC.
+# Story has AC1 and AC1B; a test labelled only for AC1B must leave AC1 NOT MET.
+# ===========================================================================
+
+@test "boundary: uppercase-extended AC id test does not credit shorter AC" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-b3"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-b3.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1B:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-b3"
+  _write_bats_fixture "$TEST_TMP/tests-b3/$_FK99-test.bats" "AC1B report view"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-b3.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-b3" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be NOT MET — the uppercase-extended test must not credit the shorter id
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"' < "$ar"
+  # AC1B must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1B") | .status == "MET"' < "$ar"
+  # At least one blocking finding for the uncovered AC
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-b3.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-b3.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
+# Boundary: unrelated prefix label must not credit a shorter AC id.
+# Story has only AC1; a test labelled "AC12" must leave AC1 NOT MET.
+# ===========================================================================
+
+@test "boundary: unrelated prefix label does not credit shorter AC" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-b4"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-b4.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-b4"
+  _write_bats_fixture "$TEST_TMP/tests-b4/$_FK99-test.bats" "AC12 unrelated test"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-b4.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-b4" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be NOT MET — the AC12 test must not credit AC1
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"' < "$ar"
+  # Must have a blocking finding
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-b4.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-b4.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
+# Defect: AC line with no valid leading id but valid criterion structure
+# (Given/When/Then) is currently treated as non-blocking (skipped). The
+# ruling requires fail-closed: a blocking finding and no APPROVE.
+# These tests must FAIL on pre-fix code.
+# ===========================================================================
+
+@test "malformed label with valid criterion structure must fail closed" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-m1"
+  mkdir -p "$outdir"
+
+  # P0 story: covered AC1 plus uncovered label with no valid leading AC id
+  # but with Given/When/Then structure
+  cat > "$TEST_TMP/story-m1.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC 2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-m1"
+  _write_bats_fixture "$TEST_TMP/tests-m1/$_FK99-test.bats" "AC1 saves form data"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-m1.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-m1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # A label with no valid id but valid criterion structure must produce a blocking finding
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-m1.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-m1.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+@test "injected label with valid criterion structure must fail closed" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-m2"
+  mkdir -p "$outdir"
+
+  # P0 story: covered AC1 plus an uncovered injection-shaped label with no
+  # valid leading AC id but with Given/When/Then structure
+  cat > "$TEST_TMP/story-m2.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+STORY
+  # Append the injection label with printf to avoid heredoc quoting issues
+  printf '%s\n' '- [ ] **AC","blocking":false,"x":"y**: Given a user, when they click submit, then data is stored.' >> "$TEST_TMP/story-m2.md"
+
+  mkdir -p "$TEST_TMP/tests-m2"
+  _write_bats_fixture "$TEST_TMP/tests-m2/$_FK99-test.bats" "AC1 saves form data"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-m2.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-m2" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # Injection label with valid criterion structure must produce a blocking finding
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$TEST_TMP/f-m2.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-m2.json"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
+# Regression guard: a label with no valid leading AC id AND no Given/When/Then
+# structure keeps today's handling (skipped + non-blocking ac-quality finding).
+# Must PASS on current code AND after the fix.
+# ===========================================================================
+
+@test "malformed label without criterion structure stays non-blocking (regression guard)" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  # Story: covered AC1 (G/W/T) plus an invalid-id label WITHOUT G/W/T structure
+  cat > "$TEST_TMP/story-rg3.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P1"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC 2:** This criterion has no Given/When/Then structure at all.
+STORY
+  mkdir -p "$TEST_TMP/tests-rg3"
+  _write_bats_fixture "$TEST_TMP/tests-rg3/$_FK99-AC1.bats" "AC1 saves form data"
+  run "$analyzer" --story-file "$TEST_TMP/story-rg3.md" --story-key "$_FK99" \
+    --test-dir "$TEST_TMP/tests-rg3" --stack bash-dev
+  [ "$status" -eq 0 ]
+  # Invalid-id AC without G/W/T must be skipped with a non-blocking finding
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC 2") | .status == "skipped"'
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC 2") | .skip_reason != null'
+  echo "$output" | jq -e '[.findings[] | select(.rule == "ac-quality") | select(.message | test("AC 2"))] | length > 0 and all(.blocking == false)'
+  # AC1 must be MET; overall passed
+  echo "$output" | jq -e '.ac_results[] | select(.ac_id == "AC1") | .status == "MET"'
+  echo "$output" | jq -e '.status == "passed"'
 }
