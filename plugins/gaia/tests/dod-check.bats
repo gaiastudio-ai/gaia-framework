@@ -1,8 +1,6 @@
 #!/usr/bin/env bats
 # dod-check.bats — coverage for skills/gaia-dev-story/scripts/dod-check.sh
 #
-# Story: E55-S8 — Auto-reviews YOLO-only (Step 16) + 4 helper scripts + bats coverage
-#
 # Coverage matrix:
 #   - happy path: all checks PASSED, exit 0, six YAML rows
 #   - failure path: tests FAILED, exit non-zero, row marked FAILED
@@ -74,7 +72,7 @@ STUB
   _stub "build" 0 "build ok"
   _stub "lint"  0 "lint ok"
   rm -f "$STUB_BIN/test"
-  # Project-config explicit test_cmd that fails; precedence (a) per AC-EC1.
+  # Project-config explicit test_cmd that fails (highest non-bridge precedence).
   cat > "$STUB_BIN/failing-test-runner" <<'STUB'
 #!/usr/bin/env bash
 echo "tests broke"
@@ -124,7 +122,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC1 / TC-E64-1 — skip /bin/test on macOS
+# System /bin/test must not be treated as a project test runner.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: tests row skips system /bin/test (no project test_cmd)" {
@@ -136,14 +134,14 @@ EOF
   # Make sure no `test` stub is in our STUB_BIN, so PATH falls back to system.
   rm -f "$STUB_BIN/test"
   run "$DOD_CHECK"
-  # AC-EC2 — must emit SKIPPED (or PASSED with skipped reason), never FAILED
+  # Must emit SKIPPED (or PASSED with skipped reason), never FAILED
   [[ "$output" != *"item: tests, status: FAILED"* ]]
   # Check that the tests row is present
   [[ "$output" == *"item: tests"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC1 / TC-E64-2 — honor project-config.yaml test_cmd
+# project-config.yaml test_cmd takes precedence over package.json and bats.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: tests row honors project-config.yaml test_cmd: when set" {
@@ -168,7 +166,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC1 / TC-E64-3 — honor package.json scripts.test
+# package.json scripts.test fallback when no project-config test_cmd is set.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: tests row falls back to package.json scripts.test" {
@@ -199,7 +197,7 @@ JSON
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC1 / TC-E64-4 — honor bats discovery
+# bats discovery fallback when no higher-precedence test runner resolves.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: tests row falls back to bats discovery on tests/*.bats" {
@@ -221,7 +219,7 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC-EC2 — no test signals at all → SKIPPED
+# No test signals at all -> tests row SKIPPED.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: tests row marked SKIPPED when no test signal exists" {
@@ -234,7 +232,7 @@ STUB
 }
 
 # ---------------------------------------------------------------------------
-# E64-S1 / AC2 / TC-E64-5 — subtask scan ignores DoD-section unchecked items
+# Subtask scan is scoped to the Tasks/Subtasks section only.
 # ---------------------------------------------------------------------------
 
 @test "dod-check: subtask scan ignores unchecked items outside Tasks/Subtasks" {
@@ -291,7 +289,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# E64-S2 / AC1 — `/bin/test` resolution must emit SKIPPED, never PASSED-skipped
+# /bin/test resolution must emit SKIPPED, never a masked PASSED.
 # ---------------------------------------------------------------------------
 
 @test "dod-check : tests row emits SKIPPED when only system /bin/test is on PATH" {
@@ -312,7 +310,7 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# E64-S2 / AC3 — subtask scan tolerates mixed-case heading + trailing whitespace
+# Subtask scan tolerates mixed-case heading and trailing whitespace.
 # ---------------------------------------------------------------------------
 
 @test "dod-check : subtask scan detects mixed-case '## tasks / subtasks' heading" {
@@ -442,4 +440,191 @@ EOF
   [[ "$output" == *"item: lint, status: PASSED"* ]]
   [[ "$output" != *"ambient"* ]]
   [[ "$output" == *"observed PROJECT_PATH=[]"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Bridge tier-1 runner — manifest path resolution.
+#
+# The bridge tier is the highest-precedence test-runner source (rung 0).
+# When bridge_enabled is true in project-config.yaml, the script must
+# resolve the test-environment manifest from the canonical config path
+# first, with the legacy artifact path as fallback.
+# ---------------------------------------------------------------------------
+
+# Helper: write a yq stub that handles the two expressions dod-check.sh uses:
+#   .test_execution_bridge.bridge_enabled  (from project-config.yaml)
+#   [.runners[] | select(.tier == 1)] | .[0].command  (from the manifest)
+# Any other expression returns empty string (safe fall-through).
+_stub_yq() {
+  local bridge_enabled_val="$1" runner_cmd_val="${2:-}"
+  cat > "$STUB_BIN/yq" <<YQ_STUB
+#!/usr/bin/env bash
+expr="\$2"
+case "\$expr" in
+  *.bridge_enabled*)
+    printf '%s\n' "$bridge_enabled_val"
+    ;;
+  *runners*tier*command*|*runners*select*command*)
+    printf '%s\n' "$runner_cmd_val"
+    ;;
+  *)
+    printf '\n'
+    ;;
+esac
+exit 0
+YQ_STUB
+  chmod +x "$STUB_BIN/yq"
+}
+
+# Helper: file-aware yq stub that dispatches the tier-1 runner command
+# based on which manifest file the script passes as the third argument.
+# Used by the "both paths exist" test where canonical and legacy manifests
+# carry different runners.
+_stub_yq_by_file() {
+  local canonical_runner="$1" legacy_runner="$2"
+  cat > "$STUB_BIN/yq" <<YQ_STUB
+#!/usr/bin/env bash
+expr="\$2"
+file="\$3"
+case "\$expr" in
+  *.bridge_enabled*)
+    printf 'true\n'
+    ;;
+  *runners*tier*command*|*runners*select*command*)
+    case "\$file" in
+      *.gaia/config/test-environment.yaml)
+        printf '%s\n' "$canonical_runner"
+        ;;
+      *.gaia/artifacts/test-artifacts/test-environment.yaml)
+        printf '%s\n' "$legacy_runner"
+        ;;
+      *)
+        printf '\n'
+        ;;
+    esac
+    ;;
+  *)
+    printf '\n'
+    ;;
+esac
+exit 0
+YQ_STUB
+  chmod +x "$STUB_BIN/yq"
+}
+
+# Common bridge-test scaffolding: build/lint stubs, no test stub, and a
+# project-config.yaml with bridge_enabled: true under .gaia/config/.
+_setup_bridge() {
+  _stub "build" 0 "build ok"
+  _stub "lint"  0 "lint ok"
+  rm -f "$STUB_BIN/test"
+  mkdir -p .gaia/config
+  cat > .gaia/config/project-config.yaml <<'YAML'
+test_execution_bridge:
+  bridge_enabled: true
+YAML
+}
+
+@test "dod-check: bridge tier-1 reads runner from canonical config path" {
+  # When the manifest exists at the canonical .gaia/config/ location,
+  # the script must read the tier-1 runner from that file.
+  _setup_bridge
+
+  cat > .gaia/config/test-environment.yaml <<'YAML'
+runners:
+  - tier: 1
+    command: canonical-bridge-runner
+YAML
+
+  _stub "canonical-bridge-runner" 0 "canonical runner executed"
+  _stub_yq "true" "canonical-bridge-runner"
+
+  run "$DOD_CHECK"
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'canonical-bridge-runner|canonical runner executed' <<<"$output"
+}
+
+@test "dod-check: bridge tier-1 falls back to legacy artifact path" {
+  # Regression guard: when only the legacy .gaia/artifacts/test-artifacts/
+  # path exists, the script must still find the runner there.
+  _setup_bridge
+
+  mkdir -p .gaia/artifacts/test-artifacts
+  cat > .gaia/artifacts/test-artifacts/test-environment.yaml <<'YAML'
+runners:
+  - tier: 1
+    command: legacy-bridge-runner
+YAML
+
+  _stub "legacy-bridge-runner" 0 "legacy runner executed"
+  _stub_yq "true" "legacy-bridge-runner"
+
+  run "$DOD_CHECK"
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'legacy-bridge-runner|legacy runner executed' <<<"$output"
+}
+
+@test "dod-check: bridge enabled but no manifest reports unconfigured" {
+  # When the bridge is enabled but no test-environment manifest exists
+  # at any path, the tests row must be SKIPPED (not a hard error) and
+  # the output must name the bridge as the reason.
+  _setup_bridge
+  _stub_yq "true" ""
+
+  run "$DOD_CHECK"
+  grep -qF 'item: tests, status: SKIPPED' <<<"$output"
+  grep -qF 'bridge enabled but no test-environment manifest found' <<<"$output"
+}
+
+@test "dod-check: bridge tier-1 uses canonical path when both paths exist" {
+  # When both the canonical (.gaia/config/) and legacy (.gaia/artifacts/)
+  # manifests exist, the canonical path must win.
+  _setup_bridge
+
+  cat > .gaia/config/test-environment.yaml <<'YAML'
+runners:
+  - tier: 1
+    command: canonical-bridge-runner
+YAML
+
+  mkdir -p .gaia/artifacts/test-artifacts
+  cat > .gaia/artifacts/test-artifacts/test-environment.yaml <<'YAML'
+runners:
+  - tier: 1
+    command: legacy-bridge-runner
+YAML
+
+  _stub "canonical-bridge-runner" 0 "canonical runner executed"
+  _stub "legacy-bridge-runner" 0 "legacy runner executed"
+  _stub_yq_by_file "canonical-bridge-runner" "legacy-bridge-runner"
+
+  run "$DOD_CHECK"
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'canonical-bridge-runner|canonical runner executed' <<<"$output"
+  ! grep -qF 'legacy-bridge-runner' <<<"$output" || false
+  ! grep -qF 'legacy runner executed' <<<"$output" || false
+}
+
+@test "dod-check: bridge enabled, no manifest, lower tier resolves and runs" {
+  # When the bridge is enabled but no manifest exists, the lower-tier
+  # test-command resolution (project-config test_cmd, package.json, bats
+  # discovery) must still run. The bridge-specific SKIPPED message should
+  # only appear when nothing at all resolves.
+  _setup_bridge
+  _stub_yq "true" ""
+
+  # A test_cmd in project-config that should still be found and executed.
+  cat > "$STUB_BIN/fallback-test-runner" <<'STUB'
+#!/usr/bin/env bash
+echo "fallback-test-runner executed"
+exit 0
+STUB
+  chmod +x "$STUB_BIN/fallback-test-runner"
+  cat >> .gaia/config/project-config.yaml <<'YAML'
+test_cmd: fallback-test-runner
+YAML
+
+  run "$DOD_CHECK"
+  grep -qF 'item: tests, status: PASSED' <<<"$output"
+  grep -qE 'fallback-test-runner|fallback-test-runner executed' <<<"$output"
 }
