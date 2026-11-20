@@ -2196,6 +2196,243 @@ STORY
 }
 
 # ===========================================================================
+# Boundary: a test name containing BOTH a longer-id occurrence (e.g. AC1-2)
+# and an independent shorter-id occurrence (AC1) must credit BOTH ACs.
+# The pre-fix code rejects the whole name after the first match position is
+# a longer-id occurrence; the fix must examine every occurrence independently.
+# ===========================================================================
+
+@test "boundary: mixed test name with AC1 before AC1-2 credits both" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-mix1"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-mix1.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1-2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-mix1"
+  _write_bats_fixture "$TEST_TMP/tests-mix1/$_FK99-test.bats" "AC1 form and AC1-2 report"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-mix1.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-mix1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "MET"' < "$ar"
+  # AC1-2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1-2") | .status == "MET"' < "$ar"
+  # No blocking finding for either
+  local blocking
+  blocking="$(jq '[.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)] | length' < "$ar")"
+  [ "$blocking" -eq 0 ]
+
+  write_findings "$TEST_TMP/f-mix1.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-mix1.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "boundary: mixed test name with AC1-2 before AC1 credits both" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-mix2"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-mix2.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1-2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-mix2"
+  _write_bats_fixture "$TEST_TMP/tests-mix2/$_FK99-test.bats" "AC1-2 report and AC1 form"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-mix2.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-mix2" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be MET (the independent occurrence after "and" must be found)
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "MET"' < "$ar"
+  # AC1-2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1-2") | .status == "MET"' < "$ar"
+  # No blocking finding for either
+  local blocking
+  blocking="$(jq '[.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)] | length' < "$ar")"
+  [ "$blocking" -eq 0 ]
+
+  write_findings "$TEST_TMP/f-mix2.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-mix2.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "boundary: mixed test name with AC1B before AC1 credits both" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-mix3"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-mix3.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1B:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-mix3"
+  _write_bats_fixture "$TEST_TMP/tests-mix3/$_FK99-test.bats" "AC1B report and AC1 form"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-mix3.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-mix3" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be MET (the independent occurrence after "and" must be found)
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "MET"' < "$ar"
+  # AC1B must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1B") | .status == "MET"' < "$ar"
+  # No blocking finding for either
+  local blocking
+  blocking="$(jq '[.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)] | length' < "$ar")"
+  [ "$blocking" -eq 0 ]
+
+  write_findings "$TEST_TMP/f-mix3.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-mix3.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "boundary: file path with AC1-2-and-AC1 credits both via path match" {
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$TEST_TMP/defect-pmix1"
+  mkdir -p "$outdir"
+
+  cat > "$TEST_TMP/story-pmix1.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1-2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$TEST_TMP/tests-pmix1"
+  # File name carries both AC ids; the test name is unrelated
+  _write_bats_fixture "$TEST_TMP/tests-pmix1/$_FK99-AC1-2-and-AC1.bats" "$_FK99 unrelated"
+
+  run "$collector" --story-key "$_FK99" --story-file "$TEST_TMP/story-pmix1.md" \
+    --output-dir "$outdir" --test-dir "$TEST_TMP/tests-pmix1" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be MET via the independent occurrence in the file path
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "MET"' < "$ar"
+  # AC1-2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1-2") | .status == "MET"' < "$ar"
+  # No blocking finding for either
+  local blocking
+  blocking="$(jq '[.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)] | length' < "$ar")"
+  [ "$blocking" -eq 0 ]
+
+  write_findings "$TEST_TMP/f-pmix1.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$TEST_TMP/f-pmix1.json"
+  [ "$status" -eq 0 ]
+  [ "$output" = "APPROVE" ]
+}
+
+@test "boundary: file path with only AC1-2 does not credit AC1 (path guard)" {
+  # Use a clean directory whose path cannot accidentally contain AC ids
+  # (bats encodes the test name into the temp directory path).
+  local cleandir
+  cleandir="$(mktemp -d "${TMPDIR:-/tmp}/pathguard-XXXXXX")"
+  local collector="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/phase3a-collect.sh"
+  local outdir="$cleandir/out"
+  mkdir -p "$outdir"
+
+  cat > "$cleandir/story.md" <<STORY
+---
+key: "$_FK99"
+title: "Test story"
+status: in-progress
+priority: "P0"
+---
+
+# Story
+
+## Acceptance Criteria
+
+- [ ] **AC1:** Given a user, when they submit the form, then the data is saved.
+- [ ] **AC1-2:** Given a user, when they view the report, then totals are correct.
+STORY
+
+  mkdir -p "$cleandir/tests"
+  # File name carries only the longer AC1-2; the test name is unrelated
+  _write_bats_fixture "$cleandir/tests/$_FK99-AC1-2-report.bats" "$_FK99 unrelated"
+
+  run "$collector" --story-key "$_FK99" --story-file "$cleandir/story.md" \
+    --output-dir "$outdir" --test-dir "$cleandir/tests" --stack bash-dev
+  [ "$status" -eq 0 ]
+  [ -f "$outdir/analysis-results.json" ]
+
+  local ar="$outdir/analysis-results.json"
+  # AC1 must be NOT MET — only the longer id appears in the path
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1") | .status == "NOT MET"' < "$ar"
+  # AC1-2 must be MET
+  jq -e '.checks[] | select(.name == "ac-coverage") | .ac_results[] | select(.ac_id == "AC1-2") | .status == "MET"' < "$ar"
+  # At least one blocking finding for the uncovered AC
+  jq -e '.checks[] | select(.name == "ac-coverage") | .findings[] | select(.blocking == true)' < "$ar"
+
+  write_findings "$cleandir/f.json" '[]'
+  run "$SCRIPT" --analysis-results "$ar" --llm-findings "$cleandir/f.json"
+  rm -rf "$cleandir"
+  [ "$status" -eq 0 ]
+  [ "$output" != "APPROVE" ]
+}
+
+# ===========================================================================
 # Defect: AC line with no valid leading id but valid criterion structure
 # (Given/When/Then) is currently treated as non-blocking (skipped). The
 # ruling requires fail-closed: a blocking finding and no APPROVE.

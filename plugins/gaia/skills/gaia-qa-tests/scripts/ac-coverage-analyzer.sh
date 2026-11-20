@@ -692,6 +692,21 @@ function boundary_reject(s, a_idx,    id_start, after_pos, after_text, suf_n, _s
   return 0
 }
 
+# --- Helper: match AC id regex scanning all occurrences in s ---
+# Tries match() from successive positions; a boundary-rejected occurrence
+# is skipped and the search continues. Returns 1 when any occurrence
+# passes boundary_reject, 0 when none does.
+function match_boundary(s, a_idx,    _tail) {
+  _tail = s
+  while (match(_tail, ac_res[a_idx])) {
+    if (!boundary_reject(_tail, a_idx)) return 1
+    # Advance one character past the start of the rejected match
+    if (RSTART >= length(_tail)) break
+    _tail = substr(_tail, RSTART + 1)
+  }
+  return 0
+}
+
 # Phase 1: read patterns file (first file argument)
 FILENAME == ARGV[1] {
   ac_count++
@@ -723,13 +738,15 @@ FILENAME == ARGV[1] {
 
     for (a = 1; a <= ac_count; a++) {
       # Primary match: test path and identifier against AC regex.
-      # After a regex match, the boundary_reject check ensures the match
-      # is not at a position where a longer AC id actually starts.
+      # match_boundary scans all occurrences in the string; a
+      # boundary-rejected occurrence (longer-id prefix) is skipped and
+      # the search continues so an independent occurrence elsewhere in
+      # the same name still credits the shorter AC.
       _matched_a = 0
-      if (match(tf, ac_res[a]) && !boundary_reject(tf, a)) {
+      if (match_boundary(tf, a)) {
         _matched_a = 1
       }
-      if (!_matched_a && match(ident, ac_res[a]) && !boundary_reject(ident, a)) {
+      if (!_matched_a && match_boundary(ident, a)) {
         _matched_a = 1
       }
       if (_matched_a) {
