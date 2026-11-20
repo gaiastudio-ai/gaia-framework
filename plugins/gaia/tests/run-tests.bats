@@ -88,3 +88,151 @@ EOF
   [[ "$output" == *"run-tests.sh"* ]]
   [[ "$output" == *"--story-key"* ]] || [[ "$output" == *"--story"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# Helpers for end-to-end parser tests
+# ---------------------------------------------------------------------------
+
+# Write a minimal project-config.yaml with a tier_1 command.
+_write_test_config() {
+  local cfg="$1" cmd="$2"
+  cat > "$cfg" <<YAML
+project_root: ${TEST_TMP}
+project_path: ${TEST_TMP}
+framework_version: "1.0.0"
+test_execution:
+  tier_1:
+    placement: local
+    command: "${cmd}"
+    timeout_seconds: 30
+YAML
+}
+
+# ---------------------------------------------------------------------------
+# TAP precedence and output-preservation tests
+# ---------------------------------------------------------------------------
+
+@test "TAP output parsed by TAP counter, not pytest regex, for 500 green tests" {
+  # Build a TAP fixture with 500 ok lines. Some test names contain trigger
+  # tokens like "N passed" that the pytest regex would match if it ran first.
+  fixture="${TEST_TMP}/tap-500.txt"
+  {
+    printf '1..500\n'
+    for i in $(seq 1 500); do
+      case "$((i % 5))" in
+        0) printf 'ok %d flow 3 passed boundary\n' "$i" ;;
+        1) printf 'ok %d handles 5 passed items\n' "$i" ;;
+        2) printf 'ok %d verifies 7 passed records\n' "$i" ;;
+        3) printf 'ok %d retries succeed on attempt 2 passed\n' "$i" ;;
+        *) printf 'ok %d basic sanity check\n' "$i" ;;
+      esac
+    done
+  } > "$fixture"
+  cfg="${TEST_TMP}/cfg.yaml"
+  _write_test_config "$cfg" "cat ${fixture}"
+  run env GAIA_TESTS_CONFIG="$cfg" "$RUN_TESTS_SH" --story-key "E1-S1" --context "local"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 0 ]
+  # The TAP parser must count 500 ok lines, not the pytest regex's last
+  # "N passed" match from a test name.
+  [[ "$output" == *'"pass_count":500'* ]]
+  [[ "$output" == *'"fail_count":0'* ]]
+}
+
+@test "TAP mixed output: 498 passed and 2 failed with trigger tokens" {
+  fixture="${TEST_TMP}/tap-mixed.txt"
+  {
+    printf '1..500\n'
+    for i in $(seq 1 498); do
+      case "$((i % 3))" in
+        0) printf 'ok %d flow 3 passed boundary\n' "$i" ;;
+        1) printf 'ok %d handles 5 passed items\n' "$i" ;;
+        *) printf 'ok %d basic check\n' "$i" ;;
+      esac
+    done
+    printf 'not ok 499 retries 2 failed calls\n'
+    printf 'not ok 500 timeout after 3 failed attempts\n'
+  } > "$fixture"
+  cfg="${TEST_TMP}/cfg.yaml"
+  _write_test_config "$cfg" "cat ${fixture}"
+  run env GAIA_TESTS_CONFIG="$cfg" "$RUN_TESTS_SH" --story-key "E1-S1" --context "local"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"pass_count":498'* ]]
+  [[ "$output" == *'"fail_count":2'* ]]
+}
+
+@test "raw bats output file preserved after parsing (not deleted)" {
+  # Point TMPDIR at a fresh directory so we can find the output file.
+  raw_dir="${TEST_TMP}/raw-output"
+  mkdir -p "$raw_dir"
+  cfg="${TEST_TMP}/cfg.yaml"
+  _write_test_config "$cfg" "printf 'ok 1 basic test\n'"
+  run env TMPDIR="$raw_dir" GAIA_TESTS_CONFIG="$cfg" \
+    "$RUN_TESTS_SH" --context "local" --story-key "E1-S1"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 0 ]
+  # The raw output file must still exist in the TMPDIR directory.
+  local file_count
+  file_count="$(find "$raw_dir" -type f | wc -l)"
+  [ "$file_count" -gt 0 ]
+  # And it must contain the raw TAP output.
+  grep -q 'ok 1 basic test' "$raw_dir"/* 2>/dev/null
+}
+
+@test "pytest summary parsed correctly when output has no TAP lines" {
+  # Pytest fixture with a mid-line "ok" token to verify TAP regex does not
+  # false-positive, plus the standard summary line.
+  fixture="${TEST_TMP}/pytest-out.txt"
+  cat > "$fixture" <<'PYTEST'
+tests/test_ok_handler.py::test_ok_response PASSED
+tests/test_ok_handler.py::test_ok_timeout FAILED
+tests/test_retry.py::test_basic PASSED
+tests/test_retry.py::test_edge PASSED
+tests/test_retry.py::test_boundary PASSED
+===== 5 passed, 1 failed in 0.18s =====
+PYTEST
+  cfg="${TEST_TMP}/cfg.yaml"
+  _write_test_config "$cfg" "cat ${fixture}"
+  run env GAIA_TESTS_CONFIG="$cfg" "$RUN_TESTS_SH" --story-key "E1-S1" --context "local"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"pass_count":5'* ]]
+  [[ "$output" == *'"fail_count":1'* ]]
+}
+
+@test "TAP line regex matches TAP but not pytest or go-test output" {
+  # Verify the TAP detection regex in isolation against three output shapes.
+  tap_fixture="${TEST_TMP}/tap.txt"
+  cat > "$tap_fixture" <<'TAP'
+1..3
+ok 1 first test
+ok 2 second test
+not ok 3 third test
+TAP
+  pytest_fixture="${TEST_TMP}/pytest.txt"
+  cat > "$pytest_fixture" <<'PY'
+tests/test_ok_handler.py::test_ok_response PASSED
+===== 5 passed, 1 failed in 0.18s =====
+PY
+  go_fixture="${TEST_TMP}/gotest.txt"
+  # go-test uses tabs, not spaces, after "ok"
+  printf '=== RUN   TestFoo\n--- PASS: TestFoo (0.00s)\nPASS\nok\tmypkg\t0.001s\n' > "$go_fixture"
+
+  # TAP fixture: must match
+  local tap_ok tap_notok
+  tap_ok="$(grep -cE '^ok [0-9]+' "$tap_fixture" 2>/dev/null || true)"
+  tap_notok="$(grep -cE '^not ok [0-9]+' "$tap_fixture" 2>/dev/null || true)"
+  [ "$tap_ok" -eq 2 ]
+  [ "$tap_notok" -eq 1 ]
+
+  # pytest fixture: must NOT match
+  local py_ok py_notok
+  py_ok="$(grep -cE '^ok [0-9]+' "$pytest_fixture" 2>/dev/null || true)"
+  py_notok="$(grep -cE '^not ok [0-9]+' "$pytest_fixture" 2>/dev/null || true)"
+  [ "${py_ok:-0}" -eq 0 ]
+  [ "${py_notok:-0}" -eq 0 ]
+
+  # go-test fixture: must NOT match (tab after "ok", not space)
+  local go_ok go_notok
+  go_ok="$(grep -cE '^ok [0-9]+' "$go_fixture" 2>/dev/null || true)"
+  go_notok="$(grep -cE '^not ok [0-9]+' "$go_fixture" 2>/dev/null || true)"
+  [ "${go_ok:-0}" -eq 0 ]
+  [ "${go_notok:-0}" -eq 0 ]
+}
