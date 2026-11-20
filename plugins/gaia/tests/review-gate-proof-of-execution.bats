@@ -23,6 +23,11 @@
 
 load 'test_helper.bash'
 
+setup_file() {
+  _litter_snapshot_before
+  printf '%s\n' "$BASH_VERSION" >&3
+}
+
 setup() {
   common_setup
   SCRIPT="$SCRIPTS_DIR/review-gate.sh"
@@ -399,4 +404,31 @@ _seed_all_passed_no_reports() {
     --report-missing-reason "$reason"
   [ "$status" -ne 0 ]
   [[ "$output" == *"newline"* ]] || [[ "$output" == *"carriage-return"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AC6: gate-update code blocks pass --report and --execution-evidence
+# ---------------------------------------------------------------------------
+
+# AC6a: qa-tests gate-update code block passes --report and --execution-evidence
+@test "POE: qa-tests gate-update code block passes --report and --execution-evidence" {
+  local skill_md
+  skill_md="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)/skills/gaia-qa-tests/SKILL.md"
+  [ -f "$skill_md" ]
+  # Extract the gate-update code block section
+  local section
+  section="$(sed -n '/[Gg]ate row update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+  grep -q '\-\-report' <<< "$section"
+  grep -q '\-\-execution-evidence' <<< "$section"
+}
+
+# AC6b: test-review gate-update code block passes --report and --execution-evidence
+@test "POE: test-review gate-update code block passes --report and --execution-evidence" {
+  local skill_md
+  skill_md="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)/skills/gaia-test-review/SKILL.md"
+  [ -f "$skill_md" ]
+  local section
+  section="$(sed -n '/[Gg]ate row update/,/review-gate-check\|^### \|^## /p' "$skill_md")"
+  grep -q '\-\-report' <<< "$section"
+  grep -q '\-\-execution-evidence' <<< "$section"
 }

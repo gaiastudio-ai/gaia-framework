@@ -28,9 +28,12 @@
 #   * Idempotency: a sidecar ledger next to the target file records
 #     (sprint_id, theme_hash) pairs that have already produced an increment.
 #     Re-invoking with the same pair is a silent no-op.
-#   * Backup: a .bak copy is written before mutation; on verify failure the
-#     target is restored from .bak; on success .bak is removed.
-#   * Concurrency: flock on the target file serializes writers.
+#   * Backup: a .bak copy is written before mutation; on verify failure
+#     the target is left unchanged and the .bak is removed by signal
+#     cleanup (no data loss, since nothing was moved yet).
+#   * Concurrency: the shared lock helper on action-items.yaml.lock
+#     (flock when available, hard-link fallback otherwise) serializes
+#     writers.
 
 set -uo pipefail
 
@@ -95,11 +98,15 @@ if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
   exit 0
 fi
 
-# Mutate under flock. The shared writer uses the same
-# flock-or-mkdir-fallback pattern; we mirror it here so the increment
-# operation participates in the same serialization domain as appends.
+# Mutate under the shared action-items lock. Source the canonical writer
+# to get _aiw_lock/_aiw_unlock, which use the same lock path
+# (${target}.lock) and the same timeout/retry/diagnostic handling.
+_AIW_INCREMENT_SCRIPTS_DIR="${BASH_SOURCE[0]%/*}"
+# Resolve the writer's scripts directory (three levels up from this skill).
+_AIW_WRITER_DIR="$(cd "$_AIW_INCREMENT_SCRIPTS_DIR/../../../scripts" 2>/dev/null && pwd)"
+# shellcheck source=../../../scripts/action-items-write.sh
+source "${_AIW_WRITER_DIR}/action-items-write.sh"
 LOCKFILE="${AI_FILE}.lock"
-LOCKDIR="${AI_FILE}.lockdir"
 
 _do_increment() {
   # Locate the entry whose theme_hash matches and bump its escalation_count.
@@ -152,44 +159,83 @@ _do_increment() {
   return 0
 }
 
-if command -v flock >/dev/null 2>&1; then
-  (
-    flock -x 9
-    # Re-check ledger under the lock so a racing writer's increment is
-    # observed before we apply a duplicate.
-    if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
-      exit 42
-    fi
-    _do_increment
-  ) 9>"$LOCKFILE"
-  rc=$?
-  rm -f "$LOCKFILE"
-else
-  tries=0
-  while ! mkdir "$LOCKDIR" 2>/dev/null; do
-    tries=$((tries + 1))
-    [ "$tries" -gt 600 ] && { rmdir "$LOCKDIR" 2>/dev/null || true; break; }
-    sleep 0.02
-  done
-  if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
-    rmdir "$LOCKDIR" 2>/dev/null || true
-    exit 0
+# --- Signal-safe lock cleanup -------------------------------------------
+#
+# Traps are installed BEFORE _aiw_lock because the test-hold sleep
+# (GAIA_AIW_TEST_HOLD_SECONDS) fires inside _aiw_lock after the lock
+# is acquired. A signal during that window must still clean up.
+#
+# _incr_lock_held is set to 1 before _aiw_lock so the cleanup covers
+# the hold window. This is safe even if _aiw_lock has not yet acquired:
+# _aiw_unlock delegates to release_lock, which is a no-op for an
+# unregistered fd.
+#
+# EXIT preserves the original exit status. INT/TERM terminate the
+# script immediately after cleanup so no code runs without the lock.
+_incr_lock_held=0
+
+_incr_cleanup() {
+  if [ "$_incr_lock_held" = "1" ]; then
+    _incr_lock_held=0
+    # Clean leftover temp/backup from _do_increment if present.
+    rm -f "${AI_FILE}.bak" 2>/dev/null || true
+    _aiw_unlock
   fi
-  _do_increment
-  rc=$?
-  rmdir "$LOCKDIR" 2>/dev/null || true
+}
+
+_incr_exit_handler() {
+  local _exit_rc=$?
+  _incr_cleanup
+  exit "$_exit_rc"
+}
+
+_incr_term_handler() {
+  _incr_cleanup
+  exit 143  # 128 + SIGTERM(15)
+}
+
+_incr_int_handler() {
+  _incr_cleanup
+  exit 130  # 128 + SIGINT(2)
+}
+
+trap '_incr_exit_handler' EXIT
+trap '_incr_int_handler' INT
+trap '_incr_term_handler' TERM
+# -----------------------------------------------------------------------
+
+# Acquire the shared lock. On failure (timeout, permission denied),
+# the data is left unchanged and we exit non-zero. The flag is set
+# before the call so the trap covers the hold window inside _aiw_lock.
+# Stdout (the status=/reason= protocol) is discarded; stderr (remedy
+# lines from the helper) passes through to the caller.
+_incr_lock_held=1
+if ! _aiw_lock "$LOCKFILE" "action-items-increment" >/dev/null; then
+  _incr_lock_held=0
+  echo "error: could not acquire lock on $LOCKFILE" >&2
+  exit 1
 fi
 
-# Treat exit 42 from the flock subshell as race-resolved no-op.
-if [ "$rc" -eq 42 ]; then
+# Re-check idempotency under the lock so a racing writer's increment
+# is observed before we apply a duplicate.
+rc=0
+if grep -Fxq "$LEDGER_KEY" "$LEDGER" 2>/dev/null; then
+  # Race resolved — another process already incremented for this key.
   exit 0
 fi
+
+_do_increment || rc=$?
 
 if [ "$rc" -ne 0 ]; then
   exit "$rc"
 fi
 
-# Record the idempotency key.
+# Record the idempotency key while still holding the lock.
 printf '%s\n' "$LEDGER_KEY" >> "$LEDGER"
 
+# Release before clearing the flag so a signal in this window still
+# cleans up. A second release via the EXIT trap is a harmless no-op
+# (release_lock on an unregistered fd returns immediately).
+_aiw_unlock
+_incr_lock_held=0
 exit 0
