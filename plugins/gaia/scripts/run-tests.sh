@@ -444,42 +444,40 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
     continue
   fi
   run_with_timeout "$cmd" "$to"
-  # Parse the framework output for real per-test pass/fail counts before
-  # discarding the file. The supported regex families cover pytest
-  # ("100 passed, 2 failed in 0.18s"), bats ("ok 7" / "not ok 3"), and
-  # go-test ("--- PASS:" / "--- FAIL:"); other frameworks fall back to the
-  # exit-code heuristic so the evidence contract stays intact. Run twice —
-  # once to count individual `not ok` / `--- FAIL:` lines, once to read
-  # pytest's summary line — whichever yields a non-zero count wins.
-  # Every framework-output grep below MUST be terminated with `|| true` to
-  # survive the no-match case under `set -e` + pipefail. A fully-GREEN suite
-  # produces `100 passed in 0.18s` but NO `N failed` line at all:
-  # `grep -Eo '[0-9]+ failed' | tail | awk` then exits non-zero, pipefail
-  # propagates, set -e aborts the assignment BEFORE the `${var:-0}` default
-  # applies — so run-tests.sh would crash on exactly the suite state a review
-  # gate needs (all-PASS). Same applies to bats / go-test paths below.
+  # Parse the framework output for real per-test pass/fail counts.
+  # The raw output file is preserved for downstream consumers.
+  #
+  # Precedence: TAP output → pytest summary → go-test → exit-code fallback.
+  # TAP runs first because bats test names routinely contain tokens like
+  # "3 passed" that the pytest regex "[0-9]+ passed" would match, producing
+  # wildly incorrect counts. Bats is detected by its TAP output signature
+  # (^ok N / ^not ok N) rather than the command string, because the real
+  # entry point (run-with-coverage.sh) has no bats token in the command.
+  #
+  # Every grep below MUST be terminated with `|| true` to survive the
+  # no-match case under `set -e` + pipefail.
   pass_count=0; fail_count=0
   if [ -f "$RT_OUTPUT_FILE" ]; then
-    # pytest: "===== 100 passed, 2 failed in 0.18s ====="  (also handles xfailed/skipped suffixes)
-    _pytest_pass="$(grep -Eo '[0-9]+ passed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
-    _pytest_fail="$(grep -Eo '[0-9]+ failed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
-    if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
-      pass_count="${_pytest_pass:-0}"
-      fail_count="${_pytest_fail:-0}"
+    # TAP output: "ok N desc" / "not ok N desc" (bats and any TAP runner)
+    _tap_pass="$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)"
+    _tap_fail="$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null || true)"
+    if [ "${_tap_pass:-0}" -gt 0 ] || [ "${_tap_fail:-0}" -gt 0 ]; then
+      pass_count="${_tap_pass:-0}"
+      fail_count="${_tap_fail:-0}"
     else
-      # bats TAP: "ok 7 desc" / "not ok 3 desc"
-      _bats_pass="$(grep -cE '^ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
-      _bats_fail="$(grep -cE '^not ok [0-9]+' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
-      if [ "${_bats_pass:-0}" -gt 0 ] || [ "${_bats_fail:-0}" -gt 0 ]; then
-        pass_count="$_bats_pass"
-        fail_count="$_bats_fail"
+      # pytest: "===== 100 passed, 2 failed in 0.18s ====="
+      _pytest_pass="$(grep -Eo '[0-9]+ passed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
+      _pytest_fail="$(grep -Eo '[0-9]+ failed' "$RT_OUTPUT_FILE" 2>/dev/null | tail -n1 | awk '{print $1}' || true)"
+      if [ -n "$_pytest_pass" ] || [ -n "$_pytest_fail" ]; then
+        pass_count="${_pytest_pass:-0}"
+        fail_count="${_pytest_fail:-0}"
       else
         # go test: "--- PASS:" / "--- FAIL:"
-        _go_pass="$(grep -cE '^--- PASS:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
-        _go_fail="$(grep -cE '^--- FAIL:' "$RT_OUTPUT_FILE" 2>/dev/null | head -n1 || true)"
+        _go_pass="$(grep -cE '^--- PASS:' "$RT_OUTPUT_FILE" 2>/dev/null || true)"
+        _go_fail="$(grep -cE '^--- FAIL:' "$RT_OUTPUT_FILE" 2>/dev/null || true)"
         if [ "${_go_pass:-0}" -gt 0 ] || [ "${_go_fail:-0}" -gt 0 ]; then
-          pass_count="$_go_pass"
-          fail_count="$_go_fail"
+          pass_count="${_go_pass:-0}"
+          fail_count="${_go_fail:-0}"
         fi
       fi
     fi
@@ -494,7 +492,6 @@ for i in $(seq 0 $((${#ACTIVE_TIERS[@]} - 1))); do
       pass_count=1
     fi
   fi
-  rm -f "$RT_OUTPUT_FILE" || true
   suite="$(printf '{"name":%s,"command":%s,"exit_code":%s,"duration_seconds":%s,"pass_count":%s,"fail_count":%s,"timeout":%s}' \
     "$(json_str "$tier")" \
     "$(json_str "$cmd")" \

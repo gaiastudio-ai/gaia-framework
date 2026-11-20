@@ -3179,6 +3179,26 @@ SH
   # writer's own lock, not the sprint-state parallel gate.
   unset GAIA_PARALLEL_EXECUTION
 
+  # When GAIA_CI_MACOS_BASH32=1 (set by the macOS CI job), assert that
+  # bash 3.2 runs in the test body, in a writer child, and that required
+  # deps are present. Local bash 5 runs skip these assertions.
+  if [ "${GAIA_CI_MACOS_BASH32:-}" = "1" ]; then
+    # Test body interpreter.
+    [ "${BASH_VERSINFO[0]}" = "3" ] && [ "${BASH_VERSINFO[1]}" = "2" ] || {
+      echo "expected bash 3.2 in test body, got $BASH_VERSION" >&2; false; }
+    # Child process interpreter (spawned the way writers are spawned).
+    local _child_ver
+    _child_ver="$(bash -c 'echo "${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"')"
+    [ "$_child_ver" = "3.2" ] || {
+      echo "expected bash 3.2 in child process, got $_child_ver" >&2; false; }
+    # Required deps.
+    command -v yq >/dev/null 2>&1 || { echo "yq not found" >&2; false; }
+    local _yqv; _yqv="$(yq --version 2>&1)"
+    case "$_yqv" in *mikefarah*|*" v4."*|*" 4."*) ;; *) echo "yq not mikefarah v4: $_yqv" >&2; false ;; esac
+    command -v jq >/dev/null 2>&1 || { echo "jq not found" >&2; false; }
+    stat -f %m / >/dev/null 2>&1 || { echo "BSD stat (-f) not available" >&2; false; }
+  fi
+
   source "$AIW_SH"
 
   # Run 2 rounds of 16+16 mixed race (flock path).
@@ -3346,10 +3366,17 @@ SH
 }
 
 @test "forced race: 16+16 writers with hold hook lose no updates" {
-  # Stress test: 16 resolves + 16 appends with a short timeout and a
-  # test-only hold hook that sleeps inside the critical section. Every
-  # writer must either apply its update or fail with the lock-timeout
-  # error — no update may be silently lost.
+  # Stress test: 16 resolves + 16 appends under forced-fallback locking
+  # with a 100 ms in-lock hold hook. Every writer gets a 32 s acquisition
+  # timeout and must complete within 37 s (timeout + 5 s allowance).
+  # Assertions:
+  #   - at least 24 of 32 writers succeed (throughput floor);
+  #   - no update is silently lost (done count and item count match);
+  #   - the file stays valid YAML with no duplicate ids;
+  #   - only accepted failure reasons (lock timeout, unwritable dir,
+  #     denied open, path-type refusal);
+  #   - zero overlapping lock holders (detected via a sleep shim);
+  #   - every writer finishes within the per-writer completion bound.
   unset GAIA_PARALLEL_EXECUTION
 
   source "$AIW_SH"
@@ -3364,33 +3391,89 @@ SH
   } > "$target"
 
   local rc_dir="$TEST_TMP/rc-forced"
-  mkdir -p "$rc_dir"
+  local ws_dir="$TEST_TMP/ws-forced"
+  local barrier_dir="$TEST_TMP/barrier-forced"
+  mkdir -p "$rc_dir" "$ws_dir" "$barrier_dir"
 
-  # Short timeout + hold hook to force contention.
+  # Build a sleep shim that detects overlapping lock holders.
+  # It intercepts only the hold-hook sleep (exact string "0.100"),
+  # atomically marks entry with mkdir, records an overlap if the
+  # marker already exists, sleeps via absolute path, then removes
+  # the marker. Each hold is also recorded as a file under a
+  # per-entry directory so the test can assert the detector actually
+  # ran for every successful writer (not vacuously zero overlaps).
+  # All other sleep calls pass through unchanged.
+  local _real_sleep
+  _real_sleep="$(command -v sleep)"
+  local shim_dir="$TEST_TMP/race-shim"
+  local hold_dir="$TEST_TMP/hold-entries"
+  mkdir -p "$shim_dir" "$hold_dir"
+  cat > "$shim_dir/sleep" <<SHIMEOF
+#!/usr/bin/env bash
+if [ "\$1" = "0.100" ]; then
+  touch "$hold_dir/hold.\$\$.\$RANDOM"
+  if ! mkdir "$ws_dir/inside" 2>/dev/null; then
+    touch "$ws_dir/overlap.\$\$"
+  fi
+  "$_real_sleep" 0.1
+  rmdir "$ws_dir/inside" 2>/dev/null || true
+  exit 0
+fi
+exec "$_real_sleep" "\$@"
+SHIMEOF
+  chmod +x "$shim_dir/sleep"
+
+  # Frozen acquisition timeout (32 s) and per-writer completion
+  # bound (timeout + 5 s = 37 s).
+  local _acq_timeout=32
+  local _completion_bound=37
+
   local pids=()
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      export PATH="$shim_dir:$PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=$_acq_timeout GAIA_AIW_TEST_HOLD_SECONDS=0.100
       source "$AIW_SH"
-      local _rc=0
+      touch "$barrier_dir/ready.res.$i"
+      while [ ! -f "$barrier_dir/go" ]; do "$_real_sleep" 0.01 2>/dev/null || "$_real_sleep" 1; done
+      local _t0 _t1 _rc=0
+      _t0="$(date +%s)"
       aiw_resolve --target "$target" --item "AI-FR-$i" --status "done" \
         --resolution "fr-resolved-$i" > "$rc_dir/res-$i.out" 2>&1 || _rc=$?
+      _t1="$(date +%s)"
       printf '%s' "$_rc" > "$rc_dir/res-$i.rc"
+      printf '%s' "$(( _t1 - _t0 ))" > "$rc_dir/res-$i.elapsed"
     ) &
     pids+=($!)
   done
   for i in $(seq 1 16); do
     (
-      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=2 GAIA_AIW_TEST_HOLD_SECONDS=0.1
+      export PATH="$shim_dir:$PATH"
+      export GAIA_LOCK_FORCE_FALLBACK=1 GAIA_AIW_LOCK_TIMEOUT=$_acq_timeout GAIA_AIW_TEST_HOLD_SECONDS=0.100
       source "$AIW_SH"
-      local _rc=0
+      touch "$barrier_dir/ready.app.$i"
+      while [ ! -f "$barrier_dir/go" ]; do "$_real_sleep" 0.01 2>/dev/null || "$_real_sleep" 1; done
+      local _t0 _t1 _rc=0
+      _t0="$(date +%s)"
       aiw_write --target "$target" --sprint-id "sprint-99" \
         --classification "implementation" --text "FR appended $i" \
         --ref-key "story_key" --ref-value "E999-FR-S$i" > "$rc_dir/app-$i.out" 2>&1 || _rc=$?
+      _t1="$(date +%s)"
       printf '%s' "$_rc" > "$rc_dir/app-$i.rc"
+      printf '%s' "$(( _t1 - _t0 ))" > "$rc_dir/app-$i.elapsed"
     ) &
     pids+=($!)
   done
+
+  # Common start barrier: wait for all 32 to signal ready, then go.
+  local _rdy=0 _wl=0
+  while [ "$_rdy" -lt 32 ] && [ "$_wl" -lt 300 ]; do
+    _rdy="$(find "$barrier_dir" -name 'ready.*' 2>/dev/null | wc -l | tr -d ' ')"
+    "$_real_sleep" 0.05 2>/dev/null || "$_real_sleep" 1
+    _wl=$((_wl + 1))
+  done
+  touch "$barrier_dir/go"
+
   for pid in "${pids[@]}"; do
     wait "$pid" 2>/dev/null || true
   done
@@ -3410,7 +3493,14 @@ SH
     if [ "$_rc" = "0" ]; then
       res_ok=$((res_ok + 1))
     else
-      [[ "$_out" == *"lock timeout"* ]] || {
+      # Accept only permanent infrastructure failures plus the expected
+      # contention outcome (lock timeout). A regression to permanent
+      # failures can't hide behind the success floor.
+      [[ "$_out" == *"lock timeout"* ]] \
+        || [[ "$_out" == *"cannot create lock directory"* ]] \
+        || [[ "$_out" == *"permission denied"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
+        || {
         echo "Forced race: unexpected resolve failure: rc=$_rc out=$_out" >&2
         false
       }
@@ -3424,7 +3514,11 @@ SH
     if [ "$_rc" = "0" ]; then
       app_ok=$((app_ok + 1))
     else
-      [[ "$_out" == *"lock timeout"* ]] || {
+      [[ "$_out" == *"lock timeout"* ]] \
+        || [[ "$_out" == *"cannot create lock directory"* ]] \
+        || [[ "$_out" == *"permission denied"* ]] \
+        || [[ "$_out" == *"lock path is not a regular file"* ]] \
+        || {
         echo "Forced race: unexpected append failure: rc=$_rc out=$_out" >&2
         false
       }
@@ -3457,11 +3551,40 @@ SH
     false
   }
 
-  # Sanity: at least some writers succeeded (not all timed out).
-  [ "$((res_ok + app_ok))" -gt 0 ] || {
-    echo "Forced race: no writers succeeded at all" >&2
+  # At least 24 of 32 writers must succeed (fallback handoff throughput floor).
+  local _total_ok=$((res_ok + app_ok))
+  [ "$_total_ok" -ge 24 ] || {
+    echo "Forced race: only $_total_ok/32 writers succeeded (need >= 24)" >&2
     false
   }
+
+  # Exactly one observed hold per successful writer — proves the
+  # overlap detector actually ran and is not passing vacuously.
+  local _hold_count
+  _hold_count="$(find "$hold_dir" -name 'hold.*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$_hold_count" -eq "$_total_ok" ] || {
+    echo "Forced race: hold count $_hold_count != success count $_total_ok (detector did not run for every writer)" >&2
+    false
+  }
+
+  # Zero overlapping lock holders.
+  local _overlap_count
+  _overlap_count="$(find "$ws_dir" -name 'overlap.*' 2>/dev/null | wc -l | tr -d ' ')"
+  [ "$_overlap_count" -eq 0 ] || {
+    echo "Forced race: $_overlap_count overlap(s) detected — lock exclusion broken" >&2
+    false
+  }
+
+  # Every writer must finish within the per-writer completion bound.
+  for _f in "$rc_dir"/*.elapsed; do
+    [ -f "$_f" ] || continue
+    local _el
+    _el="$(cat "$_f")"
+    [ "$_el" -le "$_completion_bound" ] || {
+      echo "Forced race: writer $(basename "$_f" .elapsed) took ${_el}s (bound ${_completion_bound}s)" >&2
+      false
+    }
+  done
 }
 
 # ================================================================

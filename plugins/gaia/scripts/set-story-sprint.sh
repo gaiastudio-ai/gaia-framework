@@ -91,7 +91,8 @@ STORY_STATUS_LOCK="${STORY_STATUS_LOCK:-${MEMORY_PATH}/.story-status.lock}"
 # tmp may be unset if the EXIT trap fires before mktemp — use ${tmp:-}.
 _sss_cleanup() {
   release_lock 200 2>/dev/null || true
-  touch "$STORY_STATUS_LOCK" 2>/dev/null || true
+  # No post-release sentinel: leaving an empty file at the lock path is
+  # unsafe when other processes may lack flock (fail-closed reaper rule).
   rm -f "${tmp:-}" 2>/dev/null || true
 }
 
