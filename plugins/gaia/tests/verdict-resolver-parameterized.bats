@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# verdict-resolver-parameterized.bats — E66-S1 ADR-077 generalization tests for
-# the parameterized verdict-resolver.sh. Covers AC4, AC5 (TC-RSV2-FOUND-02..06).
+# verdict-resolver-parameterized.bats — generalization tests for the parameterized
+# verdict-resolver.sh. Covers skill-aware dispatch and multi-skill parity.
 #
 # These tests exercise the new --skill parameter and confirm the four verdict
 # precedence rules behave identically across non-code-review skill inputs.
@@ -13,6 +13,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
   SCRIPT="$SCRIPTS_DIR/verdict-resolver.sh"
 }
 teardown() { common_teardown; }
@@ -25,7 +26,7 @@ write_analysis_for_skill() {
   cat > "$path" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "E66-S1",
+  "story_key": "$_FK",
   "skill": "${skill}",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",

@@ -10,7 +10,6 @@
     "story_key",
     "skill",
     "model",
-    "model_temperature",
     "checks"
   ],
   "properties": {
@@ -22,7 +21,7 @@
     "story_key": {
       "type": "string",
       "pattern": "^E[0-9]+-S[0-9]+$",
-      "description": "Canonical story key, e.g. E65-S1."
+      "description": "Canonical story key (e.g. {story_key})."
     },
     "skill": {
       "type": "string",
@@ -34,13 +33,13 @@
     },
     "model": {
       "type": "string",
-      "description": "LLM model id pinned for the run (e.g. claude-opus-4-7)."
+      "description": "LLM model id recorded for the run (e.g. claude-opus-4-7)."
     },
     "model_temperature": {
       "type": "number",
       "minimum": 0,
       "maximum": 2,
-      "description": "LLM temperature (MUST be 0 for review skills)."
+      "description": "LLM temperature recorded for the run (0 by convention for review skills)."
     },
     "prompt_hash": {
       "type": "string",
@@ -75,7 +74,7 @@
           "status": {
             "type": "string",
             "enum": ["passed", "failed", "errored", "skipped"],
-            "description": "passed = no findings; failed = blocking finding(s); errored = tool crashed/unrecoverable; skipped = not applicable."
+            "description": "passed = no NOT MET condition (non-blocking findings may be present); failed = at least one NOT MET or fail-closed condition, with every finding carrying an explicit blocking value; errored = tool crashed/unrecoverable; skipped = not applicable."
           },
           "skip_reason": {
             "type": "string",

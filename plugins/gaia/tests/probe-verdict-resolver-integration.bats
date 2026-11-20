@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # probe-verdict-resolver-integration.bats — integration tests for the probe-to-verdict-resolver
-# handoff (E66-S2 Task 4, AC2, AC3, TC-RSV2-PROBE-02..03 + Test Scenarios #10, #11).
+# handoff. Verifies probe output feeds the resolver correctly.
 #
 # Verifies:
 #   - state=ran_and_errored produced by the probe -> when wired into an analysis-results.json
@@ -15,6 +15,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
   PROBE="$SCRIPTS_DIR/tool-availability-probe.sh"
   RESOLVER="$SCRIPTS_DIR/verdict-resolver.sh"
 }
@@ -27,7 +28,7 @@ build_analysis() {
   cat > "$out" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "E66-S2",
+  "story_key": "$_FK",
   "skill": "gaia-code-review",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",

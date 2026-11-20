@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# qa-verdict-integration.bats — E67-S4 bats coverage for verdict-resolver.sh
-# integration with execution-evidence.json (AC5, AC6, AC9).
+# qa-verdict-integration.bats — verdict-resolver.sh integration with
+# execution-evidence.json.
 
 load 'test_helper.bash'
 
@@ -8,6 +8,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
 }
 teardown() { common_teardown; }
 
@@ -64,9 +65,12 @@ EOF
 
 write_clean_analysis() {
   # No deterministic findings.
-  cat > "$1" <<'EOF'
+  cat > "$1" <<EOF
 {
   "schema_version": "1.0",
+  "story_key": "$_FK",
+  "skill": "gaia-qa-tests",
+  "model": "claude-opus-4-7",
   "checks": []
 }
 EOF

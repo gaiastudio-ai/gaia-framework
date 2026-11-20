@@ -1,16 +1,16 @@
 #!/usr/bin/env bats
-# e65-s4-qa-tests-migration.bats — structural assertions for the
-# `gaia-qa-tests` migration to the E65-S2 review-skill template.
+# e65-s4-qa-tests-migration.bats — structural assertions for the gaia-qa-tests
+# review-skill template (pattern-matches against gaia-security-review).
 #
-# Pattern-matches against E65-S3 (gaia-security-review). Verifies:
-#   - TC-DEJ-PHASE-S4   — seven canonical phase headers in order
-#   - TC-DEJ-DET-S4     — determinism settings (temperature: 0, model pin, prompt_hash)
-#   - TC-DEJ-TOOLKIT-QA-01 — QA toolkit declared (test-discovery + AC-coverage analyzer)
-#   - TC-DEJ-RUBRIC-S4  — severity rubric carries ≥2 examples per tier for QA categories
-#   - TC-DEJ-WRITE-S4-1 — FR-402 review-file path declared (qa-tests-{story_key}.md)
-#   - TC-DEJ-WRITE-S4-2 — fork allowlist exactly [Read, Grep, Glob, Bash]
+# Verifies:
+#   - seven canonical phase headers in order
+#   - determinism settings (temperature: 0, model recorded convention, prompt_hash)
+#   - QA toolkit declared (test-discovery + AC-coverage analyzer)
+#   - severity rubric carries >= 2 examples per tier for QA categories
+#   - review-file path declared (qa-tests-{story_key}.md)
+#   - fork allowlist exactly [Read, Grep, Glob, Bash]
 #
-# All assertions are static-text reads against the migrated SKILL.md — no
+# All assertions are static-text reads against the SKILL.md — no
 # fork/subagent dispatch, no network. Suite is fast (<1s wall-clock).
 
 load 'test_helper.bash'
@@ -22,7 +22,7 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/SKILL.md"
 setup() { common_setup; }
 teardown() { common_teardown; }
 
-# --- TC-DEJ-WRITE-S4-2 — fork allowlist read-only ---
+# --- fork allowlist read-only ---
 
 @test "allowed-tools is exactly [Read, Grep, Glob, Bash]" {
   run grep -E '^allowed-tools:' "$SKILL_FILE"
@@ -35,7 +35,7 @@ teardown() { common_teardown; }
   [ "$status" -ne 0 ]
 }
 
-# --- TC-DEJ-PHASE-S4 — unifying principle + seven phase headers in order ---
+# --- unifying principle + seven phase headers in order ---
 
 @test "unifying principle present verbatim" {
   grep -F 'Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.' "$SKILL_FILE" >/dev/null
@@ -54,13 +54,13 @@ teardown() { common_teardown; }
   echo "$got" | grep -F 'Phase 7' >/dev/null
 }
 
-# --- TC-DEJ-DET-S4 — determinism settings ---
+# --- determinism settings (recorded convention) ---
 
 @test "temperature: 0 declared" {
   grep -F 'temperature: 0' "$SKILL_FILE" >/dev/null
 }
 
-@test "model pinned to claude-opus-4-7" {
+@test "model claude-opus-4-7 recorded as convention" {
   grep -F 'claude-opus-4-7' "$SKILL_FILE" >/dev/null
 }
 
@@ -68,7 +68,7 @@ teardown() { common_teardown; }
   grep -F 'prompt_hash' "$SKILL_FILE" >/dev/null
 }
 
-# --- TC-DEJ-TOOLKIT-QA-01 — QA toolkit declared ---
+# --- QA toolkit declared ---
 
 @test "test-discovery section present" {
   grep -iF 'test-discovery' "$SKILL_FILE" >/dev/null
@@ -113,7 +113,7 @@ teardown() { common_teardown; }
   grep -iE 'edge[- ]case' "$SKILL_FILE" >/dev/null
 }
 
-# --- TC-DEJ-RUBRIC-S4 — severity rubric examples ---
+# --- severity rubric examples ---
 
 @test "Critical tier present" {
   grep -E '^### Critical' "$SKILL_FILE" >/dev/null
@@ -145,7 +145,7 @@ teardown() { common_teardown; }
   grep -F 'requirement-traceability' "$SKILL_FILE" >/dev/null
 }
 
-# --- TC-DEJ-WRITE-S4-1 — FR-402 review-file path declared ---
+# --- review-file path declared ---
 
 @test "path qa-tests-{story_key}.md declared" {
   grep -F 'qa-tests-' "$SKILL_FILE" | grep -F 'docs/implementation-artifacts/' >/dev/null
@@ -180,4 +180,31 @@ teardown() { common_teardown; }
 @test "gaia-qa-tests registered in REVIEW_SKILLS array" {
   local parity="$BATS_TEST_DIRNAME/evidence-judgment-parity.bats"
   grep -F 'skills/gaia-qa-tests/SKILL.md' "$parity" >/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# AC-coverage analyzer ships as executable script
+# ---------------------------------------------------------------------------
+
+@test "ac-coverage-analyzer.sh is executable" {
+  local analyzer="$BATS_TEST_DIRNAME/../skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh"
+  [ -x "$analyzer" ]
+}
+
+# ---------------------------------------------------------------------------
+# Phase 3A instruction references the collector script
+# ---------------------------------------------------------------------------
+
+@test "SKILL.md Phase 3A references phase3a-collect.sh" {
+  grep -F 'phase3a-collect.sh' "$SKILL_FILE" >/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Temperature wording must use recorded-convention language
+# ---------------------------------------------------------------------------
+
+@test "SKILL.md severity rubric uses recorded-convention wording (not pin/regression)" {
+  # The rubric divergence sentence must NOT say "model-pin or temperature regression"
+  run grep -F 'temperature regression' "$SKILL_FILE"
+  [ "$status" -ne 0 ]
 }

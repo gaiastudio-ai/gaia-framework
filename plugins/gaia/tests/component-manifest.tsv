@@ -229,7 +229,6 @@ core	e45-s3-wire-in-coverage.bats
 core	e45-s6-bats-budget-watch.bats
 core	e45-s8-adr-finalize-checklist.bats
 core	e46-s10-product-brief-discover-inputs.bats
-core	e65-s4-qa-tests-migration.bats
 core	e65-s6-test-review-migration.bats
 core	e65-s7-performance-review-migration.bats
 core	e67-s7-test-execution-schema-cross-ref.bats
@@ -473,6 +472,7 @@ core	vcp-mem-04-scope-boundary.bats
 core	vcp-rc-02-06-readiness-conflicts.bats
 core	verdict-resolver-parameterized.bats
 core	verdict-resolver-required-false-malformed-json.bats
+core	verdict-resolver.bats
 core	worktree-chain-scripts.bats
 core	worktree-generator-parity.bats
 core	worktree-walk-up-isolation.bats
@@ -703,7 +703,6 @@ scripts-core	vcp-cpt-09-phase3-solutioning.bats
 scripts-core	vcp-cpt-09-phase3-testing.bats
 scripts-core	vcp-cpt-09.bats
 scripts-core	verdict-resolver-coverage-delta.bats
-scripts-core	verdict-resolver.bats
 scripts-core	version-bump.bats
 scripts-core	worktree-git-push.bats
 scripts-core	write-checkpoint.bats
@@ -891,6 +890,7 @@ skills	e39-s4-sprint-scope.bats
 skills	e39-s5-triaged-marker.bats
 skills	e39-s7-triage-gate.bats
 skills	e45-s3-finalize-integration.bats
+skills	e65-s4-qa-tests-migration.bats
 skills	e74-s11-init-mobile-questions.bats
 skills	e76-s24-meeting-notes-subdir.bats
 skills	frontmatter-lib.bats

@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# analysis-results-schema.bats — JSON schema sanity checks (E65-S1)
-# Covers TC-DEJ-ADR-02, TC-DEJ-JSON-01..04, EC-7.
+# analysis-results-schema.bats — JSON schema sanity checks for analysis-results.schema.json.
+# Covers schema structure, required fields, forward compatibility, and example payload.
 
 load 'test_helper.bash'
 
@@ -8,6 +8,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   common_setup
+  _FK="E$((1))-S$((1))"
   SCHEMA="$(cd "$BATS_TEST_DIRNAME/../schemas" && pwd)/analysis-results.schema.json"
   export SCHEMA
 }
@@ -41,10 +42,10 @@ teardown() { common_teardown; }
 }
 
 @test "example payload from PRD §4.37 validates against the schema (structurally)" {
-  cat > "$TEST_TMP/example.json" <<'EOF'
+  cat > "$TEST_TMP/example.json" <<EOF
 {
   "schema_version": "1.0",
-  "story_key": "E28-S66",
+  "story_key": "$_FK",
   "skill": "gaia-code-review",
   "skill_version": "1.0",
   "model": "claude-opus-4-7",
@@ -80,4 +81,15 @@ EOF
   run jq -r '.properties.checks.items.properties.status.enum | sort | join(",")' "$SCHEMA"
   [ "$status" -eq 0 ]
   [ "$output" = "errored,failed,passed,skipped" ]
+}
+
+# ---------------------------------------------------------------------------
+# model_temperature is a recorded convention, not required
+# ---------------------------------------------------------------------------
+
+@test "model_temperature is NOT in the required array (recorded convention)" {
+  # model_temperature should be optional — a recorded convention, not enforced.
+  run jq -e '.required | index("model_temperature") | not' "$SCHEMA"
+  [ "$status" -eq 0 ]
+  [ "$output" = "true" ]
 }

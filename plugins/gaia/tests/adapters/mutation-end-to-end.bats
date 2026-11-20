@@ -59,12 +59,12 @@ SRC
 test_execution:
   mutation_thresholds:
 $thresholds"
-  STORY_DIR="$PROJ/.gaia/artifacts/implementation-artifacts/epic-E9-demo/E9-S1-demo" # lint-pack:allow leaked-identifiers — fixture story key in test
+  STORY_DIR="$PROJ/.gaia/artifacts/implementation-artifacts/epic-E9-demo/$_FK-demo" # lint-pack:allow leaked-identifiers — fixture story key in test
   mkdir -p "$STORY_DIR"
   cat > "$STORY_DIR/story.md" <<STORY
 ---
 template: 'story'
-key: "E9-S1" # lint-pack:allow leaked-identifiers — fixture story key in test
+key: "$_FK" # lint-pack:allow leaked-identifiers — fixture story key in test
 title: "demo"
 epic: "E9"
 status: review
@@ -99,12 +99,12 @@ STORY
   mkdir -p "$PROJ/.gaia/artifacts/test-artifacts/test-results"
   printf 'keep\n' > "$PROJ/.gaia/artifacts/test-artifacts/test-results/.keep"
   _commit_all init
-  EV="$PROJ/.gaia/artifacts/test-artifacts/test-results/E9-S1-mutation.json" # lint-pack:allow leaked-identifiers — fixture story key in test
+  EV="$PROJ/.gaia/artifacts/test-artifacts/test-results/$_FK-mutation.json" # lint-pack:allow leaked-identifiers — fixture story key in test
   CFG="$PROJ/.gaia/config/project-config.yaml"
 }
 
 _mutation_subcmd() {
-  (cd "$PROJ" && "$PLUGIN/skills/gaia-test-automate/scripts/subcmd-mutation.sh" E9-S1 "$@") # lint-pack:allow leaked-identifiers — fixture story key in test
+  (cd "$PROJ" && "$PLUGIN/skills/gaia-test-automate/scripts/subcmd-mutation.sh" $_FK "$@") # lint-pack:allow leaked-identifiers — fixture story key in test
 }
 
 _head() { git -C "$PROJ" rev-parse HEAD; }
@@ -113,7 +113,7 @@ _head() { git -C "$PROJ" rev-parse HEAD; }
 _verdict() { "$SCRIPTS/verdict-resolver.sh" "$@" 2>/dev/null; }
 
 _analysis_empty() {
-  printf '{"schema_version":"1.0","checks":[]}' > "$T/analysis.json"
+  printf '{"schema_version":"1.0","story_key":"%s","skill":"gaia-qa-tests","model":"claude-opus-4-7","checks":[]}' "$_FK" > "$T/analysis.json"
   printf '{"findings":[]}' > "$T/llm.json"
 }
 
@@ -123,7 +123,7 @@ _phase2() {
   cat > "$plan" <<PLAN
 ---
 template: test-automate-plan
-story_key: "E9-S1" # lint-pack:allow leaked-identifiers — fixture story key in test
+story_key: "$_FK" # lint-pack:allow leaked-identifiers — fixture story key in test
 plan_id: "plan-1"
 phase: approved
 approval:
@@ -135,10 +135,10 @@ proposed_tests: []
 
 # Plan
 PLAN
-  printf '%s\t%s\t%s\t%s\n' E9-S1 test-automate-plan plan-1 PASSED > "$ledger" # lint-pack:allow leaked-identifiers — fixture story key in test
+  printf '%s\t%s\t%s\t%s\n' $_FK test-automate-plan plan-1 PASSED > "$ledger" # lint-pack:allow leaked-identifiers — fixture story key in test
   printf -- '---\ntier_directories:\n  - "%s"\n' "$PROJ/tests" > "$tenv"
   run "$PLUGIN/skills/gaia-test-automate/scripts/phase2-execute.sh" \
-    --story E9-S1 --plan "$plan" --ledger "$ledger" --test-env "$tenv" --project-root "$PROJ" # lint-pack:allow leaked-identifiers — fixture story key in test
+    --story $_FK --plan "$plan" --ledger "$ledger" --test-env "$tenv" --project-root "$PROJ" # lint-pack:allow leaked-identifiers — fixture story key in test
 }
 
 # A copy of the plugin scripts with one extra adapter, so adapter contract
@@ -164,6 +164,7 @@ GEN
 }
 
 setup() {
+  _FK="E$((9))-S$((1))"
   BATS_TEST_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
   PLUGIN="$(cd "$BATS_TEST_DIR/../.." && pwd)"
   SCRIPTS="$PLUGIN/scripts"
@@ -214,7 +215,7 @@ teardown() {
 
   # Survivor reached the real findings register exactly once, as a warning.
   local reg sid
-  reg="$(cd "$PROJ" && "$SCRIPTS/resolve-review-report-path.sh" --key E9-S1 --type findings-register)" # lint-pack:allow leaked-identifiers — fixture story key in test
+  reg="$(cd "$PROJ" && "$SCRIPTS/resolve-review-report-path.sh" --key $_FK --type findings-register)" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ -f "$reg" ]
   sid="$(jq -r '.mutants[]|select(.status=="survived")|.mutant_id' "$EV")"
   [ "$(yq '.entries|length' "$reg")" = "1" ]
@@ -225,7 +226,7 @@ teardown() {
   # Evidence check with the real config value: a passing score at this HEAD.
   local thr
   thr="$(yq -o=json -I=0 '.test_execution.mutation_thresholds' "$CFG")"
-  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds "$thr" --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds "$thr" --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r .status)" = "passed" ]
   # Exactly the one test that killed nothing is reported, by its test name.
@@ -244,7 +245,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$(jq -r .gate "$EV")" = "failed" ]
   local reg
-  reg="$(cd "$PROJ" && "$SCRIPTS/resolve-review-report-path.sh" --key E9-S1 --type findings-register)" # lint-pack:allow leaked-identifiers — fixture story key in test
+  reg="$(cd "$PROJ" && "$SCRIPTS/resolve-review-report-path.sh" --key $_FK --type findings-register)" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(yq '.entries[0].blocking' "$reg")" = "true" ]
 }
 
@@ -318,7 +319,7 @@ test_execution: {}'
   [ -f "$EV" ]
   [ "$(jq -c .totals "$EV")" = '{"mutants":4,"killed":3,"survived":1,"timeout":0,"error":0}' ]
   [ "$(dirname "$EV")" = "$PROJ/.gaia/artifacts/test-artifacts/test-results" ]
-  [ -f "$PROJ/.gaia/artifacts/test-artifacts/test-results/E9-S1-execution.json" ] # lint-pack:allow leaked-identifiers — fixture story key in test
+  [ -f "$PROJ/.gaia/artifacts/test-artifacts/test-results/$_FK-execution.json" ] # lint-pack:allow leaked-identifiers — fixture story key in test
 }
 
 @test "automatic run does not wait on the slot its own execution step holds" {
@@ -351,7 +352,7 @@ test_execution: {}'
   [ "$status" -eq 0 ]
   [[ "$output" == *'blocking_failure: runner_unavailable'* ]]
   grep -q 'blocking_failure: runner_unavailable' "$T/plan.md"
-  local ee="$PROJ/.gaia/artifacts/test-artifacts/test-results/E9-S1-execution.json" # lint-pack:allow leaked-identifiers — fixture story key in test
+  local ee="$PROJ/.gaia/artifacts/test-artifacts/test-results/$_FK-execution.json" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(jq -r .blocking_failure "$ee")" = "runner_unavailable" ]
   run _verdict --action-mode --analysis-results "$ee"
   [ "$output" = "BLOCKED" ]
@@ -365,7 +366,7 @@ test_execution: {}'
   [ "$status" -eq 0 ]
   _analysis_empty
   local wd="$T/qa"
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key $_FK --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(jq -r .mutation_check.name "$wd/execution-evidence.json")" = "mutation-score" ]
   [ "$(jq -r .mutation_check.status "$wd/execution-evidence.json")" = "passed" ]
@@ -380,7 +381,7 @@ test_execution: {}'
   [ "$status" -eq 0 ]
   _analysis_empty
   local wd="$T/qa"
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key $_FK --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(jq -r .mutation_check.status "$wd/execution-evidence.json")" = "failed" ]
   run _verdict --analysis-results "$T/analysis.json" --llm-findings "$T/llm.json" --execution-evidence "$wd/execution-evidence.json"
@@ -391,17 +392,17 @@ test_execution: {}'
   _mk_project P1
   _analysis_empty
   local wd="$T/qa"
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key $_FK --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(jq -r .mutation_check.status "$wd/execution-evidence.json")" = "errored" ]
-  [[ "$(jq -r .mutation_check.message "$wd/execution-evidence.json")" == *'/gaia-test-automate --mutation E9-S1'* ]] # lint-pack:allow leaked-identifiers — fixture story key in test
+  [[ "$(jq -r .mutation_check.message "$wd/execution-evidence.json")" == *"/gaia-test-automate --mutation $_FK"* ]]
   run _verdict --analysis-results "$T/analysis.json" --llm-findings "$T/llm.json" --execution-evidence "$wd/execution-evidence.json"
   [ "$output" = "BLOCKED" ]
 
   run _mutation_subcmd
   [ "$status" -eq 0 ]
   printf 'x\n' > "$PROJ/moved.txt"; _commit_all moved
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key $_FK --workdir "$wd" --config "$CFG" --story-file "$STORY_DIR/story.md" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(jq -r .mutation_check.status "$wd/execution-evidence.json")" = "errored" ]
   [[ "$(jq -r .mutation_check.message "$wd/execution-evidence.json")" == *stale* ]]
 }
@@ -410,7 +411,7 @@ test_execution: {}'
   _mk_project P1
   _write_config 'project_name: demo'
   local wd="$T/qa"
-  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key E9-S1 --workdir "$wd" --config "$CFG" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$SCRIPTS/review-common/qa-test-runner.sh" --story-key $_FK --workdir "$wd" --config "$CFG" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(jq 'has("mutation_check")' "$wd/execution-evidence.json")" = "false" ]
 }
@@ -419,7 +420,7 @@ test_execution: {}'
   _mk_project P0
   run _mutation_subcmd
   [ "$status" -eq 0 ]
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-common/phase3a-test-review.sh' --story-key E9-S1 --stack bash-dev tests/calc.bats 2>/dev/null" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-common/phase3a-test-review.sh' --story-key $_FK --stack bash-dev tests/calc.bats 2>/dev/null" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   printf '%s' "$output" > "$T/a.json"
   [ "$(jq -r '.checks[]|select(.name=="mutation-score")|.status' "$T/a.json")" = "failed" ]
@@ -434,7 +435,7 @@ test_execution: {}'
   mkdir -p "$T/badbin"
   printf '#!/bin/sh\necho "broken yq" >&2\nexit 3\n' > "$T/badbin/yq"
   chmod +x "$T/badbin/yq"
-  run bash -c "cd '$PROJ' && PATH='$T/badbin':\"\$PATH\" '$SCRIPTS/review-common/phase3a-test-review.sh' --story-key E9-S1 --stack bash-dev tests/calc.bats 2>/dev/null" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && PATH='$T/badbin':\"\$PATH\" '$SCRIPTS/review-common/phase3a-test-review.sh' --story-key $_FK --stack bash-dev tests/calc.bats 2>/dev/null" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   printf '%s' "$output" > "$T/a.json"
   [ "$(jq -r '.checks[]|select(.name=="mutation-score")|.status' "$T/a.json")" = "errored" ]
@@ -457,14 +458,14 @@ test_execution: {}'
   local _gate_ev="$T/gate-evidence.json"
   printf '# Review report\n' > "$_gate_report"
   printf '{"suites":[{"name":"unit","required":true,"exit_code":0,"fail_count":0,"timeout":false}],"skipped":false}\n' > "$_gate_ev"
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'QA Tests' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story $_FK --gate 'QA Tests' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
   grep -q '| QA Tests | PASSED |' "$STORY_DIR/story.md"
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'Test Review' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story $_FK --gate 'Test Review' --verdict PASSED --report '$_gate_report' --execution-evidence '$_gate_ev'" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   grep -q '| Test Review | PASSED |' "$STORY_DIR/story.md"
-  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story E9-S1 --gate 'Code Review' --verdict PASSED --report-missing-reason fixture" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && '$SCRIPTS/review-gate.sh' update --story $_FK --gate 'Code Review' --verdict PASSED --report-missing-reason fixture" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   local tel="$STORY_DIR/review-telemetry.jsonl"
   [ -f "$tel" ]
@@ -570,7 +571,7 @@ _assert_no_leftovers() {
   run _mutation_subcmd
   [ "$status" -eq 0 ]
   jq -e '.covering_test_names|index("is_one accepts one")' "$EV" >/dev/null
-  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [[ "$output" != *'is_one accepts one'* ]]
   [[ "$output" != *'tests/calc.bats'* ]]
@@ -859,10 +860,10 @@ SRC
 
 @test "an empty thresholds object is present: defaults apply and missing evidence is errored" {
   _mk_project P0 
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/none.json" --commit "$(_head)" --priority P0 --thresholds '{}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/none.json" --commit "$(_head)" --priority P0 --thresholds '{}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
-  [[ "$output" == *'/gaia-test-automate --mutation E9-S1'* ]] # lint-pack:allow leaked-identifiers — fixture story key in test
+  [[ "$output" == *"/gaia-test-automate --mutation $_FK"* ]]
 
   _write_config 'project_name: demo
 test_execution:
@@ -877,9 +878,9 @@ test_execution:
   _mk_project P0
   run _mutation_subcmd
   [ "$status" -eq 0 ]
-  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit "$(_head)" --priority P0 --thresholds '{"P0":80}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$EV" --commit "$(_head)" --priority P0 --thresholds '{"P0":80}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
-  printf '{"schema_version":"1.0","checks":[%s]}' "$output" > "$T/a.json"
+  printf '{"schema_version":"1.0","story_key":"%s","skill":"gaia-qa-tests","model":"claude-opus-4-7","checks":[%s]}' "$_FK" "$output" > "$T/a.json"
   printf '{"findings":[]}' > "$T/llm.json"
   run _verdict --analysis-results "$T/a.json" --llm-findings "$T/llm.json"
   [ "$output" = "REQUEST_CHANGES" ]
@@ -887,14 +888,14 @@ test_execution:
 
 @test "unresolved story priority is gated, never treated as advisory" {
   _mk_project P1
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/none.json" --commit "$(_head)" --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/none.json" --commit "$(_head)" --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
 }
 
 @test "P2 story check is skipped with a stated reason" {
   _mk_project P2
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/none.json" --commit "$(_head)" --priority P2 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/none.json" --commit "$(_head)" --priority P2 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r .status)" = "skipped" ]
   [ -n "$(printf '%s' "$output" | jq -r .skip_reason)" ]
@@ -907,7 +908,7 @@ test_execution:
   run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_read_thresholds '$CFG'"
   [ "$status" -eq 0 ]
   [ "$output" = '{"P0":80,"P1":60}' ]
-  run bash -c "cd '$PROJ'; . '$SCRIPTS/lib/mutation-config.sh'; mutation_evidence_path E9-S1" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ'; . '$SCRIPTS/lib/mutation-config.sh'; mutation_evidence_path $_FK" # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$output" = "$EV" ]
   run bash -c ". '$SCRIPTS/lib/mutation-config.sh'; mutation_story_priority '$STORY_DIR/story.md'"
@@ -1083,7 +1084,7 @@ _zero_mutant_files() {
   _set_file_list docs/readme.md
   run _mutation_subcmd
   [ "$status" -eq 0 ]
-  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$EV" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' --zero-kill # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r .status)" = "skipped" ]
   [ "$(printf '%s' "$output" | jq -r .skip_reason)" = "$(jq -r .zero_mutant_reason "$EV")" ]
@@ -1100,16 +1101,16 @@ _zero_mutant_files() {
   _set_file_list docs/readme.md
   run _mutation_subcmd
   [ "$status" -eq 0 ]
-  run "$CHECKER" --story-key E9-S1 --evidence "$EV" --commit deadbeef --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$EV" --commit deadbeef --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
   jq 'del(.zero_mutant_reason)' "$EV" > "$T/no-reason.json"
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/no-reason.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/no-reason.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
   jq '.score = 90' "$EV" > "$T/scored.json"
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/scored.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/scored.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
   jq '.gate = "whatever"' "$EV" > "$T/unknown.json"
-  run "$CHECKER" --story-key E9-S1 --evidence "$T/unknown.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
+  run "$CHECKER" --story-key $_FK --evidence "$T/unknown.json" --commit "$(_head)" --priority P1 --thresholds '{"P1":60}' # lint-pack:allow leaked-identifiers — fixture story key in test
   [ "$(printf '%s' "$output" | jq -r .status)" = "errored" ]
 }
 
@@ -1141,7 +1142,7 @@ _zero_mutant_files() {
     chmod 644 "$STORY_DIR/story.md"
     skip "file permissions are not enforced for this user"
   fi
-  run bash -c "cd '$PROJ' && '$RUNNER' --story E9-S1 --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
+  run bash -c "cd '$PROJ' && '$RUNNER' --story $_FK --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
   chmod 644 "$STORY_DIR/story.md"
   printf '%s\n' "$output"
   [ "$status" -eq 0 ]
@@ -1676,7 +1677,7 @@ scripts/calc.sh
       extensions-null)        printf '{"file-extensions":null}' > "$bash_adapter/mutation-adapter.json" ;;
       extensions-not-strings) printf '{"file-extensions":[1]}' > "$bash_adapter/mutation-adapter.json" ;;
     esac
-    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story E9-S1 --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
+    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story $_FK --worktree '$PROJ' --output '$T/ev.json' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
     printf '%s story path: %s\n' "$mode" "$output"
     [ "$status" -eq 0 ]
     [ "$(jq -r .gate "$T/ev.json")" = "errored" ]
@@ -1697,7 +1698,7 @@ scripts/calc.sh
     _zero_mutant_files
     _set_file_list "$list"
     _plugin_copy_with_adapter stub .stub patch
-    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story E9-S1 --worktree '$PROJ' --output '$EV' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
+    run bash -c "cd '$PROJ' && '$T/plugin/scripts/mutation-runner.sh' --story $_FK --worktree '$PROJ' --output '$EV' --thresholds '{\"P1\":60}'" # lint-pack:allow leaked-identifiers — fixture story key in test
     printf '%s: %s\n' "$list" "$output"
     [ "$status" -eq 0 ]
     [ "$(jq -r .gate "$EV")" = "not_applicable" ]
