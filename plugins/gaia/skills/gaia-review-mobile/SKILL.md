@@ -46,7 +46,7 @@ The persona is lazy-loaded by `load-stack-persona.sh` BEFORE fork dispatch — t
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-review-mobile [story-key]".
-- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug.
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
 - The story MUST be in `review` status. If not, fail with "story must be in review status before mobile review".
 - This skill is READ-ONLY. Do NOT attempt Write or Edit tools — the fork context allowlist enforces this.
 - Platform-irrelevant validators MUST be skipped silently (e.g., iOS validators skip on `platforms: [android]`). Skipped validators do NOT contribute to the verdict.
@@ -91,7 +91,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - Resolve config via `resolve-config.sh` (already invoked by `setup.sh`).
 - Read `platforms[]` and `compliance[]` from project-config.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. For mobile review the canonical stack name is `mobile-dev` (Talia). Forward the persona payload + canonical stack name into the fork.
-- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Fail on zero or multiple matches.
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). Fail on zero or multiple matches. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any write.
 
 ### Phase 2 — Story Gate
 
