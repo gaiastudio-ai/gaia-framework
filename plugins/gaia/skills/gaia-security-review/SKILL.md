@@ -29,7 +29,8 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 ## Critical Rules
 
 - A story key argument MUST be provided. If missing, fail fast with "usage: /gaia-security-review [story-key]".
-- The story file MUST exist at `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. Use the canonical glob to resolve regardless of title slug. If zero matches, fail with "story file not found for key {story_key}".
+- The story file MUST be resolvable via the shared `scripts/resolve-story-file.sh` helper which honors the canonical-first contract: `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. If the helper exits 1 (zero matches), fail with "story file not found for key {story_key}". Do NOT inline-hardcode the `docs/` glob — that breaks on `.gaia/`-canonical projects. After resolving, parse the resolved story file's YAML frontmatter `key:` field and compare it to the explicit story-key argument. If they differ, halt immediately before writing any report, gate row, or register entry.
+- **Story worktree (optional input).** When `--worktree <path>` is passed (by the orchestrator via `/gaia-run-all-reviews`), set `STORY_WORKTREE_PATH` to its value and use it for `--sha` and `--repo` in the `review-gate.sh update` call. When running standalone without `--worktree`, the gate-write block resolves the worktree deterministically (see the gate-write section below). `--worktree` must be the LAST option in the args string; its value is the remainder of the string (supports paths with spaces).
 - The story MUST be in `review` status. If not, fail with "story must be in review status before security review".
 - This skill is READ-ONLY in the fork. Do NOT attempt to call Write or Edit — the allowlist enforces this. Persistence is routed through the parent context.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
@@ -136,7 +137,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 ### Phase 1 — Setup
 
 - If no story key was provided as an argument, fail with: "usage: /gaia-security-review [story-key]"
-- Resolve the story file path using the canonical glob: `.gaia/artifacts/implementation-artifacts/{story_key}-*.md`. If zero matches: fail. If multiple matches: fail with "multiple story files matched key {story_key}".
+- Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper (three-tier: per-story nested, legacy nested, legacy flat fallback). Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode a story-file glob. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any write.
 - Read the resolved story file; parse YAML frontmatter to extract `status`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`).
 - **Persona resolution via `agent-overlay.sh` (V2).** In the parent context, resolve the security reviewer persona via the shared overlay:
@@ -350,13 +351,47 @@ Phase 6 is the **persistence layer**. The fork CANNOT write — persistence is p
 
 **Re-run handling.** Parent **overwrites** the existing review file on re-run (latest verdict wins). No append, no version-suffix. The `review-gate.sh` row update is the source of truth for verdict history if needed.
 
-**Gate row update.** Parent invokes the individual gate update (single-line form): `review-gate.sh update --story "{story_key}" --gate "Security Review" --verdict "{PASSED|FAILED}"`. Equivalent multi-line form for readability:
+**Gate row update.** Parent invokes the individual gate update with the story worktree's HEAD SHA and the absolute report path. When `--worktree <path>` was passed by the orchestrator, `STORY_WORKTREE_PATH` is set to that value. When running standalone (no `--worktree`), resolve the worktree deterministically: (1) the dev-story checkpoint `worktree_path` for this story key, (2) the single `git worktree list --porcelain` entry whose branch is `refs/heads/feat/{story_key}-…`, (3) refuse with a clear message. If `STORY_WORKTREE_PATH` is unset, empty, or does not resolve to a valid commit after resolution, the gate write MUST fail explicitly — never fall back silently to the current working directory or `PROJECT_PATH`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update \
-  --story "{story_key}" \
-  --gate "Security Review" \
-  --verdict "{PASSED|FAILED}"
+_wt_arg="{worktree}"   # value of --worktree from this skill's arguments; empty when not given
+unset STORY_WORKTREE_PATH
+if [ -n "$_wt_arg" ]; then
+  [ -d "$_wt_arg" ] || { echo "--worktree path does not exist or is not a directory: $_wt_arg" >&2; exit 1; }
+  git -C "$_wt_arg" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "--worktree path is not a git work tree: $_wt_arg" >&2; exit 1; }
+  _wt_branch="$(git -C "$_wt_arg" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "--worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+  STORY_WORKTREE_PATH="$_wt_arg"
+else
+  _wt_path="$("${CLAUDE_PLUGIN_ROOT}/skills/gaia-dev-story/scripts/review-order.sh" find-worktree --story-key "{story_key}" 2>/dev/null)" \
+    || { echo "cannot resolve story worktree for {story_key} — pass --worktree or ensure a feat/{story_key}-* worktree exists" >&2; exit 1; }
+  [ -d "$_wt_path" ] || { echo "resolved worktree path does not exist: $_wt_path" >&2; exit 1; }
+  git -C "$_wt_path" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "resolved worktree is not a git work tree: $_wt_path" >&2; exit 1; }
+  _wt_branch="$(git -C "$_wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  case "$_wt_branch" in feat/{story_key}-*) ;; *) echo "resolved worktree branch '$_wt_branch' does not match expected feat/{story_key}-*" >&2; exit 1 ;; esac
+  STORY_WORKTREE_PATH="$_wt_path"
+fi
+# Derive the project root by walking up from the worktree (canonicalised).
+_wt_abs="$(cd "$STORY_WORKTREE_PATH" 2>/dev/null && pwd -P)" \
+  || { echo "cannot resolve worktree path to an absolute directory: $STORY_WORKTREE_PATH" >&2; exit 1; }
+PROJECT_ROOT="$_wt_abs"
+_walk_n=0
+while [ "$PROJECT_ROOT" != "/" ] && [ "$_walk_n" -lt 64 ]; do
+  [ -d "$PROJECT_ROOT/.gaia/config" ] && break
+  PROJECT_ROOT="$(dirname "$PROJECT_ROOT")"
+  _walk_n=$((_walk_n + 1))
+done
+[ -d "$PROJECT_ROOT/.gaia/config" ] \
+  || { echo "no .gaia/config found above the story worktree — refusing to record the gate" >&2; exit 1; }
+PROJECT_ROOT="$PROJECT_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh" "{story_key}" >/dev/null 2>&1 \
+  || { echo "story file for {story_key} not found under project root $PROJECT_ROOT — wrong project?" >&2; exit 1; }
+_sha="$(git -C "${STORY_WORKTREE_PATH:?STORY_WORKTREE_PATH must be set to the story worktree}" rev-parse --verify HEAD^{commit})" \
+  && [ "${#_sha}" -eq 40 ] \
+  || { echo "cannot resolve the story worktree HEAD from STORY_WORKTREE_PATH — refusing to record the gate" >&2; exit 1; }
+PROJECT_ROOT="$PROJECT_ROOT" ${CLAUDE_PLUGIN_ROOT}/scripts/review-gate.sh update --story "{story_key}" --gate "Security Review" \
+  --verdict "{PASSED|FAILED}" --sha "$_sha" --repo "$STORY_WORKTREE_PATH" --report "$REPORT_PATH"
 ```
 
 Mapping per Phase 5 table. Confirm exit code 0.
