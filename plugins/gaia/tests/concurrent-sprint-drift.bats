@@ -33,7 +33,7 @@ sprint:
   max_concurrent_active: 2
 ci_cd:
   promotion_chain:
-    - target: staging
+    - branch: staging
 stacks:
   - name: bash
     path: "."
@@ -65,6 +65,10 @@ MD
     echo '# lifecycle' > plugins/gaia/scripts/lifecycle-event.sh
     git add -A
     git commit -q -m "initial"
+    # Create origin refs so base-branch fallback works when the script
+    # cannot read the config key (before the branch-key fix lands).
+    git update-ref refs/remotes/origin/staging HEAD
+    git update-ref refs/remotes/origin/HEAD HEAD
   )
 
   export PROJECT_ROOT="$TEST_DIR"
@@ -80,6 +84,18 @@ MD
 }
 
 teardown() {
+  # Force-remove linked worktrees before deleting the test tree.
+  if [ -d "${GIT_DIR:-}" ]; then
+    (
+      cd "$GIT_DIR" 2>/dev/null || exit 0
+      git worktree list --porcelain 2>/dev/null | \
+        awk '/^worktree / { print substr($0, 10) }' | \
+        while IFS= read -r _wt; do
+          [ "$_wt" = "$GIT_DIR" ] && continue
+          git worktree remove --force "$_wt" 2>/dev/null || true
+        done
+    ) 2>/dev/null || true
+  fi
   rm -rf "$TEST_DIR" 2>/dev/null || true
 }
 
@@ -127,6 +143,14 @@ author: "Test"
 | # | Type | Severity | Finding | Suggested Action |
 |---|------|----------|---------|-----------------|
 STORY
+}
+
+# Standard two-sprint drift fixture (concurrent mode).
+# Sets DRIFT_SF to the first sprint's story file path.
+_setup_drift_pair() {
+  _create_sprint "sprint-900" "active" "E900-S1:E900:gaia-public/plugins/gaia/scripts/sprint-state.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _create_sprint "sprint-901" "active" "E901-S1:E901:gaia-public/plugins/gaia/scripts/independence-check.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  DRIFT_SF="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
 }
 
 # ---- AC2: drift halt from git diff ----
@@ -332,6 +356,245 @@ YAML
   run bash "$GATE_SCRIPT" edit --story "$sf" \
     --set "predicted_touch_set=gaia-public/plugins/gaia/scripts/*.sh"
   [ "$status" -ne 0 ]
+}
+
+# ---- worktree path prefix: linked worktrees must use main checkout name ----
+
+@test "linked worktree resolves main checkout name as path prefix" {
+  _setup_drift_pair
+
+  # Create a linked worktree under TEST_DIR (cleaned up by teardown).
+  local wt_dir="$TEST_DIR/linked-worktree"
+  ( cd "$GIT_DIR" && git worktree add -q -b test-branch "$wt_dir" staging )
+
+  # Modify an in-set file in the linked worktree.
+  echo '# modified' >> "$wt_dir/plugins/gaia/scripts/sprint-state.sh"
+
+  # Run drift-detect from the linked worktree.
+  run bash -c "cd '$wt_dir' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF'"
+
+  # Path prefix must be the main checkout name ("gaia-public"), not the
+  # worktree basename.  With the correct prefix the modified file is
+  # inside the touch-set, so no drift should be reported.
+  [ "$status" -eq 0 ]
+}
+
+@test "linked worktree drift reports only files outside predicted touch-set" {
+  _setup_drift_pair
+
+  local wt_dir="$TEST_DIR/linked-worktree"
+  ( cd "$GIT_DIR" && git worktree add -q -b test-branch "$wt_dir" staging )
+
+  # Modify an in-set file AND an out-of-set file.
+  echo '# in-set change' >> "$wt_dir/plugins/gaia/scripts/sprint-state.sh"
+  echo '# out-of-set change' >> "$wt_dir/plugins/gaia/scripts/resolve-config.sh"
+
+  run bash -c "cd '$wt_dir' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF'"
+
+  # Drift detected for the out-of-set file.
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"resolve-config"* ]]
+  # The in-set file must NOT appear in drift output (prefix matched correctly).
+  [[ "$output" != *"sprint-state"* ]]
+}
+
+# ---- base branch resolution: branch key vs legacy target key ----
+
+@test "branch key in promotion chain config used as drift base" {
+  _setup_drift_pair
+
+  # Remove origin/HEAD so the ONLY resolution path is the config key.
+  ( cd "$GIT_DIR" && git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true )
+
+  # Base fixture already has "branch: staging"; origin/staging exists.
+  ( cd "$GIT_DIR" && echo '# outside' >> plugins/gaia/scripts/resolve-config.sh )
+
+  run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF'"
+
+  # Exit 2 means the base branch was unresolvable — the script cannot
+  # read the "branch:" key.  Any other non-zero means drift detection ran.
+  [ "$status" -ne 2 ]
+  [[ "$output" == *"resolve-config"* ]]
+}
+
+@test "legacy target key used with deprecation warning when branch key absent" {
+  # Override config: target only, no branch key.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "drift-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 2
+ci_cd:
+  promotion_chain:
+    - target: staging
+stacks:
+  - name: bash
+    path: "."
+YAML
+  _setup_drift_pair
+
+  # Remove origin/HEAD so only the config key resolves the base.
+  ( cd "$GIT_DIR" && git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true )
+
+  ( cd "$GIT_DIR" && echo '# outside' >> plugins/gaia/scripts/resolve-config.sh )
+
+  # Merge stdout+stderr so the deprecation warning is captured.
+  run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF' 2>&1"
+
+  # Base must resolve via the legacy target key.
+  [ "$status" -ne 2 ]
+  # A deprecation warning must be emitted when falling back to target.
+  [[ "$output" == *"deprecated"* ]] || [[ "$output" == *"DEPRECATION"* ]]
+}
+
+@test "branch key takes precedence when both keys present in promotion chain" {
+  # Config with both branch and target; branch should win.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "drift-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 2
+ci_cd:
+  promotion_chain:
+    - branch: staging
+      target: nonexistent
+stacks:
+  - name: bash
+    path: "."
+YAML
+  _setup_drift_pair
+
+  # Remove origin/HEAD so config is the only resolution path.
+  ( cd "$GIT_DIR" && git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true )
+
+  ( cd "$GIT_DIR" && echo '# outside' >> plugins/gaia/scripts/resolve-config.sh )
+
+  # Merge stdout+stderr so we can verify no deprecation warning appears.
+  run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF' 2>&1"
+
+  # branch: staging should resolve (origin/staging exists); exit 2 means
+  # the script read target: nonexistent instead (unresolvable).
+  [ "$status" -ne 2 ]
+  # No deprecation warning — branch key was present and used.
+  [[ "$output" != *"deprecated"* ]]
+  [[ "$output" != *"DEPRECATION"* ]]
+}
+
+@test "unresolvable branch key does not fall through to target key" {
+  # branch: is set but points to a non-existent ref.  The script must
+  # NOT fall back to target: — it should proceed to origin/HEAD and
+  # then fail-closed.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "drift-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 2
+ci_cd:
+  promotion_chain:
+    - branch: nonexistent
+      target: staging
+stacks:
+  - name: bash
+    path: "."
+YAML
+  _setup_drift_pair
+
+  ( cd "$GIT_DIR" && git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true )
+  ( cd "$GIT_DIR" && echo '# outside' >> plugins/gaia/scripts/resolve-config.sh )
+
+  run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF' 2>&1"
+
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"deprecated"* ]]
+  [[ "$output" != *"DEPRECATION"* ]]
+}
+
+@test "key-like substring in another yaml key does not resolve as branch or target" {
+  # "target_branch:" contains "branch:" as a substring.  Anchored key
+  # matching must reject it; neither "branch" nor "target" should match.
+  cat > "$CONFIG_DIR/project-config.yaml" <<YAML
+project_name: "drift-test"
+project_root: "$TEST_DIR"
+project_path: "$TEST_DIR/app"
+memory_path: "$TEST_DIR/.gaia/memory"
+checkpoint_path: "$TEST_DIR/.gaia/memory/checkpoints"
+installed_path: "$TEST_DIR/_gaia"
+framework_version: 1.200.0
+date: 1970-01-01
+sprint:
+  max_concurrent_active: 2
+ci_cd:
+  promotion_chain:
+    - target_branch: staging
+stacks:
+  - name: bash
+    path: "."
+YAML
+  _setup_drift_pair
+
+  ( cd "$GIT_DIR" && git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true )
+
+  run bash -c "cd '$GIT_DIR' && bash '$DRIFT_SCRIPT' --story '$DRIFT_SF'"
+
+  [ "$status" -eq 2 ]
+}
+
+# ---- checkout with .git file (separate-git-dir / submodule layout) ----
+
+@test "separate-git-dir checkout uses own folder name as path prefix" {
+  # A --separate-git-dir checkout stores .git as a file (gitdir pointer).
+  # The common-dir parent is the external git dir, NOT the checkout, so
+  # the path prefix must fall back to the toplevel basename.
+  local ext_git="$TEST_DIR/ext-git-dir"
+  local sep_dir="$TEST_DIR/sep-checkout"
+  mkdir -p "$ext_git" "$sep_dir"
+  (
+    cd "$sep_dir"
+    git init -q --separate-git-dir "$ext_git"
+    git config user.email "test@test.local"
+    git config user.name "Test"
+    git checkout -q -b staging
+    mkdir -p plugins/gaia/scripts
+    echo '# sprint-state' > plugins/gaia/scripts/sprint-state.sh
+    echo '# resolve' > plugins/gaia/scripts/resolve-config.sh
+    git add -A
+    git commit -q -m "initial"
+    git update-ref refs/remotes/origin/staging HEAD
+    git update-ref refs/remotes/origin/HEAD HEAD
+  )
+
+  # Create sprint fixtures with touch paths prefixed by the checkout name.
+  _create_sprint "sprint-900" "active" "E900-S1:E900:sep-checkout/plugins/gaia/scripts/sprint-state.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  _create_sprint "sprint-901" "active" "E901-S1:E901:sep-checkout/plugins/gaia/scripts/resolve-config.sh"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+  local sf="$IMPL_DIR/epic-e900/E900-S1-test-story/story.md"  # lint-pack:allow leaked-identifiers — synthetic fixture story key
+
+  # Modify only the in-set file.
+  echo '# modified' >> "$sep_dir/plugins/gaia/scripts/sprint-state.sh"
+
+  run bash -c "cd '$sep_dir' && PROJECT_ROOT='$TEST_DIR' bash '$DRIFT_SCRIPT' --story '$sf'"
+
+  # With a correct prefix ("sep-checkout"), the modified file is in-set
+  # and no drift is reported.  A wrong prefix (e.g. the external git
+  # dir's parent) would flag every file.
+  [ "$status" -eq 0 ]
 }
 
 # ---- AC9: warm cache performance (added by user ruling) ----
