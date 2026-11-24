@@ -8,6 +8,11 @@
 # Usage:
 #   ci-junit-fetch.sh --repo <code-tree> --out <dir>
 #
+# Environment:
+#   CJF_MAX_ARTIFACTS — maximum number of artifact downloads per
+#     invocation (default 50).  Must be a positive integer; invalid
+#     values fall back to the default with a warning.
+#
 # Exit codes:
 #   0 — evidence fetched (run-records.json and JUnit XML in --out)
 #   1 — caller / argument error
@@ -27,6 +32,27 @@ _cjf_unavailable() {
   exit 2
 }
 
+# _cjf_glob_to_regex — convert a simple glob pattern to a regex.
+# Supports * (zero or more characters) and ? (single character).
+# All other regex metacharacters are escaped to match literally.
+# shellcheck disable=SC1003
+_cjf_glob_to_regex() {
+  local glob="$1"
+  local i=0 c="" regex=""
+  while [ "$i" -lt "${#glob}" ]; do
+    c="${glob:$i:1}"
+    case "$c" in
+      '*') regex="${regex}.*" ;;
+      '?') regex="${regex}." ;;
+      '.'|'+'|'^'|'$'|'{'|'}'|'('|')'|'|'|'['|']'|\\)
+        regex="${regex}\\${c}" ;;
+      *) regex="${regex}${c}" ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "$regex"
+}
+
 # _cjf_resolve_ci_provider — read ci_platform.provider from config.
 # Prints the provider string. Returns 1 when absent.
 _cjf_resolve_ci_provider() {
@@ -38,6 +64,71 @@ _cjf_resolve_ci_provider() {
     return 1
   fi
   printf '%s\n' "$provider"
+}
+
+# _cjf_resolve_artifact_pattern — read ci_cd.junit_artifact_pattern
+# from project-config.yaml.  Returns the pattern on stdout (empty when
+# absent or unreadable).  Uses the framework path helper (gaia-paths.sh)
+# as the single source for config-dir resolution — no hard-coded paths.
+_cjf_resolve_artifact_pattern() {
+  local config_file=""
+  local paths_lib="$SCRIPT_DIR/lib/gaia-paths.sh"
+
+  if [ ! -f "$paths_lib" ]; then
+    _cjf_log "warning: gaia-paths.sh not found; config pattern unavailable"
+    return 0
+  fi
+
+  # Source in a subshell so gaia-paths.sh side-effects (exported vars,
+  # source guard, potential die on metachar rejection) stay contained.
+  config_file="$(
+    # Reset the idempotent source guard so the helper re-evaluates
+    # inside this subshell rather than returning as a cached no-op.
+    _GAIA_PATHS_LOADED=0
+
+    # Propagate PROJECT_ROOT (preferred by resolve-config.sh) into
+    # the env var that gaia-paths.sh consults for project-root
+    # resolution, keeping both discovery paths consistent.
+    if [ -n "${PROJECT_ROOT:-}" ]; then
+      CLAUDE_PROJECT_ROOT="$PROJECT_ROOT"
+      export CLAUDE_PROJECT_ROOT
+    fi
+
+    # shellcheck disable=SC1090
+    if source "$paths_lib" 2>/dev/null; then
+      printf '%s' "${GAIA_CONFIG_DIR:-}/project-config.yaml"
+    else
+      exit 1
+    fi
+  )" || {
+    _cjf_log "warning: gaia-paths.sh failed to source; config pattern unavailable"
+    return 0
+  }
+
+  if [ -z "$config_file" ] || [ ! -f "$config_file" ]; then
+    return 0
+  fi
+
+  # Read ci_cd.junit_artifact_pattern — yq preferred, awk fallback.
+  # Values are never spliced into the program string.
+  local val=""
+  if command -v yq >/dev/null 2>&1; then
+    val="$(yq -r '.ci_cd.junit_artifact_pattern // ""' "$config_file" 2>/dev/null)" || val=""
+  else
+    val="$(awk '
+      /^ci_cd:/ { in_ci=1; next }
+      in_ci && /^[^ ]/ { in_ci=0 }
+      in_ci && /junit_artifact_pattern:/ {
+        sub(/.*junit_artifact_pattern:[ \t]*/, "")
+        gsub(/^["'"'"']|["'"'"']$/, "")
+        print
+        exit
+      }
+    ' "$config_file" 2>/dev/null)" || val=""
+  fi
+
+  if [ "$val" = "null" ]; then val=""; fi
+  printf '%s' "$val"
 }
 
 # _cjf_is_junit_xml — check if a file is a JUnit XML file.
@@ -102,9 +193,20 @@ _cjf_fetch_github_actions() {
   head_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null)" || \
     _cjf_die 1 "could not resolve HEAD in $repo"
 
+  # Derive owner/repo from the code tree's origin remote, computed once
+  # before any gh call.  Used as --repo on gh run list / gh run download.
+  # gh api has no --repo flag; it uses an explicit repos/<owner>/<repo>/…
+  # endpoint path instead.
+  local owner_repo
+  owner_repo="$(git -C "$repo" remote get-url origin 2>/dev/null \
+    | sed -E 's|.*github\.com[:/]||; s|\.git$||')" || true
+  if [ -z "$owner_repo" ]; then
+    _cjf_unavailable "could not determine owner/repo from origin remote"
+  fi
+
   # List runs for this commit
   local runs_json
-  runs_json="$(gh run list --commit "$head_sha" \
+  runs_json="$(gh run list --repo "$owner_repo" --commit "$head_sha" \
     --json databaseId,url,headSha,status,conclusion,attempt,startedAt,updatedAt \
     2>/dev/null)" || _cjf_unavailable "gh run list failed for commit $head_sha"
 
@@ -123,6 +225,33 @@ _cjf_fetch_github_actions() {
     _cjf_unavailable "CI not complete for head commit"
   fi
 
+  # Resolve configurable artifact-name pattern (additive with default).
+  local artifact_pattern
+  artifact_pattern="$(_cjf_resolve_artifact_pattern)" || artifact_pattern=""
+
+  # Build the jq name-match regex: always includes the default "junit"
+  # (case-insensitive substring match).  When a custom glob pattern is
+  # configured, it is converted to regex and ORed in so both the default
+  # and custom names match.
+  local name_regex="junit"
+  if [ -n "$artifact_pattern" ]; then
+    local lc_pattern pattern_regex
+    lc_pattern="$(printf '%s' "$artifact_pattern" | tr '[:upper:]' '[:lower:]')"
+    pattern_regex="$(_cjf_glob_to_regex "$lc_pattern")"
+    name_regex="junit|${pattern_regex}"
+  fi
+
+  # Download bound (defense against runaway artifact downloads).
+  local max_artifacts="${CJF_MAX_ARTIFACTS:-50}"
+  case "$max_artifacts" in
+    ''|*[!0-9]*|0)
+      _cjf_log "CJF_MAX_ARTIFACTS='$max_artifacts' is not a positive integer; using default 50"
+      max_artifacts=50
+      ;;
+  esac
+  local artifacts_downloaded=0
+  local bound_warned=false
+
   # Iterate runs and find JUnit artifacts
   local run_records="[]"
   local found_junit=false
@@ -132,6 +261,11 @@ _cjf_fetch_github_actions() {
   private_tmp="$(mktemp -d)"
 
   while [ "$i" -lt "$completed_count" ]; do
+    # Stop processing runs once the download bound is reached.
+    if [ "$artifacts_downloaded" -ge "$max_artifacts" ]; then
+      break
+    fi
+
     local run
     run="$(printf '%s' "$completed_json" | jq -c --argjson idx "$i" '.[$idx]')"
     local run_id run_url run_head_sha run_attempt run_conclusion run_started run_updated
@@ -161,16 +295,8 @@ _cjf_fetch_github_actions() {
         ;;
     esac
 
-    # List artifacts for this run
-    local owner_repo
-    owner_repo="$(git -C "$repo" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||')" || true
-
-    if [ -z "$owner_repo" ]; then
-      _cjf_log "could not determine owner/repo from remote"
-      i=$((i + 1))
-      continue
-    fi
-
+    # List artifacts for this run (gh api has no --repo flag; the
+    # owner/repo is embedded in the endpoint path instead).
     local artifacts_json
     artifacts_json="$(gh api "repos/${owner_repo}/actions/runs/${run_id}/artifacts" \
       --jq '.artifacts' 2>/dev/null)" || {
@@ -184,22 +310,46 @@ _cjf_fetch_github_actions() {
       continue
     fi
 
-    # Find artifacts whose name contains "junit" (case-insensitive)
-    local junit_artifacts
+    # Find artifacts whose name matches the default or configured pattern
+    # (case-insensitive substring match).  The regex is passed via --arg
+    # so no value is spliced into the jq program.
+    local junit_artifacts jq_err="${private_tmp}/jq-err"
     junit_artifacts="$(printf '%s' "$artifacts_json" | \
-      jq -r '[.[] | select(.name | ascii_downcase | test("junit"))] | .[] | .name')" || true
+      jq -r --arg re "$name_regex" \
+        '[.[] | select(.name | ascii_downcase | test($re))] | .[] | .name' 2>"$jq_err")" || {
+      if [ -s "$jq_err" ]; then
+        _cjf_log "warning: regex error for configured pattern '${artifact_pattern}'; falling back to default junit match"
+      fi
+      junit_artifacts="$(printf '%s' "$artifacts_json" | \
+        jq -r --arg re "junit" \
+          '[.[] | select(.name | ascii_downcase | test($re))] | .[] | .name' 2>/dev/null)" || true
+    }
+    rm -f "$jq_err"
 
     if [ -z "$junit_artifacts" ]; then
       i=$((i + 1))
       continue
     fi
 
-    # Download each JUnit artifact
+    # Download each matching artifact
     while IFS= read -r artifact_name; do
       [ -n "$artifact_name" ] || continue
+
+      # Enforce download bound
+      if [ "$artifacts_downloaded" -ge "$max_artifacts" ]; then
+        if [ "$bound_warned" = "false" ]; then
+          _cjf_log "artifact bound reached: limited to $max_artifacts downloads; skipping remaining matches"
+          bound_warned=true
+        fi
+        break
+      fi
+
+      artifacts_downloaded=$((artifacts_downloaded + 1))
+
       local dl_dir="$private_tmp/run-${run_id}/${artifact_name}"
       mkdir -p "$dl_dir"
-      if ! gh run download "$run_id" --name "$artifact_name" --dir "$dl_dir" 2>/dev/null; then
+      if ! gh run download "$run_id" --repo "$owner_repo" \
+           --name "$artifact_name" --dir "$dl_dir" 2>/dev/null; then
         _cjf_log "download failed: run=$run_id artifact=$artifact_name"
         continue
       fi
@@ -213,6 +363,8 @@ _cjf_fetch_github_actions() {
           dest_name="run-${run_id}-$(basename "$xml_file")"
           cp "$xml_file" "$out_dir/$dest_name"
           found_junit=true
+        else
+          _cjf_log "discarded non-JUnit file: $(basename "$xml_file")"
         fi
       done < <(find "$dl_dir" -name '*.xml' -type f 2>/dev/null)
     done <<< "$junit_artifacts"

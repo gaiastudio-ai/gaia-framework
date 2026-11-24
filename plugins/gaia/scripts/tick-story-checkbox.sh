@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# tick-story-checkbox.sh — sanctioned writer that ticks a single task or
-# subtask checkbox in a story file's "## Tasks / Subtasks" section.
+# tick-story-checkbox.sh — sanctioned writer that ticks a single task,
+# subtask, AC, or edge-case AC checkbox in a story file.
 #
 # Usage:
 #   tick-story-checkbox.sh --file <story.md> --task <N> [--subtask <M>]
 #   tick-story-checkbox.sh --file <story.md> --ac <N>
+#   tick-story-checkbox.sh --file <story.md> --ac-ec <N>
+#
+# Section targeting:
+#   --task / --subtask  targets "## Tasks / Subtasks" (or bare "## Tasks")
+#   --ac                targets "## Acceptance Criteria"
+#   --ac-ec             targets "## Acceptance Criteria"
 #
 # Supported task formats (all matched case-insensitively for the label word):
 #   - [ ] Task N -- ...         (plain)
@@ -21,20 +27,25 @@
 #   - [ ] N.M: ...              (bare number)
 #   - [ ] N.M ...               (bare number, no colon)
 #   - [ ] **N.M:** ...          (bold bare number)
+#   - [ ] TN.M ...              (T-prefix shorthand, plain or bold)
+#
+# Supported edge-case criterion formats (--ac-ec):
+#   - [ ] AC-EC<N>: ...         (plain)
+#   - [ ] **AC-EC<N>:** ...     (bold)
 #
 # Guarantees:
 #   - Only the targeted checkbox line is modified ([ ] -> [x]).
 #   - Lines outside the targeted section are never touched.
 #   - Already-ticked lines are a no-op (exit 0).
-#   - Empty section (no checkboxes at all) is a no-op (exit 0).
+#   - Empty or missing section exits non-zero (no silent no-op).
 #   - Atomic write via temp file + mv (no partial writes).
 #   - Concurrent-safe via flock / ln(2) fallback locking.
 #   - Symlinked paths are resolved before writing.
 #   - Bash 3.2 compatible (no associative arrays, no mapfile).
 #
 # Exit codes:
-#   0  success (ticked, already ticked, or section empty)
-#   1  usage error, missing file, or section has checkboxes but none matched
+#   0  success (ticked or already ticked)
+#   1  usage error, missing file, empty/missing section, or no matching checkbox
 
 set -euo pipefail
 LC_ALL=C; export LC_ALL
@@ -57,10 +68,12 @@ STORY_FILE=""
 TASK_NUM=""
 SUBTASK_NUM=""
 AC_NUM=""
+AC_EC_NUM=""
 
 _usage() {
   printf 'Usage: %s --file <story.md> --task <N> [--subtask <M>]\n' "$(basename "$0")" >&2
   printf '       %s --file <story.md> --ac <N>\n' "$(basename "$0")" >&2
+  printf '       %s --file <story.md> --ac-ec <N>\n' "$(basename "$0")" >&2
   exit 1
 }
 
@@ -70,6 +83,7 @@ while [ $# -gt 0 ]; do
     --task)    shift; TASK_NUM="${1:-}"; shift ;;
     --subtask) shift; SUBTASK_NUM="${1:-}"; shift ;;
     --ac)      shift; AC_NUM="${1:-}"; shift ;;
+    --ac-ec)   shift; AC_EC_NUM="${1:-}"; shift ;;
     --help|-h) _usage ;;
     *) printf 'tick-story-checkbox: unknown argument: %s\n' "$1" >&2; _usage ;;
   esac
@@ -96,13 +110,17 @@ if [ -L "$STORY_FILE" ]; then
   fi
 fi
 
-# Exactly one of (--task [--subtask]) or (--ac) must be given.
+# Exactly one of (--task [--subtask]), (--ac), or (--ac-ec) must be given.
 if [ -n "$AC_NUM" ] && [ -n "$TASK_NUM" ]; then
   printf 'tick-story-checkbox: --ac and --task are mutually exclusive\n' >&2
   exit 1
 fi
-if [ -z "$AC_NUM" ] && [ -z "$TASK_NUM" ]; then
-  printf 'tick-story-checkbox: --task or --ac is required\n' >&2
+if [ -n "$AC_EC_NUM" ] && { [ -n "$TASK_NUM" ] || [ -n "$SUBTASK_NUM" ] || [ -n "$AC_NUM" ]; }; then
+  printf 'tick-story-checkbox: --ac-ec and --task/--subtask/--ac are mutually exclusive\n' >&2
+  exit 1
+fi
+if [ -z "$AC_NUM" ] && [ -z "$TASK_NUM" ] && [ -z "$AC_EC_NUM" ]; then
+  printf 'tick-story-checkbox: --task, --ac, or --ac-ec is required\n' >&2
   exit 1
 fi
 
@@ -114,18 +132,18 @@ _is_positive_int() {
   esac
 }
 
-if [ -n "$TASK_NUM" ] && ! _is_positive_int "$TASK_NUM"; then
-  printf 'tick-story-checkbox: --task must be a positive integer, got: %s\n' "$TASK_NUM" >&2
-  exit 1
-fi
-if [ -n "$SUBTASK_NUM" ] && ! _is_positive_int "$SUBTASK_NUM"; then
-  printf 'tick-story-checkbox: --subtask must be a positive integer, got: %s\n' "$SUBTASK_NUM" >&2
-  exit 1
-fi
-if [ -n "$AC_NUM" ] && ! _is_positive_int "$AC_NUM"; then
-  printf 'tick-story-checkbox: --ac must be a positive integer, got: %s\n' "$AC_NUM" >&2
-  exit 1
-fi
+_require_positive_int() {
+  local flag="$1" val="$2"
+  if [ -n "$val" ] && ! _is_positive_int "$val"; then
+    printf 'tick-story-checkbox: %s must be a positive integer, got: %s\n' "$flag" "$val" >&2
+    exit 1
+  fi
+}
+
+_require_positive_int "--task" "$TASK_NUM"
+_require_positive_int "--subtask" "$SUBTASK_NUM"
+_require_positive_int "--ac" "$AC_NUM"
+_require_positive_int "--ac-ec" "$AC_EC_NUM"
 
 # --- Locking ---
 # Source the lock helper if available; if not, degrade to no locking
@@ -171,13 +189,19 @@ trap '_release' EXIT
 # Subtask matching handles (N.M = task_num.subtask_num):
 #   "Subtask N.M" — explicit label, followed by non-digit
 #   "N.M"         — bare number, followed by non-digit
+#   "TN.M"        — T-prefix shorthand, followed by non-digit
+# AC matching: "ACN:" — plain or bold, colon-terminated.
+# Edge-case AC matching: "AC-ECN:" — plain or bold, colon-terminated.
 # Bold markers (**) and leading whitespace on subtask lines are tolerated.
 
 _tick() {
   local section_header=""
   local mode=""
 
-  if [ -n "$AC_NUM" ]; then
+  if [ -n "$AC_EC_NUM" ]; then
+    section_header="acceptance criteria"
+    mode="ac_ec"
+  elif [ -n "$AC_NUM" ]; then
     section_header="acceptance criteria"
     mode="ac"
   else
@@ -196,6 +220,7 @@ _tick() {
     -v task_num="$TASK_NUM" \
     -v subtask_num="$SUBTASK_NUM" \
     -v ac_num="$AC_NUM" \
+    -v ac_ec_num="$AC_EC_NUM" \
     -v status_file="$status_file" \
   '
   BEGIN {
@@ -216,7 +241,7 @@ _tick() {
   /^## / {
     lower = tolower($0)
     gsub(/[[:space:]]+$/, "", lower)
-    if (lower == "## " section_hdr) {
+    if (lower == "## " section_hdr || (mode == "task" && lower == "## tasks")) {
       in_section = 1
     } else {
       in_section = 0
@@ -252,7 +277,8 @@ _tick() {
   # --- Helper: test whether a subtask line matches task_num.subtask_num ---
   # Extracts the content after "  - [.] " and checks for:
   #   (optional **) (optional "Subtask ") N.M (non-digit or end)
-  function is_subtask_match(line,    content, pat_sub, pat_bare) {
+  #   (optional **) TN.M (non-digit or end)
+  function is_subtask_match(line,    content, pat_sub, pat_bare, pat_t) {
     # Strip leading whitespace + "- [.] " and optional bold marker.
     content = line
     sub(/^[[:space:]]*- \[.\] /, "", content)
@@ -263,6 +289,27 @@ _tick() {
     # Bare "N.M" followed by non-digit or end.
     pat_bare = "^" task_num "\\." subtask_num "([^0-9]|$)"
     if (match(content, pat_bare)) return 1
+    # "TN.M" shorthand followed by non-digit or end.
+    pat_t = "^T" task_num "\\." subtask_num "([^0-9]|$)"
+    if (match(content, pat_t)) return 1
+    return 0
+  }
+
+  # --- Helper: tick a top-level (non-indented) checkbox line ---
+  # Shared by the task (top-level), AC, and edge-case AC branches.
+  # Sets matched=1 and writes to status_file; returns 1 if handled.
+  function try_tick_top() {
+    if ($0 ~ /^- \[x\] / || $0 ~ /^- \[X\] /) {
+      matched = 1
+      printf "ALREADY_TICKED" > status_file
+      return 1
+    }
+    if ($0 ~ /^- \[ \] /) {
+      sub(/^- \[ \] /, "- [x] ")
+      matched = 1
+      printf "MATCHED" > status_file
+      return 1
+    }
     return 0
   }
 
@@ -272,17 +319,7 @@ _tick() {
       if (subtask_num == "") {
         # Top-level task line (not indented).
         if (/^- \[.\] / && is_task_match($0)) {
-          if ($0 ~ /^- \[x\] / || $0 ~ /^- \[X\] /) {
-            matched = 1
-            printf "ALREADY_TICKED" > status_file
-            print; next
-          }
-          if ($0 ~ /^- \[ \] /) {
-            sub(/^- \[ \] /, "- [x] ")
-            matched = 1
-            printf "MATCHED" > status_file
-            print; next
-          }
+          if (try_tick_top()) { print; next }
         }
       } else {
         # Subtask line (indented).
@@ -305,17 +342,13 @@ _tick() {
       # AC line: "- [.] **ACN:**" or "- [.] ACN:" (bold optional).
       pat = "^- \\[.\\] (\\*\\*)?AC" ac_num ":"
       if (match($0, pat)) {
-        if ($0 ~ /^- \[x\] / || $0 ~ /^- \[X\] /) {
-          matched = 1
-          printf "ALREADY_TICKED" > status_file
-          print; next
-        }
-        if ($0 ~ /^- \[ \] /) {
-          sub(/^- \[ \] /, "- [x] ")
-          matched = 1
-          printf "MATCHED" > status_file
-          print; next
-        }
+        if (try_tick_top()) { print; next }
+      }
+    } else if (mode == "ac_ec") {
+      # Edge-case AC line: "- [.] **AC-ECN:**" or "- [.] AC-ECN:".
+      pat = "^- \\[.\\] (\\*\\*)?AC-EC" ac_ec_num ":"
+      if (match($0, pat)) {
+        if (try_tick_top()) { print; next }
       }
     }
   }
@@ -348,13 +381,16 @@ _tick() {
       return 0
       ;;
     EMPTY_SECTION)
-      # Section has no checkboxes at all — graceful no-op per contract.
       rm -f "$tmp_file"
-      return 0
+      printf 'tick-story-checkbox: target section missing or has no checkboxes in %s\n' "$STORY_FILE" >&2
+      return 1
       ;;
     NO_MATCH|"")
       rm -f "$tmp_file"
-      if [ -n "$AC_NUM" ]; then
+      if [ -n "$AC_EC_NUM" ]; then
+        printf 'tick-story-checkbox: no matching edge-case criterion %s found in %s\n' \
+          "$AC_EC_NUM" "$STORY_FILE" >&2
+      elif [ -n "$AC_NUM" ]; then
         printf 'tick-story-checkbox: no matching AC %s found in %s\n' \
           "$AC_NUM" "$STORY_FILE" >&2
       elif [ -n "$SUBTASK_NUM" ]; then
