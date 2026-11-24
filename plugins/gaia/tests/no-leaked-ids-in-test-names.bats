@@ -211,7 +211,7 @@ _scan_comments() {
     _is_debt_file "$t" && n=$((n + 1))
   done
 
-  local expected=52
+  local expected=51
   if [[ "$n" -ne "$expected" ]]; then
     printf 'naming-debt file count is %s, expected %s.\n' "$n" "$expected" >&2
     printf 'If a file was renamed to plain language, lower the expected count.\n' >&2

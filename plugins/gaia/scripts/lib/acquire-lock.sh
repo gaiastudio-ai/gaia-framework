@@ -21,6 +21,7 @@
 #   ACQUIRE_LOCK_EXIT_TIMEOUT  — exit code 3 (lock timeout)
 #   ACQUIRE_LOCK_EXIT_SYMLINK  — exit code 4 (strict-mode non-regular-file)
 #   ACQUIRE_LOCK_EXIT_IDENTITY — exit code 5 (strict-mode identity mismatch)
+#   ACQUIRE_LOCK_EXIT_PUBLISH  — exit code 6 (publication check failed)
 #
 # Network-mounted .gaia/ state trees are unsupported for parallel mode.
 # The fallback uses ln(2) hard-link creation for atomicity; on NFS a lost
@@ -102,6 +103,22 @@
 #     _al_try_reap between the shadow pin and the final inode
 #     comparison, before the guarded rm. Lets tests replace the lock
 #     file and prove the inode guard catches the replacement.
+#   _al_reap_pre_rm_hook <lock_path> — called in _al_try_reap after
+#     the inode comparison passes and inside the reap mutex, just
+#     before the rename-and-verify removal step. Lets tests pause a
+#     single reaper in the real TOCTOU window to prove the mutex
+#     serialises concurrent reapers.
+#   _al_pre_flock_hook <lock_path> <fd> — called between opening the
+#     descriptor and calling flock on every flock path. Lets tests
+#     observe or manipulate the pre-flock state deterministically.
+#   _al_post_link_hook <lock_path> <tmp_path> — called after a
+#     successful ln but before the publication inode check. Lets tests
+#     delete the temp to simulate a colliding writer and trigger the
+#     refusal path.
+#   _al_publish_cleanup_hook <lock_path> — called in the publication-
+#     refusal cleanup path before the rename-and-verify that removes a
+#     stale lock left by a failed acquirer. Lets tests inject a
+#     replacement file to prove the cleanup does not delete it.
 
 # Sourcing contract: this library DOES NOT alter the caller's shell options.
 # Every public function sets its own errexit/pipefail internally via subshell
@@ -112,6 +129,31 @@ LC_ALL=C; export LC_ALL
 # --- Source-time probes (environment only, no project paths) ---
 
 _ACQUIRE_LOCK_FLOCK_BIN="$(command -v flock 2>/dev/null || true)"
+
+# Probe flock capabilities on an isolated temp file (never the real lock).
+# Result cached in _ACQUIRE_LOCK_FLOCK_CAP:
+#   "w" — supports -w (timeout); use flock -x -w <N>.
+#   "n" — supports -n (non-blocking) but not -w; use a polling loop.
+#   ""  — incompatible (neither -w nor -n); cannot use flock.
+_ACQUIRE_LOCK_FLOCK_CAP=""
+if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
+  _al_cap_tmp="$(mktemp /tmp/.al-flock-cap.XXXXXXXXXX 2>/dev/null)" || _al_cap_tmp=""
+  if [ -n "$_al_cap_tmp" ]; then
+    if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w 0 "$_al_cap_tmp" true 2>/dev/null; then
+      _ACQUIRE_LOCK_FLOCK_CAP="w"
+    elif eval "exec 223<\"$_al_cap_tmp\"" 2>/dev/null; then
+      if "$_ACQUIRE_LOCK_FLOCK_BIN" -n -x 223 2>/dev/null; then
+        _ACQUIRE_LOCK_FLOCK_CAP="n"
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u 223 2>/dev/null || true
+      fi
+      # Close fd 223 on every path (success or failure) so the probe
+      # leaves no leaked descriptor.
+      eval "exec 223<&-" 2>/dev/null || true
+    fi
+    rm -f "$_al_cap_tmp" 2>/dev/null || true
+  fi
+  unset _al_cap_tmp
+fi
 
 if stat -c %Y "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
   _ACQUIRE_LOCK_STAT_FMT="gnu"
@@ -142,6 +184,7 @@ export GAIA_LOCK_L5_TIMEOUT=2
 export ACQUIRE_LOCK_EXIT_TIMEOUT=3
 export ACQUIRE_LOCK_EXIT_SYMLINK=4
 export ACQUIRE_LOCK_EXIT_IDENTITY=5
+export ACQUIRE_LOCK_EXIT_PUBLISH=6
 
 # --- Internal: shell-option save/restore (Bash 3.2 compatible) ---
 #
@@ -166,14 +209,70 @@ _al_restore_opts() {
   [ "$_al_saved_pipefail" = "1" ] || set +o pipefail
 }
 
+# --- Internal: per-acquirer identity (Bash 3.2 compatible) ---
+#
+# _al_self_pid_via_sh <var_name>
+#   Sets the named variable to the PID of the calling shell by spawning
+#   sh -c 'echo $PPID' and reading the result from an exclusive temp
+#   file (mktemp, O_EXCL). This is the macOS bash 3.2 fallback where
+#   /proc does not exist. Fails closed (returns 1 with a diagnostic)
+#   rather than falling back to $$ on any error, since $$ is shared
+#   across subshells and produces wrong identity.
+#
+# _al_set_self_pid <var_name>
+#   Sets the named variable to the PID of the current shell. Must NOT
+#   be called inside $() — command substitution forks and gives its own
+#   PID. Strategy:
+#     1. /proc/self/stat (Linux): read first field, no fork.
+#     2. _al_self_pid_via_sh (macOS bash 3.2): one fork, exclusive temp.
+#     3. Fail closed (return 1) — never falls back to $$.
+
+_al_self_pid_via_sh() {
+  local _var="$1"
+  local _pid_tmp=""
+  _pid_tmp="$(mktemp /tmp/.al-self-pid.XXXXXXXXXX 2>/dev/null)" || _pid_tmp=""
+  if [ -z "$_pid_tmp" ]; then
+    printf 'acquire-lock: cannot determine per-acquirer identity (mktemp failed)\n' >&2
+    return 1
+  fi
+  sh -c 'echo $PPID' > "$_pid_tmp" 2>/dev/null || {
+    rm -f "$_pid_tmp" 2>/dev/null || true
+    printf 'acquire-lock: cannot determine per-acquirer identity (sh -c failed)\n' >&2
+    return 1
+  }
+  local _read_pid=""
+  read -r _read_pid < "$_pid_tmp" 2>/dev/null || _read_pid=""
+  rm -f "$_pid_tmp" 2>/dev/null || true
+  if [ -z "$_read_pid" ]; then
+    printf 'acquire-lock: cannot determine per-acquirer identity (empty pid)\n' >&2
+    return 1
+  fi
+  eval "$_var=\"\$_read_pid\""
+}
+
+_al_set_self_pid() {
+  local _var="$1"
+  if [ -r /proc/self/stat ]; then
+    local _stat_pid=""
+    read -r _stat_pid _ < /proc/self/stat 2>/dev/null || _stat_pid=""
+    if [ -n "$_stat_pid" ]; then
+      eval "$_var=\"\$_stat_pid\""
+      return
+    fi
+  fi
+  _al_self_pid_via_sh "$_var"
+}
+
 # --- Internal: per-fd registry (Bash 3.2 compatible via indirect vars) ---
-# Each fd gets two variables: _AL_PATH_<fd> and _AL_MODE_<fd>.
-# Mode is "flock" or "fallback". Path is the lock file path.
+# Each fd gets three variables: _AL_PATH_<fd>, _AL_MODE_<fd>, _AL_OWNER_<fd>.
+# Mode is "flock" or "fallback". Path is the lock file path. Owner is the
+# per-acquirer PID recorded at acquisition time (from _al_self_pid).
 
 _al_set_registry() {
-  local fd="$1" mode="$2" path="$3"
+  local fd="$1" mode="$2" path="$3" owner="${4:-}"
   eval "_AL_PATH_${fd}=\"\$path\""
   eval "_AL_MODE_${fd}=\"\$mode\""
+  eval "_AL_OWNER_${fd}=\"\$owner\""
 }
 
 _al_get_path() {
@@ -188,10 +287,17 @@ _al_get_mode() {
   printf '%s' "${!var:-}"
 }
 
+_al_get_owner() {
+  local fd="$1"
+  local var="_AL_OWNER_${fd}"
+  printf '%s' "${!var:-}"
+}
+
 _al_clear_registry() {
   local fd="$1"
   eval "_AL_PATH_${fd}="
   eval "_AL_MODE_${fd}="
+  eval "_AL_OWNER_${fd}="
 }
 
 # --- Internal: file age in seconds ---
@@ -240,6 +346,39 @@ _al_inode() {
     ''|*[!0-9]*) return 1 ;;
   esac
   printf '%s' "$ino"
+}
+
+# --- Internal: two-path inode fetch in one stat call (portable) ---
+#
+# _al_inode2 <path_a> <path_b> <var_a> <var_b>
+#   Fetches the inode of both paths in a single stat invocation and sets
+#   the named variables.  One stat call is NOT an atomic snapshot — callers
+#   must keep the existing failure handling (a missing/non-numeric inode
+#   means NOT verified, same refusal path as a failed _al_inode).
+#   BusyBox stat accepts multiple file arguments in both -c and -f modes.
+
+_al_inode2() {
+  local _p1="$1" _p2="$2" _v1="$3" _v2="$4"
+  local _out="" _ino1="" _ino2=""
+  if [ "$_ACQUIRE_LOCK_STAT_FMT" = "gnu" ]; then
+    _out="$(stat -L -c %i "$_p1" "$_p2" 2>/dev/null)" || _out=""
+  elif [ "$_ACQUIRE_LOCK_STAT_FMT" = "bsd" ]; then
+    _out="$(stat -L -f %i "$_p1" "$_p2" 2>/dev/null)" || _out=""
+  fi
+  # Parse two lines.  If the output is empty or malformed, fail.
+  _ino1="${_out%%
+*}"
+  _ino2="${_out#*
+}"
+  case "$_ino1" in ''|*[!0-9]*) return 1 ;; esac
+  case "$_ino2" in ''|*[!0-9]*) return 1 ;; esac
+  # Guard: if both lines are identical to the full output, stat returned
+  # only one line (one path missing or stat doesn't support multi-file).
+  if [ "$_ino1" = "$_ino2" ] && [ "$_ino1" = "$_out" ]; then
+    return 1
+  fi
+  eval "$_v1=\"\$_ino1\""
+  eval "$_v2=\"\$_ino2\""
 }
 
 # --- Internal: device:inode identity of a path (portable, ALWAYS dereferencing) ---
@@ -320,6 +459,14 @@ _al_enforce_path_type() {
     return 0
   fi
 
+  # The path existed but was not a regular file. Under concurrent reaping
+  # (mv rename-and-verify), the file may vanish between -e and -f above.
+  # Re-test: if the path is now absent or regular, the non-regular state
+  # was a vacancy — return 0 and let the caller retry normally.
+  if [ ! -e "$lock_file" ] || [ -f "$lock_file" ]; then
+    return 0
+  fi
+
   # Exists but is not a regular file. A directory is the dangerous case:
   # `ln SOURCE DIR` links INTO the directory and always succeeds, so every
   # acquirer would win at once. Reclaim it only when it is provably ours to
@@ -392,12 +539,23 @@ _al_enforce_path_type_strict() {
 # The dev:ino helper is used for the LOCK PATH side only when comparing
 # two real paths (e.g. in the fallback identity re-check).
 
-_al_verify_identity_strict() {
+# Three-outcome identity verifier for flock descriptors.
+#
+# Returns:
+#   0 — VERIFIED: the fd's inode equals the path's inode.
+#   1 — MISMATCH: the path is gone, or its inode differs from the fd's.
+#   2 — UNAVAILABLE: no usable fd path, or the fd inode lookup failed.
+#
+# UNAVAILABLE while ordinary-file stat works (_ACQUIRE_LOCK_STAT_FMT
+# non-empty) is treated as a refusal by callers: the reaper can reap on
+# such hosts, so an unverified flock would be unsafe. UNAVAILABLE with
+# no usable stat at all is allowed (the reaper can't reap without stat,
+# so the risk that drove this check does not exist).
+
+_al_verify_fd_identity() {
   local lock_file="$1" fd="$2"
 
-  # Test-only hook: when _al_identity_hook is a function, call it to let
-  # tests inject a deterministic mismatch (e.g. swap the lock file between
-  # acquisition and re-check). Not a user-facing surface.
+  # Test-only hook.
   if declare -F _al_identity_hook >/dev/null 2>&1; then
     _al_identity_hook "$lock_file" "$fd"
   fi
@@ -408,14 +566,75 @@ _al_verify_identity_strict() {
   elif [ -e "/dev/fd/${fd}" ]; then
     fd_path="/dev/fd/${fd}"
   else
-    return 0  # Cannot verify — degrade to pass.
+    return 2  # UNAVAILABLE
   fi
 
-  # Inode-only comparison (same strategy as _al_verify_opened_fd).
-  local path_ino fd_ino
-  path_ino="$(_al_inode "$lock_file" 2>/dev/null)" || return 0
-  fd_ino="$(_al_inode "$fd_path" 2>/dev/null)" || return 0
-  [ "$path_ino" = "$fd_ino" ]
+  local fd_ino=""
+  fd_ino="$(_al_inode "$fd_path" 2>/dev/null)" || fd_ino=""
+  case "$fd_ino" in ''|*[!0-9]*) return 2 ;; esac  # non-numeric → UNAVAILABLE
+
+  # Path gone → MISMATCH (the file was deleted/replaced).
+  local path_ino=""
+  path_ino="$(_al_inode "$lock_file" 2>/dev/null)" || path_ino=""
+  if [ -z "$path_ino" ]; then
+    return 1  # MISMATCH
+  fi
+
+  if [ "$path_ino" = "$fd_ino" ]; then
+    return 0  # VERIFIED
+  fi
+  return 1    # MISMATCH
+}
+
+# Backward-compatible wrapper used by the old strict-mode callers.
+_al_verify_identity_strict() {
+  local _vid_rc=0
+  _al_verify_fd_identity "$@" || _vid_rc=$?
+  case "$_vid_rc" in
+    0) return 0 ;;  # VERIFIED
+    1) return 1 ;;  # MISMATCH
+    2) # UNAVAILABLE: refuse if stat works, degrade to pass if not.
+       if [ -n "$_ACQUIRE_LOCK_STAT_FMT" ]; then return 1; fi
+       return 0 ;;
+  esac
+}
+
+# --- Internal: file size via an open fd (Bash 3.2 compatible) ---
+#
+# _al_fd_size <fd>
+#   Returns:
+#     0 — size is 0 bytes (empty).
+#     1 — size is non-zero (non-empty).
+#     2 — UNAVAILABLE (no usable fd path or stat failed).
+#
+# Used by the flock path to decide emptiness from the LOCKED FILE
+# DESCRIPTOR, never from the pathname (which could be a different inode
+# after a rename). Reads size via stat -L on /proc/self/fd/N or /dev/fd/N,
+# using the same GNU/BSD stat format already probed at source time.
+
+_al_fd_size() {
+  local fd="$1"
+  local fd_path=""
+  if [ -e "/proc/self/fd/${fd}" ]; then
+    fd_path="/proc/self/fd/${fd}"
+  elif [ -e "/dev/fd/${fd}" ]; then
+    fd_path="/dev/fd/${fd}"
+  else
+    return 2  # UNAVAILABLE
+  fi
+  local sz=""
+  if [ "$_ACQUIRE_LOCK_STAT_FMT" = "gnu" ]; then
+    sz="$(stat -L -c %s "$fd_path" 2>/dev/null)" || sz=""
+  elif [ "$_ACQUIRE_LOCK_STAT_FMT" = "bsd" ]; then
+    sz="$(stat -L -f %z "$fd_path" 2>/dev/null)" || sz=""
+  fi
+  case "$sz" in
+    ''|*[!0-9]*) return 2 ;;  # UNAVAILABLE
+  esac
+  if [ "$sz" -eq 0 ]; then
+    return 0  # empty
+  fi
+  return 1    # non-empty
 }
 
 # --- Internal: debug trace ---
@@ -488,28 +707,56 @@ _al_try_reap() {
   # --- Step 3: Decide ---
   local _reap_candidate=0 age=""
 
+  # Track whether fd 222 is held (for cleanup on all exit paths).
+  local _reap_probe_held=0
+
   if [ -z "$recorded_pid" ] || ! [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
     # No valid PID line — ownerless file (empty sentinel or remnant).
-    # Before reaping, probe for an active flock holder (mixed-mode
-    # detection). When flock is present, an ownerless file may still
-    # be held by a flock process (which writes no PID). The probe
-    # runs regardless of GAIA_LOCK_FORCE_FALLBACK because the override
-    # is per-process, not system-wide.
-    if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
+    # A reliable flock probe is REQUIRED before reaping: the file may
+    # be held by a flock-mode process (which writes no PID). Without a
+    # usable flock binary (or with an incompatible one), the probe
+    # cannot run and reaping is refused. The acquirer times out with a
+    # diagnostic naming the cause.
+    local _reap_probe_ok=0
+    if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ -n "$_ACQUIRE_LOCK_FLOCK_CAP" ]; then
       local _reap_probe_rc=0
       if eval "exec 222<\"${lock_file}\"" 2>/dev/null; then
         "$_ACQUIRE_LOCK_FLOCK_BIN" -n -x 222 2>/dev/null \
           && _reap_probe_rc=0 || _reap_probe_rc=1
-        "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
-        eval "exec 222<&-" 2>/dev/null || true
-      fi
-      if [ "$_reap_probe_rc" -ne 0 ]; then
-        # Active flock holder detected — do not reap.
-        rm -f "$shadow" 2>/dev/null || true
-        return 1
+        if [ "$_reap_probe_rc" -ne 0 ]; then
+          # Active flock holder — do not reap. Release probe.
+          eval "exec 222<&-" 2>/dev/null || true
+          rm -f "$shadow" 2>/dev/null || true
+          return 1
+        fi
+        # Probe acquired: no holder found. Verify fd 222 locked the
+        # SAME inode the shadow pinned.
+        _reap_probe_held=1
+        _reap_probe_ok=1
+        local _probe_ino=""
+        _probe_ino="$(_al_inode "/proc/self/fd/222" 2>/dev/null)" || \
+          _probe_ino="$(_al_inode "/dev/fd/222" 2>/dev/null)" || _probe_ino=""
+        local _shadow_ino_early=""
+        _shadow_ino_early="$(_al_inode "$shadow" 2>/dev/null)" || _shadow_ino_early=""
+        if [ -z "$_probe_ino" ] || [ -z "$_shadow_ino_early" ] \
+           || [ "$_probe_ino" != "$_shadow_ino_early" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+          eval "exec 222<&-" 2>/dev/null || true
+          _reap_probe_held=0
+          rm -f "$shadow" 2>/dev/null || true
+          return 0
+        fi
       fi
     fi
-    _reap_candidate=1
+    if [ "$_reap_probe_ok" = "1" ]; then
+      _reap_candidate=1
+    else
+      # No reliable probe available — refuse to reap. Record why so
+      # the timeout diagnostic can name this cause.
+      _AL_REAP_NO_PROBE=1
+      rm -f "$shadow" 2>/dev/null || true
+      return 0
+    fi
   elif kill -0 "$recorded_pid" 2>/dev/null; then
     # PID alive — never reap regardless of age.
     rm -f "$shadow" 2>/dev/null || true
@@ -527,13 +774,12 @@ _al_try_reap() {
     fi
   fi
 
-  # --- Step 4: Inode-guarded delete ---
-  # The shadow pins the inspected inode (Step 1). Stat the shadow first
-  # (stable — nobody else can unlink it). The test-only hook fires next,
-  # giving tests a deterministic window to replace the lock file. Then
-  # stat the lock path: if the inode matches the shadow, the path still
-  # refers to the file we inspected — rm is safe. If they differ,
-  # another process replaced the file — do NOT rm.
+  # --- Step 4: Mutex-guarded rename-and-verify delete ---
+  #
+  # A hard-linked token file mutex serialises reapers so only one is
+  # between the inode check and the removal at any time. Inside the
+  # mutex the lock file is renamed to a private temp and re-verified;
+  # if the file changed hands the temp is linked back.
   if [ "$_reap_candidate" = "1" ]; then
     local shadow_ino lock_ino
     shadow_ino="$(_al_inode "$shadow" 2>/dev/null)" || shadow_ino=""
@@ -546,21 +792,125 @@ _al_try_reap() {
 
     lock_ino="$(_al_inode "$lock_file" 2>/dev/null)" || lock_ino=""
 
-    if [ -n "$lock_ino" ] && [ -n "$shadow_ino" ]; then
-      if [ "$lock_ino" = "$shadow_ino" ]; then
-        rm -f "$lock_file" 2>/dev/null || true
-        if [ -n "$recorded_pid" ] && [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
-          printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
-            "$lock_file" "$recorded_pid" "$age" >&2
+    if [ -n "$lock_ino" ] && [ -n "$shadow_ino" ] && [ "$lock_ino" = "$shadow_ino" ]; then
+      # Inode matches — acquire the reap mutex before removal.
+      #
+      # The mutex is a regular file created atomically via hard link
+      # (ln tmp mutex: fails with EEXIST if it exists). The file
+      # contains a unique owner token "<pid> <nonce>". Only the owner
+      # removes it (after a token self-check); a dead owner's mutex
+      # is NEVER reclaimed automatically. If a reaper dies while
+      # holding the mutex, acquirers time out with a diagnostic
+      # naming the leftover file and the manual remedy.
+      local _reap_mutex="${lock_file}.reap-mtx"
+      local _mtx_token="$$ $RANDOM$RANDOM"
+      local _mtx_tmp=""
+
+      # Refuse a symlink at the mutex path.
+      [ ! -L "$_reap_mutex" ] || rm -f "$_reap_mutex" 2>/dev/null || true
+
+      # Create the temp exclusively via mktemp (O_CREAT|O_EXCL) in the
+      # lock's directory (same filesystem, so the hard link stays atomic).
+      # Exclusive creation guarantees two same-process reapers never
+      # collide on a shared temp name, even on bash 3.2 where subshells
+      # share $$ and can draw the same $RANDOM suffix.
+      _mtx_tmp="$(mktemp "${lock_dir}/.reap-mtx-tmp.XXXXXX" 2>/dev/null)" || {
+        # mktemp failed (directory unwritable, out of inodes, etc.).
+        # Fail closed: no mutex taken, no reaping.
+        printf 'acquire-lock: cannot create reap-mutex temp under %s\n' \
+          "$lock_dir" >&2
+        if [ "$_reap_probe_held" = "1" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+          eval "exec 222<&-" 2>/dev/null || true
+        fi
+        rm -f "$shadow" 2>/dev/null || true
+        return 0
+      }
+
+      if ! { printf '%s\n' "$_mtx_token" > "$_mtx_tmp"; } 2>/dev/null; then
+        # Write failed. Remove only the temp we created.
+        printf 'acquire-lock: cannot write reap-mutex token to %s\n' \
+          "$_mtx_tmp" >&2
+        rm -f "$_mtx_tmp" 2>/dev/null || true
+        if [ "$_reap_probe_held" = "1" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+          eval "exec 222<&-" 2>/dev/null || true
+        fi
+        rm -f "$shadow" 2>/dev/null || true
+        return 0
+      fi
+
+      if ! ln "$_mtx_tmp" "$_reap_mutex" 2>/dev/null; then
+        # Mutex already exists (live, stalled, or dead owner). Back off;
+        # do not attempt to reclaim. The acquirer retries until timeout.
+        # Remove only the temp we created.
+        rm -f "$_mtx_tmp" 2>/dev/null || true
+        if [ "$_reap_probe_held" = "1" ]; then
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+          eval "exec 222<&-" 2>/dev/null || true
+        fi
+        rm -f "$shadow" 2>/dev/null || true
+        return 0
+      fi
+      rm -f "$_mtx_tmp" 2>/dev/null || true
+
+      # We hold the mutex. Re-verify the inode (may have changed).
+      lock_ino="$(_al_inode "$lock_file" 2>/dev/null)" || lock_ino=""
+      if [ -n "$lock_ino" ] && [ "$lock_ino" = "$shadow_ino" ]; then
+        # Test-only hook: fires after the inode comparison passes and
+        # inside the reap mutex, just before the rename-and-verify
+        # removal step. Not a user-facing surface.
+        if declare -F _al_reap_pre_rm_hook >/dev/null 2>&1; then
+          _al_reap_pre_rm_hook "$lock_file"
+        fi
+
+        # Rename to a private temp, verify, then delete.
+        local _reap_del="${lock_dir}/.lock-reap-del.$$.$RANDOM"
+        if mv "$lock_file" "$_reap_del" 2>/dev/null; then
+          local _del_ino=""
+          _del_ino="$(_al_inode "$_reap_del" 2>/dev/null)" || _del_ino=""
+          if [ -n "$_del_ino" ] && [ "$_del_ino" = "$shadow_ino" ]; then
+            # Correct file — safe to delete.
+            rm -f "$_reap_del" 2>/dev/null || true
+            if [ -n "$recorded_pid" ] && [ "$recorded_pid" -gt 0 ] 2>/dev/null; then
+              printf 'acquire-lock: reaped stale lock %s (pid=%s dead, age=%ss)\n' \
+                "$lock_file" "$recorded_pid" "$age" >&2
+            fi
+          else
+            # Wrong file — a new holder linked between our check and mv.
+            # Restore via ln (fails harmlessly if the path is occupied).
+            if ln "$_reap_del" "$lock_file" 2>/dev/null; then
+              rm -f "$_reap_del" 2>/dev/null || true
+            fi
+            # If ln failed, the holder's file remains only at the private
+            # .lock-reap-del.* path while another file occupies the lock
+            # path. In production this branch is unreachable: the reaper
+            # holds the mutex and verified the inode, so the lock path
+            # cannot change between the check and the rename. Only the
+            # test hook (_al_reap_pre_rm_hook) can inject a replacement
+            # that reaches here.
+          fi
         fi
       fi
-      # Inodes differ — another process replaced the file since the
-      # shadow was taken. Do not rm. The new holder's lock survives.
+
+      # Token-guarded cleanup: remove the mutex only if it still holds
+      # our own token. This is a consistency check (no reclaim exists
+      # that could replace it, but a future design change is safe).
+      local _final_token=""
+      read -r _final_token < "$_reap_mutex" 2>/dev/null || _final_token=""
+      if [ "$_final_token" = "$_mtx_token" ]; then
+        rm -f "$_reap_mutex" 2>/dev/null || true
+      fi
     fi
-    # On a host where stat does not work, skip the rm (conservative:
+    # On a host where stat does not work, skip removal (conservative:
     # a stale lock remains until the next process's reaper can stat).
   fi
 
+  # Release the probe flock if held, then clean up the shadow.
+  if [ "$_reap_probe_held" = "1" ]; then
+    "$_ACQUIRE_LOCK_FLOCK_BIN" -u 222 2>/dev/null || true
+    eval "exec 222<&-" 2>/dev/null || true
+  fi
   rm -f "$shadow" 2>/dev/null || true
   return 0
 }
@@ -580,6 +930,14 @@ _al_acquire_impl() {
   local _al_strict=0
   if [ "${4:-}" = "--strict" ]; then
     _al_strict=1
+  fi
+
+  # Per-acquirer identity: the real PID of THIS shell, not the parent.
+  # Must not be inside $() — see _al_set_self_pid. Fails closed if the
+  # identity cannot be determined (never falls back to $$).
+  local _al_self=""
+  if ! _al_set_self_pid _al_self; then
+    return 1
   fi
 
   # Validate fd is a positive integer before it reaches any eval.
@@ -611,120 +969,233 @@ _al_acquire_impl() {
   fi
 
   # Fast path: flock present (unless GAIA_LOCK_FORCE_FALLBACK overrides).
-  if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
-    # Never open through a symlink: `exec >` follows it and truncates the
-    # target, so a symlink planted at the lock path turns lock acquisition
-    # into a write primitive against an arbitrary file. Checking with
-    # [ -L ] and then opening is three separate syscalls on a path an
-    # attacker can rewrite in between, so do not rely on the check alone:
-    #   1. enforce the type policy (unlink a symlink/socket, refuse a
-    #      directory) so a stale artefact does not defeat step 2;
-    #   2. create the file under `set -C` (noclobber => O_EXCL): if a
-    #      symlink is planted before this, the create FAILS rather than
-    #      traversing, and an existing regular lock file is left untouched;
-    #   3. open the descriptor with `>>` (O_APPEND) rather than `>`
-    #      (O_TRUNC). flock(2) only needs an open descriptor, never an
-    #      emptied file, and O_TRUNC is the entire reason a followed symlink
-    #      was destructive: an appending open of a symlink target leaves it
-    #      byte-for-byte intact;
-    #   4. re-verify AFTER the open that the path is still a non-symlink
-    #      regular file whose inode matches the one actually opened, so a
-    #      swap that wins the remaining window becomes a detected refusal
-    #      rather than a lock nobody else is excluded from.
-    if [ "$_al_strict" = "0" ]; then
-      _al_enforce_path_type "$lock_file" || return 1
-    fi
-    # Create the lock file with restrictive permissions (0600 via umask 077).
-    # The subshell isolates the umask change from the caller.
-    ( umask 077; set -C; : > "$lock_file" ) 2>/dev/null || true
-    if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
-      printf 'acquire-lock: permission denied opening lock file: %s\n' \
-        "$lock_file" >&2
-      return 1
-    fi
-    if ! _al_verify_opened_fd "$lock_file" "$fd"; then
-      eval "exec ${fd}>&-" 2>/dev/null || true
-      printf 'acquire-lock: lock path changed identity during open: %s\n' \
-        "$lock_file" >&2
-      return 1
-    fi
+  # A single original deadline covers flock waits, reopen attempts and
+  # bounded backoff. No spinning, no deadline reset.
+  if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ] && [ -n "$_ACQUIRE_LOCK_FLOCK_CAP" ] \
+     && [ "${GAIA_LOCK_FORCE_FALLBACK:-}" != "1" ]; then
+    local _al_flock_start
+    _al_flock_start="$(date +%s)"
 
-    if [ "$_al_strict" = "1" ]; then
-      # Strict-mode flock path: acquire the lock, then verify identity.
-      # On identity mismatch, release and retry until the timeout expires.
-      local _al_flock_start
-      _al_flock_start="$(date +%s)"
-      while true; do
-        if ! "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
+    # Track the last non-timeout failure reason so the deadline-expiry
+    # exit preserves the right code and diagnostic (e.g. identity
+    # MISMATCH returns EXIT_IDENTITY, not TIMEOUT).
+    local _al_last_exit="$ACQUIRE_LOCK_EXIT_TIMEOUT"
+    local _al_last_diag=""
+
+    # Reaper throttle for the flock path's dead-PID/non-empty record wait:
+    # at most once per second, same discipline as the fallback loop.
+    local _al_flock_last_reap=0
+    local _al_flock_reap_attempt=0
+
+    while true; do
+      local _al_fnow _al_remaining
+      _al_fnow="$(date +%s)"
+      _al_remaining=$(( timeout - (_al_fnow - _al_flock_start) ))
+      if [ "$_al_remaining" -le 0 ]; then
+        if [ -n "$_al_last_diag" ]; then
+          printf '%s\n' "$_al_last_diag" >&2
+        fi
+        printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+        return "$_al_last_exit"
+      fi
+
+      # Enforce path type before opening.
+      if [ "$_al_strict" = "1" ]; then
+        _al_enforce_path_type_strict "$lock_file" || return $?
+      else
+        _al_enforce_path_type "$lock_file" || return 1
+      fi
+
+      # Create the lock file with restrictive permissions.
+      ( umask 077; set -C; : > "$lock_file" ) 2>/dev/null || true
+      if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
+        printf 'acquire-lock: permission denied opening lock file: %s\n' \
+          "$lock_file" >&2
+        return 1
+      fi
+      if ! _al_verify_opened_fd "$lock_file" "$fd"; then
+        eval "exec ${fd}>&-" 2>/dev/null || true
+        printf 'acquire-lock: lock path changed identity during open: %s\n' \
+          "$lock_file" >&2
+        return 1
+      fi
+
+      # Test-only hook: fires between opening the descriptor and calling
+      # flock. Lets tests observe or manipulate the pre-flock state.
+      if declare -F _al_pre_flock_hook >/dev/null 2>&1; then
+        _al_pre_flock_hook "$lock_file" "$fd"
+      fi
+
+      # Acquire the kernel lock within the remaining deadline.
+      if [ "$_ACQUIRE_LOCK_FLOCK_CAP" = "w" ]; then
+        # Full flock: single blocking call with timeout.
+        if ! "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$_al_remaining" "$fd"; then
           eval "exec ${fd}>&-" 2>/dev/null || true
           printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
           return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
         fi
-        # Post-lock identity re-check via dev:ino.
-        if _al_verify_identity_strict "$lock_file" "$fd"; then
-          # Mixed-mode guard (strict path): same check as non-strict.
-          local _al_fb_pid_s=""
-          read -r _al_fb_pid_s _ < "$lock_file" 2>/dev/null || true
-          if [ -n "$_al_fb_pid_s" ] && [ "$_al_fb_pid_s" -gt 0 ] 2>/dev/null \
-             && [ "$_al_fb_pid_s" != "$$" ] \
-             && kill -0 "$_al_fb_pid_s" 2>/dev/null; then
-            "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
-            eval "exec ${fd}>&-" 2>/dev/null || true
-            printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-            return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+      else
+        # Polling mode (flock supports -n but not -w, e.g. BusyBox).
+        # Bounded backoff within the one original deadline.
+        local _al_poll_ok=0 _al_poll_attempt=0
+        while true; do
+          if "$_ACQUIRE_LOCK_FLOCK_BIN" -n -x "$fd" 2>/dev/null; then
+            _al_poll_ok=1
+            break
           fi
-          _al_set_registry "$fd" "flock" "$lock_file"
+          _al_fnow="$(date +%s)"
+          if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+            break
+          fi
+          _al_poll_attempt=$(( _al_poll_attempt + 1 ))
+          local _al_poll_base=10
+          if [ "$_al_poll_attempt" -le 1 ]; then _al_poll_base=10
+          elif [ "$_al_poll_attempt" -le 2 ]; then _al_poll_base=20
+          else _al_poll_base=50; fi
+          local _al_poll_jitter=$(( RANDOM % 20 ))
+          local _al_poll_ms=$(( _al_poll_base + _al_poll_jitter ))
+          sleep "$(printf '%d.%03d' $((_al_poll_ms / 1000)) $((_al_poll_ms % 1000)))" 2>/dev/null \
+            || sleep 1
+        done
+        if [ "$_al_poll_ok" -ne 1 ]; then
+          eval "exec ${fd}>&-" 2>/dev/null || true
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+        fi
+      fi
+
+      # Post-lock checks: identity first, then fd-based emptiness.
+      # The path cannot flip between the identity and size reads in a
+      # way that breaks exclusion: a reaper with a reliable probe holds
+      # flock through the delete, a reaper without one refuses empty
+      # files, and flock holders never enter on PID records. Identity
+      # is checked first; only after it is verified do we read size
+      # through the fd.
+      local _al_vid_rc=0
+      _al_verify_fd_identity "$lock_file" "$fd" || _al_vid_rc=$?
+      if [ "$_al_vid_rc" -eq 2 ]; then
+        # UNAVAILABLE — fail closed unconditionally. This process
+        # lacking stat proves nothing about OTHER processes on the host;
+        # a reaper with a different PATH may have stat and reap.
+        # Unlock, close, retry within the deadline.
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+        eval "exec ${fd}>&-" 2>/dev/null || true
+        _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+        _al_last_diag="$(printf 'acquire-lock: cannot verify lock identity (fd inode lookup unavailable): %s' "$lock_file")"
+        _al_fnow="$(date +%s)"
+        if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+          printf '%s\n' "$_al_last_diag" >&2
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$_al_last_exit"
+        fi
+        sleep 0.1 2>/dev/null || sleep 1
+        continue
+      fi
+
+      if [ "$_al_vid_rc" -eq 0 ]; then
+        # VERIFIED. A flock acquirer enters ONLY on an empty file.
+        # Check emptiness from the LOCKED FILE DESCRIPTOR (never from
+        # the pathname, which could be a different inode after a rename).
+        local _al_sz_rc=0
+        _al_fd_size "$fd" || _al_sz_rc=$?
+
+        # Both identity and fd-size resolved: reset the latched exit
+        # code so an ordinary contention timeout (live holder holding
+        # until the deadline) returns TIMEOUT, not a stale IDENTITY.
+        if [ "$_al_sz_rc" -ne 2 ]; then
+          _al_last_exit="$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          _al_last_diag=""
+        fi
+
+        if [ "$_al_sz_rc" -eq 2 ]; then
+          # UNAVAILABLE — fail closed unconditionally. This process
+          # lacking stat proves nothing about other processes on the host.
+          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+          eval "exec ${fd}>&-" 2>/dev/null || true
+          _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+          _al_last_diag="$(printf 'acquire-lock: cannot determine lock-file size via fd: %s' "$lock_file")"
+          _al_fnow="$(date +%s)"
+          if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+            printf '%s\n' "$_al_last_diag" >&2
+            printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+            return "$_al_last_exit"
+          fi
+          sleep 0.1 2>/dev/null || sleep 1
+          continue
+        fi
+
+        if [ "$_al_sz_rc" -eq 0 ]; then
+          # Empty file — safe to enter. No fallback holder can be present
+          # (the fallback path creates files with content atomically via
+          # hard link, and never truncates or empties them in place).
+          _al_set_registry "$fd" "flock" "$lock_file" "$_al_self"
           _al_trace "acquire" "$lock_file"
           return 0
         fi
-        # Identity mismatch — release and retry.
-        if [ -n "$_ACQUIRE_LOCK_FLOCK_BIN" ]; then
-          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
-        fi
-        eval "exec ${fd}>&-" 2>/dev/null || true
-        local _al_now
-        _al_now="$(date +%s)"
-        if [ $(( _al_now - _al_flock_start )) -ge "$timeout" ]; then
-          printf 'lock_identity_unstable: identity re-check mismatch: %s\n' \
-            "$lock_file" >&2
-          return "$ACQUIRE_LOCK_EXIT_IDENTITY"
-        fi
-        # Re-open the fd for the next attempt.
-        _al_enforce_path_type_strict "$lock_file" || return $?
-        ( set -C; : > "$lock_file" ) 2>/dev/null || true
-        if ! eval "exec ${fd}>>\"${lock_file}\"" 2>/dev/null; then
-          printf 'acquire-lock: permission denied opening lock file: %s\n' \
-            "$lock_file" >&2
-          return 1
-        fi
-        sleep 0.1 2>/dev/null || sleep 1
-      done
-    else
-      # Non-strict flock path (existing behavior).
-      if "$_ACQUIRE_LOCK_FLOCK_BIN" -x -w "$timeout" "$fd"; then
-        # Mixed-mode guard: a fallback holder writes "<pid> <epoch>" to
-        # the file and does not hold a kernel flock. Check for a live PID
-        # other than ours. If found, the fallback holder is inside the
-        # critical section — release flock and report timeout.
+
+        # Non-empty file: a fallback holder's record. Never enter; always
+        # check whether the holder is still alive.
         local _al_fb_pid=""
         read -r _al_fb_pid _ < "$lock_file" 2>/dev/null || true
+
+        "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
+        eval "exec ${fd}>&-" 2>/dev/null || true
+
         if [ -n "$_al_fb_pid" ] && [ "$_al_fb_pid" -gt 0 ] 2>/dev/null \
-           && [ "$_al_fb_pid" != "$$" ] \
+           && [ "$_al_fb_pid" != "$_al_self" ] \
            && kill -0 "$_al_fb_pid" 2>/dev/null; then
-          "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
-          eval "exec ${fd}>&-" 2>/dev/null || true
-          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-          return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
+          # Live PID: the existing mixed-mode guard — retry within the
+          # deadline (the holder may release soon).
+          _al_fnow="$(date +%s)"
+          if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+            if [ -n "$_al_last_diag" ]; then printf '%s\n' "$_al_last_diag" >&2; fi
+            printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+            return "$_al_last_exit"
+          fi
+          sleep 0.1 2>/dev/null || sleep 1
+          continue
         fi
-        _al_set_registry "$fd" "flock" "$lock_file"
-        _al_trace "acquire" "$lock_file"
-        return 0
+
+        # Dead PID (or non-empty record that isn't a live PID): throttled
+        # reaper (at most once per second) with bounded backoff, within the
+        # original deadline. The lock has been unlocked and closed above.
+        _al_fnow="$(date +%s)"
+        if [ $(( _al_fnow - _al_flock_last_reap )) -ge 1 ] || [ "$_al_flock_last_reap" -eq 0 ]; then
+          _al_try_reap "$lock_file" "$timeout" || true
+          _al_flock_last_reap="$(date +%s)"
+        fi
+
+        _al_fnow="$(date +%s)"
+        if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+          if [ -n "$_al_last_diag" ]; then printf '%s\n' "$_al_last_diag" >&2; fi
+          printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+          return "$_al_last_exit"
+        fi
+        # Bounded backoff: 10, 20, 50 (cap) ms + jitter, same as fallback.
+        _al_flock_reap_attempt=$(( _al_flock_reap_attempt + 1 ))
+        local _al_frb=50
+        if [ "$_al_flock_reap_attempt" -le 1 ]; then _al_frb=10
+        elif [ "$_al_flock_reap_attempt" -le 2 ]; then _al_frb=20; fi
+        local _al_frj=$(( RANDOM % 20 ))
+        local _al_frms=$(( _al_frb + _al_frj ))
+        sleep "$(printf '%d.%03d' $((_al_frms / 1000)) $((_al_frms % 1000)))" 2>/dev/null \
+          || sleep 1
+        continue
       fi
-      # Timeout — close the fd and report failure.
+
+      # MISMATCH: unlock, close, reopen and retry within the deadline.
+      "$_ACQUIRE_LOCK_FLOCK_BIN" -u "$fd" 2>/dev/null || true
       eval "exec ${fd}>&-" 2>/dev/null || true
-      printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
-      return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
-    fi
+      _al_last_exit="$ACQUIRE_LOCK_EXIT_IDENTITY"
+      _al_last_diag="$(printf 'lock_identity_unstable: identity re-check mismatch: %s' "$lock_file")"
+      _al_fnow="$(date +%s)"
+      if [ $(( _al_fnow - _al_flock_start )) -ge "$timeout" ]; then
+        printf '%s\n' "$_al_last_diag" >&2
+        printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+        return "$_al_last_exit"
+      fi
+      sleep 0.1 2>/dev/null || sleep 1
+    done
   fi
 
   # Fallback path: ln(2) EEXIST atomic-create spin-loop with exponential
@@ -738,32 +1209,90 @@ _al_acquire_impl() {
   local attempt=0
   local lock_dir
   lock_dir="$(dirname "$lock_file")"
+  # Set by the reaper when it declines to clear an ownerless file
+  # because no reliable flock probe is available.
+  _AL_REAP_NO_PROBE=0
+
+  # --- Create the exclusive temp ONCE, before the retry loop ---
+  # Because the temp is created once per acquisition, the record's epoch
+  # and the file's mtime reflect the acquisition START, not the moment of
+  # publication. This is safe: a holder's liveness is judged by PID (kill
+  # -0), and the age check only gates reclamation of dead owners — a live
+  # holder is never reaped regardless of age.
+  #
+  # The temp is created via mktemp (O_EXCL) so no two acquirers share
+  # a name, even on bash 3.2 where subshells share $$ and can draw the
+  # same $RANDOM in the same second. The owner token uses the real
+  # per-acquirer PID (_al_self), not $$. The temp and its token are
+  # reused across retries — only the ln(2) attempt repeats.
+  local tmp_lock=""
+  local _al_prev_umask
+  _al_prev_umask="$(umask)"
+  umask 077
+  tmp_lock="$(mktemp "${lock_dir}/.lock-tmp.XXXXXXXXXX" 2>/dev/null)" || tmp_lock=""
+  if [ -z "$tmp_lock" ]; then
+    umask "$_al_prev_umask"
+    printf 'acquire-lock: cannot create a lock file under %s\n' "$lock_dir" >&2
+    return 1
+  fi
+  _al_trace "tmp" "$tmp_lock"
+  local _al_nonce=""
+  _al_nonce="$(basename "$tmp_lock")"
+  local _al_full_token="$_al_self $start_epoch $_al_nonce"
+  if ! { printf '%s\n' "$_al_full_token" > "$tmp_lock"; } 2>/dev/null; then
+    umask "$_al_prev_umask"
+    rm -f "$tmp_lock" 2>/dev/null || true
+    _al_trace "create-failed" "$tmp_lock"
+    printf 'acquire-lock: cannot create a lock file under %s\n' "$lock_dir" >&2
+    return 1
+  fi
+  umask "$_al_prev_umask"
+
+  # Reaper throttle: track the last epoch at which the reaper ran so it
+  # fires at most once per second within the original deadline.
+  local _al_last_reap_epoch=0
 
   while true; do
     local now_epoch
     now_epoch="$(date +%s)"
     local elapsed=$(( now_epoch - start_epoch ))
     if [ "$elapsed" -ge "$timeout" ]; then
+      rm -f "$tmp_lock" 2>/dev/null || true
       printf 'lock_timeout: %s after %ss\n' "$lock_file" "$timeout" >&2
+      # If a reap-mutex file exists, it may be blocking reaping.
+      local _mtx_diag="${lock_file}.reap-mtx"
+      if [ -e "$_mtx_diag" ] || [ -L "$_mtx_diag" ]; then
+        printf 'acquire-lock: a reaper mutex is blocking lock cleanup: %s\n' "$_mtx_diag" >&2
+        printf 'acquire-lock: to recover, stop or quiesce every process that uses this lock path, then remove the file.\n' >&2
+      fi
+      # If the reaper declined to clear an ownerless file because no
+      # reliable flock probe was available, say so.
+      if [ "$_AL_REAP_NO_PROBE" = "1" ]; then
+        printf 'acquire-lock: cannot safely clear %s: it may be held by a process using flock, and this process has no usable flock to check.\n' "$lock_file" >&2
+        printf 'acquire-lock: to recover, either make util-linux flock available on this process'\''s PATH, or quiesce every user of this lock path and configure all of them to use the same locking mode before retrying.\n' >&2
+      fi
       return "$ACQUIRE_LOCK_EXIT_TIMEOUT"
     fi
 
     # In strict mode, re-check path type on every iteration.
     if [ "$_al_strict" = "1" ]; then
-      _al_enforce_path_type_strict "$lock_file" || return $?
+      local _al_strict_rc=0
+      _al_enforce_path_type_strict "$lock_file" || _al_strict_rc=$?
+      if [ "$_al_strict_rc" -ne 0 ]; then
+        rm -f "$tmp_lock" 2>/dev/null || true
+        return "$_al_strict_rc"
+      fi
     fi
-
-    # Try to reap stale lock.
-    _al_try_reap "$lock_file" "$timeout" || true
 
     # Refuse to link against anything that is not a plain regular file.
     # `ln SOURCE DIR` is the link-INTO-directory form and always succeeds,
     # so without this every concurrent acquirer would "win" at once and
-    # mutual exclusion would silently disappear. The reaper above already
-    # routes through the same gate; re-assert it here because it is the
-    # invariant the ln(2) below depends on for its atomicity.
+    # mutual exclusion would silently disappear. The reaper routes through
+    # the same gate; re-assert it here because it is the invariant the
+    # ln(2) below depends on for its atomicity.
     if [ "$_al_strict" = "0" ]; then
       if ! _al_enforce_path_type "$lock_file"; then
+        rm -f "$tmp_lock" 2>/dev/null || true
         return 1
       fi
     fi
@@ -775,39 +1304,13 @@ _al_acquire_impl() {
       _al_pre_link_hook "$lock_file"
     fi
 
-    # Atomic create-with-content: write to a temp file, then hard-link.
-    # ln fails atomically if the target already exists (EEXIST).
-    # The temp name must be unique per ACQUIRER, not per process: bash
-    # subshells share $$ with their parent, so a bare "$$" name collides
-    # between concurrent subshells of one script (and between any two
-    # acquirers that happen to share a PID namespace view). Two acquirers on
-    # one temp path race: A writes it, B reopens it with O_TRUNC, A links the
-    # now-empty file into place and publishes a zero-byte lock. BASHPID is
-    # per-subshell but is a Bash 4 feature, so fall back to $$ on Bash 3.2
-    # and add $RANDOM, which is reseeded per subshell, to disambiguate there.
-    local tmp_lock="${lock_dir}/.lock-tmp.${BASHPID:-$$}.$$.$RANDOM"
-    # Record the chosen temp path. It exists only between the write and the
-    # ln/unlink a few microseconds later, so directory sampling cannot
-    # observe it reliably; the trace is what makes per-acquirer uniqueness
-    # checkable at all.
-    _al_trace "tmp" "$tmp_lock"
-    # Brace-wrap the redirection so 2>/dev/null covers the redirection
-    # itself, not just printf's own stderr: an unwritable lock directory
-    # otherwise leaks a raw `line NNN: <temp path>: Permission denied`
-    # next to this script's curated diagnostics.
-    # Create the temp file with restrictive permissions (0600 via umask 077).
-    local _al_prev_umask
-    _al_prev_umask="$(umask)"
-    umask 077
-    if ! { printf '%s %s\n' "$$" "$now_epoch" > "$tmp_lock"; } 2>/dev/null; then
-      umask "$_al_prev_umask"
-      rm -f "$tmp_lock" 2>/dev/null || true
-      _al_trace "create-failed" "$tmp_lock"
-      printf 'acquire-lock: cannot create a lock file under %s\n' "$lock_dir" >&2
-      return 1
-    fi
-    umask "$_al_prev_umask"
     if ln "$tmp_lock" "$lock_file" 2>/dev/null; then
+      # Test-only hook: fires after a successful ln but before the inode
+      # check, so tests can delete the temp to simulate a colliding
+      # writer and trigger the publication-refusal path.
+      if declare -F _al_post_link_hook >/dev/null 2>&1; then
+        _al_post_link_hook "$lock_file" "$tmp_lock"
+      fi
       # ln succeeding is NOT proof the lock was published at the intended
       # path: if the path is a directory the link landed INSIDE it, and
       # treating that as acquired hands the same lock to everybody. Confirm
@@ -815,9 +1318,12 @@ _al_acquire_impl() {
       # The type checks alone already reject the directory case ([ -f ] is
       # false for a directory), so a host with no usable stat still gets the
       # fix; the inode compare is the stronger form where stat is available.
-      local published_ino tmp_ino
-      published_ino="$(_al_inode "$lock_file" 2>/dev/null)" || published_ino=""
-      tmp_ino="$(_al_inode "$tmp_lock" 2>/dev/null)" || tmp_ino=""
+      # Fetch both inodes in one stat call where possible.
+      local published_ino="" tmp_ino=""
+      if ! _al_inode2 "$lock_file" "$tmp_lock" published_ino tmp_ino 2>/dev/null; then
+        published_ino="$(_al_inode "$lock_file" 2>/dev/null)" || published_ino=""
+        tmp_ino="$(_al_inode "$tmp_lock" 2>/dev/null)" || tmp_ino=""
+      fi
       if [ ! -L "$lock_file" ] && [ -f "$lock_file" ] && \
          [ "$published_ino" = "$tmp_ino" ]; then
         # Strict-mode post-lock identity re-check (fallback path).
@@ -828,44 +1334,93 @@ _al_acquire_impl() {
           _al_tmp_id="$(_al_dev_ino "$tmp_lock" 2>/dev/null)" || _al_tmp_id=""
           if [ -n "$_al_path_id" ] && [ -n "$_al_tmp_id" ] && \
              [ "$_al_path_id" != "$_al_tmp_id" ]; then
-            # Identity mismatch in fallback — cannot retry easily, fail.
+            # Identity mismatch in fallback — fail immediately.
+            # Cleanup: always remove our private temp name.
             rm -f "$tmp_lock" 2>/dev/null || true
-            rm -f "$lock_file" 2>/dev/null || true
-            continue
+            # Remove the published lock ONLY if it still holds our exact
+            # token (ownership-safe: a replacement holder's file is never
+            # touched).
+            if [ -f "$lock_file" ] && [ ! -L "$lock_file" ]; then
+              local _id_pub_line=""
+              read -r _id_pub_line < "$lock_file" 2>/dev/null || _id_pub_line=""
+              if [ "$_id_pub_line" = "$_al_full_token" ]; then
+                rm -f "$lock_file" 2>/dev/null || true
+              fi
+            fi
+            printf 'lock_identity_unstable: strict dev:ino mismatch (fallback): %s\n' \
+              "$lock_file" >&2
+            return "$ACQUIRE_LOCK_EXIT_IDENTITY"
           fi
         fi
+        # Success: the temp and lock share an inode. Removing the temp
+        # NAME is safe (the inode persists via the lock path).
         rm -f "$tmp_lock" 2>/dev/null || true
-        _al_set_registry "$fd" "fallback" "$lock_file"
+        _al_set_registry "$fd" "fallback" "$lock_file" "$_al_full_token"
         _al_trace "acquire" "$lock_file"
         return 0
       fi
       # The link went somewhere else (or the path is not a regular file).
-      # Unlink whatever we just created and treat this as not acquired.
+      # Clean up: remove the directory-landed link (if any) and the temp.
       rm -f "$lock_file/$(basename "$tmp_lock")" 2>/dev/null || true
       rm -f "$tmp_lock" 2>/dev/null || true
+
+      # If a regular file at the lock path holds THIS acquirer's full
+      # token, remove it. Read the first line and compare against the
+      # exact token this acquisition wrote; rm only on a match. The path
+      # is never moved or renamed: a replacement holder's lock stays
+      # continuously present. Read-then-rm is safe because while its
+      # owner is alive, a lock file is removed only by its owner (release
+      # compares the full token, the reaper skips live owners, other
+      # acquirers' cleanup removes only their own token, and the path-
+      # type check removes only symlinks and directories).
+      # Test-only hook: fires before the cleanup read, letting tests
+      # inject a replacement file to prove it is not touched.
+      if declare -F _al_publish_cleanup_hook >/dev/null 2>&1; then
+        _al_publish_cleanup_hook "$lock_file"
+      fi
+      if [ -f "$lock_file" ] && [ ! -L "$lock_file" ]; then
+        local _pub_line=""
+        read -r _pub_line < "$lock_file" 2>/dev/null || _pub_line=""
+        if [ "$_pub_line" = "$_al_full_token" ]; then
+          rm -f "$lock_file" 2>/dev/null || true
+        fi
+      fi
+
       printf 'acquire-lock: refusing a lock that did not publish at %s\n' \
         "$lock_file" >&2
-      return 1
+      return "$ACQUIRE_LOCK_EXIT_PUBLISH"
     fi
-    rm -f "$tmp_lock" 2>/dev/null || true
+
+    # ln failed (EEXIST) — the lock path is occupied. The temp is kept
+    # intact for the next retry (its inode and token are unchanged).
+
+    # Throttled reaper: run at most once per second within the deadline.
+    local _al_reap_due=0
+    if [ $(( now_epoch - _al_last_reap_epoch )) -ge 1 ] || [ "$_al_last_reap_epoch" -eq 0 ]; then
+      _al_reap_due=1
+    fi
+    if [ "$_al_reap_due" = "1" ]; then
+      _al_try_reap "$lock_file" "$timeout" || true
+      _al_last_reap_epoch="$(date +%s)"
+    fi
 
     attempt=$(( attempt + 1 ))
-    # Exponential backoff: 50, 100, 150 (cap) ms + jitter 0-49ms.
-    # The cap is deliberately low. A waiter that sleeps ~500ms overshoots a
-    # lock freed early in that window: with N concurrent writers and a short
-    # hold, the queue drains slower than the work takes and waiters burn
-    # their whole timeout without ever seeing the free window. Capping the
-    # re-probe interval near 150ms keeps pickup prompt while still backing
-    # off enough to avoid a busy spin. Jitter stays proportional to the cap
-    # so concurrent waiters still desynchronise.
+    # Exponential backoff: 10, 20, 50 (cap) ms + jitter 0-19ms.
+    # A waiter that sleeps too long overshoots a lock freed early in that
+    # window: with N concurrent writers and a short hold, the queue drains
+    # slower than the work takes and waiters burn their whole timeout without
+    # ever seeing the free window. Capping the re-probe interval near 50ms
+    # keeps pickup prompt while still backing off enough to avoid a busy
+    # spin. Jitter stays proportional to the cap so concurrent waiters
+    # still desynchronise.
     if [ "$attempt" -le 1 ]; then
-      base_ms=50
+      base_ms=10
     elif [ "$attempt" -le 2 ]; then
-      base_ms=100
+      base_ms=20
     else
-      base_ms=150
+      base_ms=50
     fi
-    local jitter=$(( RANDOM % 50 ))
+    local jitter=$(( RANDOM % 20 ))
     local sleep_ms=$(( base_ms + jitter ))
 
     # Debug log: record each sleep value for jitter divergence testing.
@@ -909,14 +1464,32 @@ _al_release_impl() {
     fi
     eval "exec ${fd}>&-" 2>/dev/null || true
   elif [ "$mode" = "fallback" ]; then
-    # Ownership-checked removal: only remove if we are the recorded owner.
-    local holder=""
-    read -r holder _ < "$lf" 2>/dev/null || true
-    if [ "$holder" = "$$" ]; then
+    # Ownership-checked removal: compare the full first line of the lock
+    # file against the token stored at acquisition time. For locks created
+    # by an older helper (two-field records, no nonce), fall back to PID-
+    # only comparison. This prevents subshells of the same parent from
+    # removing each other's locks.
+    local file_line="" owner=""
+    read -r file_line < "$lf" 2>/dev/null || file_line=""
+    owner="$(_al_get_owner "$fd")"
+    if [ -z "$owner" ]; then
+      # No registry entry (old helper or unregistered fd). Fall back to
+      # PID-only: extract the first field from the file and compare to $$.
+      local holder=""
+      holder="${file_line%% *}"
+      if [ "$holder" = "$$" ]; then
+        rm -f "$lf" 2>/dev/null || true
+      else
+        printf 'acquire-lock: release_lock fd=%s — not owner (file pid=%s, self=%s)\n' \
+          "$fd" "$holder" "$$" >&2
+      fi
+    elif [ "$file_line" = "$owner" ]; then
       rm -f "$lf" 2>/dev/null || true
     else
+      local holder=""
+      holder="${file_line%% *}"
       printf 'acquire-lock: release_lock fd=%s — not owner (file pid=%s, self=%s)\n' \
-        "$fd" "$holder" "$$" >&2
+        "$fd" "$holder" "${owner%% *}" >&2
     fi
   fi
 
@@ -942,10 +1515,18 @@ _al_require_flock_impl() {
     printf 'or run sequentially.\n' >&2
     return 1
   fi
-  # Presence of the binary is not enough: the forced-fallback override makes
-  # every acquisition take the ln(2) path, so passing the gate on "flock is
-  # installed" while the override is set would report a guarantee the run
-  # does not have. The gate is fail-closed, so refuse instead.
+  # Presence is not enough: the binary must support -w or -n for real
+  # kernel locking. BusyBox flock supports -n but not -w; a flock that
+  # supports neither is incompatible.
+  if [ -z "$_ACQUIRE_LOCK_FLOCK_CAP" ]; then
+    printf 'FATAL: parallel execution requires flock with -w or -n support. ' >&2
+    printf 'The installed flock is incompatible. ' >&2
+    printf 'Install util-linux flock, or run sequentially.\n' >&2
+    return 1
+  fi
+  # The forced-fallback override makes every acquisition take the ln(2)
+  # path, so passing the gate on "flock is installed" while the override
+  # is set would report a guarantee the run does not have.
   if [ "${GAIA_LOCK_FORCE_FALLBACK:-}" = "1" ]; then
     printf 'FATAL: parallel execution requires flock, but GAIA_LOCK_FORCE_FALLBACK=1 ' >&2
     printf 'forces the hard-link fallback path. Unset it, or run sequentially.\n' >&2
