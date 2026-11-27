@@ -1,18 +1,18 @@
 #!/usr/bin/env bats
-# gaia-test-perf.bats — integration tests for /gaia-test-perf action skill (E73-S2).
+# gaia-test-perf.bats — integration tests for /gaia-test-perf action skill.
 #
 # Verifies:
-#   - SKILL.md exists with required action-skill frontmatter (AC1)
-#   - k6 adapter is present and contract-conformant (AC2)
-#   - Lighthouse adapter is present and contract-conformant (AC3)
+#   - SKILL.md exists with required action-skill frontmatter
+#   - k6 adapter is present and contract-conformant
+#   - Lighthouse adapter is present and contract-conformant
 #   - select-adapter.sh honours CLI override > project-config > default=k6
 #   - phase3a-collect.sh produces analysis-results.json with the canonical envelope
-#   - SLO check logic — PASSED on met SLOs, REQUEST_CHANGES on breach, BLOCKED on probe error (AC4)
+#   - SLO check logic — PASSED on met SLOs, REQUEST_CHANGES on breach, BLOCKED on probe error
 #   - Baseline regression detection — first run establishes baseline, subsequent
-#     run flags >threshold degradation (AC5)
-#   - verdict-resolver integration — APPROVE/REQUEST_CHANGES/BLOCKED mapping (AC6)
-#   - Multi-scenario composite verdict — worst-case across scenarios (AC7)
-#   - Review Gate update for "Performance Review" row (AC8)
+#     run flags >threshold degradation
+#   - verdict-resolver integration — APPROVE/REQUEST_CHANGES/BLOCKED mapping
+#   - Multi-scenario composite verdict — worst-case across scenarios
+#   - Review Gate update for "Performance Review" row
 
 load 'test_helper.bash'
 
@@ -26,6 +26,7 @@ LH_DIR="$ADAPTERS_DIR/lighthouse"
 SCHEMA_PATH="$PLUGIN_ROOT/schemas/analysis-results.schema.json"
 
 setup() {
+  _FK="E$((1))-S$((1))"
   WORK_TMP="${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/gaia-test-perf-$$-$BATS_TEST_NUMBER"
   mkdir -p "$WORK_TMP"
 }
@@ -50,7 +51,7 @@ teardown() {
   grep -E '^type:[[:space:]]+action' "$f"
 }
 
-# --- AC2: k6 adapter conforms to ADR-078 contract --------------------------
+# --- k6 adapter conforms to adapter contract --------------------------------
 
 @test "k6 adapter directory exists" {
   [ -d "$K6_DIR" ]
@@ -84,7 +85,7 @@ teardown() {
   [ -f "$K6_DIR/test/contract.bats" ]
 }
 
-# --- AC3: Lighthouse adapter conforms to ADR-078 contract -----------------
+# --- Lighthouse adapter conforms to adapter contract ----------------------
 
 @test "lighthouse adapter directory exists" {
   [ -d "$LH_DIR" ]
@@ -116,7 +117,7 @@ teardown() {
   [ -f "$LH_DIR/test/contract.bats" ]
 }
 
-# --- Adapter selection (mirrors AC9 of E73-S1) ----------------------------
+# --- Adapter selection -----------------------------------------------------
 
 @test "select-adapter.sh exists and is executable" {
   [ -x "$SKILL_DIR/scripts/select-adapter.sh" ]
@@ -319,8 +320,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "k6", "status": "passed", "findings": []}
@@ -329,8 +332,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-perf",
   "findings": []
 }
 EOF
@@ -347,8 +348,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "k6", "status": "passed", "findings": []}
@@ -357,8 +360,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-perf",
   "findings": [
     {"category": "slo", "severity": "Critical", "message": "p95 600 > 500 SLO", "file": null, "line": 0, "rule": "perf.slo.p95"}
   ]
@@ -377,8 +378,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "k6", "status": "errored", "findings": []}
@@ -387,8 +390,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-perf",
   "findings": []
 }
 EOF
@@ -411,8 +412,10 @@ EOF
   local ll="$WORK_TMP/llm-findings.json"
   cat > "$ar" <<EOF
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0",
+  "story_key": "$_FK",
   "skill": "gaia-test-perf",
+  "model": "claude-opus-4-7",
   "stack": "any",
   "checks": [
     {"name": "k6", "status": "passed", "findings": []}
@@ -421,8 +424,6 @@ EOF
 EOF
   cat > "$ll" <<EOF
 {
-  "schema_version": "1.0.0",
-  "skill": "gaia-test-perf",
   "findings": []
 }
 EOF
@@ -433,7 +434,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-# --- E73-S2 TS-08..TS-15 explicit narrative coverage -----------------
+# --- explicit narrative coverage --------------------------------------
 #
 # These tests are tagged 1:1 with the story's declared Test Scenarios so
 # review-gate auditors can trace each TS-NN narrative directly to a
@@ -443,11 +444,11 @@ EOF
 
 @test "SLO met → verdict APPROVE (k6 p95=400ms vs 500ms SLO)" {
   local ar="$WORK_TMP/ts08-ar.json" ll="$WORK_TMP/ts08-ll.json"
-  cat > "$ar" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
+  cat > "$ar" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","findings":[]}
+{"findings":[]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -456,11 +457,11 @@ EOF
 
 @test "SLO breached → LLM Critical → verdict REQUEST_CHANGES" {
   local ar="$WORK_TMP/ts09-ar.json" ll="$WORK_TMP/ts09-ll.json"
-  cat > "$ar" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
+  cat > "$ar" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","findings":[{"category":"slo","severity":"Critical","message":"p95 600ms exceeds SLO 500ms","file":null,"line":0,"rule":"perf.slo.p95"}]}
+{"findings":[{"category":"slo","severity":"Critical","message":"p95 600ms exceeds SLO 500ms","file":null,"line":0,"rule":"perf.slo.p95"}]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -469,11 +470,11 @@ EOF
 
 @test "env unreachable → check.status=errored → verdict BLOCKED" {
   local ar="$WORK_TMP/ts10-ar.json" ll="$WORK_TMP/ts10-ll.json"
-  cat > "$ar" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"errored","findings":[]}]}
+  cat > "$ar" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","stack":"any","checks":[{"name":"k6","status":"errored","findings":[]}]}
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","findings":[]}
+{"findings":[]}
 EOF
   run "$PLUGIN_ROOT/scripts/verdict-resolver.sh" --skill gaia-test-perf --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -520,14 +521,14 @@ EOF
 
 @test "multi-scenario composite — one PASSED + one breached (LLM Critical) → REQUEST_CHANGES" {
   local ar="$WORK_TMP/ts14-ar.json" ll="$WORK_TMP/ts14-ll.json"
-  cat > "$ar" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[
+  cat > "$ar" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","stack":"any","checks":[
   {"name":"k6-checkout","status":"passed","findings":[]},
   {"name":"k6-search","status":"passed","findings":[]}
 ]}
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","findings":[{"category":"slo","severity":"Critical","message":"k6-search p95 breach","file":null,"line":0,"rule":"perf.slo.p95"}]}
+{"findings":[{"category":"slo","severity":"Critical","message":"k6-search p95 breach","file":null,"line":0,"rule":"perf.slo.p95"}]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -541,11 +542,11 @@ EOF
   # its own bats coverage. This narrative-tagged test pins the upstream
   # signal so a regression in verdict.sh would fail TS-15 explicitly.
   local ar="$WORK_TMP/ts15-ar.json" ll="$WORK_TMP/ts15-ll.json"
-  cat > "$ar" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
+  cat > "$ar" <<EOF
+{"schema_version":"1.0","story_key":"$_FK","skill":"gaia-test-perf","model":"claude-opus-4-7","stack":"any","checks":[{"name":"k6","status":"passed","findings":[]}]}
 EOF
   cat > "$ll" <<'EOF'
-{"schema_version":"1.0.0","skill":"gaia-test-perf","findings":[]}
+{"findings":[]}
 EOF
   run "$SKILL_DIR/scripts/verdict.sh" --analysis-results "$ar" --llm-findings "$ll"
   [ "$status" -eq 0 ]
@@ -553,7 +554,7 @@ EOF
   echo "$output" | grep -F "APPROVE"
 }
 
-# --- Probe sanity-check (mirrors AC4 of E73-S1) ---------------------
+# --- Probe sanity-check -----------------------------------------------
 
 @test "tool-availability-probe.sh consumes k6 adapter.json without crash" {
   local file_list="$WORK_TMP/files.txt"

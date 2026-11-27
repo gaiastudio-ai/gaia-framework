@@ -17,9 +17,9 @@ orchestration_class: reviewer
 
 **Deterministic tools provide evidence. The LLM provides judgment. The LLM consumes deterministic output; it does not override it.**
 
-This is the unifying principle of every GAIA review skill. For `gaia-qa-tests` it means: deterministic tools (test-discovery + AC-to-test coverage analyzer; optional branch-coverage cross-reference) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a QA semantic review **on top of** that artifact — it cannot disregard a 0% AC-coverage finding, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
+This is the unifying principle of every GAIA review skill. For `gaia-qa-tests` it means: deterministic tools (test-discovery + AC-to-test coverage analyzer) run first and emit a structured `analysis-results.json` artifact. The LLM then performs a QA semantic review **on top of** that artifact — it cannot disregard a 0% AC-coverage finding, it cannot relabel a tool-failure as APPROVE, and it cannot promote a Suggestion-tier finding into a verdict-blocker. The verdict is computed by `verdict-resolver.sh` from the deterministic checks plus the LLM findings; the LLM never computes the verdict in natural language.
 
-This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the QA toolkit (test-discovery + AC-coverage analyzer) and (b) the QA-aligned severity rubric examples (missing AC coverage, weak assertion, brittle selector, untested error path). Structural plumbing — fork dispatch, cache key, parent-mediated write — is identical to `gaia-code-review`.
+This skill pattern-matches against `gaia-code-review` as the canonical reference. Per-skill specialization here = (a) the QA toolkit (test-discovery + AC-coverage analyzer) and (b) the QA-aligned severity rubric examples (missing AC coverage, weak assertion, brittle selector, untested error path). Structural plumbing — fork dispatch, parent-mediated write — is identical to `gaia-code-review`.
 
 **Fork context semantics:** This skill runs under `context: fork` with read-only tools (`Read Grep Glob Bash`). It CANNOT modify files — the tool allowlist enforces no-write isolation. Persistence of the rendered review report is parent-mediated: the fork returns the rendered report payload to the parent context, and the parent writes the file. `Write` and `Edit` are NEVER added to the fork allowlist.
 
@@ -34,38 +34,38 @@ This skill pattern-matches against `gaia-code-review` as the canonical reference
 - Do NOT write executable test files to the source tree (`tests/`, `spec/`, `__tests__/`, `e2e/`). Document test cases in the QA report only — test-file authoring belongs to `/gaia-test-automate`.
 - The verdict is `verdict-resolver.sh`'s output (APPROVE | REQUEST_CHANGES | BLOCKED). The LLM MUST NOT compute or override it.
 - Mapping to Review Gate canonical vocabulary (inline, no separate script): APPROVE → PASSED; REQUEST_CHANGES → FAILED; BLOCKED → FAILED.
-- Determinism settings: `temperature: 0`, `model: claude-opus-4-7`, `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
+- Determinism settings: `temperature: 0` (recorded convention), `model: claude-opus-4-7` (recorded in the report header; the fork inherits the parent model; skill dispatch enforces no model), `prompt_hash` recorded in the report header. Re-running with identical `analysis-results.json` MUST yield findings that match by category and severity; textual variation is allowed.
 - Sprint-status.yaml is NEVER written by this skill (Sprint-Status Write Safety rule).
 
 ## Determinism Settings
 
 ```
-temperature: 0
-model: claude-opus-4-7        # frontmatter-pinned at fork dispatch
-prompt_hash: sha256:<hex>     # recorded in report header at Phase 6
+temperature: 0               # recorded convention (not enforced at dispatch)
+model: claude-opus-4-7        # recorded in the report header; the fork inherits the parent model
+prompt_hash: sha256:<hex>     # sha256 of analysis-results.json content; recorded in report header at Phase 6
 ```
 
-`prompt_hash` is the sha256 of (system prompt || `analysis-results.json` content). Two runs against unchanged inputs MUST produce findings that match by `{category, severity}`. Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch.
+`prompt_hash` is the sha256 of the `analysis-results.json` content. Two runs against unchanged inputs MUST produce findings that match by `{category, severity}`. Textual message variation is allowed; category+severity divergence is an escalation signal — investigate model or prompt-hash mismatch.
 
 ## Stack Toolkit Table
 
 The toolkit invoked by Phase 3A is selected by the canonical stack name emitted by `load-stack-persona.sh`. Stack-key vocabulary is canonical across this skill and the script — they MUST match. The AC-coverage analyzer is stack-agnostic; only the test-discovery globs vary per stack:
 
-| Stack key (canonical) | Test-discovery globs                                                                 | Optional branch-coverage tool         |
-|-----------------------|---------------------------------------------------------------------------------------|---------------------------------------|
-| `ts-dev`              | `**/*.{test,spec}.{ts,tsx,js,jsx}` + `__tests__/**/*.{ts,tsx,js,jsx}`                 | `nyc` / `istanbul` (optional)         |
-| `java-dev`            | `src/test/**/*Test.java`                                                              | `jacoco` (optional)                   |
-| `python-dev`          | `test_*.py` + `*_test.py`                                                             | `coverage.py --branch` (optional)     |
-| `go-dev`              | `*_test.go`                                                                           | `go test -cover` (optional)           |
-| `flutter-dev`         | `test/**/*_test.dart`                                                                 | `flutter test --coverage` (optional)  |
-| `mobile-dev`          | iOS `**/*Tests.swift`; Android `src/test/**/*Test.kt` + `src/androidTest/**/*Test.kt` | `xccov` / `jacoco` (optional)         |
-| `angular-dev`         | `**/*.{spec,test}.{ts,js}` (jest convention)                                          | `jest --coverage` (optional)          |
-| `bash-dev`            | `**/*.bats` + `test/**/*.bats`                                                        | (none)                                |
-| `embedded-dev`        | `test/**/*_test.{c,cpp}` + `**/*_test.{c,cpp}`                                       | `gcov` / `lcov` (optional)            |
+| Stack key (canonical) | Test-discovery globs                                                                 |
+|-----------------------|--------------------------------------------------------------------------------------|
+| `ts-dev`              | `**/*.{test,spec}.{ts,tsx,js,jsx}` + `__tests__/**/*.{ts,tsx,js,jsx}`                |
+| `java-dev`            | `src/test/**/*Test.java`                                                             |
+| `python-dev`          | `test_*.py` + `*_test.py`                                                            |
+| `go-dev`              | `*_test.go`                                                                          |
+| `flutter-dev`         | `test/**/*_test.dart`                                                                |
+| `mobile-dev`          | iOS `**/*Tests.swift`; Android `src/test/**/*Test.kt` + `src/androidTest/**/*Test.kt`|
+| `angular-dev`         | `**/*.{spec,test}.{ts,js}` (jest convention)                                         |
+| `bash-dev`            | `**/*.bats` + `test/**/*.bats`                                                       |
+| `embedded-dev`        | `test/**/*_test.{c,cpp}` + `**/*_test.{c,cpp}`                                      |
 
-Phase 3A scope is **strict**: test-discovery + AC-to-test coverage analysis (+ optional branch-coverage cross-reference for untested-error-path findings). Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`.
+Phase 3A scope is **strict**: test-discovery + AC-to-test coverage analysis. Phase 3A does NOT invoke linters, formatters, type checkers, or build verification — those belong to `gaia-code-review`. Phase 3A does NOT invoke Semgrep, secret scanners, or dep audits — those belong to `gaia-security-review`.
 
-Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → silent skip on test-discovery with `skip_reason` populated.
+Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output and the table key) → the analyzer exits non-zero; the collector writes an errored check; the resolver returns BLOCKED.
 
 ## Severity Rubric
 
@@ -73,16 +73,16 @@ Mismatched stack name (vocabulary drift between `load-stack-persona.sh` output a
 
 The LLM Phase 3B review applies the rubric below. Findings are organized by QA category. Coverage targets the four highest-frequency categories: **missing AC coverage**, **weak assertion**, **brittle selector**, **untested error path**. Other QA categories (over-coverage, requirement-traceability gaps, malformed AC text) seed Suggestion-tier examples below.
 
-The category+severity sets MUST match across two runs of identical inputs (determinism contract); textual message variation is allowed. Category+severity divergence escalates as a model-pin or temperature regression.
+The category+severity sets MUST match across two runs of identical inputs (determinism contract); textual message variation is allowed. Category+severity divergence escalates as a recorded-convention violation.
 
 ### Critical
 
-> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. A finding is promoted to Critical only when it meets the shared blocker definition (`knowledge/shared-findings-rubric.md`): material required behaviour or risk is left unverified — specifically, primary AC coverage gaps where the uncovered behaviour is material, and untested error paths on user-input boundaries with deterministic branch-coverage evidence.
+> Blocking. Produces `REQUEST_CHANGES` if the deterministic resolver did not already block. A finding is promoted to Critical only when it meets the shared blocker definition (`knowledge/shared-findings-rubric.md`): material required behaviour or risk is left unverified — specifically, primary AC coverage gaps where the uncovered behaviour is material.
 
 Examples:
 
-- **Missing AC coverage (primary, P0)** — Story AC1 ("Given invalid email, when submit, then reject with 422") is marked priority P0 in the story frontmatter; AC-coverage analyzer finds zero tests matching by AC-ID prefix or Given/When/Then pattern. Coverage gap on a P0 AC is verdict-blocking.
-- **Untested error path on user-input boundary** — Source contains `try { parseUserInput(req.body) } catch (e) { throw new ValidationError(e); }` on a documented public-API entry point; branch-coverage tool reports the catch branch as uncovered AND no test exercises ValidationError throwing. The error-path AC (e.g., "Given malformed payload, when parsed, then ValidationError is thrown") is uncovered.
+- **Missing AC coverage (primary)** — A primary AC ("Given invalid email, when submit, then reject with 422") has zero tests matching by AC-ID prefix or Given/When/Then pattern. Coverage gap on a primary AC is verdict-blocking (the finding carries `blocking: true`; severity is `critical` for P0 stories, `warning` for P1/P2).
+- **Untested error path on user-input boundary** — Source contains `try { parseUserInput(req.body) } catch (e) { throw new ValidationError(e); }` on a documented public-API entry point; no test exercises ValidationError throwing. The error-path AC (e.g., "Given malformed payload, when parsed, then ValidationError is thrown") is uncovered. Warning by default; Critical only when the LLM can confirm from the source that the path is on a user-input boundary and the AC is primary.
 
 ### Warning
 
@@ -106,13 +106,13 @@ Examples:
 - **Unparseable AC text** — Story AC reads "The system should be performant" — no Given/When/Then structure, no measurable threshold. AC parser reports `category: ac-quality` for that AC; the LLM may suggest a concrete rewording. Reported as "unparseable AC" rather than "uncovered AC".
 
 **Context-aware classification rules (rubric-driven):**
-- Primary AC gap → severity tied to AC priority (P0 → Critical; P1/P2 → Warning).
-- Edge-case AC gap → ALWAYS Warning (never Critical) — edge cases are awareness, not always testability targets.
-- Untested error path → Critical when branch-coverage tool deterministically confirms an uncovered catch on a user-input boundary AC; Warning otherwise.
+- Primary AC gap → blocking finding (`blocking: true`); severity `critical` for P0, `warning` for P1/P2.
+- Edge-case AC gap → non-blocking finding (`blocking: false`, Warning) — edge cases are awareness, not always testability targets.
+- Untested error path → Critical when the LLM confirms from source that the path is on a user-input boundary and the AC is primary; Warning otherwise.
 - Over-coverage (test_count > 1 for a single AC) → Suggestion.
 - Cross-story tests (test names/paths attributed to a different `story_key`) → not counted as coverage, reported separately as `unattributed_tests`.
 
-LLM-cannot-override invariant: a deterministic 0%-coverage finding on a P0 AC cannot be downgraded by the LLM into APPROVE territory. The rubric tiers above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the verdict-resolver.sh blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
+LLM-cannot-override invariant: a deterministic blocking finding from the AC-coverage analyzer cannot be downgraded by the LLM into APPROVE territory. The rubric tiers above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the verdict-resolver.sh blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
 ## Phases
 
@@ -124,8 +124,7 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 - Resolve the story file path via the shared `${CLAUDE_PLUGIN_ROOT}/scripts/resolve-story-file.sh {story_key}` helper. It honors the canonical-first contract: searches `.gaia/artifacts/implementation-artifacts/epic-*/{story_key}-{slug}/story.md` first, then legacy `.gaia/artifacts/implementation-artifacts/epic-*/stories/{story_key}-*.md`, then legacy flat as final fallback. Exit codes: 0 = single match (stdout = path); 1 = zero matches (fail with "story file not found for key {story_key}"); 2 = multiple matches (fail with "multiple story files matched key {story_key}"). Do NOT inline-hardcode the legacy `docs/` glob. After resolving, compare the resolved file's frontmatter `key:` to the argument; halt on mismatch before any write.
 - Read the resolved story file; parse YAML frontmatter to extract `status` and `traces_to`.
 - Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/load-stack-persona.sh --story-file <path>` in the parent context. The script emits the canonical stack name (`ts-dev`, `java-dev`, `python-dev`, `go-dev`, `flutter-dev`, `mobile-dev`, `angular-dev`, `bash-dev`, `embedded-dev`) and lazy-loads the matching reviewer persona + memory sidecar BEFORE fork dispatch. Forward the persona payload + canonical stack name into the fork.
-- **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions` for the cache key.
-- **Optional branch-coverage probe.** Probe the stack's branch-coverage binary (`nyc`, `coverage.py`, `go test -cover`, `jacoco`, etc.). If absent, untested-error-path findings degrade from Critical-eligible to Suggestion-only — LLM cannot promote without deterministic evidence.
+- **Tool prereq probe.** For each tool used by the resolved stack: probe via `command -v <tool>` first; fall back to `node_modules/.bin/<tool> --version` (TS/Angular). NEVER use `npx <tool> --version` (triggers npm install and breaks the 60s P95 budget). Cap each probe at 5s wall-clock; on timeout, log a Warning and continue (assume tool present). Capture each tool's reported version into `tool_versions`.
 - **Expected-missing-tool.** If the test runner is absent for a stack that requires it, emit Phase 1 BLOCKED with an actionable error message naming the missing tool and the install hint. Do NOT dispatch the fork.
 
 ### Phase 2 — Story Gate
@@ -140,56 +139,42 @@ The skill is organized into seven canonical phases in this order: Setup → Stor
 
 Phase 3A is the **evidence layer**. Output: `analysis-results.json` written to `.gaia/state/review/qa-tests/{story_key}/analysis-results.json` validating against `plugins/gaia/schemas/analysis-results.schema.json` (`schema_version: "1.0"`).
 
-**Toolkit invocation.** Look up the toolkit row in the Stack Toolkit Table above using the canonical stack name from Phase 1. Run test-discovery + AC-coverage analyzer per row.
+**Collector invocation.**
 
-1. **Test-discovery (bounded scope by default).** Glob test files matching File List directories + their nearest test-directory ancestor (e.g., `src/foo.ts → tests/foo.test.ts` or `src/__tests__/foo.test.ts`). Full-project scan only on explicit `--full` flag. Multi-stack monorepo runs discovery per matching convention; `analysis-results.json:tests_discovered` is keyed by stack with separate counts. On zero discovered tests, status=`skipped` with `skip_reason: "no test files found via standard discovery globs"`. Wall-clock cap: 30s.
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/gaia-qa-tests/scripts/phase3a-collect.sh \
+  --story-key {story_key} \
+  --story-file {story_file_path} \
+  --output-dir .gaia/state/review/qa-tests/{story_key} \
+  --test-dir {test_dir} \
+  --stack {stack} \
+  [--model {model}]
+```
 
-2. **AC parser (markdown-aware, NOT raw regex).** Use a YAML/markdown-aware parser (`mistune`, `remark`, or robust YAML extractor) to handle backticks, code blocks, pipe characters, and asterisks. Extract Given/When/Then text content per AC. Flag malformed ACs as `status: warning, category: ac-quality` for ACs without Given/When/Then structure. Zero-AC story → `status: failed` with finding "No acceptance criteria found in story"; resolver maps to REQUEST_CHANGES via precedence rule 2 (LLM-cannot-override).
+Exit semantics: exit 0 always writes `analysis-results.json` (even with an errored check); exit 1 only for missing or invalid required arguments (defence in depth — these cannot occur once Phase 1 has resolved key/file and created the output directory). An errored `ac-coverage` check in `analysis-results.json` maps to BLOCKED via verdict-resolver precedence rule 1.
 
-3. **AC-coverage analyzer (dual-strategy matching).** Two-pass match per AC:
-   - **Primary match** — AC-ID prefix in test path or test name. Examples: `tests/{story_key}-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`.
-   - **Fallback match** — Given/When/Then pattern match against test description string. Example: AC text "Given invalid email, when submit, then reject" matches a test named `'should reject invalid email when submitted'`.
-   - **Cross-story attribution scoping.** Only tests with the current `story_key` in path or test name count toward coverage. Tests without explicit story_key attribution are reported separately under `unattributed_tests[]`, NOT counted as coverage.
+**AC-coverage analyzer** (`skills/gaia-qa-tests/scripts/ac-coverage-analyzer.sh`). The analyzer is invoked by the collector and produces a single `ac-coverage` check. It performs test-discovery bounded by `--test-dir`, then matches each story AC against discovered tests via a dual-strategy:
 
-4. **Primary vs edge-case AC differential weighting.** Primary AC gap → severity tied to AC priority (P0 → Critical, P1/P2 → Warning). Edge-case AC gap → ALWAYS Warning (NEVER Critical).
+1. **Test discovery.** Look up the test-file globs in the Stack Toolkit Table above using the canonical stack name from Phase 1. Discovery is bounded by `--test-dir` (default `.`); wall-clock cap: 30 s (graceful degrade when `timeout` is absent).
 
-5. **Per-AC coverage reporting.** Report `{ac_id, matched: bool, test_count: N}` per AC. coverage=100% means all ACs matched ≥1 test (NOT weighted by count). Over-coverage (count>1) is Suggestion-tier (potential test redundancy / DRY opportunity).
+2. **AC parser.** Extract ACs from the story file (lines matching `^- [<space-or-xX>] **AC`, accepting both unchecked `- [ ]` and checked-off `- [x]`/`- [X]` forms). AC id = the leading token matching `AC[A-Za-z0-9_-]*` from the bold label between `**` markers; decorated forms like `**AC2 — Export works:**` or `**AC1 (P0):**` yield `AC2` / `AC1`. A bold label whose text has no such leading token is treated as malformed; malformed labels with Given/When/Then structure produce a blocking `ac-coverage-malformed` finding (fail closed); malformed labels without Given/When/Then structure are skipped with `skip_reason` and a non-blocking `ac-quality` finding (severity warning, `blocking: false`). A label whose extracted id is followed by `.` and an alphanumeric (e.g. `AC1.1`, `AC1.2`) is a truncated dotted label — it produces a blocking `ac-coverage-truncated` finding (the `.` character is not part of the id grammar). A repeated AC id (literal or produced by truncation) produces a blocking `ac-coverage-duplicate` finding. Edge-case ACs contain "EC" in the id (case-insensitive). Given/When/Then structure = all three keywords present (case-insensitive) after `:**`. ACs without Given/When/Then structure (and with a valid id) are reported with `status: skipped` and a `skip_reason`, plus a non-blocking `ac-quality` finding (rule `ac-quality`, severity warning, `blocking: false`). Unknown `--stack` values cause the analyzer to exit non-zero; the collector writes an errored check and the resolver returns BLOCKED.
 
-6. **Optional branch coverage.** If the branch-coverage tool from Phase 1 is present, parse its output to identify uncovered catch blocks. Cross-reference with error-path ACs: error-path AC + uncovered catch + user-input boundary → Critical-eligible; else Warning.
+3. **AC-coverage matching (dual-strategy).** Two-pass match per AC:
+   - **Primary match** — AC-ID as a word-boundary token in test path or test identifier. Examples: `tests/{story_key}-AC1.test.ts`, `it('AC1: should reject invalid email', ...)`, `def test_AC1_rejects_invalid_email():`. Hyphen and underscore are interchangeable (AC-EC3 matches AC_EC3). **Boundary rule:** a match is credited only when it is not the prefix of a longer AC id; a post-match check rejects matches whose trailing text continues with a known extension suffix from another story AC id or an id-like continuation (`[-_]` followed by a digit). Uppercase letters after the id are accepted only in camelCase position (preceded by a lowercase letter, e.g. `TestAC1Reject`); from a standalone position (start-of-string or non-alphanumeric), uppercase after the id does not match. Edge-case AC reference form: edge-case ACs must be referenced by the full AC-EC\<n\> form; a bare EC\<n\> is not searched.
+   - **Fallback match** (only when no primary match and AC has Given/When/Then structure) — extract the Given, When, and Then phrases; lowercase; strip punctuation and stopwords; require each phrase to have at least two content words (minimum-pair gate); match consecutive content-word pairs against a single normalised test identifier. The fallback holds only when ALL THREE phrases match in at least one attributed test identifier. Matches spread across different tests do not count. Known limitation: abbreviations in camelCase split poorly; negation stripped by stopwords.
+   - **Cross-story attribution scoping.** A (file, identifier) pair is attributed only when the story key appears in the file path or the test identifier. Unattributed pairs are reported separately under `unattributed_tests[]` and are never counted as coverage.
 
-**Status taxonomy.** Each tool invocation produces exactly one of:
-- `status: passed` — tool ran to completion, no findings, exit code zero.
-- `status: failed` — tool ran to completion AND emitted findings (e.g., AC-coverage analyzer found a P0 AC with zero matches; AC parser found zero ACs in the story file). Maps to REQUEST_CHANGES via verdict-resolver precedence rule 2 (LLM-cannot-override).
-- `status: errored` — tool crashed mid-run, returned an unclassified non-zero exit code, OR exceeded its wall-clock cap. Maps to BLOCKED via precedence rule 1.
-- `status: skipped` — tool not applicable; `skip_reason` populated verbatim.
+4. **Primary vs edge-case differential weighting.** Primary AC gap → blocking finding. Edge-case AC gap → non-blocking finding (Warning). An edge-case NOT MET AC is ALWAYS Warning (NEVER Critical).
+
+5. **Per-AC coverage reporting.** Each AC in `ac_results[]` carries `{ac_id, matched, test_count, status}`. Status values: MET (primary match), PARTIALLY MET (fallback match only), NOT MET (neither), skipped (malformed AC with `skip_reason`). `test_count` = number of distinct (file, identifier) pairs matching the rule that set the status.
+
+**Status taxonomy.** The `ac-coverage` check produces exactly one of:
+- `status: passed` — no NOT MET condition; non-blocking findings (PARTIALLY MET, ac-quality) may be present. The resolver gives APPROVE for a passed check.
+- `status: failed` — at least one NOT MET or fail-closed condition (zero ACs, all ACs malformed, any blocking finding from truncation/duplicate/malformed-with-valid-criterion-structure), with every finding carrying an explicit `blocking` value. Whether the verdict blocks is decided by the findings' blocking values: the resolver gives APPROVE for a failed check whose findings are all `blocking: false` (rule 2); REQUEST_CHANGES when any finding has `blocking: true`.
+- `status: errored` — collector or analyzer failure. Maps to BLOCKED via precedence rule 1.
+- `status: skipped` — not applicable; `skip_reason` populated verbatim.
 
 **Path normalization.** Tool outputs vary in path convention. Phase 3A normalizes all `findings[].file` to repo-relative before writing `analysis-results.json` (consistent with the shared code-review pattern).
-
-**Cache plumbing.** Cache lives at `.gaia/state/review/qa-tests/{story_key}/.cache/`. Cache directory created via `mkdir -p` (idempotent and concurrency-safe).
-
-Cache key:
-```
-sha256(
-  File List contents
-  || file_hashes (sha256 per File List entry, sorted)
-  || test_file_hashes (sha256 per discovered test, sorted)
-  || story_acs_hash (sha256 of canonicalized AC list — primary + edge-case)
-  || tool_versions (sorted "tool:version" lines)
-)
-```
-
-`story_acs_hash` is the cache-staleness mitigation: story ACs are part of the deterministic input — when ACs change, coverage analysis MUST re-run. A cached `analysis-results.json` from a prior AC list returns a stale verdict if `story_acs_hash` is omitted.
-
-Cache lookup:
-1. Compute the candidate cache key from current File List + test file hashes + story_acs_hash + tool versions.
-2. Look up `.gaia/state/review/qa-tests/{story_key}/.cache/{cache_key}.json`. On miss: run analyzer.
-3. On candidate hit, **revalidate file_hashes AND test_file_hashes** against current on-disk hashes. Either input edited externally without changing other cache-key fields → treat as miss.
-
-Cache write (same-story parallel-invocation safety):
-- Write `analysis-results.json` to a per-PID temp path: `.gaia/state/review/qa-tests/{story_key}/.cache/.tmp.<pid>.<timestamp>.json`.
-- `mv` (atomic rename) to the final `.cache/{cache_key}.json` path. Atomic-rename gives last-writer-wins without corruption.
-- Cross-story parallel invocations are safe by per-story directory partitioning.
-- Persist via `${CLAUDE_PLUGIN_ROOT}/scripts/checkpoint.sh write --workflow qa-tests --step 3 --file <results.json> --var cache_key=<hash>` so `checkpoint.sh validate --workflow qa-tests` can detect drift later.
 
 Phase 3A also emits a rendered `.md` companion alongside `analysis-results.json` — a human-readable summary of per-AC coverage and discovered-tests count for log inspection.
 
@@ -213,8 +198,6 @@ After the test-discovery / AC-coverage analyzer completes, the skill tries CI JU
      ```
      This copies the JUnit XML (with `<system-out>`/`<system-err>` content removed), runs the review packet builder's token-stripping and gitleaks scan, and writes `ci-junit-evidence.json`. On a secret finding (exit 3), the evidence is not stored and the gate records a blocked finding. On any other non-zero exit, log a warning but do not block the gate — the evidence simply remains unstored.
    - Exit 3 (rejected): the gate does not pass on that evidence. Record the rejection reason (`junit_sha_mismatch`, `junit_run_link_missing`, or `junit_parse_error`) as a blocked finding with the action "push the head commit and let CI finish". Never fall back to cached or earlier results.
-
-**Cache bypass rule.** The Phase 3A.1 result cache (`.cache/{cache_key}.json`) MUST NOT short-circuit the CI evidence branch: when CI evidence was fetched or rejected for this HEAD, the cache is bypassed and the CI result takes precedence.
 
 **Local-tier fallback.** When CI evidence is unavailable (exit 2 above), the local-tier runner executes as today:
 
@@ -267,15 +250,15 @@ Phase 3B is the **judgment layer**. The fork subagent reads `analysis-results.js
 **Fork dispatch contract.**
 - `context: fork`
 - `allowed-tools: [Read, Grep, Glob, Bash]` (frontmatter-enforced; no Write/Edit ever)
-- `model: claude-opus-4-7` (frontmatter-pinned)
-- `temperature: 0`
+- `model: claude-opus-4-7` (recorded in the report header; the fork inherits the parent model)
+- `temperature: 0` (recorded convention)
 - Inputs forwarded into the fork: persona payload (from Phase 1), `analysis-results.json` content, story file path, severity rubric (this section), AC text (primary + edge-case).
 
 **Output contract.** Fork returns a structured findings JSON with shape `{ "findings": [{"category", "severity", "file", "line", "message", "ac_ref?", "fr_ref?"}, ...] }`. The fork ALSO returns the rendered report payload as its conversational output — the parent will validate the structure in Phase 6 before persisting.
 
-**Determinism contract.** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model pin, temperature, or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
+**Determinism contract.** Two runs against unchanged `analysis-results.json` MUST produce findings that match by `{category, severity}`. Textual message variation is allowed. Category+severity divergence is an escalation signal — investigate model or prompt-hash mismatch. The bats determinism regression test compares ONLY `{category, severity}` sets across two runs.
 
-**Prompt hash recording.** The fork records `prompt_hash` (sha256 of system prompt || `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
+**Prompt hash recording.** The fork records `prompt_hash` (sha256 of `analysis-results.json` content) in the report header. This is the audit trail for determinism debugging.
 
 **LLM-cannot-override (rule 2 of verdict-resolver).** A deterministic finding from Phase 3A — e.g., zero-AC story → `status: failed` → REQUEST_CHANGES — wins over any LLM APPROVE judgment. The rubric downgrades above apply to LLM tier classification (Suggestion vs Warning vs Critical) — NOT to the resolver's blocking decision when the deterministic tool emits `status: failed` with a blocking finding.
 
@@ -485,8 +468,7 @@ Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary. Do NOT h
 ### Phase 7 — Finalize
 
 - Surface the verdict to the orchestrator (mandatory verdict surfacing).
-- Persist findings to the per-skill checkpoint via `checkpoint.sh write` (already invoked in Phase 3A for the cache; final state recorded via the standard `finalize.sh` hook).
-- The Phase 3A artifact is cached for the next run by the `.cache/{cache_key}.json` write performed in Phase 3A.
+- Persist findings to the per-skill checkpoint via `checkpoint.sh write` (final state recorded via the standard `finalize.sh` hook).
 
 ## Concepts
 
@@ -497,7 +479,7 @@ Capture stdout for the `Review Gate: COMPLETE|PENDING|BLOCKED` summary. Do NOT h
 - Composite Review Gate.
 - Subagent Dispatch Contract — Mandatory Verdict Surfacing.
 - YOLO Mode Contract — Consistent Non-Interactive Behavior.
-- Frontmatter Model Pin for Determinism.
+- Recorded Model Convention for Determinism.
 - Review-Skill Evidence/Judgment Split.
 - Evidence/Judgment functional and non-functional requirements.
 - Locked review-file naming convention (`qa-tests-{story_key}.md`).
