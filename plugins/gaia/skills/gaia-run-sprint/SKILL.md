@@ -59,9 +59,11 @@ its own). So this skill loops, one real turn at a time:
    if [ -n "$BOUND_SPRINT" ]; then
      SPRINT_YAML="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/sprint-state.sh" resolve-file --sprint "$BOUND_SPRINT")"
    fi
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" plan \
+   PLAN_OUTPUT="$(bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" plan \
      --repo "${PROJECT_PATH:-.}" \
-     --yaml "$SPRINT_YAML"
+     --yaml "$SPRINT_YAML")"
+   printf '%s\n' "$PLAN_OUTPUT"
+   PPO_SESSION="$(printf '%s\n' "$PLAN_OUTPUT" | sed -n 's/^session=//p' | head -n1)"
    # Report any recorded review gate bypass use in the sprint.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/lib/check-bypass-records.sh" \
      --project-root "${PROJECT_ROOT:-${CLAUDE_PROJECT_ROOT:-}}"
@@ -73,7 +75,7 @@ its own). So this skill loops, one real turn at a time:
 
 2. **Loop `next`, one call per turn**, on `mode=parallel`:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" next
+   GAIA_SESSION_DIR="$PPO_SESSION" bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" next
    ```
    Each `dispatch story=<key> phase=<n> persona=<stack> worktree=<path>
    handle=<id>` line names a story this call admitted (a real worktree, a
@@ -87,7 +89,7 @@ its own). So this skill loops, one real turn at a time:
 
 3. **Report what you observed, per completion**:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" \
+   GAIA_SESSION_DIR="$PPO_SESSION" bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" \
      record <key> <done|failed|timeout|merged|deferred>
    ```
    `done`/`failed`/`timeout` are exactly what they say. `merged` means the
@@ -101,12 +103,19 @@ its own). So this skill loops, one real turn at a time:
 
 4. **Check `status` every turn**, and record `timeout` for anything overdue:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" status
+   GAIA_SESSION_DIR="$PPO_SESSION" bash "${CLAUDE_PLUGIN_ROOT}/scripts/phase-parallel-orchestrator.sh" status
    ```
    This lists running stories with elapsed time against the per-story
    budget — there is no other signal for "this dev agent's turn silently
    died," so an overdue entry is your cue to call `record <key> timeout`
    rather than waiting indefinitely.
+
+The caller reads the `session=<path>` line from plan's output and passes that
+literal path as `GAIA_SESSION_DIR` on each later `next`, `record`, and `status`
+call, so that each invocation resolves the same session directory even when two
+sprints share one machine. Each of these commands runs as its own Bash tool
+call, so a variable or one-time export from the plan step does not carry
+over — substitute the captured path itself into every later command.
 
 The story workflow itself is unchanged: this skill schedules `/gaia-dev-story`
 runs, it does not reimplement them.
