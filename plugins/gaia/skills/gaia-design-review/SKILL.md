@@ -52,7 +52,7 @@ This skill is the review-iteration workflow. It reads the design project back th
 
 ### Precondition — Integration availability
 
-Before the first application-level Claude Design call or record transition, determine whether the integration is available. Make a single cheap Claude Design call (`list_projects`) to classify the outcome:
+Read `design_system_project.surface` from the design record (v1 records default to `designsync`). When `artifact`, make a built-in Artifact `list` call; when `designsync`, make a Claude Design `list_projects` call. Classify the outcome:
 
 <!-- design-availability begin -->
 - `available` — the call succeeded.
@@ -60,11 +60,11 @@ Before the first application-level Claude Design call or record transition, dete
 - `missing` — the call failed for any other reason (timeout, tool not found, etc.).
 <!-- design-availability end -->
 
-On `missing`, halt with: "The Claude Design integration could not be reached in this session (absent, or unreachable within the timeout) and is therefore treated as unavailable. To enable it, use a Claude Code session that exposes the DesignSync tool surface."
-
-On `unauthorized`, halt with: "The Claude Design integration is available but not authorized for this session. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
-
 On `available`, proceed to the stale-resume precondition.
+
+On `missing`, halt. For `artifact`: "Artifact surface unavailable for artifact-managed record: the built-in Artifact surface could not be reached (absent or unreachable). Ensure the Artifact surface is available." For `designsync`: "The Claude Design integration could not be reached and is treated as unavailable. Use a session that exposes the DesignSync tool surface."
+
+On `unauthorized`, halt. For `artifact`: "Artifact surface unavailable for artifact-managed record: the built-in Artifact surface is not authorized. Ensure the Artifact surface is authorized." For `designsync`: "The Claude Design integration is not authorized. Run `/design-login` (API-token sessions), or grant design access when prompted (claude.ai sessions). This is an interactive step; the framework cannot perform it on your behalf."
 
 The availability check does NOT use `design-probe.sh` (it cannot observe the session's tool surface). Do not fall back to the probe for this classification.
 
